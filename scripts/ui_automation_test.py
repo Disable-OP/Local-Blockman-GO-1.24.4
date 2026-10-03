@@ -317,8 +317,14 @@ def main():
                 if btn:
                     break
             if not btn:
+                # the register/set-password dialog's confirm button has NO
+                # resource-id — fall back to any clickable Button node
+                btn = next((n for n in nodes
+                            if n.cls == "android.widget.Button" and n.clickable), None)
+            if not btn:
                 btn = screen.find(texts=["OK", "Confirm", "Save", "Next",
-                                         "Confirm creation", "Done", "Set", "confirm"])
+                                         "Confirm creation", "Done", "Set", "confirm",
+                                         "Log in"])
             if btn and btn.center:
                 screen.tap_node(btn)
             print("  [walk] round %d: edits=%d btn=%s" % (
