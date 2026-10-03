@@ -1,0 +1,92 @@
+name: test-redroid
+# Boots the APK in Redroid (native arm64, Android 12) and verifies it runs.
+# APK source: latest GitHub Release asset "BlockyNexus-localapi.apk".
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["build-release"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  redroid-test:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    env:
+      PACKAGE: com.disabngo.blockynexus
+      ACTIVITY: com.disabngo.blockynexus.view.activity.start.StartActivity
+    steps:
+      - name: Fetch latest patched APK from releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo "$GITHUB_REPOSITORY" \
+            --pattern "BlockyNexus-localapi.apk" --output app.apk --clobber
+          ls -la app.apk
+
+      - name: Load binder kernel module
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq linux-modules-extra-$(uname -r) android-tools-adb
+          sudo modprobe binder_linux devices="binder,hwbinder,vndbinder"
+
+      - name: Start Redroid (arm64 native, Android 12)
+        run: |
+          docker run -d --name redroid --privileged -p 5555:5555 \
+            redroid/redroid:12.0.0-latest \
+            androidboot.redroid_width=720 \
+            androidboot.redroid_height=1280 \
+            androidboot.redroid_dpi=320 \
+            androidboot.redroid_gpu_mode=guest
+          adb connect localhost:5555
+
+      - name: Wait for Android boot
+        run: |
+          for i in $(seq 1 60); do
+            b=$(adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            [ "$b" = "1" ] && echo "boot completed" && exit 0
+            echo "waiting for boot ($i/60)"; sleep 10
+          done
+          echo "DEVICE FAILED TO BOOT"; exit 1
+
+      - name: Install APK
+        run: |
+          adb -s localhost:5555 install -r -t app.apk
+
+      - name: Launch app and keep-alive check
+        run: |
+          adb -s localhost:5555 logcat -c
+          adb -s localhost:5555 shell am start -n "$PACKAGE/$ACTIVITY"
+          sleep 45
+          if adb -s localhost:5555 shell pidof "$PACKAGE" | grep -qE '[0-9]'; then
+            echo "APP ALIVE after 45s"
+            adb -s localhost:5555 shell pidof "$PACKAGE"
+          else
+            echo "APP PROCESS DIED"
+            exit 1
+          fi
+          sleep 60
+          if adb -s localhost:5555 shell pidof "$PACKAGE" | grep -qE '[0-9]'; then
+            echo "APP STILL ALIVE after 105s total"
+          else
+            echo "APP PROCESS DIED between 45s and 105s"
+            exit 1
+          fi
+
+      - name: Collect diagnostics
+        if: always()
+        run: |
+          adb -s localhost:5555 logcat -d > logcat.txt || true
+          adb -s localhost:5555 shell dumpsys activity processes > processes.txt || true
+          tar czf redroid-diagnostics.tgz logcat.txt processes.txt || true
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redroid-diagnostics
+          path: redroid-diagnostics.tgz
+          if-no-files-found: ignore

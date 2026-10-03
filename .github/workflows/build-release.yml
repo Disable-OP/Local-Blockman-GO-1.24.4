@@ -1,0 +1,64 @@
+name: build-release
+# Builds the patched single-APK from the base APK release asset, signs it,
+# and attaches it to a GitHub Release (the APK always lives in Releases).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Fetch base APK from latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download --repo "$GITHUB_REPOSITORY" \
+            --pattern "base-apk-1.24.4.apk" --output base.apk --clobber
+          ls -la base.apk
+
+      - name: Build patched + signed APK
+        env:
+          BASE_APK: ${{ github.workspace }}/base.apk
+          KEYSTORE: ${{ secrets.RELEASE_KEYSTORE_B64 && '/tmp/ks.jks' || '' }}
+        run: |
+          if [ -n "${{ secrets.RELEASE_KEYSTORE_B64 }}" ]; then
+            echo "${{ secrets.RELEASE_KEYSTORE_B64 }}" | base64 -d > /tmp/ks.jks
+            export KEYSTORE=/tmp/ks.jks
+            export KS_PASS="pass:${{ secrets.RELEASE_KEYSTORE_PASS }}"
+            export KS_ALIAS="${{ secrets.RELEASE_KEYSTORE_ALIAS }}"
+          fi
+          chmod +x scripts/build_signed_apk.sh
+          scripts/build_signed_apk.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlockyNexus-localapi
+          path: dist/BlockyNexus-localapi.apk
+
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME:-wip-$(date +%Y%m%d)}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_run" ] || [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            TAG="wip-${GITHUB_RUN_NUMBER}"
+          fi
+          gh release create "$TAG" --title "BlockyNexus localapi $TAG" \
+            --notes "Automated patched build (URLs → embedded loopback). See docs/PATCH_PLAN.md." \
+            || true
+          gh release upload "$TAG" dist/BlockyNexus-localapi.apk --clobber
