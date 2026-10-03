@@ -19,21 +19,12 @@ jobs:
       PACKAGE: com.disabngo.blockynexus
       ACTIVITY: com.disabngo.blockynexus.view.activity.start.StartActivity
     steps:
+      - uses: actions/checkout@v4
+
       - name: Fetch latest patched APK from releases (prerelease-aware)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          ASSET_URL=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases?per_page=20" | python3 -c "
-import sys, json
-for r in sorted(json.load(sys.stdin), key=lambda x: x['created_at'], reverse=True):
-    for a in r.get('assets', []):
-        if a['name'] == 'BlockyNexus-localapi.apk':
-            print(a['url']); sys.exit(0)
-sys.exit('asset BlockyNexus-localapi.apk not found in any release')")
-          curl -sL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/octet-stream" \
-            -o app.apk "$ASSET_URL"
-          ls -la app.apk
+        run: python3 scripts/fetch_release_asset.py BlockyNexus-localapi.apk app.apk
 
       - name: Load binder kernel module
         run: |
