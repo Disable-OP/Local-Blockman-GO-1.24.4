@@ -12,7 +12,7 @@ Blockman GO 1.24.4 (custom build `com.disabngo.blockynexus`) rebuilt as a **full
 | Embedded-server design (NanoHTTPD on loopback) | done — [docs/PATCH_PLAN.md](docs/PATCH_PLAN.md) |
 | URL rewiring to `127.0.0.1` (`scripts/patch_urls.py`) | done |
 | Rebuild + sign pipeline + GitHub Releases | done (`.github/workflows/build-release.yml`) |
-| Redroid arm64 CI test | done (`.github/workflows/test-redroid.yml`) |
+| Redroid arm64 CI test | **GREEN** (`.github/workflows/test-redroid.yml`) — boots Redroid 12 arm64, installs APK, app alive 105s+ |
 | Phase 1: local auth (login/register/token) | **next** |
 | Phase 2-4: economy, social, game runtime | backlog |
 

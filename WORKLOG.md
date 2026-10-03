@@ -12,3 +12,12 @@
 
 - Wrote docs/ENDPOINTS.md, docs/ARCHITECTURE.md, docs/PATCH_PLAN.md (NanoHTTPD-on-loopback decision + phased roadmap), scripts/patch_urls.py (idempotent URL rewiring, no banned literals), scripts/build_signed_apk.sh (decompile→patch→rebuild→zipalign+sign), .github/workflows/test-redroid.yml (ubuntu-24.04-arm, binder module, redroid:12.0.0-latest native arm64, boot-wait, install, launch StartActivity, 105s keep-alive assertions, diagnostics artifact), .github/workflows/build-release.yml (base APK from release asset → build → sign → attach to release), README.md, NEXT_SESSION_README.md.
 - Next: proof-build patched APK, seed release (base + patched), push branch, then Phase 1 (local auth server).
+
+## Session 3 (cont.) — CI validation loop (2026-10-04)
+
+- First Redroid run failed: `gh release download` skips prereleases ("release not found"). Replaced with scripts/fetch_release_asset.py (API-based, prerelease-aware, octet-stream download).
+- Second failure: pushed fix to remote main from a stale local main ref (fix commit lived only on local-api) — dispatch ran the old workflow. Lesson: ff local main BEFORE pushing.
+- Third failure: startup_failure — the inline multi-line python inside YAML block scalars dedented to column 0, breaking the block scalar. Fixed by moving asset fetch into scripts/fetch_release_asset.py + adding actions/checkout to test-redroid.yml. Always validate workflow YAML with a parser before pushing.
+- **RUN 4: FULLY GREEN** — checkout → fetch APK from release → modprobe binder_linux (ubuntu-24.04-arm) → redroid/redroid:12.0.0-latest boot → adb install 232MB APK → am start StartActivity → process alive at 45s AND 105s. Diagnostics artifact uploaded.
+- Release v0.1.0-pipeline holds: base-apk-1.24.4.apk + BlockyNexus-localapi.apk (patched: 5 URLs → http://127.0.0.1:18080, zipaligned, v1/v2/v3 signed).
+- Branches: local-api (work) + main (fast-forwarded to same commits).
