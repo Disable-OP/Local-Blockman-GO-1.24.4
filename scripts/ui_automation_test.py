@@ -255,16 +255,29 @@ def main():
     # ------------------------------------------------- Phase B: register
     print("== PHASE B: register a fresh account through the UI ==")
     login_screen = False
-    # 1) try the Me tab -> login entry (guest banner says "Please log in")
-    me = screen.find(ids=["rb_4", "rb_5"])
-    if me and screen.tap_node(me):
+
+    def on_login_screen():
+        return bool(screen.find(ids=["btn_sign"], texts=["Log in", "login"]))
+
+    # 1) More tab (rb_5) -> account row (ll_account) opens the login screen
+    more = screen.find(ids=["rb_5"])
+    if more and screen.tap_node(more):
         time.sleep(4)
-        entry = screen.find(texts=["Please log in"], contains=["log in", "login"])
-        if entry and screen.tap_node(entry):
+        acc_row = screen.find(ids=["ll_account", "rl_header", "ll_id"])
+        if acc_row and screen.tap_node(acc_row):
             time.sleep(4)
-            login_screen = bool(screen.find(ids=["btn_sign"], texts=["Log in"]))
-    # 2) fallback: direct-start the LoginActivity (adb shell can start
-    #    non-exported components on redroid userdebug images)
+            login_screen = on_login_screen()
+    # 2) More tab -> Setting -> Account Switch -> account list
+    if not login_screen:
+        setting = screen.find(ids=["me_setting"], texts=["Setting"], contains=["setting"])
+        if setting and screen.tap_node(setting):
+            time.sleep(3)
+            sw = screen.find(ids=["setting_change_account"],
+                             texts=["Account Switch"], contains=["account"])
+            if sw and screen.tap_node(sw):
+                time.sleep(3)
+                login_screen = on_login_screen()
+    # 3) fallback: direct-start the LoginActivity (works on userdebug images)
     if not login_screen:
         print("  [info] direct start of LoginActivity as fallback")
         adb.sh("am start -n %s/com.sandbox.login.view.activity.login.LoginActivity" % args.package)
