@@ -56,10 +56,12 @@ java -jar "$TOOLS/uber-apk-signer.jar" \
   --apks "$BUILD/patched-unsigned.apk" \
   --out "$OUT_DIR" ${KEYSTORE:+--ks "$KEYSTORE"} ${KS_PASS:+--ks-pass "$KS_PASS"} ${KS_ALIAS:+--ks-key-alias "$KS_ALIAS"}
 
-APK_PATH=$(ls "$OUT_DIR"/patched-unsigned-*signed*.apk 2>/dev/null | head -1 || true)
+APK_PATH=$(ls "$OUT_DIR"/patched-unsigned-*-signed*.apk 2>/dev/null | head -1 || true)
 if [ -z "$APK_PATH" ]; then
   # uber-apk-signer names outputs alignedDebugApr2.apk etc under --out; normalize
-  APK_PATH=$(ls "$OUT_DIR"/*.apk | head -1)
+  APK_PATH=$(ls "$OUT_DIR"/patched-unsigned.apk 2>/dev/null | head -1)
 fi
-mv "$APK_PATH" "$OUT_DIR/BlockyNexus-localapi.apk"
+if [ -n "$APK_PATH" ] && [ "$(readlink -f "$APK_PATH")" != "$(readlink -f "$OUT_DIR/BlockyNexus-localapi.apk")" ]; then
+  mv -f "$APK_PATH" "$OUT_DIR/BlockyNexus-localapi.apk"
+fi
 echo "SIGNED APK: $OUT_DIR/BlockyNexus-localapi.apk"

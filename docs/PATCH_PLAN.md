@@ -41,7 +41,7 @@ Retrofit + Gson expect JSON bodies; errors follow the app's `BaseResponse` shape
 ## 5. Phases
 
 - **Phase 0 — pipeline (this session):** URL rewiring + empty-boot server + rebuild/sign + Redroid CI proving the app boots against loopback
-- **Phase 1 — auth & shell:** `/user/api/v1/login`, `/app/login`, `/register`, `/app/auth-token`, profile, wallet → app reaches main menu with a real local account
+- **Phase 1 — auth & shell (DONE, session 4):** `/user/api/v1/login`, `/app/login`, `/register`, `/app/auth-token`, profile, wallet → app reaches main menu with a real local account
 - **Phase 2 — economy & catalog:** IGameApi (41), IScrapApi, IShopApi, IDecorationApi, IPayApi — catalog browsing, purchases, decorations fully local
 - **Phase 3 — social:** friends/party endpoints + RongCloud replacement (self-hosted IM emulation on loopback or RongCloud-offline shim)
 - **Phase 4 — game runtime:** join flow hands out game-server addresses via API responses → return loopback addresses; bridge the in-game socket protocol (reverse-engineer `com.sandboxol.*` game socket layer)
@@ -49,7 +49,7 @@ Retrofit + Gson expect JSON bodies; errors follow the app's `BaseResponse` shape
 
 ## 6. Build & sign pipeline (CI-identical)
 
-`scripts/build_signed_apk.sh`: apktool b → uber-apk-signer (auto zipalign + debug keystore sign) → `dist/BlockyNexus-localapi-<sha>.apk`. Release workflow attaches every artifact to GitHub Releases (tags `v*` or manual dispatch).
+`scripts/build_signed_apk.sh`: patch_urls → App.smali bootstrap hook (patch_bootstrap.py) → build_server_dex.sh (ecj+d8 → classes6.dex) → apktool b → zip-inject classes6.dex → uber-apk-signer (auto zipalign + debug keystore sign) → `dist/BlockyNexus-localapi-<sha>.apk`. Release workflow attaches every artifact to GitHub Releases (tags `v*` or manual dispatch).
 
 ## 7. Testing (Redroid, arm64-native)
 
