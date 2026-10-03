@@ -12,7 +12,9 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04-arm
+    # x86 runner: apktool's bundled aapt2 is x86-only and cannot execute on
+    # arm64 (arm64-native EXECUTION stays in test-redroid.yml).
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
