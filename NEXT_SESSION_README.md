@@ -29,7 +29,10 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 
 ## What to do next (priority order)
 
-0. Monitor the Redroid UI-automation run to green; if the register UI flow differs from what the script taps (ids: tv_register/editAccount/editPassword/editPassword1/cb_pro, texts "Next"/"Confirm creation"/"Save"), adjust the script — all UI knowledge came from res/layout + strings.xml.
+0. CI IS GREEN (run 37162433102): 10s keepalive + Phase A visitor auto-login + 5 tabs + Phase C deterministic account creation via adb forward through the embedded server (32 endpoints served locally, no crashes).
+1. Phase 2 (economy/catalog per docs/PATCH_PLAN.md): turn IGameApi/IShopApi/IDecorationApi 'obj/list' defaults into real handlers. Data shapes: read the Gson models in jadx_out.
+2. Phase 3: RongCloud chat currently gets a placeholder token ('local-<id>') — replace with a local chat emulation or offline shim.
+3. UI register (Phase B) is best-effort: the guest Tip is a transient TemplateActivity; to make UI-register deterministic, drive MakeRoleActivity/login templates from an exported entry or keep the adb-forward route.
 
 1. **Phase 1 — local auth**: implement the embedded server (NanoHTTPD → d8 → classes6.dex, bootstrap hook in App.smali before any request; port 18080). Serve `POST /user/api/v1/login`, `/app/login`, `/register`, `GET /user/api/v1/app/auth-token` + the profile/wallet GETs from IUserApi. Response JSON shape: confirm from the model classes referenced in UserApi.smali call sites (Gson POJOs in com/sandboxol/center/model or similar — check jadx_out). Persist accounts to a JSON file in app private dir (NOT hardcoded — editable state).
 2. Redroid-run the phase-1 APK via the workflow; iterate until the app reaches the main menu with a local account.

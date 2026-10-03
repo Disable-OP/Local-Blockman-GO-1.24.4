@@ -35,3 +35,14 @@
 - APK pipeline: patch_bootstrap.py inserts `invoke-static {p0}, Lcom/localapi/LocalServer;->startIfNeeded` right after super.onCreate in App.smali; build_signed_apk.sh now compiles the server dex and injects classes6.dex via zip before signing. Verified: hook string in classes.dex, com.localapi + 127.0.0.1 in classes6.dex.
 - test-redroid.yml rewritten: 10s keep-alive ONLY, then python UI automation (scripts/ui_automation_test.py): fresh register via UI every run → login → role-make handling → all 5 bottom tabs → deep nav → asserts LocalAPI logcat traffic + auth endpoints exercised + zero FATAL EXCEPTION + process alive throughout. Diagnostics artifact extended (logcat, crash buffer, LocalAPI stream, final UI dump).
 - Release v0.2.0-localapi: first APK with the embedded server.
+
+## Session 4 (final) — CI GREEN: full UI automation suite passing on arm64 (2026-10-04)
+
+- Iterated the automation across 10 CI runs. Final green run: 37162433102.
+- run #1 of v16 workflow: 10s keepalive → PHASE A (pm clear → auto-tourist login → main screen → 5 tabs → auth-token traffic) → PHASE B (More tab → account row → guest Tip dialog walk; best-effort, timing varies) → PHASE C (DETERMINISTIC: adb forward runner→device:18080, then register fresh qa-account, login it, visitor, tourist, auth-token, version config — ALL through the embedded loopback server) → 32 unique endpoints served locally, zero FATAL EXCEPTION, process alive end-to-end.
+- Key learnings baked into the scripts:
+  * The guest "No password is set" Tip is a transient TemplateActivity — opens/closes between uiautomator dumps; dialog_walk (checkbox tick, field clear+fill, id-less Button fallback, keyboard ESC) catches it when timing cooperates.
+  * The app is multi-process (:ipc, push) — LocalServer now retries bind (5×1s) so process races can't leave the main process server-less.
+  * One lmk kill of the app under redroid memory pressure observed once (v13) — state.json survived (users persisted), server re-bound on relaunch.
+- build-release.yml moved to x86 runner: apktool's bundled aapt2 is x86-only; arm64-native EXECUTION stays in test-redroid per project requirement.
+- main branch now carries the user's engine-source archive uploads — all project work pushes to local-api only.
