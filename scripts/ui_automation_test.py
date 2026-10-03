@@ -260,6 +260,46 @@ def main():
     def on_login_screen():
         return bool(screen.find(ids=["btn_sign"], texts=["Log in", "login"]))
 
+    def dialog_walk(adb, screen, user, password, rounds=6):
+        """Walk an unknown sequence of dialogs (password set, register finish,
+        confirmations...). Each round: fill any EditText, then tap the most
+        promising positive button. Returns True if a set-password/register
+        endpoint ended up being exercised (checked by caller via logcat) or the
+        dialog stack cleared."""
+        last_sig = None
+        for i in range(rounds):
+            nodes = screen.dump()
+            if not nodes:
+                time.sleep(2)
+                continue
+            sig = tuple(sorted((n.res, n.text) for n in nodes if n.res or n.text))
+            edits = [n for n in nodes if n.cls.endswith("EditText")]
+            for e in edits:
+                rid = e.res.rsplit("/", 1)[-1]
+                if e.center:
+                    screen.tap_node(e)
+                    # password boxes get the password, others the username
+                    adb.text(password if "assword" in rid or "assword" in e.text else user)
+                    time.sleep(0.5)
+            btn = None
+            for rid in ["btnSure", "btn_ok", "btn_save", "btn_sign", "btn_next",
+                        "btn_confirm", "btnOk"]:
+                btn = next((n for n in nodes
+                            if n.res.rsplit("/", 1)[-1] == rid), None)
+                if btn:
+                    break
+            if not btn:
+                btn = screen.find(texts=["OK", "Confirm", "Save", "Next",
+                                         "Confirm creation", "Done", "Set", "confirm"])
+            if btn and btn.center:
+                screen.tap_node(btn)
+            time.sleep(3)
+            if sig == last_sig:
+                # screen stopped changing -> dialog stack is done
+                return i > 0
+            last_sig = sig
+        return True
+
     def guest_set_password_dialog():
         """Dialog shown for a guest account: set password (register upgrade)."""
         d = screen.find(ids=["etPassword", "etPassword2"], contains=["password", "Password"])
@@ -279,7 +319,7 @@ def main():
             return True
         return False
 
-    # 1) More tab (rb_5) -> account row: guest upgrade dialog OR login screen
+    # 1) More tab (rb_5) -> account row: Tip dialog (guest) -> Set your password
     more = screen.find(ids=["rb_5"])
     if more and screen.tap_node(more):
         time.sleep(4)
@@ -288,10 +328,15 @@ def main():
             time.sleep(3)
             if on_login_screen():
                 login_screen = True
-            elif screen.find(ids=["etPassword", "etPassword2"]):
-                ok("B: guest set-password dialog detected (visitor -> account upgrade)")
-                if fill_set_password_and_confirm():
-                    set_password_flow = True
+            else:
+                # guest Tip dialog: "No password is set for this account"
+                sure = screen.wait_for(ids=["btnSure"],
+                                       texts=["Set your password", "Set password"],
+                                       timeout=15, poll=2)
+                if sure and screen.tap_node(sure):
+                    ok("B: guest Tip dialog -> 'Set your password' tapped")
+                    if dialog_walk(adb, screen, user, password, rounds=6):
+                        set_password_flow = True
 
     # 2) scroll the More list for Setting -> Account Switch -> login screen
     if not login_screen and not set_password_flow:
