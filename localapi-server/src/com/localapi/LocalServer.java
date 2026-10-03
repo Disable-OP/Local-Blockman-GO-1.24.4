@@ -19,20 +19,32 @@ public final class LocalServer {
         if (httpd != null && httpd.isUp()) {
             return;
         }
-        try {
-            L.i("boot: starting local api on 127.0.0.1:" + PORT);
-            StateStore store = new StateStore(context.getApplicationContext().getFilesDir());
-            LocalHttpd server = new LocalHttpd(PORT, store);
-            server.start(15000, true);
-            httpd = server;
-            L.i("boot: local api is UP on http://127.0.0.1:" + PORT
-                    + " (users=" + store.userCount() + ")");
-        } catch (Throwable t) {
-            L.e("boot FAILED: " + t);
+        // The app runs several processes (main, :ipc, push); every one executes
+        // App.onCreate. Only one can hold the port — the loser retries briefly
+        // and gives up silently (its process doesn't need the server anyway).
+        for (int attempt = 0; attempt < 5 && (httpd == null || !httpd.isUp()); attempt++) {
+            try {
+                L.i("boot: starting local api on 127.0.0.1:" + PORT
+                        + (attempt > 0 ? " (retry " + attempt + ")" : ""));
+                StateStore store = new StateStore(context.getApplicationContext().getFilesDir());
+                LocalHttpd server = new LocalHttpd(PORT, store);
+                server.start(15000, true);
+                httpd = server;
+                L.i("boot: local api is UP on http://127.0.0.1:" + PORT
+                        + " (users=" + store.userCount() + ")");
+            } catch (Throwable t) {
+                L.e("boot attempt " + attempt + " failed: " + t);
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
         }
     }
 
     public static boolean isRunning() {
-        return httpd != null && httpd.wasStarted();
+        return httpd != null && httpd.isUp();
     }
 }

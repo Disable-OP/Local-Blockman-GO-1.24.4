@@ -61,7 +61,7 @@ if [ -z "$APK_PATH" ]; then
   # uber-apk-signer names outputs alignedDebugApr2.apk etc under --out; normalize
   APK_PATH=$(ls "$OUT_DIR"/patched-unsigned.apk 2>/dev/null | head -1)
 fi
-if [ -n "$APK_PATH" ] && [ "$(readlink -f "$APK_PATH")" != "$(readlink -f "$OUT_DIR/BlockyNexus-localapi.apk")" ]; then
-  mv -f "$APK_PATH" "$OUT_DIR/BlockyNexus-localapi.apk"
+if [ -n "$APK_PATH" ] && [ "$(readlink -f "$APK_PATH" || true)" != "$(readlink -f "$OUT_DIR/BlockyNexus-localapi.apk" || true)" ]; then
+  mv -f "$APK_PATH" "$OUT_DIR/BlockyNexus-localapi.apk" || true
 fi
 echo "SIGNED APK: $OUT_DIR/BlockyNexus-localapi.apk"
