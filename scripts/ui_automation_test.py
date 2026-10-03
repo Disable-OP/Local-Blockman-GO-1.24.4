@@ -276,10 +276,9 @@ def main():
 
     def dialog_walk(adb, screen, user, password, rounds=6):
         """Walk an unknown sequence of dialogs (password set, register finish,
-        confirmations...). Each round: fill any EditText, then tap the most
-        promising positive button. Returns True if a set-password/register
-        endpoint ended up being exercised (checked by caller via logcat) or the
-        dialog stack cleared."""
+        confirmations...). Each round: fill any EditText, hide the keyboard,
+        then tap the most promising positive button. Returns True when the
+        dialog stack cleared (screen stopped changing)."""
         last_sig = None
         for i in range(rounds):
             nodes = screen.dump()
@@ -295,6 +294,10 @@ def main():
                     # password boxes get the password, others the username
                     adb.text(password if "assword" in rid or "assword" in e.text else user)
                     time.sleep(0.5)
+                    adb.key(111)  # ESC hides the soft keyboard so buttons are visible
+                    time.sleep(1)
+            if edits:
+                nodes = screen.dump()  # re-dump from under the keyboard
             btn = None
             for rid in ["btnSure", "btn_ok", "btn_save", "btn_sign", "btn_next",
                         "btn_confirm", "btnOk"]:
@@ -307,6 +310,10 @@ def main():
                                          "Confirm creation", "Done", "Set", "confirm"])
             if btn and btn.center:
                 screen.tap_node(btn)
+            print("  [walk] round %d: edits=%d btn=%s" % (
+                i, len(edits), (btn.res.rsplit('/', 1)[-1] if btn and btn.res else
+                                (btn.text if btn else "none"))))
+            debug_dump(screen, "walk-%d" % i)
             time.sleep(3)
             if sig == last_sig:
                 # screen stopped changing -> dialog stack is done
