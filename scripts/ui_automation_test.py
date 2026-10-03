@@ -274,12 +274,11 @@ def main():
     def on_login_screen():
         return bool(screen.find(ids=["btn_sign"], texts=["Log in", "login"]))
 
-    def dialog_walk(adb, screen, user, password, rounds=12):
+    def dialog_walk(adb, screen, user, password, rounds=15):
         """Walk an unknown sequence of dialogs (password set, register finish,
-        confirmations...). Waits for the first dialog element (they can be slow
-        - the app chains several API calls first), fills any EditText, hides
-        the keyboard, taps the most promising positive button, and only
-        concludes the stack is done after 3 consecutive unchanged dumps."""
+        confirmations...). The app chains several API calls before showing the
+        first dialog, so we keep polling; conclude only after 8 consecutive
+        dialog-free dumps."""
         DIALOG_IDS = {"btnSure", "btnCancel", "etPassword", "etPassword2",
                       "btn_ok", "btn_save", "btn_next", "btnOk"}
         stable = 0
@@ -293,7 +292,7 @@ def main():
             if not has_dialog and not edits:
                 stable += 1
                 print("  [walk] round %d: no dialog yet (stable=%d)" % (i, stable))
-                if stable >= 3:
+                if stable >= 8:
                     return False  # nothing dialog-like ever showed up
                 time.sleep(3)
                 continue
@@ -358,14 +357,24 @@ def main():
                 login_screen = True
             else:
                 ok("B: walking account dialogs generically")
-                dialog_walk(adb, screen, user, password, rounds=12)
-                # success is judged by what the app actually sent:
+                dialog_walk(adb, screen, user, password)
+                # the Tip dialog can be very slow to appear on cold start —
+                # give it one more explicit chance before moving on
                 log = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
                 if ("set-password" in log) or ("/register" in log):
                     set_password_flow = True
                     ok("B: account-creation request observed on the local server")
                 else:
-                    debug_dump(screen, "after-dialog-walk")
+                    sure = screen.find(ids=["btnSure"])
+                    if sure and screen.tap_node(sure):
+                        ok("B: late Tip dialog -> 'Set your password' tapped")
+                        dialog_walk(adb, screen, user, password)
+                        log = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+                        if ("set-password" in log) or ("/register" in log):
+                            set_password_flow = True
+                            ok("B: account-creation request observed on the local server")
+                    if not set_password_flow:
+                        debug_dump(screen, "after-dialog-walk")
         else:
             debug_dump(screen, "acc-row-not-found")
 
