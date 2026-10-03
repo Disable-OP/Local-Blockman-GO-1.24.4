@@ -255,63 +255,101 @@ def main():
     # ------------------------------------------------- Phase B: register
     print("== PHASE B: register a fresh account through the UI ==")
     login_screen = False
+    set_password_flow = False
 
     def on_login_screen():
         return bool(screen.find(ids=["btn_sign"], texts=["Log in", "login"]))
 
-    # 1) More tab (rb_5) -> account row (ll_account) opens the login screen
+    def guest_set_password_dialog():
+        """Dialog shown for a guest account: set password (register upgrade)."""
+        d = screen.find(ids=["etPassword", "etPassword2"], contains=["password", "Password"])
+        return d
+
+    def fill_set_password_and_confirm():
+        pw_node = screen.find(ids=["etPassword"])
+        pw2_node = screen.find(ids=["etPassword2"])
+        if pw_node and screen.tap_node(pw_node):
+            adb.text(password)
+        if pw2_node and screen.tap_node(pw2_node):
+            adb.text(password)
+        btn = screen.find(texts=["OK", "Confirm", "Save", "Confirm creation", "Done",
+                                 "confirm", "ok"])
+        if btn and screen.tap_node(btn):
+            time.sleep(3)
+            return True
+        return False
+
+    # 1) More tab (rb_5) -> account row: guest upgrade dialog OR login screen
     more = screen.find(ids=["rb_5"])
     if more and screen.tap_node(more):
         time.sleep(4)
-        acc_row = screen.find(ids=["ll_account", "rl_header", "ll_id"])
+        acc_row = screen.find(ids=["ll_account", "rl_header", "ll_nickname"])
         if acc_row and screen.tap_node(acc_row):
-            time.sleep(4)
-            login_screen = on_login_screen()
-    # 2) More tab -> Setting -> Account Switch -> account list
-    if not login_screen:
-        setting = screen.find(ids=["me_setting"], texts=["Setting"], contains=["setting"])
+            time.sleep(3)
+            if on_login_screen():
+                login_screen = True
+            elif screen.find(ids=["etPassword", "etPassword2"]):
+                ok("B: guest set-password dialog detected (visitor -> account upgrade)")
+                if fill_set_password_and_confirm():
+                    set_password_flow = True
+
+    # 2) scroll the More list for Setting -> Account Switch -> login screen
+    if not login_screen and not set_password_flow:
+        setting = None
+        for _ in range(3):
+            adb.sh("input swipe 360 900 360 400 300")
+            time.sleep(2)
+            setting = screen.find(ids=["me_setting"], texts=["Setting"], contains=["setting"])
+            if setting:
+                break
         if setting and screen.tap_node(setting):
             time.sleep(3)
-            sw = screen.find(ids=["setting_change_account"],
-                             texts=["Account Switch"], contains=["account"])
+            sw = screen.find(texts=["Account Switch", "Switch account"],
+                             contains=["account", "switch"])
             if sw and screen.tap_node(sw):
                 time.sleep(3)
                 login_screen = on_login_screen()
+                if not login_screen:
+                    add = screen.find(texts=["Add account", "Add", "+", "Log in"],
+                                      contains=["add account"])
+                    if add and screen.tap_node(add):
+                        time.sleep(3)
+                        login_screen = on_login_screen()
+
     # 3) fallback: direct-start the LoginActivity (works on userdebug images)
-    if not login_screen:
+    if not login_screen and not set_password_flow:
         print("  [info] direct start of LoginActivity as fallback")
         adb.sh("am start -n %s/com.sandbox.login.view.activity.login.LoginActivity" % args.package)
         time.sleep(6)
         login_screen = bool(screen.wait_for(ids=["btn_sign"], texts=["Log in"],
                                             timeout=30, poll=3))
-    if not login_screen:
-        fail("B: login screen could not be reached")
+    if not login_screen and not set_password_flow:
+        fail("B: neither login screen nor set-password dialog was reached")
         finish()
-    ok("B: login screen reached")
-    if not assert_alive(adb, args.package, "B login-screen"):
-        finish()
-
-    if not register_through_ui(adb, screen, user, password):
-        fail("B: register UI flow did not complete")
-        finish()
-    ok("B: register UI flow completed for user=%s" % user)
-    time.sleep(8)
-    if not assert_alive(adb, args.package, "B after-register"):
+    ok("B: account creation flow reached (%s)"
+       % ("set-password upgrade" if set_password_flow else "login screen"))
+    if not assert_alive(adb, args.package, "B entry"):
         finish()
 
-    # maybe a login form is still up (register doesn't always auto-login)
-    acc = screen.find(ids=["editAccount", "inputAccount", "edit_password"])
-    if acc:
-        screen.tap_node(acc)
-        adb.text(user)
-        pw = screen.find(ids=["editPassword", "inputPassword", "edit_password"])
-        if pw:
-            screen.tap_node(pw)
-            adb.text(password)
-        btn = screen.find(ids=["btn_sign"], texts=["Log in"])
-        if btn:
-            screen.tap_node(btn)
+    if not set_password_flow and login_screen:
+        if not register_through_ui(adb, screen, user, password):
+            fail("B: register UI flow did not complete")
+            finish()
+        ok("B: register UI flow completed for user=%s" % user)
         time.sleep(8)
+        # maybe a login form is still up (register doesn't always auto-login)
+        acc = screen.find(ids=["editAccount", "inputAccount", "edit_password"])
+        if acc:
+            screen.tap_node(acc)
+            adb.text(user)
+            pw = screen.find(ids=["editPassword", "inputPassword", "edit_password"])
+            if pw:
+                screen.tap_node(pw)
+                adb.text(password)
+            btn = screen.find(ids=["btn_sign"], texts=["Log in"])
+            if btn:
+                screen.tap_node(btn)
+            time.sleep(8)
 
     main_seen_b = screen.wait_for(ids=["rgBottom", "rb_1", "flHomePage"],
                                   timeout=60, poll=3)
@@ -328,10 +366,14 @@ def main():
     for p in paths:
         print("    - %s" % p)
     reg_hit = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
-    if "REQ POST /user/api/v1/register" in reg_hit:
-        ok("B: POST /user/api/v1/register hit the embedded server")
+    register_endpoints = ("REQ POST /user/api/v1/register" in reg_hit
+                          or "REQ POST /user/api/v1/app/set-password" in reg_hit
+                          or "REQ POST /user/api/v2/app/set-password" in reg_hit
+                          or "REQ POST /user/api/v1/user/register" in reg_hit)
+    if register_endpoints:
+        ok("B: an account-creation endpoint hit the embedded server")
     else:
-        fail("B: register endpoint was NOT exercised")
+        fail("B: no register/set-password endpoint was exercised")
     if len(paths) < 10:
         fail("server saw too few endpoints (%d) — app may be talking elsewhere" % len(paths))
     else:
