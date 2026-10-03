@@ -34,6 +34,20 @@ def fail(msg):
     print("  [FAIL] %s" % msg)
 
 
+def debug_dump(screen, tag="debug"):
+    """Print what the script currently sees, for CI log debugging."""
+    try:
+        nodes = screen.dump()
+        print("  [debug:%s] %d nodes" % (tag, len(nodes)))
+        for n in nodes[:60]:
+            rid = n.res.rsplit("/", 1)[-1] if n.res else ""
+            if n.text or n.desc or rid:
+                print("    res=%-18s text=%-24.24s desc=%-14.14s cls=%s clickable=%s"
+                      % (rid, n.text, n.desc, n.cls.rsplit(".", 1)[-1], n.clickable))
+    except Exception as e:
+        print("  [debug:%s] dump failed: %s" % (tag, e))
+
+
 def ok(msg):
     print("  [ok] %s" % msg)
 
@@ -329,14 +343,13 @@ def main():
             if on_login_screen():
                 login_screen = True
             else:
-                # guest Tip dialog: "No password is set for this account"
-                sure = screen.wait_for(ids=["btnSure"],
-                                       texts=["Set your password", "Set password"],
-                                       timeout=15, poll=2)
-                if sure and screen.tap_node(sure):
-                    ok("B: guest Tip dialog -> 'Set your password' tapped")
-                    if dialog_walk(adb, screen, user, password, rounds=6):
-                        set_password_flow = True
+                ok("B: walking account dialogs generically")
+                if dialog_walk(adb, screen, user, password, rounds=6):
+                    set_password_flow = True
+                else:
+                    debug_dump(screen, "after-dialog-walk")
+        else:
+            debug_dump(screen, "acc-row-not-found")
 
     # 2) scroll the More list for Setting -> Account Switch -> login screen
     if not login_screen and not set_password_flow:
@@ -368,6 +381,8 @@ def main():
         time.sleep(6)
         login_screen = bool(screen.wait_for(ids=["btn_sign"], texts=["Log in"],
                                             timeout=30, poll=3))
+        if not login_screen:
+            debug_dump(screen, "fallback-failed")
     if not login_screen and not set_password_flow:
         fail("B: neither login screen nor set-password dialog was reached")
         finish()
