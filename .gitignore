@@ -2,3 +2,6 @@ build/
 dist/
 *.apk
 *.idsig
+.javatools/
+__pycache__/
+localapi-server/build/

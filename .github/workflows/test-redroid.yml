@@ -1,5 +1,8 @@
 name: test-redroid
-# Boots the APK in Redroid (native arm64, Android 12) and verifies it runs.
+# Boots the APK in Redroid (native arm64, Android 12) and runs the full
+# UI automation suite: fresh account registration through the UI, login,
+# every bottom tab, deep navigation — asserting the embedded local API
+# server serves all traffic and the app never crashes.
 # APK source: latest GitHub Release asset "BlockyNexus-localapi.apk".
 
 on:
@@ -55,32 +58,39 @@ jobs:
         run: |
           adb -s localhost:5555 install -r -t app.apk
 
-      - name: Launch app and keep-alive check
+      - name: Launch + 10s keep-alive check
         run: |
           adb -s localhost:5555 logcat -c
           adb -s localhost:5555 shell am start -n "$PACKAGE/$ACTIVITY"
-          sleep 45
+          sleep 10
           if adb -s localhost:5555 shell pidof "$PACKAGE" | grep -qE '[0-9]'; then
-            echo "APP ALIVE after 45s"
+            echo "APP ALIVE after 10s"
             adb -s localhost:5555 shell pidof "$PACKAGE"
           else
-            echo "APP PROCESS DIED"
+            echo "APP PROCESS DIED within 10s"
+            adb -s localhost:5555 logcat -d | tail -100
             exit 1
           fi
-          sleep 60
-          if adb -s localhost:5555 shell pidof "$PACKAGE" | grep -qE '[0-9]'; then
-            echo "APP STILL ALIVE after 105s total"
-          else
-            echo "APP PROCESS DIED between 45s and 105s"
-            exit 1
-          fi
+
+      - name: Run UI automation suite (register, login, navigate all tabs)
+        timeout-minutes: 20
+        run: |
+          python3 scripts/ui_automation_test.py \
+            --serial localhost:5555 \
+            --package "$PACKAGE" \
+            --activity "$ACTIVITY"
 
       - name: Collect diagnostics
         if: always()
         run: |
-          adb -s localhost:5555 logcat -d > logcat.txt || true
-          adb -s localhost:5555 shell dumpsys activity processes > processes.txt || true
-          tar czf redroid-diagnostics.tgz logcat.txt processes.txt || true
+          mkdir -p diags
+          adb -s localhost:5555 logcat -d > diags/logcat.txt || true
+          adb -s localhost:5555 logcat -d -b crash > diags/crash.txt || true
+          adb -s localhost:5555 logcat -d -s LocalAPI > diags/localapi.txt || true
+          adb -s localhost:5555 shell uiautomator dump /sdcard/final_ui.xml >/dev/null 2>&1 || true
+          adb -s localhost:5555 pull /sdcard/final_ui.xml diags/final_ui.xml || true
+          adb -s localhost:5555 shell dumpsys activity processes > diags/processes.txt || true
+          tar czf redroid-diagnostics.tgz diags || true
 
       - name: Upload diagnostics
         if: always()

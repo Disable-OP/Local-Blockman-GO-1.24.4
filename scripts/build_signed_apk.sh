@@ -33,9 +33,22 @@ fi
 echo "== patch_urls.py =="
 python3 "$REPO/scripts/patch_urls.py"
 
+echo "== patch_bootstrap.py (LocalServer hook) =="
+python3 "$REPO/scripts/patch_bootstrap.py" "$BUILD/apktool_out/smali/com/disabngo/blockynexus/App.smali"
+
+# --- embedded server dex ---
+echo "== build_server_dex.sh =="
+bash "$REPO/scripts/build_server_dex.sh"
+SERVER_DEX="$REPO/localapi-server/build/classes6.dex"
+
 # --- rebuild ---
 echo "== apktool b =="
 java -jar "$TOOLS/apktool.jar" b "$BUILD/apktool_out" -o "$BUILD/patched-unsigned.apk"
+
+# --- inject classes6.dex (server + nanohttpd) into the APK ---
+echo "== inject classes6.dex =="
+zip -q -j "$BUILD/patched-unsigned.apk" "$SERVER_DEX"
+unzip -l "$BUILD/patched-unsigned.apk" | grep -q classes6.dex || { echo "FATAL: classes6.dex missing"; exit 1; }
 
 # --- zipalign + sign (uber-apk-signer does both; debug keystore by default) ---
 echo "== sign =="
