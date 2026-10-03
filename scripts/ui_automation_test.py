@@ -274,7 +274,7 @@ def main():
     def on_login_screen():
         return bool(screen.find(ids=["btn_sign"], texts=["Log in", "login"]))
 
-    def dialog_walk(adb, screen, user, password, rounds=30):
+    def dialog_walk(adb, screen, user, password, rounds=40):
         """Walk an unknown sequence of dialogs (password set, register finish,
         confirmations...). The app chains several API calls before showing the
         first dialog, so we keep polling; conclude only after 8 consecutive
@@ -292,7 +292,7 @@ def main():
             if not has_dialog and not edits:
                 stable += 1
                 print("  [walk] round %d: no dialog yet (stable=%d)" % (i, stable))
-                if stable >= 15:
+                if stable >= 25:
                     return False  # nothing dialog-like ever showed up
                 time.sleep(2)
                 continue
@@ -410,6 +410,15 @@ def main():
                                             timeout=30, poll=3))
         if not login_screen:
             debug_dump(screen, "fallback-failed")
+    # 4) last chance: the Tip dialog tends to appear late — handle it now
+    if not login_screen and not set_password_flow:
+        sure = screen.find(ids=["btnSure"])
+        if sure and screen.tap_node(sure):
+            ok("B: Tip dialog appeared late -> 'Set your password' tapped")
+            dialog_walk(adb, screen, user, password)
+            log = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+            if ("set-password" in log) or ("/register" in log):
+                set_password_flow = True
     if not login_screen and not set_password_flow:
         fail("B: neither login screen nor set-password dialog was reached")
         finish()
