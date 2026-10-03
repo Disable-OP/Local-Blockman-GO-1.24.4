@@ -22,12 +22,20 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Fetch base APK from latest release
+      - name: Fetch base APK from releases (prerelease-aware)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download --repo "$GITHUB_REPOSITORY" \
-            --pattern "base-apk-1.24.4.apk" --output base.apk --clobber
+          ASSET_URL=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases?per_page=20" | python3 -c "
+import sys, json
+for r in sorted(json.load(sys.stdin), key=lambda x: x['created_at'], reverse=True):
+    for a in r.get('assets', []):
+        if a['name'] == 'base-apk-1.24.4.apk':
+            print(a['url']); sys.exit(0)
+sys.exit('asset base-apk-1.24.4.apk not found in any release')")
+          curl -sL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/octet-stream" \
+            -o base.apk "$ASSET_URL"
           ls -la base.apk
 
       - name: Build patched + signed APK
