@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
 """UI automation test for the local-API Blockman GO APK (Redroid CI).
 
-Drives the real app over adb:
-  1. launches and grants runtime permission dialogs
-  2. registers a FRESH account through the register UI every run
-  3. logs in with it, handles role-make (nickname) screen
-  4. navigates every bottom tab of the main screen
-  5. asserts: process alive, no FATAL EXCEPTION, embedded LocalAPI server
-     received traffic (logcat), and at least one auth endpoint was exercised
+Two deterministic phases, driven purely over adb + uiautomator dumps:
 
-Everything is derived from the live UI dump (uiautomator), never from fixed
-coordinates. Exit 0 = pass, 1 = fail.
+  Phase A — VISITOR (fresh app data):
+      pm clear -> launch -> the app auto-logs-in as a tourist/visitor account
+      through the embedded local server -> navigate all 5 bottom tabs.
+      Asserts tourist/auth-token traffic in logcat.
+
+  Phase B — REGISTER (always):
+      reach the login screen (Me-tab login entry, or direct am start of
+      LoginActivity) -> register a FRESH account through the register UI ->
+      (auto-)login -> navigate all tabs again. Asserts
+      POST /user/api/v1/register hit the embedded server.
+
+  Final — crash scan (FATAL EXCEPTION / ANR) + process alive everywhere.
+
+Every UI step is derived from live uiautomator dumps, never coordinates.
+Exit 0 = pass, 1 = fail.
 """
 import argparse
 import re
@@ -49,15 +56,13 @@ class Adb:
         self.sh("input tap %d %d" % (x, y))
 
     def text(self, s):
-        # input text cannot contain spaces; use %s
         self.sh('input text "%s"' % s.replace(" ", "%s"))
 
     def key(self, keycode):
         self.sh("input keyevent %s" % keycode)
 
     def pid(self, package):
-        out = self.sh("pidof %s" % package)
-        return out.strip()
+        return self.sh("pidof %s" % package).strip()
 
 
 class Node:
@@ -68,8 +73,7 @@ class Node:
         self.res = el.get("resource-id", "")
         self.cls = el.get("class", "")
         self.clickable = el.get("clickable") == "true"
-        b = el.get("bounds", "")
-        m = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", b)
+        m = re.match(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", el.get("bounds", ""))
         self.bounds = tuple(int(x) for x in m.groups()) if m else None
 
     @property
@@ -85,7 +89,7 @@ class Screen:
         self.adb = adb
 
     def dump(self):
-        for attempt in range(3):
+        for _ in range(3):
             try:
                 self.adb.sh("uiautomator dump /sdcard/localqa_ui.xml", timeout=25)
                 xml = self.adb.sh("cat /sdcard/localqa_ui.xml", timeout=25)
@@ -96,21 +100,21 @@ class Screen:
             time.sleep(2)
         return []
 
-    def find(self, ids=None, texts=None, contains=None, clickable=False):
-        nodes = self.dump()
-        for n in nodes:
-            hay_id = n.res.split("/")[-1] if n.res else ""
-            if ids and hay_id in ids:
-                if not clickable or n.clickable:
-                    return n
-            if texts and (n.text in texts):
-                if not clickable or n.clickable or n.cls.endswith("TextView"):
-                    return n
-            if contains and any(c.lower() in n.text.lower() for c in contains):
+    def find(self, ids=None, texts=None, contains=None):
+        want_id = set(ids or [])
+        want_text = set(texts or [])
+        want_sub = [c.lower() for c in (contains or [])]
+        for n in self.dump():
+            rid = n.res.rsplit("/", 1)[-1] if n.res else ""
+            if want_id and rid in want_id:
+                return n
+            if want_text and n.text in want_text:
+                return n
+            if want_sub and n.text and any(c in n.text.lower() for c in want_sub):
                 return n
         return None
 
-    def wait_for(self, ids=None, texts=None, contains=None, timeout=30, poll=2):
+    def wait_for(self, ids=None, texts=None, contains=None, timeout=30, poll=2.5):
         end = time.time() + timeout
         while time.time() < end:
             n = self.find(ids=ids, texts=texts, contains=contains)
@@ -147,126 +151,7 @@ def assert_alive(adb, package, stage):
     return True
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--serial", default="localhost:5555")
-    ap.add_argument("--package", default="com.disabngo.blockynexus")
-    ap.add_argument("--activity", default="com.disabngo.blockynexus.view.activity.start.StartActivity")
-    args = ap.parse_args()
-
-    adb = Adb(args.serial)
-    screen = Screen(adb)
-    user = "localqa%05d" % (int(time.time()) % 100000)
-    password = "LocalQA%s" % (int(time.time()) % 100000)
-
-    print("== launch ==")
-    adb.raw("logcat", "-c")
-    adb.sh("am start -n %s/%s" % (args.package, args.activity))
-    time.sleep(12)  # cold start incl. embedded server boot
-    if not assert_alive(adb, args.package, "launch+12s"):
-        finish()
-
-    print("== permission dialogs ==")
-    dismiss_permission_dialogs(screen)
-
-    print("== login screen ==")
-    login_btn = screen.wait_for(ids=["btn_sign"], texts=["Log in", "login"],
-                                timeout=90, poll=3)
-    if not login_btn:
-        # maybe already logged in from previous state
-        if screen.wait_for(ids=["rgBottom", "rb_1", "flHomePage"], timeout=30, poll=3):
-            ok("main screen reached directly (already logged in)")
-            skip_auth = True
-        else:
-            fail("neither login screen nor main screen appeared")
-            finish()
-    else:
-        skip_auth = False
-    if not assert_alive(adb, args.package, "login-screen"):
-        finish()
-
-    if not skip_auth:
-        print("== register a fresh account through the UI ==")
-        reg = screen.find(ids=["tv_register"], texts=["Register", "register"])
-        if reg and screen.tap_node(reg):
-            time.sleep(3)
-            # step 1: username + password + confirm + protocol checkbox
-            acc = screen.wait_for(ids=["editAccount", "inputAccount"], timeout=30, poll=2)
-            if not acc:
-                fail("register form did not appear")
-                finish()
-            screen.tap_node(acc)
-            adb.text(user)
-            pw = screen.find(ids=["editPassword", "inputPassword"])
-            if pw:
-                screen.tap_node(pw)
-                adb.text(password)
-            pw2 = screen.find(ids=["editPassword1", "inputPassword1"])
-            if pw2:
-                screen.tap_node(pw2)
-                adb.text(password)
-            cb = screen.find(ids=["cb_pro"])
-            if cb and cb.center:
-                screen.tap_node(cb)  # agree to protocol
-            nxt = screen.find(texts=["Next", "next"], contains=["next", "Next"])
-            if not nxt:
-                nxt = screen.find(ids=["btn_sign", "btn_next"])
-            if not nxt or not screen.tap_node(nxt):
-                fail("register step1 Next not found")
-                finish()
-            time.sleep(3)
-            # step 2: confirm creation
-            conf = screen.wait_for(texts=["Confirm creation", "Create", "OK", "Done",
-                                          "confirm"],
-                                   ids=["btn_sign", "btn_ok"], timeout=25, poll=2)
-            if conf and screen.tap_node(conf):
-                time.sleep(2)
-            save = screen.find(texts=["Save", "save"], ids=["btn_save"])
-            if save and screen.tap_node(save):
-                time.sleep(2)
-            ok("register flow completed for user=%s" % user)
-        else:
-            fail("register entry not found on login screen")
-            finish()
-        if not assert_alive(adb, args.package, "after-register"):
-            finish()
-
-        print("== login with the new account ==")
-        acc = screen.wait_for(ids=["editAccount", "inputAccount",
-                                   "edit_password", "input_password"],
-                              timeout=30, poll=2)
-        if acc:
-            screen.tap_node(acc)
-            adb.text(user)
-            pw = screen.find(ids=["editPassword", "inputPassword",
-                                  "edit_password", "input_password"])
-            if pw:
-                screen.tap_node(pw)
-                adb.text(password)
-            btn = screen.find(ids=["btn_sign"], texts=["Log in"])
-            if btn:
-                screen.tap_node(btn)
-            time.sleep(8)
-        else:
-            ok("no login form visible (maybe auto-logged-in after register)")
-
-    print("== role-make screen (if shown) ==")
-    time.sleep(5)
-    role = screen.find(contains=["nickname", "Nickname", "role"])
-    if role and role.center:
-        screen.tap_node(role)
-        adb.text("LocalQAPlayer")
-        go = screen.find(texts=["Confirm", "OK", "Start", "Enter", "Done"])
-        if go and screen.tap_node(go):
-            time.sleep(3)
-
-    print("== main screen + navigate every bottom tab ==")
-    main_seen = screen.wait_for(ids=["rgBottom", "rb_1", "flHomePage"],
-                                timeout=60, poll=3)
-    if not main_seen:
-        fail("main screen (bottom tabs) not reached")
-        finish()
-    ok("main screen reached")
+def navigate_all_tabs(adb, screen, package, tag):
     tabs_seen = 0
     for tab in ["rb_1", "rb_2", "rb_3", "rb_4", "rb_5"]:
         n = screen.find(ids=[tab])
@@ -274,61 +159,185 @@ def main():
             screen.tap_node(n)
             tabs_seen += 1
             time.sleep(5)  # let the tab fire its API calls
-            if not assert_alive(adb, args.package, "tab-%s" % tab):
-                finish()
+            if not assert_alive(adb, package, "%s-tab-%s" % (tag, tab)):
+                return tabs_seen
         else:
             print("  [skip] tab %s not in current layout" % tab)
     if tabs_seen == 0:
-        fail("no bottom tabs were clickable")
+        fail("%s: no bottom tabs were clickable" % tag)
     else:
-        ok("navigated %d bottom tabs" % tabs_seen)
+        ok("%s: navigated %d bottom tabs" % (tag, tabs_seen))
+    return tabs_seen
 
-    print("== deep navigation (best-effort UI walk) ==")
-    # open whatever looks like a game card / list entry, then back out
-    for _ in range(3):
-        n = screen.find(contains=["Start", "start", "Play", "play"])
-        if not n:
-            break
-        screen.tap_node(n)
-        time.sleep(6)
-        adb.key(4)  # BACK
-        time.sleep(2)
-        if not assert_alive(adb, args.package, "deep-navigation"):
-            finish()
 
-    print("== local API traffic assertions (logcat) ==")
+def localapi_paths(adb):
     log = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
-    reqs = re.findall(r"REQ (\w+) (\S+)", log)
-    unique_paths = sorted(set(p for _, p in reqs))
-    print("  LocalAPI requests seen: %d (%d unique)" % (len(reqs), len(unique_paths)))
-    for p in unique_paths:
-        print("    - %s" % p)
-    if not reqs:
-        fail("embedded server saw ZERO requests — traffic left the device or server is down")
-    auth_hits = [p for p in unique_paths if any(
-        k in p for k in ("/login", "/register", "/visitor", "/tourist", "/auth-token"))]
-    if not auth_hits:
-        fail("no auth endpoint was exercised")
+    return sorted(set(p for _, p in re.findall(r"REQ (\w+) (\S+)", log)))
+
+
+def register_through_ui(adb, screen, user, password):
+    """From the login screen, register a fresh account. Returns True on flow completion."""
+    reg = screen.find(ids=["tv_register"], texts=["Register", "Sign up"])
+    if not reg:
+        return False
+    if not screen.tap_node(reg):
+        return False
+    time.sleep(3)
+    acc = screen.wait_for(ids=["editAccount", "inputAccount"], timeout=25, poll=2)
+    if not acc:
+        return False
+    screen.tap_node(acc)
+    adb.text(user)
+    pw = screen.find(ids=["editPassword", "inputPassword"])
+    if pw:
+        screen.tap_node(pw)
+        adb.text(password)
+    pw2 = screen.find(ids=["editPassword1", "inputPassword1"])
+    if pw2:
+        screen.tap_node(pw2)
+        adb.text(password)
+    cb = screen.find(ids=["cb_pro"])
+    if cb and cb.center:
+        screen.tap_node(cb)  # agree to protocol
+    nxt = screen.find(texts=["Next", "NEXT"], contains=["next"])
+    if not nxt:
+        nxt = screen.find(ids=["btn_sign", "btn_next"])
+    if not nxt or not screen.tap_node(nxt):
+        return False
+    time.sleep(3)
+    conf = screen.wait_for(texts=["Confirm creation", "Create", "OK", "Done"],
+                           ids=["btn_sign", "btn_ok"], timeout=25, poll=2)
+    if conf and screen.tap_node(conf):
+        time.sleep(2)
+    save = screen.find(texts=["Save", "SAVE"], ids=["btn_save"])
+    if save and screen.tap_node(save):
+        time.sleep(2)
+    return True
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--serial", default="localhost:5555")
+    ap.add_argument("--package", default="com.disabngo.blockynexus")
+    ap.add_argument("--activity",
+                    default="com.disabngo.blockynexus.view.activity.start.StartActivity")
+    args = ap.parse_args()
+
+    adb = Adb(args.serial)
+    screen = Screen(adb)
+    user = "localqa%05d" % (int(time.time()) % 100000)
+    password = "LocalQA%05d" % (int(time.time()) % 100000)
+
+    # ------------------------------------------------- Phase A: visitor
+    print("== PHASE A: visitor (fresh data, auto tourist login) ==")
+    adb.sh("pm clear %s" % args.package)
+    adb.raw("logcat", "-c")
+    adb.sh("am start -n %s/%s" % (args.package, args.activity))
+    time.sleep(12)
+    if not assert_alive(adb, args.package, "A launch+12s"):
+        finish()
+    dismiss_permission_dialogs(screen)
+    main_seen = screen.wait_for(ids=["rgBottom", "rb_1", "flHomePage"],
+                                timeout=90, poll=3)
+    if not main_seen:
+        fail("A: main screen not reached on fresh data (auto tourist login failed?)")
+        finish()
+    ok("A: main screen reached without manual login (visitor account)")
+    navigate_all_tabs(adb, screen, args.package, "A")
+    paths_a = localapi_paths(adb)
+    visitor_hits = [p for p in paths_a if any(
+        k in p for k in ("/tourist", "/visitor", "/auth-token", "/login"))]
+    if not visitor_hits:
+        fail("A: no visitor/tourist/auth traffic seen (paths: %s)" % paths_a[:8])
     else:
-        ok("auth endpoints exercised: %s" % ", ".join(auth_hits))
+        ok("A: visitor auth traffic: %s" % ", ".join(visitor_hits))
+
+    # ------------------------------------------------- Phase B: register
+    print("== PHASE B: register a fresh account through the UI ==")
+    login_screen = False
+    # 1) try the Me tab -> login entry (guest banner says "Please log in")
+    me = screen.find(ids=["rb_4", "rb_5"])
+    if me and screen.tap_node(me):
+        time.sleep(4)
+        entry = screen.find(texts=["Please log in"], contains=["log in", "login"])
+        if entry and screen.tap_node(entry):
+            time.sleep(4)
+            login_screen = bool(screen.find(ids=["btn_sign"], texts=["Log in"]))
+    # 2) fallback: direct-start the LoginActivity (adb shell can start
+    #    non-exported components on redroid userdebug images)
+    if not login_screen:
+        print("  [info] direct start of LoginActivity as fallback")
+        adb.sh("am start -n %s/com.sandbox.login.view.activity.login.LoginActivity" % args.package)
+        time.sleep(6)
+        login_screen = bool(screen.wait_for(ids=["btn_sign"], texts=["Log in"],
+                                            timeout=30, poll=3))
+    if not login_screen:
+        fail("B: login screen could not be reached")
+        finish()
+    ok("B: login screen reached")
+    if not assert_alive(adb, args.package, "B login-screen"):
+        finish()
+
+    if not register_through_ui(adb, screen, user, password):
+        fail("B: register UI flow did not complete")
+        finish()
+    ok("B: register UI flow completed for user=%s" % user)
+    time.sleep(8)
+    if not assert_alive(adb, args.package, "B after-register"):
+        finish()
+
+    # maybe a login form is still up (register doesn't always auto-login)
+    acc = screen.find(ids=["editAccount", "inputAccount", "edit_password"])
+    if acc:
+        screen.tap_node(acc)
+        adb.text(user)
+        pw = screen.find(ids=["editPassword", "inputPassword", "edit_password"])
+        if pw:
+            screen.tap_node(pw)
+            adb.text(password)
+        btn = screen.find(ids=["btn_sign"], texts=["Log in"])
+        if btn:
+            screen.tap_node(btn)
+        time.sleep(8)
+
+    main_seen_b = screen.wait_for(ids=["rgBottom", "rb_1", "flHomePage"],
+                                  timeout=60, poll=3)
+    if not main_seen_b:
+        fail("B: main screen not reached after register/login")
+        finish()
+    ok("B: main screen reached with the freshly registered account")
+    navigate_all_tabs(adb, screen, args.package, "B")
+
+    # ------------------------------------------------- assertions
+    print("== assertions ==")
+    paths = localapi_paths(adb)
+    print("  LocalAPI unique endpoints hit: %d" % len(paths))
+    for p in paths:
+        print("    - %s" % p)
+    reg_hit = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+    if "REQ POST /user/api/v1/register" in reg_hit:
+        ok("B: POST /user/api/v1/register hit the embedded server")
+    else:
+        fail("B: register endpoint was NOT exercised")
+    if len(paths) < 10:
+        fail("server saw too few endpoints (%d) — app may be talking elsewhere" % len(paths))
+    else:
+        ok("embedded local API serving the app (%d unique endpoints)" % len(paths))
 
     print("== crash scan ==")
-    crash = adb.raw("logcat", "-d", "-b", "crash", timeout=60)
     fatal = adb.raw("logcat", "-d", timeout=60)
-    has_fatal = ("FATAL EXCEPTION" in fatal) or ("FATAL EXCEPTION" in crash)
-    anr = ("ANR in com.disabngo.blockynexus" in fatal)
-    if has_fatal:
+    crash = adb.raw("logcat", "-d", "-b", "crash", timeout=60)
+    if ("FATAL EXCEPTION" in fatal) or ("FATAL EXCEPTION" in crash):
         fail("FATAL EXCEPTION in logcat")
         for line in fatal.splitlines():
             if "FATAL EXCEPTION" in line:
                 print("    " + line)
     else:
         ok("no FATAL EXCEPTION")
-    if anr:
+    if "ANR in %s" % args.package in fatal:
         fail("ANR detected")
     if not assert_alive(adb, args.package, "end"):
         finish()
-
     finish()
 
 
