@@ -274,7 +274,7 @@ def main():
     def on_login_screen():
         return bool(screen.find(ids=["btn_sign"], texts=["Log in", "login"]))
 
-    def dialog_walk(adb, screen, user, password, rounds=15):
+    def dialog_walk(adb, screen, user, password, rounds=30):
         """Walk an unknown sequence of dialogs (password set, register finish,
         confirmations...). The app chains several API calls before showing the
         first dialog, so we keep polling; conclude only after 8 consecutive
@@ -292,9 +292,9 @@ def main():
             if not has_dialog and not edits:
                 stable += 1
                 print("  [walk] round %d: no dialog yet (stable=%d)" % (i, stable))
-                if stable >= 8:
+                if stable >= 15:
                     return False  # nothing dialog-like ever showed up
-                time.sleep(3)
+                time.sleep(2)
                 continue
             stable = 0
             sig = tuple(sorted((n.res, n.text) for n in nodes if n.res or n.text))
