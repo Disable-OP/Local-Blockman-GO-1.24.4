@@ -274,19 +274,31 @@ def main():
     def on_login_screen():
         return bool(screen.find(ids=["btn_sign"], texts=["Log in", "login"]))
 
-    def dialog_walk(adb, screen, user, password, rounds=6):
+    def dialog_walk(adb, screen, user, password, rounds=12):
         """Walk an unknown sequence of dialogs (password set, register finish,
-        confirmations...). Each round: fill any EditText, hide the keyboard,
-        then tap the most promising positive button. Returns True when the
-        dialog stack cleared (screen stopped changing)."""
-        last_sig = None
+        confirmations...). Waits for the first dialog element (they can be slow
+        - the app chains several API calls first), fills any EditText, hides
+        the keyboard, taps the most promising positive button, and only
+        concludes the stack is done after 3 consecutive unchanged dumps."""
+        DIALOG_IDS = {"btnSure", "btnCancel", "etPassword", "etPassword2",
+                      "btn_ok", "btn_save", "btn_next", "btnOk"}
+        stable = 0
         for i in range(rounds):
             nodes = screen.dump()
             if not nodes:
                 time.sleep(2)
                 continue
-            sig = tuple(sorted((n.res, n.text) for n in nodes if n.res or n.text))
+            has_dialog = any(n.res.rsplit("/", 1)[-1] in DIALOG_IDS for n in nodes)
             edits = [n for n in nodes if n.cls.endswith("EditText")]
+            if not has_dialog and not edits:
+                stable += 1
+                print("  [walk] round %d: no dialog yet (stable=%d)" % (i, stable))
+                if stable >= 3:
+                    return False  # nothing dialog-like ever showed up
+                time.sleep(3)
+                continue
+            stable = 0
+            sig = tuple(sorted((n.res, n.text) for n in nodes if n.res or n.text))
             for e in edits:
                 rid = e.res.rsplit("/", 1)[-1]
                 if e.center:
@@ -302,7 +314,7 @@ def main():
             for rid in ["btnSure", "btn_ok", "btn_save", "btn_sign", "btn_next",
                         "btn_confirm", "btnOk"]:
                 btn = next((n for n in nodes
-                            if n.res.rsplit("/", 1)[-1] == rid), None)
+                            if n.res.rsplit("/", 1)[-1] == rid and n.res != "btnCancel"), None)
                 if btn:
                     break
             if not btn:
@@ -313,12 +325,7 @@ def main():
             print("  [walk] round %d: edits=%d btn=%s" % (
                 i, len(edits), (btn.res.rsplit('/', 1)[-1] if btn and btn.res else
                                 (btn.text if btn else "none"))))
-            debug_dump(screen, "walk-%d" % i)
             time.sleep(3)
-            if sig == last_sig:
-                # screen stopped changing -> dialog stack is done
-                return i > 0
-            last_sig = sig
         return True
 
     def guest_set_password_dialog():
@@ -351,8 +358,12 @@ def main():
                 login_screen = True
             else:
                 ok("B: walking account dialogs generically")
-                if dialog_walk(adb, screen, user, password, rounds=6):
+                dialog_walk(adb, screen, user, password, rounds=12)
+                # success is judged by what the app actually sent:
+                log = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+                if ("set-password" in log) or ("/register" in log):
                     set_password_flow = True
+                    ok("B: account-creation request observed on the local server")
                 else:
                     debug_dump(screen, "after-dialog-walk")
         else:
