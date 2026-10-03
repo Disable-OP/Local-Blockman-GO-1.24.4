@@ -433,9 +433,11 @@ def main():
     fbase = "http://127.0.0.1:%s" % fport
     ok("C: forwarded runner:%s -> device:18080" % fport)
 
-    def fcall(method, path, body=None):
+    def fcall(method, path, body=None, headers=None):
         req = urllib.request.Request(fbase + path, method=method)
         req.add_header("Content-Type", "application/json")
+        for k, v in (headers or {}).items():
+            req.add_header(k, v)
         data = json.dumps(body).encode() if body is not None else None
         try:
             with urllib.request.urlopen(req, data=data, timeout=15) as r:
