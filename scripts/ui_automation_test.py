@@ -302,6 +302,11 @@ def main():
                 rid = e.res.rsplit("/", 1)[-1]
                 if e.center:
                     screen.tap_node(e)
+                    time.sleep(0.5)
+                    # clear any existing content (append would break validation)
+                    adb.key(123)  # KEYCODE_MOVE_END
+                    for _ in range(30):
+                        adb.key(67)  # DEL
                     # password boxes get the password, others the username
                     adb.text(password if "assword" in rid or "assword" in e.text else user)
                     time.sleep(0.5)
