@@ -411,3 +411,21 @@
   wallet +500 -> badge false).
 - Coverage: 335 discovered / 271 implemented (81%) / 64 default / 209
   host-tested. Tag v0.5.2-mail ships this phase.
+
+## Session 9 (cont. 2) — Phase 5d: prop purchase + currency correction (2026-10-04)
+
+- v0.5.2-mail CI FULLY GREEN (build 37187939798 + redroid 37188040709 — the
+  mailbox phase is verified on-device).
+- Investigated the remaining defaults client-first: IVIPApi = dead code (no
+  call sites), turntable = ad-driven spin (kept default BY DECISION, the
+  empty wheel prevents a can-never-spin dialog), pay/game = unused (isPay=0),
+  share-reward/editor/indiegame configs = honest empties except share-reward
+  (real row planned; kept list pending UI evidence).
+- FOUND + FIXED an economy-wide currency mapping bug: the client uses
+  1=diamonds, 2=golds (verified from THREE independent client sites: recharge
+  icon, game-detail buy pre-check vs diamonds, dress checkout bucket math);
+  our dress/suit/recharge/ads code had it inverted. All flipped; the host rig
+  suit-buy assertion now verifies the corrected mapping.
+- PUT /shop/api/v3/shop/game/props/new implemented (buyGameProp): strict
+  auth, real wallet deduction, one-time ownership, re-buy/unknown rejected.
+- Host rig 307/307 PASS. Coverage 335/272/63/210 (81%).

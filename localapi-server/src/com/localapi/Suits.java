@@ -163,7 +163,7 @@ final class Suits {
     static synchronized boolean buy(StateStore store, JSONObject user, long suitId) {
         JSONObject s = byId(store, suitId);
         if (s == null || owned(store, user, suitId)) return false;
-        String kind = s.optInt("currency") == 2 ? "diamonds" : "golds";
+        String kind = s.optInt("currency") == 2 ? "golds" : "diamonds";
         if (user.optLong(kind) < s.optLong("price")) return false;
         store.award(user, kind, -s.optLong("price"));
         markOwned(store, user, suitId);

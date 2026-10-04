@@ -277,6 +277,28 @@ def main():
                     headers={"userId": str(uid1), "Access-Token": tok1, "language": "en"})
         check("gameDetailShop items", shop.get("code") == 1 and len(shop.get("data", [])) >= 3
               and all("price" in p and "currency" in p for p in shop["data"]), str(shop)[:150])
+        # buy the first prop for real (wallet deduction + one-time ownership)
+        prop0 = shop["data"][0]
+        wp0 = call("POST", "/user/api/v1/login", {"uid": "qa_user1", "password": "pw1", "imei": "dev1"})
+        tok1 = wp0.get("data", {}).get("accessToken", tok1)
+        kind0 = "golds" if prop0["currency"] == 2 else "diamonds"
+        pre_buy = wp0.get("data", {})
+        pbuy = call("PUT", "/shop/api/v3/shop/game/props/new?gameId=%s&propsId=%d" % (gid, prop0["id"]),
+                    None, headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        wp1 = call("POST", "/user/api/v1/login", {"uid": "qa_user1", "password": "pw1", "imei": "dev1"})
+        post_buy = wp1.get("data", {})
+        check("buy game prop deducts wallet", pbuy.get("code") == 1
+              and post_buy.get(kind0, 0) == pre_buy.get(kind0, 0) - prop0["price"],
+              "%s | %s %s -> %s" % (str(pbuy)[:100], kind0, pre_buy.get(kind0), post_buy.get(kind0)))
+        pbuy2 = call("PUT", "/shop/api/v3/shop/game/props/new?gameId=%s&propsId=%d" % (gid, prop0["id"]),
+                     None, headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        wp2 = call("POST", "/user/api/v1/login", {"uid": "qa_user1", "password": "pw1", "imei": "dev1"})
+        check("re-buy prop rejected (no double charge)", pbuy2.get("code") == 0
+              and wp2.get("data", {}).get(kind0, 0) == post_buy.get(kind0, 0),
+              "%s | %s" % (str(pbuy2)[:80], str(wp2.get("data", {}).get(kind0))))
+        pbuyn = call("PUT", "/shop/api/v3/shop/game/props/new?gameId=%s&propsId=999999" % gid,
+                     None, headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        check("buy unknown prop rejected", pbuyn.get("code") == 0, str(pbuyn)[:80])
         ann = call("GET", "/game/api/v1/games/announcement/info", headers={"language": "en"})
         stop = call("GET", "/game/api/v1/games/stop/announcement/info", headers={"language": "en"})
         check("announcements hidden", ann.get("data", {}).get("isShow") is False
@@ -385,7 +407,7 @@ def main():
                    headers={"Access-Token": tok1, "userId": str(uid1)})
         check("remove decoration", unw.get("code") == 1, str(unw)[:100])
         buy2 = call("PUT", "/shop/api/v1/shop/decorations/buy?decorationId=%d,%d" %
-                    (dl["data"][1]["id"], dl["data"][2]["id"]), None,
+                    (dl["data"][3]["id"], dl["data"][4]["id"]), None,
                     headers={"Access-Token": tok1, "userId": str(uid1)})
         check("dress buy many response", buy2.get("code") == 1
               and "decorationPurchaseStatus" in buy2.get("data", {})
@@ -1231,7 +1253,7 @@ def main():
         w_post = call("GET", "/pay/api/v1/wealth/user",
                       headers={"Access-Token": tok1, "userId": str(uid1)}).get("data", {})
         exp_price = suit1["price"]
-        exp_kind = "diamonds" if suit1["currency"] == 2 else "golds"
+        exp_kind = "golds" if suit1["currency"] == 2 else "diamonds"
         check("buy suit deducts wallet", buysuit.get("code") == 1
               and buysuit["data"]["suitPurchaseStatus"].get(str(suit1["suitId"])) is True
               and w_post.get(exp_kind, 0) == w_pre2.get(exp_kind, 0) - exp_price,

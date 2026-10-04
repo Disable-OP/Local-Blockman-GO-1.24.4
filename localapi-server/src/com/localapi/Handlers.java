@@ -74,6 +74,7 @@ final class Handlers {
         if ("getGameRank".equals(name)) return getGameRank(ctx, store);
         if ("getGameMyRank".equals(name)) return getGameMyRank(ctx, store);
         if ("getGameDetailShop".equals(name)) return getGameDetailShop(ctx, store);
+        if ("buyGameProp".equals(name)) return buyGameProp(ctx, store);
         if ("getGameUpdateContent".equals(name)) return envelope("obj", "{\"content\":\"\",\"count\":0}");
         if ("getGameUpdateContentList".equals(name)) return envelope("obj", "{}");
         if ("getPartyCreateGameConfig".equals(name)) return getPartyCreateGameConfig(ctx, store);
@@ -90,7 +91,7 @@ final class Handlers {
         if ("dailySignIn".equals(name)) return dailySignIn(ctx, store);
         if ("clickSignIn".equals(name)) return clickSignIn(ctx, store);
         if ("getAdsReward".equals(name)) return getAdsReward(ctx, store);
-        if ("getAdsRewardInfo".equals(name)) return envelope("obj", "{\"currency\":1,\"quantity\":200,\"remainTime\":0}");
+        if ("getAdsRewardInfo".equals(name)) return envelope("obj", "{\"currency\":2,\"quantity\":200,\"remainTime\":0}");
         if ("getSignAdsReward".equals(name)) return getSignAdsReward(ctx, store);
         if ("friendList".equals(name)) return friendList(ctx, store);
         if ("friendRequestsList".equals(name)) return friendRequestsList(ctx, store);
@@ -1101,6 +1102,63 @@ final class Handlers {
         return envelope("none", null);
     }
 
+    /**
+     * PUT /shop/api/v3/shop/game/props/new?gameId=&propsId= — buy a prop
+     * from a game's detail shop for real: strict auth, wallet deduction with
+     * the client-verified currency mapping (1=diamonds, 2=golds), one-time
+     * ownership per user. The client renders the reward from its local copy.
+     */
+    private static String buyGameProp(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return fail(NO_AUTH);
+        }
+        String gameId = ctx.query("gameId");
+        long propsId = parseLong(ctx.query("propsId"), 0L);
+        if (gameId == null || gameId.isEmpty() || propsId <= 0) {
+            return fail("gameId and propsId required");
+        }
+        JSONObject prop = null;
+        JSONArray props = GameCatalog.shopProps(store, gameId);
+        for (int i = 0; i < props.length(); i++) {
+            JSONObject p = props.optJSONObject(i);
+            if (p != null && p.optLong("id") == propsId) {
+                prop = p;
+                break;
+            }
+        }
+        if (prop == null) {
+            return fail("unknown prop for game");
+        }
+        JSONObject st = store.userState(u);
+        JSONObject ownedProps = st.optJSONObject("ownedProps");
+        if (ownedProps == null) {
+            ownedProps = new JSONObject();
+            st.put("ownedProps", ownedProps);
+        }
+        JSONArray owned = ownedProps.optJSONArray(gameId);
+        if (owned == null) {
+            owned = new JSONArray();
+            ownedProps.put(gameId, owned);
+        }
+        for (int i = 0; i < owned.length(); i++) {
+            if (owned.optLong(i) == propsId) {
+                return fail("prop already owned");
+            }
+        }
+        String kind = prop.optInt("currency") == 2 ? "golds" : "diamonds";
+        long price = prop.optLong("price");
+        if (u.optLong(kind) < price) {
+            return fail("insufficient " + kind);
+        }
+        store.award(u, kind, -price);
+        owned.put(propsId);
+        store.save();
+        L.i("buyGameProp: userId=" + u.optLong("userId") + " game=" + gameId
+                + " prop=" + propsId + " -" + price + " " + kind);
+        return envelope("none", null);
+    }
+
     /** Ranked rows (desc) across real users + citizens for one rank type. */
     private static JSONArray rankRowsByType(StateStore store, String type, boolean weekly) {
         JSONArray rows = new JSONArray();
@@ -1289,7 +1347,7 @@ final class Handlers {
         }
         JSONObject r = new JSONObject();
         r.put("userId", u.optLong("userId"));
-        r.put("currency", 1);
+        r.put("currency", 2);
         r.put("golds", u.optLong("golds"));
         r.put("diamonds", u.optLong("diamonds"));
         r.put("gDiamonds", u.optLong("gDiamonds"));
@@ -1703,8 +1761,8 @@ final class Handlers {
         for (int i = 0; i < ids.length(); i++) {
             JSONObject d = DressShop.byId(store, ids.optLong(i));
             if (d == null) continue;
-            if (d.optInt("currency") == 2) diamonds += d.optLong("price");
-            else golds += d.optLong("price");
+            if (d.optInt("currency") == 2) golds += d.optLong("price");
+            else diamonds += d.optLong("price");
         }
         if (u.optLong("golds") >= golds && u.optLong("diamonds") >= diamonds) {
             for (int i = 0; i < ids.length(); i++) {
@@ -1740,15 +1798,15 @@ final class Handlers {
         for (int i = 0; i < ids.length(); i++) {
             JSONObject d = DressShop.byId(store, ids.optLong(i));
             if (d == null) continue;
-            if (d.optInt("currency") == 2) diamonds += d.optLong("price");
-            else golds += d.optLong("price");
+            if (d.optInt("currency") == 2) golds += d.optLong("price");
+            else diamonds += d.optLong("price");
         }
         long suitGolds = 0, suitDiamonds = 0;
         for (int i = 0; i < suitIds.length(); i++) {
             JSONObject s = Suits.byId(store, suitIds.optLong(i));
             if (s == null) continue;
-            if (s.optInt("currency") == 2) suitDiamonds += s.optLong("price");
-            else suitGolds += s.optLong("price");
+            if (s.optInt("currency") == 2) suitGolds += s.optLong("price");
+            else suitDiamonds += s.optLong("price");
         }
         boolean afford = u.optLong("golds") >= golds + suitGolds
                 && u.optLong("diamonds") >= diamonds + suitDiamonds;
@@ -2126,12 +2184,12 @@ final class Handlers {
         if (prods != null) return prods;
         prods = new JSONArray();
         Object[][] defs = {
-                {"local.golds.1", "Pouch of Golds", 1, 1000, 0.99, 0},
-                {"local.golds.2", "Bag of Golds", 1, 5500, 4.99, 0},
-                {"local.golds.3", "Chest of Golds", 1, 12000, 9.99, 500},
-                {"local.diamonds.1", "Handful of Diamonds", 2, 80, 0.99, 0},
-                {"local.diamonds.2", "Case of Diamonds", 2, 500, 4.99, 50},
-                {"local.diamonds.3", "Vault of Diamonds", 2, 1200, 9.99, 120},
+                {"local.golds.1", "Pouch of Golds", 2, 1000, 0.99, 0},
+                {"local.golds.2", "Bag of Golds", 2, 5500, 4.99, 0},
+                {"local.golds.3", "Chest of Golds", 2, 12000, 9.99, 500},
+                {"local.diamonds.1", "Handful of Diamonds", 1, 80, 0.99, 0},
+                {"local.diamonds.2", "Case of Diamonds", 1, 500, 4.99, 50},
+                {"local.diamonds.3", "Vault of Diamonds", 1, 1200, 9.99, 120},
                 {"local.vip.1", "VIP Level 1 (30 days)", 0, 0, 2.99, 0},
                 {"local.vip.2", "VIP Level 2 (30 days)", 0, 0, 4.99, 0},
         };
@@ -2191,7 +2249,7 @@ final class Handlers {
             return fail("unknown product: " + sku);
         }
         long qty = product.optLong("golds") + product.optLong("diamonds");
-        store.award(u, product.optInt("currency") == 2 ? "diamonds" : "golds", qty);
+        store.award(u, product.optInt("currency") == 2 ? "golds" : "diamonds", qty);
         store.award(u, "gDiamonds", product.optLong("gift"));
         recordPay(store, u, product, qty);
         L.i("recharge: userId=" + u.optLong("userId") + " sku=" + sku + " +" + qty);

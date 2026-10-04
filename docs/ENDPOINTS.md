@@ -383,7 +383,7 @@ Delete state.json to regenerate.
 ## Known limitations / uncertainty (documented, not assumed)
 
 - DailySignInfo.status semantics (claimed vs unclaimed) are inferred; UI cosmetics only.
-- GameDetailShop.currency values (1=golds, 2=diamonds) inferred from usage sites.
+- Currency mapping VERIFIED from client code (three independent sites): 1=diamonds, 2=golds — the recharge reward dialog shows ic_diamond for currency 1 (googlepay/recharge/r.java), the game-detail buy flow checks currency!=2 price against the diamonds balance (gamedetail GameDetailShopItemViewModel), and the dress checkout sums the currency!=2 bucket against the diamonds wallet (decorate E.java). All local economy handlers (dress/suit buy, recharge products, ads rewards, prop buy) follow this mapping.
 - gameId is a String in the client model — catalog ids are numeric strings.
 - Game join/dispatch (POST /v1/dispatch, Dispatch model) returns the final API
   shape with gaddr=127.0.0.1:18080 (host:port — the client split(":") it). The
@@ -484,3 +484,19 @@ Every NEW account (register / visitor / tourist paths) receives a one-time
 welcome mail (500 golds attachment) guarded by a per-user flag — deleting the
 mail never re-issues it. Mail state persists in state.json like the rest of
 the world; host rig asserts the no-re-credit guarantee across a restart.
+
+## Phase 5d handlers (game-detail prop shop buy + currency correction)
+
+| Route | Handler | Behavior |
+|---|---|---|
+| PUT /shop/api/v3/shop/game/props/new?gameId=&propsId= | buyGameProp | buys a prop from the game's detail shop: strict auth, wallet deduction (currency 1=diamonds, 2=golds), one-time ownership per user (userState.ownedProps), re-buy rejected |
+
+PUT /shop/api/v2/pay/game/{gameId} stays a default: every generated game has
+isPay=0 ("quick enter"), so the client never pays to play — the default is
+the honest state, not a gap.
+
+The turntable (GET/PUT /game/api/v1/game/{gameId}/turntable[/props]) also
+stays default BY DECISION: an empty wheel list keeps AdsTurntableDialog from
+opening, and its spin is triggered by the ad-watch completion message —
+ads do not exist in the local world. Implementing the list would surface a
+dialog that can never spin.

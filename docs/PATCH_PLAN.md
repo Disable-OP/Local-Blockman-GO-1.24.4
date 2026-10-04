@@ -374,3 +374,26 @@ and the MailInfo Gson shape.
 Host rig 304/304 PASS (13 new mailbox assertions incl. no-re-credit across a
 restart). Coverage: 335 discovered / 271 implemented (81%) / 64 default /
 209 host-tested.
+
+### Phase 5d (this session): game-prop purchase + economy currency correction
+
+- Currency mapping CORRECTED across the whole economy. The old dress/suit/
+  recharge code inferred 1=golds 2=diamonds; client evidence proves the
+  opposite (1=diamonds, 2=golds) from three independent sites: the recharge
+  reward dialog icon (googlepay recharge r.java), the game-detail prop buy
+  pre-check against AccountCenter.diamonds (gamedetail h.java/Z.java), and
+  the dress checkout bucket math (decorate E.java j()/b()). Fixed: dress buy
+  (single + v2), suit buy, recharge product catalog + credit, ads reward
+  RechargeEntity/AdsSignReward config (200-gold rewards now currency 2).
+- PUT /shop/api/v3/shop/game/props/new (buyGameDetailShopGoods) is now real:
+  strict auth, per-game prop lookup, wallet deduction, one-time ownership
+  (userState.ownedProps), re-buy + unknown-prop rejection.
+- PUT /shop/api/v2/pay/game/{gameId} deliberately stays default (no paid
+  games exist; isPay=0 everywhere). Turntable deliberately stays default
+  (ad-driven spin; ads don't exist locally — documented decision).
+- IVIPApi (vipPriceList/buyVip) has no client call sites in 1.24.4 (dead
+  code) — left as schema-true defaults.
+- Host rig 307/307 PASS (new: prop buy wallet math, no-double-charge,
+  unknown prop; suit buy now asserts the corrected currency).
+- Coverage: 335 discovered / 272 implemented (81%) / 63 default / 210
+  host-tested.

@@ -256,7 +256,7 @@ public final class RoutingTable {
         "PUT /msg/api/v1/msg/group/chat/transfer|H:groupTransfer",
         "PUT /shop/api/v1/shop/decorations/buy|H:dressBuyMany",
         "PUT /shop/api/v1/shop/user/buy/vip|obj",
-        "PUT /shop/api/v3/shop/game/props/new|none",
+        "PUT /shop/api/v3/shop/game/props/new|H:buyGameProp",
         "PUT /user/api/v1/user/device/id|H:ackPut",
         "PUT /user/api/v1/user/info|H:changeInfo",
         "PUT /user/api/v1/user/login-out|H:logout",

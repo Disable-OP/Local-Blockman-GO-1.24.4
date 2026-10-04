@@ -173,14 +173,16 @@ final class DressShop {
 
     /**
      * Deduct the price from the user's wallet and mark ownership.
-     * currency: 1 = golds, 2 = diamonds (inferred from client usage).
+     * currency: 1 = diamonds, 2 = golds (verified from client usage: the
+     * recharge dialog shows ic_diamond for currency 1; the dress checkout
+     * checks the currency!=2 total against the diamonds balance).
      * Returns false when the user cannot afford it or the dress is unknown.
      */
     static synchronized boolean buy(StateStore store, JSONObject user, long dressId) {
         JSONObject d = byId(store, dressId);
         if (d == null) return false;
         long price = d.optLong("price");
-        String kind = d.optInt("currency") == 2 ? "diamonds" : "golds";
+        String kind = d.optInt("currency") == 2 ? "golds" : "diamonds";
         if (user.optLong(kind) < price) return false;
         store.award(user, kind, -price);
         markOwned(store, user, dressId);

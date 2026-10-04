@@ -225,3 +225,23 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
      GameServer work per project instruction).
   5. videostars (5, real-money) + /video (7): stay error-driven; only
      implement if a redroid run shows the client calling them.
+
+## Session 9 delta 2 (Phase 5d: prop buy + currency correction)
+
+- Currency mapping FIXED economy-wide (1=diamonds, 2=golds — client-verified
+  3 ways). Dress/suit buy, recharge products+credit, ads rewards corrected.
+  If any on-device shop display still shows a mismatched icon, that's now a
+  client cosmetics question, not a wallet-math one.
+- PUT /shop/api/v3/shop/game/props/new is real (buyGameProp: wallet math +
+  one-time ownership). Host rig 307/307. Coverage 335/272/63/210 (81%).
+- Deliberate defaults now fully documented with reasons: turntable (ad-driven
+  spin), pay/game (no paid games), IVIPApi (dead code), video/videostars
+  (real-money), activity events (flag-gated), datareport (telemetry acks).
+- Next session (priority order):
+  1. Verify the v0.5.3 tag CI (build-release + redroid).
+  2. Error-driven pass over the newest redroid diagnostics artifact.
+  3. Error-driven UI expansion: drive MORE screens via adb (inbox UI itself,
+     share-reward screen, settings) to surface any client calls the current
+     automation never triggers.
+  4. Dispatch-side groundwork stays available (map files from /files/) but is
+     blocked behind the Engine 10068 GameServer phase per project instruction.
