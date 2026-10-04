@@ -1003,3 +1003,66 @@
   death-free run; (2) any new diagnostics; (3) the GL-shop buy assertion
   could only be revisited with an exported accessibility entry (patched
   dex) — weigh before attempting; (4) NO GameServer work.
+
+## Session 14 — wave 5n: search-input drives + diagnostics pass (2026-10-05)
+
+- State check: branch local-api clean at 32d23dd; latest run 37234955486 (65
+  endpoints, zero FATAL) green; all 8 recent test-redroid runs green since the
+  rotation fix. Cron evidence: this session was itself fired by the recurring
+  webDevReview task (gateway trace web-cron-review-202610050530) — schedule
+  active; the cron tool itself is not exposed in this context, so no config
+  change was possible or needed.
+- Error-driven pass over the FRESH diagnostics artifact of run 37234955486
+  (pulled from the workflow, not a stale local copy): 67 unique endpoints
+  served, zero UNMAPPED, zero FATAL, crash buffer empty. Every called route
+  is a real handler — including the activity pair (/activity/api/v2/
+  activity/title -> activityTitle honest-empty, /collect/exchange/card/
+  combine -> scrapCombineNum) and the gift-suit receive flow (GET+POST /shop/
+  api/v1/new/shop/gift/suit/receive -> real Suits handlers, 4161b body on the
+  POST). The API surface stays CONVERGED: remaining defaults are documented-
+  deliberate. No server code change warranted by evidence.
+- NEW EVIDENCE (run 37234955486 log): the wave-5l clan-search input pick
+  failed with "[skip] no clan-search EditText found" — the Find Clans search
+  screen exposes NO EditText-class node; the input surfaces as a hint-text
+  node "Enter clan name (No more...)" (clansrch dump). The screen itself
+  opened fine (rlSearchClan tap OK, alive at A-findclans).
+- Wave 5n (commit 5bebd13, dispatched run 37236799029): input picker widened
+  to EditText-family class OR hint text prefix ("Enter clan"); both Find
+  Friends and Find Clans now get an input drive (typed "alex" / "pixel");
+  stage dumps print widget CLASSES as discovery evidence; clan-search
+  asserts GET /clan/api/v1/clan/tribe/blurry/info in the LocalAPI log
+  (server handler tribeSearch is real + state-backed: NPC tribes seeded by
+  Tribe.ensureNpcTribes — "Pixel Wolves" answers "pixel" fuzzily);
+  friend-search diffs /friend/ traffic before/after and reports honestly
+  when nothing surfaced.
+- GL-shop patched-dex accessibility entry (Session 13 FINAL candidate 3):
+  weighed and DECLINED again — the buy path is host-tested end-to-end
+  (dressBuyV2 wallet math + suit buy), the shop grid + dress detail are
+  GL-rendered end to end (run 37234955486 dressitem dump: rlGLSurfaceView,
+  no dump-addressable controls), and a dex patch to force accessibility on
+  a GL grid adapter is high-risk smali surgery for a client-assertion only.
+  The deliberate stop stands; wear/buy endpoints stay implemented +
+  host-tested with the client assertion recorded as blocked by the GL shop.
+- No dex change this session -> no new tag; the dispatched run rides the
+  local-api checkout pin with the existing release APK.
+
+## Session 14 (cont.) — wave 5n RESULT: clan search client-asserted (run 37236799029 PASS)
+
+- Run 37236799029 PASS on 5bebd13: one mid-drive death (A-dress-function,
+  native-kill family) absorbed by the recovery design; guest nickname edit
+  OK; registered restart OK; "[ok] no FATAL EXCEPTION".
+- WIN: the hint-text input picker worked — "5n: clan search hit GET /clan/
+  api/v1/clan/tribe/blurry/info". The endpoint appears in the deep-drive
+  added-paths list: the search is now CLIENT-ASSERTED through the real UI
+  (server handler tribeSearch: real, state-backed, fuzzy-matches the seeded
+  NPC tribes).
+- The Find Clans screen RENDERED REAL SERVER DATA on-device: "We recommend
+  the following c...", "Blocky Pioneers", "Chief: OldWolf", "Members: 4/24"
+  — full server->client rendering proof for the clan recommendation shape.
+- WIDGET FACT: the clan-search input is a Button-class node carrying the
+  hint text ("Enter clan name (No more tha...") — that is why no
+  EditText-class node ever existed; the picker matched via the hint prefix.
+- NEW GAP EVIDENCE: the "Find Friends" TEXT tap never navigates (the dump
+  under stage findfriends still shows the tab3 list). The real entry is the
+  btnSearchFriend id. -> wave 5o (commit 1ed02a3, dispatched): friend-search
+  entry via btnSearchFriend (rlSearchClan id for clans, text fallback kept).

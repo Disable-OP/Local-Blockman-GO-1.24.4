@@ -517,3 +517,28 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   window); (2) error-driven pass over the newest diagnostics; (3) a
   patched-dex accessibility entry for the GL shop would be the ONLY way
   to client-assert the buy path — weigh cost first; (4) NO GameServer.
+
+## Session 14 delta (wave 5n/5o — read first)
+
+- The error-driven API loop stays CONVERGED: fresh diagnostics pass over run
+  37234955486 (pulled from the workflow, not a stale copy): 67 unique
+  endpoints, zero UNMAPPED, zero FATAL — every called route is a real
+  handler, including the activity pair (activityTitle honest-empty,
+  scrapCombineNum) and the gift-suit receive flow. Remaining defaults are
+  documented-deliberate.
+- Wave 5n WIN (run 37236799029 PASS): the clan search is CLIENT-ASSERTED —
+  GET /clan/api/v1/clan/tribe/blurry/info fired through the real UI (hint
+  -text input picker; the input is a Button-class node carrying "Enter clan
+  name (...)" — no EditText exists). The Find Clans screen rendered REAL
+  server data (Blocky Pioneers / Chief: OldWolf / Members: 4/24) from the
+  seeded NPC tribes.
+- Wave 5o in flight (1ed02a3): friend-search entry via the btnSearchFriend
+  ID (the "Find Friends" TEXT tap never navigates — dump-proven). Clans use
+  the rlSearchClan id now; text fallback kept.
+- GL-shop patched-dex accessibility entry: weighed and DECLINED again (buy
+  path is host-tested; GL grid is not dump-addressable; dex surgery risk >
+  value). The deliberate stop stands.
+- Next candidates: (1) verify wave 5o (friend search input + /friend/
+  endpoint assertion); (2) tab3 leftovers ivTribe / ivClanMsg0 are
+  undiscovered entries (clan info / clan messages) — drive only after a
+  dump shows what they open; (3) NO GameServer work.
