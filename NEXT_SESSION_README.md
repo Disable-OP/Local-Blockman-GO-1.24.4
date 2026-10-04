@@ -341,3 +341,22 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   system.txt and decide whether to neutralize it; (2) drive the Personal
   Info editor rows on-device (nickname/gender edits — real handlers) to
   exercise the profile-edit path end-to-end; (3) NO GameServer work.
+
+## Session 11 FINAL delta (killer case closed — read first)
+
+- The between-phase SIGKILL is NATIVE: v0.5.18 logged 37 Java-site fires;
+  ZERO fired in the 40s pre-death window (the last was the neutralized
+  MainActivity.onPause, log-only). The kill originates in native code
+  (.so: crashsdk / engine) during the guest-kick teardown. Java is fully
+  exonerated; no further Java patching will help.
+- The Phase C preflight recovery is 9/9 across 10 consecutive green runs —
+  the death is absorbed by design (~40s app restart inside the run).
+- The smali patcher (scripts/patch_killlog.py) is now general-purpose and
+  hardened: scans ALL packages, range-form log blocks above v15, raw-v
+  parameter guard, register-budget guard, non-fatal refusals. Keep it for
+  future kill-site evidence.
+- Decision left for next session: accept the native kick (recovery covers
+  it) or stop triggering the guest-kick flow (remove the Phase B
+  ll_account tap; the UI-register path has never completed anyway).
+- Otherwise continue the normal loop: error-driven deep-drive gaps,
+  coverage table in docs/ENDPOINTS.md, NO GameServer work.
