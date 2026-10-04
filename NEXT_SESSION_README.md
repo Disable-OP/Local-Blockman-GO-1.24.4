@@ -474,3 +474,19 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   artifact; (2) deeper Dressing tab drive (item rows -> detail/wear
   actions) now that chips work; (3) Find Clans search input drive;
   (4) NO GameServer work.
+
+## Session 13 delta 3 (wave 5l + rotation fix — read first)
+
+- The logcat main buffer rotates under GL-heavy screens: snapshot
+  paths_early BEFORE the deep drive and union it into all final scans
+  (already in the script — do not remove; run 37226628540 is the proof).
+- Dressing tab = owned-items wardrobe; fresh visitors show an honest
+  empty grid. WEAR client-assertion needs buy-then-wear through the
+  Store UI first (next candidate; wear endpoints are implemented +
+  host-tested).
+- Mid-drive deaths are now routine-absorbed (evidence + relaunch +
+  continue); post-recovery sections skip gracefully (Find Clans search
+  retried on death-free runs).
+- Latest green: 37227953542 (67 unique endpoints, zero FATAL).
+- Next: buy-then-wear Store decode; Find Clans search retry; error-driven
+  pass over the newest diagnostics; NO GameServer work.

@@ -933,3 +933,34 @@
   on commit 9a5dc5c. Next: error-driven pass over the newest diagnostics;
   Dressing/Find surfaces are now UI-driven; remaining defaults stay
   documented-deliberate. NO GameServer work.
+
+## Session 13 (cont. 3) — wave 5l: wear probe + clan search; logcat-rotation fix (runs 37226628540 / 37227953542)
+
+- Wave 5l (6e12e2a): dressing-grid item probe (wear/try button; buying
+  deliberately NOT driven from the grid) + Find Clans search input drive.
+- Run 37226628540 FAILED on a NEW failure class: the dress detail's GL
+  rendering floods the logcat main buffer and rotates the early LocalAPI
+  lines OUT — the end-of-run "visitor auth traffic" assertion found only
+  8 paths and red-herringed. The wear drive itself WORKED (dress detail
+  opened; /decoration/api/v1/new/decorations/recommend/users/{uid}/type/
+  {type} surfaced — mapped + served).
+- Fix (e027ab1): snapshot the visitor auth traffic BEFORE the deep drive
+  (paths_early), union it into the final endpoint set + make the
+  register-endpoint check rotation-resilient via the merged path set.
+- Run 37227953542 GREEN: 67 unique endpoints (new high), zero FATAL, and
+  ANOTHER mid-drive death (A-findfriends) absorbed by the recovery — the
+  recovery design keeps proving itself in production.
+- NEW HONEST FINDING: the Dressing tab shows the user's OWNED items only;
+  a fresh visitor's grid is EMPTY ("No this type of dressing") — correct
+  server state, NOT a bug. The wear endpoints (PUT/DELETE /decorations/
+  using/new + /using/{id}) are implemented + host-tested; to client-assert
+  the WEAR action the drive must first BUY an item through the Store UI
+  (product -> buy confirm) and then wear it — the buy-then-wear UI decode
+  is the next candidate (2-3 iterations of the established pattern).
+- Find Clans search: skipped this run (post-recovery the app sits on the
+  main screen, not the tab3 screen — expected); retried deterministically
+  on a death-free run.
+- State: everything the client calls is a real handler; the error-driven
+  loop remains converged. Next: (1) buy-then-wear UI decode (last
+  untested economy path through the real UI); (2) Find Clans search
+  retry; (3) NO GameServer work.
