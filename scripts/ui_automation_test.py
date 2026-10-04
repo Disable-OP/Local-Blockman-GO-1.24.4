@@ -7,8 +7,8 @@ Three deterministic phases, driven purely over adb + uiautomator dumps:
       pm clear -> launch -> the app auto-logs-in as a tourist/visitor account
       through the embedded local server -> navigate all 5 bottom tabs ->
       deep drive (Inbox / Top Up / Ranking / Store / Party / Video / Personal
-      Info editor / game-category tab row probe / game detail + rank/comment
-      sub-tabs).
+      Info editor / Dressing filter chips / Find Friends+Find Clans /
+      game detail + rank/comment sub-tabs).
       Asserts tourist/auth-token traffic in logcat.
 
   Phase B — PROFILE EDIT through the Personal Info editor:
@@ -288,12 +288,11 @@ def deep_drive(adb, screen, package, tag, paths_before):
             adb.key(4)  # back to Me
             time.sleep(2)
             assert_alive(adb, package, "%s-ProfileBack" % tag)
-    # Game-category tab (rb_2): never visited below the tab itself. Dump the
-    # rows (discovery channel for the next wave), then best-effort tap ONE
-    # row that carries text and does NOT look like an engine action
-    # (play/start/quick/join words are skipped — the engine connect is the
-    # deferred GameServer phase and must not be triggered from automation).
-    # Then, if a game list appeared, open one card from it like Home's.
+    # DRESSING tab (rb_2, ids verified from the 5j on-device dump): tap the
+    # filter chips so the wardrobe lists fire through the real client —
+    # rb_clothes/rb_accessories/rb_character/rb_function are the first-level
+    # radio tabs; rbSuit is a second-level filter (suit list). All are list
+    # filters, no engine action is possible from them.
     tab2 = screen.find(ids=["rb_2"])
     if tab2 and screen.tap_node(tab2):
         time.sleep(5)
@@ -302,56 +301,52 @@ def deep_drive(adb, screen, package, tag, paths_before):
                 print("  ab2] %s | text=%r desc=%r clickable=%s" % (
                     n.res.rsplit("/", 1)[-1] if n.res else "",
                     n.text[:24], n.desc[:24], n.clickable))
-        deny = re.compile(r"play|start|quick|join|enter|go\b", re.I)
-        row = None
-        for n in screen.dump():
-            if not (n.center and n.text):
-                continue
-            y = n.center[1]
-            if y < 200 or y > 980 or deny.search(n.text):
-                continue
-            if n.cls.endswith("RecyclerView") or n.cls.endswith(
-                    "LinearLayout") or "tv" in (n.res.rsplit("/", 1)[-1]
-                                                if n.res else "").lower():
-                row = n
-                break
-        if row and screen.tap_node(row):
-            time.sleep(6)
-            assert_alive(adb, package, "%s-category-row" % tag)
-            # inside the category page: try a game card (same band heuristic)
-            inner = None
-            for n in screen.dump():
-                if not n.center:
-                    continue
-                y = n.center[1]
-                if y < 200 or y > 980:
-                    continue
-                if n.cls.endswith("RecyclerView") or n.cls.endswith(
-                        "LinearLayout"):
-                    inner = n
-                    break
-            if inner and screen.tap_node(inner):
-                time.sleep(7)
-                assert_alive(adb, package, "%s-category-game" % tag)
-                adb.key(4)  # back to the category list
+        for chip in ("rb_clothes", "rb_accessories", "rb_character",
+                     "rb_function"):
+            n = screen.find(ids=[chip])
+            if n and screen.tap_node(n):
+                time.sleep(4)
+                assert_alive(adb, package, "%s-dress-%s" % (
+                    tag, chip.replace("rb_", "")))
+            else:
+                print("  [skip] dressing chip %s not found" % chip)
+        suit = screen.find(ids=["rbSuit"])
+        if suit and screen.tap_node(suit):
+            time.sleep(5)
+            assert_alive(adb, package, "%s-dress-suit" % tag)
+    # FRIENDS/CLANS tab (rb_3, ids from the 5j dump): open the two search
+    # rows ("Find Friends" / "Find Clans") — both lead to list/search
+    # screens (friend search, clan search), no engine surface behind them.
+    # Keep the node dump as the discovery channel.
+    tab3 = screen.find(ids=["rb_3"])
+    if tab3 and screen.tap_node(tab3):
+        time.sleep(4)
+        for x in screen.dump():
+            if x.res or x.text or x.desc:
+                print("  tab3] %s | text=%r desc=%r" % (
+                    x.res.rsplit("/", 1)[-1] if x.res else "",
+                    x.text[:24], x.desc[:24]))
+        for label, stage in (("Find Friends", "findfriends"),
+                             ("Find Clans", "findclans")):
+            n = screen.find(texts=[label])
+            if n and screen.tap_node(n):
+                time.sleep(5)
+                assert_alive(adb, package, "%s-%s" % (tag, stage))
+                adb.key(4)  # back to the tab
                 time.sleep(2)
-            adb.key(4)  # back to the tab
-            time.sleep(2)
-        else:
-            print("  [skip] no category row candidate found on tab2")
-        assert_alive(adb, package, "%s-tab2-done" % tag)
-    # Discovery-only dumps for the remaining tabs (no taps beyond the tab
-    # itself) — the node dumps are the targeting evidence for later waves.
-    for tab, label in (("rb_3", "tab3"), ("rb_4", "tab4")):
-        n = screen.find(ids=[tab])
-        if n and screen.tap_node(n):
-            time.sleep(4)
-            for x in screen.dump():
-                if x.res or x.text or x.desc:
-                    print("  %s] %s | text=%r desc=%r" % (
-                        label, x.res.rsplit("/", 1)[-1] if x.res else "",
-                        x.text[:24], x.desc[:24]))
-            assert_alive(adb, package, "%s-%s" % (tag, label))
+            else:
+                print("  [skip] '%s' row not found" % label)
+        assert_alive(adb, package, "%s-tab3-done" % tag)
+    # Discovery-only dump for the chat tab (no taps beyond the tab itself)
+    tab4 = screen.find(ids=["rb_4"])
+    if tab4 and screen.tap_node(tab4):
+        time.sleep(4)
+        for x in screen.dump():
+            if x.res or x.text or x.desc:
+                print("  tab4] %s | text=%r desc=%r" % (
+                    x.res.rsplit("/", 1)[-1] if x.res else "",
+                    x.text[:24], x.desc[:24]))
+        assert_alive(adb, package, "%s-tab4" % tag)
     # Home tab: tap the first tappable card above the bottom nav
     home = screen.find(ids=["rb_1"])
     if home and screen.tap_node(home):
