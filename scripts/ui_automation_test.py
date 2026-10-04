@@ -877,6 +877,7 @@ def main():
     password_d = "LocalQA%05d" % (int(time.time()) % 100000)
     nick_edit = "qaD%05d" % (int(time.time()) % 100000)
     d_edited = False
+    d_intro = None
 
     def current_user_id(screen):
         """Extract the current user id from the Me tab (ID row)."""
@@ -994,12 +995,92 @@ def main():
                                       "nickname (taken)",
                                       taken.get("code") == 0,
                                       str(taken)[:120])
-                            if outcome_d != "kicked":
-                                adb.key(4)  # editor -> Profile
+                        if outcome_d == "edited":
+                            # registered-session surface wave: Gender row
+                            # (pick an option, confirm through any notice
+                            # dialog) and the Personal Profile (details)
+                            # row - both persist through changeInfo.
+                            if tap_label(screen, "Gender"):
+                                time.sleep(3)
+                                before = {(x.text, x.bounds)
+                                          for x in screen.dump()}
+                                opt = next((x for x in screen.dump()
+                                            if (x.text or "").lower()
+                                            in ("male", "female")
+                                            and x.center
+                                            and (x.text, x.bounds)
+                                            not in before), None)
+                                if opt:
+                                    screen.tap_node(opt)
+                                    time.sleep(1)
+                                    editor_confirm(screen)
+                                    time.sleep(2)
+                                    editor_confirm(screen)
+                                    time.sleep(3)
+                                    log_g = adb.raw("logcat", "-d", "-s",
+                                                    "LocalAPI", timeout=60)
+                                    if ("/user/api/v1/user/details/info" in log_g
+                                            or "/user/api/v1/user/info" in log_g):
+                                        ok("D: gender edit hit the local "
+                                           "server (changeInfo)")
+                                    assert_alive(adb, args.package,
+                                                 "D-GenderSaved")
+                                adb.key(4)  # recover from any picker shape
                                 time.sleep(2)
-                                adb.key(4)  # Profile -> Me
+                                assert_alive(adb, args.package,
+                                             "D-AfterGender")
+                            if tap_label(screen, "Personal Profile"):
+                                time.sleep(3)
+                                intro = "localqa intro %d" % (
+                                    int(time.time()) % 100000)
+                                if fill_focused_edit(adb, screen, intro):
+                                    editor_confirm(screen)
+                                    time.sleep(2)
+                                    editor_confirm(screen)
+                                    time.sleep(3)
+                                    log_p = adb.raw("logcat", "-d", "-s",
+                                                    "LocalAPI", timeout=60)
+                                    if ("/user/api/v1/user/details/info" in log_p
+                                            or "/user/api/v1/user/info" in log_p):
+                                        ok("D: personal-profile edit hit "
+                                           "the local server (changeInfo)")
+                                        d_intro = intro
+                                    assert_alive(adb, args.package,
+                                                 "D-IntroSaved")
+                                adb.key(4)
                                 time.sleep(2)
-                                assert_alive(adb, args.package, "D-BackOnMe")
+                                assert_alive(adb, args.package,
+                                             "D-AfterIntro")
+                        if outcome_d != "kicked":
+                            adb.key(4)  # editor -> Profile
+                            time.sleep(2)
+                            adb.key(4)  # Profile -> Me
+                            time.sleep(2)
+                            assert_alive(adb, args.package, "D-BackOnMe")
+
+                        # server-state verification of the UI-driven
+                        # edits: re-login as the upgraded user and read
+                        # the persisted record fields.
+                        li2 = fcall("POST", "/user/api/v1/login",
+                                    {"uid": qa_uid_d,
+                                     "password": password_d})
+                        if li2.get("code") == 1:
+                            rec = li2.get("data", {})
+                            print("  [state] upgraded record: "
+                                  "nickName=%r sex=%s details=%r"
+                                  % (rec.get("nickName"), rec.get("sex"),
+                                     (rec.get("details") or "")[:40]))
+                            if d_edited:
+                                check("D: record nickName matches the "
+                                      "UI rename",
+                                      rec.get("nickName") == nick_edit,
+                                      str(rec.get("nickName"))[:60])
+                            if d_intro:
+                                check("D: record details matches the "
+                                      "UI intro",
+                                      d_intro in (rec.get("details")
+                                                  or ""),
+                                      str(rec.get("details"))[:60])
             else:
                 print("  [info] auth-token for the session user failed: %s"
                       % str(at)[:100])
