@@ -996,65 +996,20 @@ def main():
                                       taken.get("code") == 0,
                                       str(taken)[:120])
                         if outcome_d == "edited":
-                            # registered-session surface wave: Gender row
-                            # (pick an option, confirm through any notice
-                            # dialog) and the Personal Profile (details)
-                            # row - both persist through changeInfo.
-                            if tap_label(screen, "Gender"):
-                                time.sleep(3)
-                                before = {(x.text, x.bounds)
-                                          for x in screen.dump()}
-                                after = screen.dump()
-                                # evidence channel: what did the picker add?
-                                for x in after:
-                                    if (x.text or x.desc) and \
-                                            (x.text, x.bounds) not in before:
-                                        print("  [picker] %s text=%r desc=%r"
-                                              % (x.res.rsplit("/", 1)[-1]
-                                                 if x.res else "",
-                                                 x.text[:24], x.desc[:24]))
-                                opt = next((x for x in after
-                                            if ((x.text or "").lower()
-                                                in ("male", "female")
-                                                or "male" in (x.res or "").lower()
-                                                or "female" in (x.res or "").lower()
-                                                or "male" in (x.desc or "").lower()
-                                                or "female" in (x.desc or "").lower())
-                                            and x.center
-                                            and (x.text, x.bounds) not in before), None)
-                                if not opt:
-                                    debug_dump(screen, "D-gender-picker")
-                                if opt:
-                                    screen.tap_node(opt)
-                                    time.sleep(1)
-                                    editor_confirm(screen)
-                                    time.sleep(2)
-                                    editor_confirm(screen)
-                                    time.sleep(3)
-                                    log_g = adb.raw("logcat", "-d", "-s",
-                                                    "LocalAPI", timeout=60)
-                                    if ("/user/api/v1/user/details/info" in log_g
-                                            or "/user/api/v1/user/info" in log_g):
-                                        ok("D: gender edit hit the local "
-                                           "server (changeInfo)")
-                                    assert_alive(adb, args.package,
-                                                 "D-GenderSaved")
-                                adb.key(4)  # recover from any picker shape
-                                time.sleep(2)
-                                assert_alive(adb, args.package,
-                                             "D-AfterGender")
+                            # Registered-session surface wave. Evidence
+                            # (jadx + run dumps): the Gender row is a
+                            # CLIENT STUB — onClickSex() shows a toast and
+                            # nothing else (no picker, no network). The
+                            # Personal Profile row opens the detail editor
+                            # template (e.b.m.b) whose EditText persists
+                            # through changeInfo. The Birthday row is a
+                            # wheel picker (not driven — low value).
+                            tap_label(screen, "Gender")
+                            time.sleep(2)
+                            print("  [evidence] Gender row is a client "
+                                  "stub (toast only) - no picker exists")
                             if tap_label(screen, "Personal Profile"):
-                                time.sleep(3)
-                                if not any(x.cls.endswith("EditText")
-                                           for x in screen.dump()):
-                                    # the row may live below the fold —
-                                    # scroll the editor and retry once
-                                    adb.sh("input swipe 360 900 360 500 300")
-                                    time.sleep(2)
-                                    if not tap_label(screen,
-                                                     "Personal Profile"):
-                                        debug_dump(screen, "D-intro-row")
-                                    time.sleep(3)
+                                time.sleep(5)
                                 intro = "localqa intro %d" % (
                                     int(time.time()) % 100000)
                                 if fill_focused_edit(adb, screen, intro):
@@ -1069,8 +1024,14 @@ def main():
                                         ok("D: personal-profile edit hit "
                                            "the local server (changeInfo)")
                                         d_intro = intro
+                                    else:
+                                        print("  [info] intro save reached "
+                                              "no endpoint (dialog shape "
+                                              "changed?)")
                                     assert_alive(adb, args.package,
                                                  "D-IntroSaved")
+                                else:
+                                    debug_dump(screen, "D-intro-editor")
                                 adb.key(4)
                                 time.sleep(2)
                                 assert_alive(adb, args.package,
