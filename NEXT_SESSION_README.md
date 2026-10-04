@@ -294,3 +294,12 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 - Next: verify nothing regressed; extend deep-drive (mail-row detail,
   game-detail sub-screens); keep the error-driven loop going per the
   Session 10 delta notes. NO GameServer work (standing instruction).
+
+## Session 10 delta 3 (v0.5.8 verified)
+
+- v0.5.8-probe green; mail claim now exercised through the REAL inbox UI
+  (list + attachment claim on-device). 77 unique endpoints, zero crashes.
+- Deep-drive coverage: Inbox(+mail row)/Top Up/Ranking/Store/Party/Video/
+  home game card. Everything the client calls is a real handler.
+- Next: game-detail sub-screen probes (rank/comments tabs), settings rows,
+  or whatever the next diagnostics surface. NO GameServer work.

@@ -558,3 +558,17 @@
   deliberate set.
 - Next session: extend deep-drive (mail-row detail, game-detail sub-tabs,
   comments), then continue per NEXT_SESSION_README. NO GameServer work.
+
+## Session 10 (cont. 2) — v0.5.8-probe: mail verified through the real UI (2026-10-04)
+
+- v0.5.8-probe FULLY GREEN: build 37192850753 + redroid 37192950358; release
+  asset published; zero crashes.
+- The inbox deep-drive extension opened the welcome mail through the REAL
+  inbox UI: GET /mailbox/api/v1/mail (336b list) + PUT /mailbox/api/v1/mail/
+  attachment (claim) served on-device — the mailbox feature is now verified
+  END-TO-END through the client UI, not just adb-forward HTTP.
+- 77 unique endpoints served, no new unmapped calls, no regressions.
+- Deep-drive channel status: 6 Me-tab rows + inbox mail-row + home game card
+  all probed; every client call lands on a real handler.
+- Next session candidates: game-detail sub-screens (rank/comments tabs),
+  settings screen rows, or any error-driven finding from the next run.
