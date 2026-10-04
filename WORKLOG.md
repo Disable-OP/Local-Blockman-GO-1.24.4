@@ -673,3 +673,43 @@
 - Next session: (1) target the settings screen by the discovered id and
   drive the account-security surface on-device; (2) implement whatever the
   surface calls that is still a default; (3) NO GameServer work.
+
+## Session 11 (cont. 3) — killer hunt: full evidence trail, 4/4 recoveries green (2026-10-04)
+
+- Three more dispatched redroid runs (37196913995 / 37198308411 /
+  37199034826) all GREEN; the between-phase SIGKILL recurred in three of
+  them and the Phase C preflight recovered ALL of them (relaunch -> server
+  answers from disk state -> real Phase C checks pass). CI is stable.
+- Killer forensics accumulated:
+  * events buffer: am_proc_died [main, procState=2] + [:ipc, procState=10]
+    8-9ms apart; NO am_kill (system_server did not kill), NO am_anr.
+  * meminfo at collection: 16GB total / 10GB free — container OOM unlikely.
+  * crash buffer EMPTY both times (no Java crash, no tombstone).
+  * death consistently ~2s after a uiautomator dump session disconnects
+    (accessibility true->false), but dumps alone are not sufficient
+    (v0.5.8/v0.5.10 survived identical walks) — the FriendInfoActivity
+    correlation was DISPROVEN (death recurred after landing on Home).
+  * Java kill sites audited: CrashAppManager.exitProcess (no callers),
+    GameFailedDialog.onClick (needs a click), EchoesHelper.a()
+    ("kill ALL getRunningAppProcesses incl. itself" — decompiled guard
+    bodies are empty; called only via EchoesHelper.killAppProcess(),
+    which has NO Java callers -> a NATIVE engine JNI callback).
+  * Remaining suspect: the native engine (GL preview surfaces run on
+    Home/Me) invoking killAppProcess on some trigger; the system logcat
+    buffer (lmkd decisions) is the last uncaptured channel.
+- Forensics completed: diagnostics now also capture `logcat -b system`
+  (lmkd decisions live there; workflow_run uses main's copy -> synced to
+  main ee3207d + 7da8362, scripts still from the local-api pin).
+- Discovery results this wave:
+  * Me tab has NO settings entry (full node dump: rows are Video / Party /
+    Inbox / Store / Gratitude List / Ranking; iv_question + mvVideo
+    clickable; ll_top opens the profile).
+  * ibMore leads to the "Personal Info" editor (Profile Photo / Nickname /
+    Gender / Birthday) — profile-edit handlers are all real already.
+  * Gratitude List row visited: calls POST
+    /user/api/v1/users/prefect/info/reward/check/{id} -> REAL handler
+    (prefectCheck). No UNMAPPED anywhere in any run.
+  * Deep drive now ends on the Home tab (safety landing) and dumps the
+    MoreSettings/Personal-Info screen nodes for the next wave.
+- State: 5 consecutive green device runs; recovery path proven 4/4;
+  77 unique endpoints served; zero unmapped; coverage 335/281 (84%).

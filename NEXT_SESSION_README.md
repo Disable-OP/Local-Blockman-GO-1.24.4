@@ -320,3 +320,24 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   pass over the new diagnostics; (3) implement any surfaced gaps
   client-first from jadx; (4) NO GameServer work.
 - Tag: v0.5.9-resilient ships this wave.
+
+## Session 11 delta 2 (killer hunt + discovery waves — read after the Session 11 delta)
+
+- The between-phase SIGKILL (v0.5.9 incident) recurred 3x in dispatched
+  runs and the Phase C preflight recovered every time (4/4 green). The
+  killer is NOT: AM kill (no am_kill), ANR (none), OOM (10GB free), any
+  Java kill site (all audited), or the FriendInfoActivity screen
+  (disproven). Prime suspect: native engine JNI killAppProcess (the
+  "kill ALL processes" cleanup in EchoesHelper). Next run with a death:
+  read diags/system.txt (lmkd) — captured since main ee3207d — and the
+  tombstone-free SIGKILL will either be named or confirm the native path.
+- Discovery: Me tab has no settings entry (full node dump in the log);
+  ibMore = "Personal Info" editor (all its handlers are real); Gratitude
+  List -> prefect reward check (real handler). Deep drive ends on Home
+  and dumps the Personal Info nodes.
+- No dex change since v0.5.10 -> no new tag needed; automation rides the
+  local-api checkout pin on every dispatched run.
+- Next session candidates: (1) if a death recurs, name the killer from
+  system.txt and decide whether to neutralize it; (2) drive the Personal
+  Info editor rows on-device (nickname/gender edits — real handlers) to
+  exercise the profile-edit path end-to-end; (3) NO GameServer work.
