@@ -494,3 +494,22 @@
 - Coverage: 335 discovered / 274 implemented (82%) / 61 default / 215
   host-tested. Docs updated (ENDPOINTS, PATCH_PLAN, COVERAGE).
 - Tag v0.5.5-chat ships this phase (build-release + redroid on the tag).
+
+## Session 10 FINAL — v0.5.5-chat green + deep-drive findings (2026-10-04)
+
+- v0.5.5-chat FULLY GREEN: build 37190517339 + test-redroid 37190603655;
+  release asset BlockyNexus-localapi.apk (232 MB) published.
+- Deep-drive diagnostics: 72 unique endpoints served to the real client (up
+  from 60 in v0.5.4), ZERO crashes, zero FATAL lines. The newly driven
+  screens (Inbox, Top Up, Ranking, Home game card -> game detail 5041) each
+  hit real handlers: app-engine/check-update, friend gaming/status detail,
+  decorations using, pay products + vip products + payssion flag + sub info,
+  region rank home, ads task config.
+- Error-driven verdict: 71/72 client-called routes on real handlers; the
+  single default-called route (GET /config/files/game-detail-to-editor) is
+  the deliberate empty (empty map = no editor links, honest local state).
+- Final coverage: 335 discovered / 274 implemented (82%) / 61 default / 215
+  host-tested; host rig 321/321.
+- Next session: the deep-drive channel is live — extend it (mail row open,
+  store screen, clan screen via Party row) or implement honest /video shapes
+  if a future run taps Video. NO GameServer work (standing instruction).
