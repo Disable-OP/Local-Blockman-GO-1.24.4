@@ -1004,12 +1004,26 @@ def main():
                                 time.sleep(3)
                                 before = {(x.text, x.bounds)
                                           for x in screen.dump()}
-                                opt = next((x for x in screen.dump()
-                                            if (x.text or "").lower()
-                                            in ("male", "female")
+                                after = screen.dump()
+                                # evidence channel: what did the picker add?
+                                for x in after:
+                                    if (x.text or x.desc) and \
+                                            (x.text, x.bounds) not in before:
+                                        print("  [picker] %s text=%r desc=%r"
+                                              % (x.res.rsplit("/", 1)[-1]
+                                                 if x.res else "",
+                                                 x.text[:24], x.desc[:24]))
+                                opt = next((x for x in after
+                                            if ((x.text or "").lower()
+                                                in ("male", "female")
+                                                or "male" in (x.res or "").lower()
+                                                or "female" in (x.res or "").lower()
+                                                or "male" in (x.desc or "").lower()
+                                                or "female" in (x.desc or "").lower())
                                             and x.center
-                                            and (x.text, x.bounds)
-                                            not in before), None)
+                                            and (x.text, x.bounds) not in before), None)
+                                if not opt:
+                                    debug_dump(screen, "D-gender-picker")
                                 if opt:
                                     screen.tap_node(opt)
                                     time.sleep(1)
@@ -1031,6 +1045,16 @@ def main():
                                              "D-AfterGender")
                             if tap_label(screen, "Personal Profile"):
                                 time.sleep(3)
+                                if not any(x.cls.endswith("EditText")
+                                           for x in screen.dump()):
+                                    # the row may live below the fold —
+                                    # scroll the editor and retry once
+                                    adb.sh("input swipe 360 900 360 500 300")
+                                    time.sleep(2)
+                                    if not tap_label(screen,
+                                                     "Personal Profile"):
+                                        debug_dump(screen, "D-intro-row")
+                                    time.sleep(3)
                                 intro = "localqa intro %d" % (
                                     int(time.time()) % 100000)
                                 if fill_focused_edit(adb, screen, intro):
