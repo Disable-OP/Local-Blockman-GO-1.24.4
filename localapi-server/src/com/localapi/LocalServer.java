@@ -11,18 +11,17 @@ import java.net.Socket;
  * The server binds 127.0.0.1:18080 only — no traffic ever leaves the device.
  * Every failure is swallowed and logged: the game must boot even if the server fails.
  *
- * Boot resilience (v0.5.9, evidence: v0.5.8 redroid diagnostics): the app was
- * relaunched while a first instance was still alive and the second process
- * failed 5 bind attempts (EADDRINUSE) then gave up forever. Loopback traffic
- * was still served by the first process — but had that process died later,
- * the second would have had NO server and every API call would black-hole.
- * Fix: a lightweight daemon watchdog. While this process has no server:
- *   - probe 127.0.0.1:18080 with a real HTTP request; if a genuine LocalAPI
- *     server answers, stand by quietly (another process of ours is serving);
- *   - if nothing answers (holder died, or a junk socket holds the port),
- *     attempt a full boot so this process takes the port over.
- * State is JSON on disk in the shared app files dir, so a takeover serves the
- * exact same state — accounts, wallets, tokens all survive the handover.
+ * Boot resilience (v0.5.9, evidence: v0.5.8 redroid diagnostics): a second
+ * app process booted while the first was alive, failed 5 binds (EADDRINUSE)
+ * and gave up forever. Loopback traffic was still served by the first
+ * process — but had it died later, the second would have had NO server and
+ * every API call would black-hole. Fix: a persistent daemon watchdog that
+ * runs for the process's whole life and keeps the state machine healthy:
+ *   UP        — this process serves the port (quiet)
+ *   EXTERNAL  — a genuine LocalAPI holder answers HTTP — stand by
+ *   NO SERVER — nothing answers: full takeover boot
+ * State is JSON on disk in the shared app files dir, so a takeover serves
+ * the exact same state — accounts, wallets, tokens all survive the handover.
  */
 public final class LocalServer {
 
@@ -30,6 +29,8 @@ public final class LocalServer {
     private static volatile LocalHttpd httpd;
     /** Test hook: the host rig disables the watchdog to keep tests deterministic. */
     static volatile boolean watchdogEnabled = true;
+    /** One watchdog per process, no matter how often start() is called. */
+    private static volatile boolean watchdogRunning = false;
     /** Watchdog retry cadence (ms). */
     static final long WATCHDOG_INTERVAL_MS = 5000L;
 
@@ -41,10 +42,17 @@ public final class LocalServer {
 
     /**
      * Shared boot core (Context-free so the host JVM rig can drive it).
-     * Fast path: a few quick bind attempts for the common cold-start case.
-     * Then the daemon watchdog takes over (unless disabled by the test rig).
+     * Fast path: a synchronous bind for the common cold-start case (skipped
+     * entirely when a genuine holder already answers — secondary app
+     * processes start instantly instead of failing 5 binds). The persistent
+     * watchdog takes over from there.
      */
     static void start(final File filesDir, final int port) {
+        if (probeServing(port)) {
+            L.i("boot: another LocalAPI instance already serving 127.0.0.1:" + port);
+            startWatchdog(filesDir, port);
+            return;
+        }
         for (int attempt = 0; attempt < 5 && !isUp(); attempt++) {
             bootOnce(filesDir, port, attempt > 0 ? " (retry " + attempt + ")" : "");
             if (!isUp()) {
@@ -56,32 +64,42 @@ public final class LocalServer {
                 }
             }
         }
-        if (isUp() || !watchdogEnabled) {
+        startWatchdog(filesDir, port);
+    }
+
+    private static void startWatchdog(final File filesDir, final int port) {
+        if (!watchdogEnabled || watchdogRunning) {
             return;
         }
+        watchdogRunning = true;
         Thread wd = new Thread(new Runnable() {
             @Override public void run() {
-                int quiet = 0;
-                boolean announced = false;
-                while (watchdogEnabled && !isUp()) {
-                    boolean served = probeServing(port);
-                    if (served) {
-                        // A genuine LocalAPI instance owns the port right now.
-                        // Stand by silently; take over the moment it disappears.
-                        if (!announced) {
+                // Persistent self-healing loop (never exits while enabled).
+                // Covers the v0.5.8 evidence (lost bind race) AND the rarer
+                // in-process server death while the app process stays alive.
+                final int UP = 0, EXTERNAL = 1, NOSERVER = 2;
+                int state = -1;
+                while (watchdogEnabled && !Thread.currentThread().isInterrupted()) {
+                    int s;
+                    if (isUp()) {
+                        s = UP;
+                    } else if (probeServing(port)) {
+                        s = EXTERNAL;
+                    } else {
+                        s = NOSERVER;
+                    }
+                    if (s != state) {
+                        if (s == EXTERNAL) {
                             L.i("watchdog: another LocalAPI instance is serving 127.0.0.1:"
                                     + port + " — standing by");
-                            announced = true;
-                        }
-                        quiet++;
-                    } else {
-                        if (announced || quiet > 0) {
+                        } else if (s == NOSERVER) {
                             L.i("watchdog: no server answering on 127.0.0.1:" + port
-                                    + " — attempting takeover boot");
+                                    + " — booting");
                         }
-                        announced = false;
+                        state = s;
+                    }
+                    if (s == NOSERVER) {
                         bootOnce(filesDir, port, " (watchdog)");
-                        quiet = 0;
                     }
                     try {
                         Thread.sleep(WATCHDOG_INTERVAL_MS);
@@ -133,6 +151,11 @@ public final class LocalServer {
         } finally {
             try { s.close(); } catch (Throwable ignore) {}
         }
+    }
+
+    /** Host-rig only: reach the live server so a test can stop it beneath us. */
+    static LocalHttpd currentServer() {
+        return httpd;
     }
 
     public static boolean isRunning() {

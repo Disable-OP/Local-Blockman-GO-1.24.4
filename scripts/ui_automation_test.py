@@ -557,6 +557,40 @@ def main():
         except Exception as e:
             return {"__error": str(e)}
 
+    def server_up():
+        try:
+            return fcall("GET", "/config/files/blockymods-check-version").get("code") == 1
+        except Exception:
+            return False
+
+    # Phase C preflight / recovery: the embedded server lives INSIDE the app
+    # process. v0.5.9 run evidence: both app processes were SIGKILLed while
+    # the app sat idle between phases (no ActivityManager kill trace ->
+    # external/kernel kill, suspected container memory pressure), so Phase C
+    # hit a dead port and every check failed before it could run. Recover:
+    # relaunch the app (App.onCreate reboots the server from disk state) and
+    # wait for it to answer. The Phase C checks themselves stay untouched.
+    if not server_up():
+        print("  [recover] server not answering through the forward")
+        if not adb.pid(args.package):
+            print("  [recover] app process is dead - relaunching")
+        else:
+            print("  [recover] app alive but server down - force-stop + relaunch")
+            adb.sh("am force-stop %s" % args.package)
+            time.sleep(2)
+        adb.sh("am start -n %s/%s" % (args.package, args.activity))
+        time.sleep(12)
+        dismiss_permission_dialogs(screen)
+        deadline = time.time() + 90
+        while time.time() < deadline and not server_up():
+            time.sleep(2)
+        if server_up():
+            ok("C: recovered - embedded server answering after relaunch")
+        else:
+            fail("C: server never came up after relaunch (pre-flight)")
+    else:
+        ok("C: preflight - embedded server answering through the forward")
+
     qa_uid = "qa%05d" % (int(time.time()) % 100000)
     r1 = fcall("POST", "/user/api/v1/register",
                {"uid": qa_uid, "password": password, "confirmPassword": password,
@@ -707,16 +741,17 @@ def main():
     wmail = [m for m in m1.get("data", []) if "Welcome" in m.get("title", "")]
     check("C: welcome mail on-device", m1.get("code") == 1 and len(wmail) == 1
           and wmail[0]["attachment"][0]["qty"] == 500, str(m1)[:150])
-    wpre = fcall("GET", "/pay/api/v1/wealth/user", headers=auth_hdr).get("data", {})
-    m2 = fcall("PUT", "/mailbox/api/v1/mail/attachment?mailId=%d" % wmail[0]["id"],
-               None, headers=auth_hdr)
-    wpost = fcall("GET", "/pay/api/v1/wealth/user", headers=auth_hdr).get("data", {})
-    check("C: mail claim credits wallet", m2.get("code") == 1
-          and wpost.get("golds", 0) == wpre.get("golds", 0) + 500,
-          "%s | w %s -> %s" % (str(m2)[:80], wpre, wpost))
-    m3 = fcall("GET", "/mailbox/api/v1/mail/new", headers=auth_hdr)
-    check("C: mail/new false after claim", m3.get("code") == 1
-          and m3.get("data") is False, str(m3)[:100])
+    if wmail:
+        wpre = fcall("GET", "/pay/api/v1/wealth/user", headers=auth_hdr).get("data", {})
+        m2 = fcall("PUT", "/mailbox/api/v1/mail/attachment?mailId=%d" % wmail[0]["id"],
+                   None, headers=auth_hdr)
+        wpost = fcall("GET", "/pay/api/v1/wealth/user", headers=auth_hdr).get("data", {})
+        check("C: mail claim credits wallet", m2.get("code") == 1
+              and wpost.get("golds", 0) == wpre.get("golds", 0) + 500,
+              "%s | w %s -> %s" % (str(m2)[:80], wpre, wpost))
+        m3 = fcall("GET", "/mailbox/api/v1/mail/new", headers=auth_hdr)
+        check("C: mail/new false after claim", m3.get("code") == 1
+              and m3.get("data") is False, str(m3)[:100])
 
     # ------------------------------------------------- assertions
     print("== assertions ==")

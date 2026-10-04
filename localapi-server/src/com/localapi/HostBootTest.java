@@ -60,6 +60,21 @@ public final class HostBootTest {
             LocalServer.start(dir, port); // fast path fails (holder); watchdog stands by
             System.out.println("STANDBY WATCHDOG RUNNING");
             Thread.sleep(30000);
+        } else if ("resurrect".equals(mode)) {
+            // Cold boot succeeds, then the server is stopped UNDERNEATH the
+            // process (as if NanoHTTPD died while the app kept running). The
+            // persistent watchdog must notice and re-boot within a few cycles.
+            LocalServer.start(dir, port);
+            System.out.println("RESURRECT STARTED");
+            Thread.sleep(2000);
+            LocalHttpd h = LocalServer.currentServer();
+            if (h != null) {
+                h.stop();
+                System.out.println("RESURRECT STOPPED");
+            } else {
+                System.out.println("RESURRECT NO-SERVER");
+            }
+            Thread.sleep(60000);
         } else {
             System.err.println("unknown mode: " + mode);
             System.exit(2);

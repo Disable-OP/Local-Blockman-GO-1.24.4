@@ -32,6 +32,12 @@ public class LocalHttpd extends NanoHTTPD {
         this.started = true;
     }
 
+    @Override
+    public void stop() {
+        this.started = false;
+        super.stop();
+    }
+
     public boolean isUp() {
         return started;
     }
@@ -40,6 +46,13 @@ public class LocalHttpd extends NanoHTTPD {
     public Response serve(final IHTTPSession session) {
         final String verb = session.getMethod().name();
         final String uri = session.getUri();
+
+        // LocalServer.probeServing() liveness probe — answer silently (no REQ/
+        // RES/UNMAPPED log noise in the diagnostics, the probe runs every few
+        // seconds from every non-holder app process).
+        if (uri != null && uri.endsWith("/health")) {
+            return respond("{\"code\":1,\"data\":\"ok\"}");
+        }
 
         // Uploaded files are served back at /files/<id> (the URL returned by
         // the upload handlers). Plain GET, served before the Retrofit routing.

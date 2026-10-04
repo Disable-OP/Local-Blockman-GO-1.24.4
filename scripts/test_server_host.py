@@ -1637,6 +1637,53 @@ def main():
         except Exception:
             sb.kill()
 
+    print("== boot resilience: in-process server death self-heals ==")
+    # The watchdog is PERSISTENT (runs for the process's whole life): if the
+    # HTTPD dies while the app process stays alive, it must notice (its state
+    # machine goes UP -> NO SERVER) and re-boot. HostBootTest "resurrect"
+    # stops the live server 2s after boot; the rig watches up -> down -> up.
+    port3 = random.randint(20000, 40000)
+    while port3 in (PORT, port2):
+        port3 = random.randint(20000, 40000)
+    state_r = tempfile.mkdtemp(prefix="localapi-resurrect-")
+    res_log = open(os.path.join(state_r, "res.log"), "wb")
+    res = subprocess.Popen(
+        ["java", "-cp", HOST_CP, "com.localapi.HostBootTest", state_r,
+         str(port3), "resurrect"],
+        stdout=res_log, stderr=subprocess.STDOUT)
+    try:
+        base3 = "http://127.0.0.1:%d" % port3
+        saw_up = saw_down = up_again = False
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            try:
+                v = call("GET", "/config/files/blockymods-check-version", base=base3)
+                serving = v.get("code") == 1
+            except Exception:
+                serving = False
+            if serving:
+                if not saw_up:
+                    saw_up = True
+                elif saw_down:
+                    up_again = True
+                    break
+            elif saw_up:
+                saw_down = True
+            time.sleep(0.4)
+        check("resurrect: initial boot observed", saw_up)
+        check("resurrect: in-process stop observed", saw_down)
+        check("watchdog resurrects after in-process death", up_again)
+        if up_again:
+            u = call("POST", "/user/api/v1/visitor", {"imei": "resqa1"}, base=base3)
+            check("post-resurrect visitor ok", u.get("code") == 1
+                  and bool(u.get("data", {}).get("accessToken")), str(u)[:120])
+    finally:
+        res.terminate()
+        try:
+            res.wait(timeout=5)
+        except Exception:
+            res.kill()
+
     print("\nRESULT: %d passed, %d failed" % (len(passed), len(failed)))
     if failed:
         print("failed:", failed)

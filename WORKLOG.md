@@ -606,3 +606,40 @@
 - Next: verify v0.5.9 CI green, pull the new diagnostics, error-driven pass
   over whatever the settings/account surfaces and game sub-tabs add.
   NO GameServer work (standing instruction).
+
+## Session 11 (cont.) — v0.5.9 redroid RED: both app processes SIGKILLed; self-heal wave (2026-10-04)
+
+- v0.5.9-resilient redroid run FAILED: Phase A + deep drive fully green
+  (16 new endpoint paths incl. the new rank sub-tab probes), then BOTH app
+  processes were SIGKILLed at 10:21:25.6 while the app sat IDLE on
+  FriendInfoActivity (no crash-buffer entry, no ActivityManager "Killing"
+  line -> external/kernel kill; kernel OOM in the redroid container is the
+  leading theory). Phase C then hit a dead port: every adb-forward call
+  failed "Remote end closed connection", and the script crashed indexing an
+  empty mail list (IndexError at the mailbox claim).
+- Root-cause forensics channel added: CI diagnostics now capture the
+  logcat EVENTS buffer (am_kill/am_proc_died/am_anr) + /proc/meminfo +
+  dumpsys meminfo — the next incident will name its killer.
+- Automation hardening (Phase C preflight): probe the server through the
+  forward BEFORE Phase C; if it is down, relaunch the app (App.onCreate
+  reboots the server from disk state) and wait up to 90s. Phase C checks
+  themselves unchanged — recovery then real verification, not fake green.
+  Mailbox-claim block made defensive (no more IndexError when the register
+  step failed; the failed checks still FAIL the run).
+- LocalServer second wave (self-healing): the watchdog is now PERSISTENT
+  (runs for the whole process life, one per process): UP -> quiet,
+  EXTERNAL (genuine LocalAPI holder answers /health) -> stand by,
+  NO SERVER -> full takeover boot. Covers in-process server death while
+  the app process stays alive. LocalHttpd answers the /health probe
+  silently (no UNMAPPED/REQ/RES log noise) and overrides stop() so isUp()
+  reflects reality. Secondary app processes skip the 5x bind fast path
+  entirely when a genuine holder already answers.
+- Host rig 333/333 (new: resurrect — in-process server stop must be
+  noticed and re-booted by the watchdog; post-resurrect visitor flow OK).
+- v0.5.9 tag note: it shipped the FIRST-wave watchdog only (5 failed binds
+  then an exiting watchdog); the events buffer would still have been
+  needed for the killer. The group SIGKILL killed the standby process too,
+  so even a persistent watchdog could not have saved that run — the
+  automation-level recovery is the real fix for CI.
+- Next: tag v0.5.10-selfheal; verify green; pull the NEW diagnostics
+  (events buffer!) and identify the killer if it recurs.

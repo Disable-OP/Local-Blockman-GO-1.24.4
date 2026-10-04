@@ -88,7 +88,10 @@ jobs:
           mkdir -p diags
           adb -s localhost:5555 logcat -d > diags/logcat.txt || true
           adb -s localhost:5555 logcat -d -b crash > diags/crash.txt || true
+          adb -s localhost:5555 logcat -d -b events > diags/events.txt || true
           adb -s localhost:5555 logcat -d -s LocalAPI > diags/localapi.txt || true
+          adb -s localhost:5555 shell cat /proc/meminfo > diags/meminfo.txt || true
+          adb -s localhost:5555 shell dumpsys meminfo > diags/meminfo-app.txt || true
           adb -s localhost:5555 shell uiautomator dump /sdcard/final_ui.xml >/dev/null 2>&1 || true
           adb -s localhost:5555 pull /sdcard/final_ui.xml diags/final_ui.xml || true
           adb -s localhost:5555 shell dumpsys activity processes > diags/processes.txt || true
