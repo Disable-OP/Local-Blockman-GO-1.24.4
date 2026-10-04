@@ -203,7 +203,49 @@ def assert_alive(adb, package, stage):
     return True
 
 
-def deep_drive(adb, screen, package, tag, paths_before):
+def relaunch_and_wait(adb, screen, package, activity, tag):
+    """force-stop + launch + wait for a known main-screen state. Shared by
+    the deep-drive recovery, Phase B entry and Phase D's clean_relaunch.
+    The am start can be silently swallowed by a transient adbd hiccup
+    (v0.5.19 run evidence: force-stop logged, no Start proc, no traceback)
+    - print the launch output and retry until the process exists. If the
+    process exists but the main screen never appears (splash stall, another
+    task in front - run 37216002760 showed Gallery3D foreground after the
+    app fired an image PICK during its kick self-relaunch), ONE more full
+    force-stop + launch cycle is attempted before giving up."""
+    for cycle in range(2):
+        adb.sh("am force-stop %s" % package)
+        time.sleep(3)
+        pid = None
+        for attempt in range(3):
+            out = adb.sh("am start -n %s/%s" % (package, activity),
+                         timeout=45)
+            print("  [am start #%d] %s" % (attempt + 1,
+                                           (out or "").strip()[:160]))
+            deadline = time.time() + 30
+            while time.time() < deadline:
+                pid = adb.pid(package)
+                if pid:
+                    break
+                time.sleep(2)
+            if pid:
+                break
+            time.sleep(3)
+        if not pid:
+            return False
+        time.sleep(12)
+        dismiss_permission_dialogs(screen)
+        up = bool(screen.wait_for(ids=["rgBottom", "rb_1", "flHomePage"],
+                                  timeout=90, poll=3))
+        if up:
+            return True
+        if cycle == 0:
+            print("  [retry] %s: main screen not reached (pid=%s) - one "
+                  "more full relaunch cycle" % (tag, pid or "none"))
+    return False
+
+
+def deep_drive(adb, screen, package, activity, tag, paths_before):
     """Deeper UI driving: visit labeled Me-tab rows (Inbox / Top Up /
     Ranking), the game-category tab (rb_2, with a safe row probe),
     discovery dumps for rb_3/rb_4, open a game card from Home, and print
@@ -220,7 +262,24 @@ def deep_drive(adb, screen, package, tag, paths_before):
         if back:
             adb.key(4)  # BACK
             time.sleep(2)
-        return assert_alive(adb, package, "%s-%s" % (tag, label.replace(" ", "")))
+        return alive_or_recover("%s-%s" % (tag, label.replace(" ", "")))
+
+    def alive_or_recover(stage):
+        """assert_alive with defense in depth: the native-kill family has
+        SIGKILLed the app mid-deep-drive (run 37223386226: fg TOP death,
+        no am_kill/crash/ANR - the documented roaming killer). A death is
+        recorded as evidence and the app is relaunched so the drive can
+        continue; a genuine server-induced crash would still show in the
+        crash scan and the LocalAPI diagnostics."""
+        if adb.pid(package):
+            ok("alive at %s (pid %s)" % (stage, adb.pid(package)))
+            return True
+        print("  [evidence] process died at stage: %s - relaunching "
+              "(native-kill family signature)" % stage)
+        if relaunch_and_wait(adb, screen, package, activity, stage):
+            ok("recovered after death at %s" % stage)
+            return True
+        return False
 
     # Me tab rows (labels verified from the on-device UI dump)
     more = screen.find(ids=["rb_5"])
@@ -239,14 +298,14 @@ def deep_drive(adb, screen, package, tag, paths_before):
         if inbox and inbox.center:
             screen.tap_node(inbox)
             time.sleep(6)
-            assert_alive(adb, package, "%s-Inbox" % tag)
+            alive_or_recover("%s-Inbox" % tag)
             row = screen.find(texts=["Welcome"], contains=["welcome"])
             if row and row.center:
                 screen.tap_node(row)
                 time.sleep(5)
                 adb.key(4)  # back to the list
                 time.sleep(2)
-                assert_alive(adb, package, "%s-MailRow" % tag)
+                alive_or_recover("%s-MailRow" % tag)
             adb.key(4)  # back to Me
             time.sleep(2)
         visit("Top Up", 6)         # recharge screen (pay products path)
@@ -261,12 +320,12 @@ def deep_drive(adb, screen, package, tag, paths_before):
         if prof and prof.center:
             screen.tap_node(prof)
             time.sleep(6)
-            assert_alive(adb, package, "%s-Profile" % tag)
+            alive_or_recover("%s-Profile" % tag)
             more = screen.find(ids=["ibMore"])
             if more and more.center:
                 screen.tap_node(more)
                 time.sleep(6)
-                assert_alive(adb, package, "%s-MoreSettings" % tag)
+                alive_or_recover("%s-MoreSettings" % tag)
                 # discovery channel: the settings screen's rows carry no
                 # "account" text (probe found nothing in v0.5.13) — dump the
                 # identified nodes so the next wave can target the real ids
@@ -282,12 +341,12 @@ def deep_drive(adb, screen, package, tag, paths_before):
                     time.sleep(5)
                     adb.key(4)
                     time.sleep(2)
-                    assert_alive(adb, package, "%s-MoreAccount" % tag)
+                    alive_or_recover("%s-MoreAccount" % tag)
                 adb.key(4)  # back to profile
                 time.sleep(2)
             adb.key(4)  # back to Me
             time.sleep(2)
-            assert_alive(adb, package, "%s-ProfileBack" % tag)
+            alive_or_recover("%s-ProfileBack" % tag)
     # DRESSING tab (rb_2, ids verified from the 5j on-device dump): tap the
     # filter chips so the wardrobe lists fire through the real client —
     # rb_clothes/rb_accessories/rb_character/rb_function are the first-level
@@ -306,14 +365,14 @@ def deep_drive(adb, screen, package, tag, paths_before):
             n = screen.find(ids=[chip])
             if n and screen.tap_node(n):
                 time.sleep(4)
-                assert_alive(adb, package, "%s-dress-%s" % (
+                alive_or_recover("%s-dress-%s" % (
                     tag, chip.replace("rb_", "")))
             else:
                 print("  [skip] dressing chip %s not found" % chip)
         suit = screen.find(ids=["rbSuit"])
         if suit and screen.tap_node(suit):
             time.sleep(5)
-            assert_alive(adb, package, "%s-dress-suit" % tag)
+            alive_or_recover("%s-dress-suit" % tag)
     # FRIENDS/CLANS tab (rb_3, ids from the 5j dump): open the two search
     # rows ("Find Friends" / "Find Clans") — both lead to list/search
     # screens (friend search, clan search), no engine surface behind them.
@@ -331,12 +390,12 @@ def deep_drive(adb, screen, package, tag, paths_before):
             n = screen.find(texts=[label])
             if n and screen.tap_node(n):
                 time.sleep(5)
-                assert_alive(adb, package, "%s-%s" % (tag, stage))
+                alive_or_recover("%s-%s" % (tag, stage))
                 adb.key(4)  # back to the tab
                 time.sleep(2)
             else:
                 print("  [skip] '%s' row not found" % label)
-        assert_alive(adb, package, "%s-tab3-done" % tag)
+        alive_or_recover("%s-tab3-done" % tag)
     # Discovery-only dump for the chat tab (no taps beyond the tab itself)
     tab4 = screen.find(ids=["rb_4"])
     if tab4 and screen.tap_node(tab4):
@@ -346,7 +405,7 @@ def deep_drive(adb, screen, package, tag, paths_before):
                 print("  tab4] %s | text=%r desc=%r" % (
                     x.res.rsplit("/", 1)[-1] if x.res else "",
                     x.text[:24], x.desc[:24]))
-        assert_alive(adb, package, "%s-tab4" % tag)
+        alive_or_recover("%s-tab4" % tag)
     # Home tab: tap the first tappable card above the bottom nav
     home = screen.find(ids=["rb_1"])
     if home and screen.tap_node(home):
@@ -365,7 +424,7 @@ def deep_drive(adb, screen, package, tag, paths_before):
         if card:
             screen.tap_node(card)
             time.sleep(8)          # game detail fires its whole surface
-            assert_alive(adb, package, "%s-gamedetail" % tag)
+            alive_or_recover("%s-gamedetail" % tag)
             # game-detail sub-screens (rank / comments) — best-effort probes;
             # labels may vary per game detail layout, BACK always recovers
             for sub in ("rank", "comment"):
@@ -375,10 +434,10 @@ def deep_drive(adb, screen, package, tag, paths_before):
                     time.sleep(5)
                     adb.key(4)
                     time.sleep(2)
-                    assert_alive(adb, package, "%s-gamesub-%s" % (tag, sub))
+                    alive_or_recover("%s-gamesub-%s" % (tag, sub))
             adb.key(4)
             time.sleep(2)
-            assert_alive(adb, package, "%s-gamecard" % tag)
+            alive_or_recover("%s-gamecard" % tag)
         else:
             print("  [skip] no home card candidate found")
     added = sorted(set(localapi_paths(adb)) - paths_before)
@@ -388,11 +447,20 @@ def deep_drive(adb, screen, package, tag, paths_before):
     # Return the app to a SAFE screen. Evidence (v0.5.9/0511/0513): all three
     # between-phase SIGKILL incidents happened while the app sat IDLE on
     # FriendInfoActivity (the rank/comment probes can land there); the runs
-    # that ended on Home/Me survived. Land on Home before the next phase.
+    # that ended on Home/Me survived. Land on Home before the next phase -
+    # and if Home is not actually reached (stranded on a foreign activity,
+    # run 37222222759 evidence), relaunch into the known main state.
     home_tab = screen.find(ids=["rb_1"])
+    landed = False
     if home_tab and home_tab.center:
         screen.tap_node(home_tab)
         time.sleep(3)
+        landed = bool(screen.wait_for(ids=["flHomePage"], timeout=25,
+                                      poll=3))
+    if not landed:
+        print("  [evidence] deep-drive end did not land on Home - "
+              "relaunching into the known main state")
+        relaunch_and_wait(adb, screen, package, activity, "%s-landhome" % tag)
     return added
 
 
@@ -448,7 +516,8 @@ def main():
         finish()
     ok("A: main screen reached without manual login (visitor account)")
     navigate_all_tabs(adb, screen, args.package, "A")
-    deep_drive(adb, screen, args.package, "A", set(localapi_paths(adb)))
+    deep_drive(adb, screen, args.package, args.activity, "A",
+               set(localapi_paths(adb)))
     paths_a = localapi_paths(adb)
     visitor_hits = [p for p in paths_a if any(
         k in p for k in ("/tourist", "/visitor", "/auth-token", "/login"))]
@@ -660,7 +729,17 @@ def main():
         assert_alive(adb, package, "%s-NickSaved" % tag)
         return "edited"
 
-    if open_personal_info_editor(adb, screen, args.package, "B"):
+    editor_up = open_personal_info_editor(adb, screen, args.package, "B")
+    if not editor_up:
+        # Evidence 37222222759: the rank/comment probes can strand the app
+        # on FriendInfoActivity (no bottom nav -> rb_5 unfindable). Start
+        # from the known main state and retry once before giving up.
+        print("  [retry] editor not reached - relaunch into the main state")
+        if relaunch_and_wait(adb, screen, args.package, args.activity,
+                             "B-editor"):
+            editor_up = open_personal_info_editor(adb, screen, args.package,
+                                                  "B")
+    if editor_up:
         outcome_b = editor_nickname_drive(adb, screen, args.package, "B",
                                           nickname)
         print("  [outcome] guest nickname drive: %s" % outcome_b)
@@ -961,47 +1040,10 @@ def main():
         return None
 
     def clean_relaunch(stage):
-        """force-stop + launch + wait for main - a known screen state.
-        The am start can be silently swallowed by a transient adbd hiccup
-        (v0.5.19 run evidence: force-stop logged, no Start proc, no
-        traceback) — print the launch output and retry until the process
-        exists before waiting for the main screen.
-        If the process exists but the main screen never appears (splash
-        stall, another task in front — run 37216002760 showed Gallery3D
-        foreground after the app fired an image PICK during its kick
-        self-relaunch), ONE more full force-stop + launch cycle is
-        attempted before giving up."""
-        for cycle in range(2):
-            adb.sh("am force-stop %s" % args.package)
-            time.sleep(3)
-            pid = None
-            for attempt in range(3):
-                out = adb.sh("am start -n %s/%s" % (args.package,
-                                                    args.activity),
-                             timeout=45)
-                print("  [am start #%d] %s" % (attempt + 1,
-                                               (out or "").strip()[:160]))
-                deadline = time.time() + 30
-                while time.time() < deadline:
-                    pid = adb.pid(args.package)
-                    if pid:
-                        break
-                    time.sleep(2)
-                if pid:
-                    break
-                time.sleep(3)
-            if not pid:
-                return False
-            time.sleep(12)
-            dismiss_permission_dialogs(screen)
-            up = bool(screen.wait_for(ids=["rgBottom", "rb_1", "flHomePage"],
-                                      timeout=90, poll=3))
-            if up and assert_alive(adb, args.package, stage):
-                return True
-            if cycle == 0:
-                print("  [retry] %s: main screen not reached "
-                      "(pid=%s) - one more full relaunch cycle" %
-                      (stage, pid or "none"))
+        """force-stop + launch + wait for main - a known screen state
+        (shared implementation with the deep-drive recovery)."""
+        if relaunch_and_wait(adb, screen, args.package, args.activity, stage):
+            return assert_alive(adb, args.package, stage)
         return False
 
     # The guest rename in Phase B ends in the native kick whose
