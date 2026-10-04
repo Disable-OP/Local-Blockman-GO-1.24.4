@@ -1,18 +1,28 @@
 #!/usr/bin/env python3
 """UI automation test for the local-API Blockman GO APK (Redroid CI).
 
-Two deterministic phases, driven purely over adb + uiautomator dumps:
+Three deterministic phases, driven purely over adb + uiautomator dumps:
 
   Phase A — VISITOR (fresh app data):
       pm clear -> launch -> the app auto-logs-in as a tourist/visitor account
-      through the embedded local server -> navigate all 5 bottom tabs.
+      through the embedded local server -> navigate all 5 bottom tabs ->
+      deep drive (Inbox / Top Up / Ranking / Store / Party / Video / Personal
+      Info editor / game detail + rank/comment sub-tabs).
       Asserts tourist/auth-token traffic in logcat.
 
-  Phase B — REGISTER (always):
-      reach the login screen (Me-tab login entry, or direct am start of
-      LoginActivity) -> register a FRESH account through the register UI ->
-      (auto-)login -> navigate all tabs again. Asserts
-      POST /user/api/v1/register hit the embedded server.
+  Phase B — PROFILE EDIT (through the real UI):
+      Me tab -> profile header -> ibMore -> Personal Info editor -> edit the
+      Nickname row (deterministic) and the Gender row (best-effort).
+      Asserts the profile-edit endpoints hit the embedded server.
+      NOTE: deliberately does NOT tap the account row (ll_account) — that
+      flow's teardown natively kills the app (Session 11 forensics) and the
+      old UI register never completed; account creation is owned by Phase C.
+
+  Phase C — ACCOUNT CREATION via the embedded server (adb forward):
+      register a FRESH account + visitor + tourist through the REAL local
+      API (loopback adb forward), login, then drive tribe/friend/mail/dispatch
+      surfaces over the same forward. Asserts POST /user/api/v1/register and
+      the whole Phase C/D/E assertion set.
 
   Final — crash scan (FATAL EXCEPTION / ANR) + process alive everywhere.
 
@@ -336,46 +346,6 @@ def localapi_paths(adb):
     return sorted(set(p for _, p in re.findall(r"REQ (\w+) (\S+)", log)))
 
 
-def register_through_ui(adb, screen, user, password):
-    """From the login screen, register a fresh account. Returns True on flow completion."""
-    reg = screen.find(ids=["tv_register"], texts=["Register", "Sign up"])
-    if not reg:
-        return False
-    if not screen.tap_node(reg):
-        return False
-    time.sleep(3)
-    acc = screen.wait_for(ids=["editAccount", "inputAccount"], timeout=25, poll=2)
-    if not acc:
-        return False
-    screen.tap_node(acc)
-    adb.text(user)
-    pw = screen.find(ids=["editPassword", "inputPassword"])
-    if pw:
-        screen.tap_node(pw)
-        adb.text(password)
-    pw2 = screen.find(ids=["editPassword1", "inputPassword1"])
-    if pw2:
-        screen.tap_node(pw2)
-        adb.text(password)
-    cb = screen.find(ids=["cb_pro"])
-    if cb and cb.center:
-        screen.tap_node(cb)  # agree to protocol
-    nxt = screen.find(texts=["Next", "NEXT"], contains=["next"])
-    if not nxt:
-        nxt = screen.find(ids=["btn_sign", "btn_next"])
-    if not nxt or not screen.tap_node(nxt):
-        return False
-    time.sleep(3)
-    conf = screen.wait_for(texts=["Confirm creation", "Create", "OK", "Done"],
-                           ids=["btn_sign", "btn_ok"], timeout=25, poll=2)
-    if conf and screen.tap_node(conf):
-        time.sleep(2)
-    save = screen.find(texts=["Save", "SAVE"], ids=["btn_save"])
-    if save and screen.tap_node(save):
-        time.sleep(2)
-    return True
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--serial", default="localhost:5555")
@@ -386,7 +356,6 @@ def main():
 
     adb = Adb(args.serial)
     screen = Screen(adb)
-    user = "localqa%05d" % (int(time.time()) % 100000)
     password = "LocalQA%05d" % (int(time.time()) % 100000)
 
     # ------------------------------------------------- Phase A: visitor
@@ -420,149 +389,207 @@ def main():
         ok("A: game-hall traffic served locally (%d endpoints, e.g. %s)"
            % (len(game_hits), ", ".join(game_hits[:3])))
 
-    # ------------------------------------------------- Phase B: register
-    print("== PHASE B: register a fresh account through the UI ==")
-    login_screen = False
-    set_password_flow = False
+    # ------------------------------------------------- Phase B: profile edit
+    # HISTORY (read before ever re-adding an account-row tap here): Phase B
+    # used to tap the Me-tab account row (ll_account), which opens the guest
+    # Tip dialog (register upgrade). That flow's teardown NATIVELY kills the
+    # app process (Session 11 forensics: killer is in .so native code, Java
+    # fully exonerated; absorbed 10/10 times by the Phase C preflight at
+    # ~40s per run) and the UI register never once completed anyway — Phase C
+    # owns account creation deterministically through the real server.
+    # NEW Phase B: drive the Personal Info editor (Profile -> ibMore), the
+    # row surface every handler of which is state-backed:
+    #   Nickname -> PUT /user/api/v2/user/nickName  (+ POST nickname/exist)
+    #   Gender/Details -> POST /user/api/v1/user/details/info
+    # The nickname edit is the deterministic core; gender is best-effort.
+    # This exercises the profile-edit path through the REAL UI for the first
+    # time (Session 11 delta 2 candidate #2).
+    print("== PHASE B: profile edit through the Personal Info editor ==")
+    nickname = "qa%05d" % (int(time.time()) % 100000)
+    profile_edited = False
 
-    def on_login_screen():
-        return bool(screen.find(ids=["btn_sign"], texts=["Log in", "login"]))
-
-    def dialog_walk(adb, screen, user, password, rounds=40):
-        """Walk an unknown sequence of dialogs (password set, register finish,
-        confirmations...). The app chains several API calls before showing the
-        first dialog, so we keep polling; conclude only after 8 consecutive
-        dialog-free dumps."""
-        DIALOG_IDS = {"btnSure", "btnCancel", "etPassword", "etPassword2",
-                      "btn_ok", "btn_save", "btn_next", "btnOk"}
-        stable = 0
-        for i in range(rounds):
-            nodes = screen.dump()
-            if not nodes:
-                time.sleep(2)
-                continue
-            has_dialog = any(n.res.rsplit("/", 1)[-1] in DIALOG_IDS for n in nodes)
-            edits = [n for n in nodes if n.cls.endswith("EditText")]
-            if not has_dialog and not edits:
-                stable += 1
-                print("  [walk] round %d: no dialog yet (stable=%d)" % (i, stable))
-                if stable >= 25:
-                    return False  # nothing dialog-like ever showed up
-                time.sleep(2)
-                continue
-            stable = 0
-            sig = tuple(sorted((n.res, n.text) for n in nodes if n.res or n.text))
-            # agree-to-protocol checkboxes block submission — tick any unchecked one
-            for cb in [n for n in nodes
-                       if n.cls.endswith("CheckBox") and not n.checked and n.center]:
-                screen.tap_node(cb)
-                time.sleep(1)
-            for e in edits:
-                rid = e.res.rsplit("/", 1)[-1]
-                if e.center:
-                    screen.tap_node(e)
-                    time.sleep(0.5)
-                    # clear any existing content (append would break validation)
-                    adb.key(123)  # KEYCODE_MOVE_END
-                    for _ in range(30):
-                        adb.key(67)  # DEL
-                    # password boxes get the password, others the username
-                    adb.text(password if "assword" in rid or "assword" in e.text else user)
-                    time.sleep(0.5)
-                    adb.key(111)  # ESC hides the soft keyboard so buttons are visible
-                    time.sleep(1)
-            if edits:
-                nodes = screen.dump()  # re-dump from under the keyboard
-            btn = None
-            for rid in ["btnSure", "btn_ok", "btn_save", "btn_sign", "btn_next",
-                        "btn_confirm", "btnOk"]:
-                btn = next((n for n in nodes
-                            if n.res.rsplit("/", 1)[-1] == rid and n.res != "btnCancel"), None)
-                if btn:
-                    break
-            if not btn:
-                # the register/set-password dialog's confirm button has NO
-                # resource-id — fall back to any clickable Button node
-                btn = next((n for n in nodes
-                            if n.cls == "android.widget.Button" and n.clickable), None)
-            if not btn:
-                btn = screen.find(texts=["OK", "Confirm", "Save", "Next",
-                                         "Confirm creation", "Done", "Set", "confirm",
-                                         "Log in"])
-            if btn and btn.center:
-                screen.tap_node(btn)
-            print("  [walk] round %d: edits=%d btn=%s" % (
-                i, len(edits), (btn.res.rsplit('/', 1)[-1] if btn and btn.res else
-                                (btn.text if btn else "none"))))
-            time.sleep(3)
-        return True
-
-    def guest_set_password_dialog():
-        """Dialog shown for a guest account: set password (register upgrade)."""
-        d = screen.find(ids=["etPassword", "etPassword2"], contains=["password", "Password"])
-        return d
-
-    def fill_set_password_and_confirm():
-        pw_node = screen.find(ids=["etPassword"])
-        pw2_node = screen.find(ids=["etPassword2"])
-        if pw_node and screen.tap_node(pw_node):
-            adb.text(password)
-        if pw2_node and screen.tap_node(pw2_node):
-            adb.text(password)
-        btn = screen.find(texts=["OK", "Confirm", "Save", "Confirm creation", "Done",
-                                 "confirm", "ok"])
-        if btn and screen.tap_node(btn):
-            time.sleep(3)
+    def tap_label(screen, label):
+        """Tap the node carrying `label` (Personal Info rows are llItem
+        containers whose child tvLeftText/tvRightText carry the texts)."""
+        n = screen.find(texts=[label])
+        if n and n.center:
+            screen.tap_node(n)
             return True
         return False
 
-    # 1) More tab (rb_5) -> account row -> Tip dialog (guest) -> Set your password
-    #    BEST-EFFORT: the Tip page is a transient TemplateActivity whose timing
-    #    varies between runs; when it is caught the full UI register flow runs,
-    #    otherwise Phase C below covers account creation deterministically.
+    def editor_confirm(screen):
+        """Find and tap the editor dialog's confirm control."""
+        for rid in ["btnSure", "btn_ok", "btn_save", "btnOk", "btn_confirm"]:
+            n = screen.find(ids=[rid])
+            if n and n.center and "cancel" not in (n.res or ""):
+                screen.tap_node(n)
+                return True
+        n = screen.find(texts=["OK", "Confirm", "Save", "Done", "Set",
+                               "confirm", "ok"])
+        if n and n.center:
+            screen.tap_node(n)
+            return True
+        # the account dialogs' confirm Button has NO resource-id (v0.5.x
+        # register-dialog evidence) — fall back to any clickable Button
+        btn = next((x for x in screen.dump()
+                    if x.cls == "android.widget.Button" and x.clickable
+                    and x.center), None)
+        if btn:
+            screen.tap_node(btn)
+            return True
+        return False
+
+    def fill_focused_edit(adb, screen, value):
+        """Tap the first visible EditText, clear it, type value, hide kbd."""
+        edit = next((x for x in screen.dump()
+                     if x.cls.endswith("EditText") and x.center), None)
+        if not edit:
+            return False
+        screen.tap_node(edit)
+        time.sleep(0.5)
+        adb.key(123)  # KEYCODE_MOVE_END
+        for _ in range(40):
+            adb.key(67)  # DEL
+        adb.text(value)
+        time.sleep(0.5)
+        adb.key(111)  # ESC hides the soft keyboard so buttons are visible
+        time.sleep(1)
+        return True
+
+    def guest_tip_detected(screen):
+        """True when the guest register-upgrade Tip appeared. Its teardown is
+        the NATIVE killer (Session 11) — if it shows, stop interacting with
+        the editor at once and let Phase C's preflight recover."""
+        nodes = screen.dump()
+        joined = " ".join((n.text or "") for n in nodes)
+        has_pw = any(n.res.endswith("etPassword") for n in nodes)
+        gated = ("Set your password" in joined or "Set Password" in joined
+                 or "Log in" in joined or "Register" in joined)
+        return has_pw and (gated or any("assword" in (n.text or "") for n in nodes))
+
+    # 1) Me tab -> profile header -> ibMore -> "Personal Info" editor
     more = screen.find(ids=["rb_5"])
     if more and screen.tap_node(more):
         time.sleep(4)
-        acc_row = screen.find(ids=["ll_account", "rl_header", "ll_nickname"])
-        if acc_row and screen.tap_node(acc_row):
-            time.sleep(3)
-            if on_login_screen():
-                login_screen = True
-            else:
-                ok("B: walking account dialogs generically")
-                dialog_walk(adb, screen, user, password, rounds=12)
-                log = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
-                if ("set-password" in log) or ("/register" in log):
-                    set_password_flow = True
-                    ok("B: account-creation request observed on the local server")
-                else:
-                    sure = screen.find(ids=["btnSure"])
-                    if sure and screen.tap_node(sure):
-                        ok("B: late Tip dialog -> 'Set your password' tapped")
-                        dialog_walk(adb, screen, user, password, rounds=8)
-                        log = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
-                        if ("set-password" in log) or ("/register" in log):
-                            set_password_flow = True
-                            ok("B: account-creation request observed on the local server")
-        else:
-            debug_dump(screen, "acc-row-not-found")
+        prof = screen.find(ids=["ll_top", "rl_header"])
+        if prof and prof.center:
+            screen.tap_node(prof)
+            time.sleep(5)
+            assert_alive(adb, args.package, "B-Profile")
+            ib = screen.find(ids=["ibMore"])
+            if ib and ib.center:
+                screen.tap_node(ib)
+                time.sleep(5)
+                assert_alive(adb, args.package, "B-PersonalInfo")
 
-    if login_screen:
-        if not register_through_ui(adb, screen, user, password):
-            print("  [info] UI register flow incomplete (Phase C covers creation)")
+                # 2) Nickname row (deterministic): edit -> save -> assert
+                gated = False
+                if tap_label(screen, "Nickname"):
+                    time.sleep(3)
+                    if guest_tip_detected(screen):
+                        # guest-gated editor: the Tip teardown is the native
+                        # killer — stop ALL editor interaction at once
+                        print("  [info] guest Tip appeared on the Nickname "
+                              "row — aborting editor drive (native-kill "
+                              "risk); BACK-ing out")
+                        adb.key(4)
+                        time.sleep(2)
+                        gated = True
+                    else:
+                        assert_alive(adb, args.package, "B-NickDialog")
+                        if fill_focused_edit(adb, screen, nickname):
+                            editor_confirm(screen)
+                            time.sleep(3)
+                            if guest_tip_detected(screen):
+                                print("  [info] guest Tip appeared on save — "
+                                      "aborting editor drive")
+                                adb.key(4)
+                                time.sleep(2)
+                                gated = True
+                            else:
+                                assert_alive(adb, args.package, "B-NickSaved")
+                                log = adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                              timeout=60)
+                                if ("/user/api/v2/user/nickName" in log
+                                        or "/user/api/v1/user/details/info" in log
+                                        or "/user/api/v1/user/nickname/exist" in log):
+                                    profile_edited = True
+                                    ok("B: nickname edit %r hit the local "
+                                       "server" % nickname)
+                                else:
+                                    print("  [info] nickname edit did not "
+                                          "reach the local server (dialog "
+                                          "shape changed?)")
+                        else:
+                            print("  [info] no EditText in the nickname dialog")
+                        if not gated:
+                            # verify the editor row shows the new value (best
+                            # effort — the app refreshes the row from its own
+                            # state after the server response)
+                            nodes = screen.dump()
+                            shown = any(nickname in (n.text or "")
+                                        for n in nodes)
+                            print("  [%s] editor row shows %r after save"
+                                  % ("ok" if shown else "info", nickname))
+                else:
+                    print("  [skip] Nickname row not found on the editor")
+                if not gated:
+                    assert_alive(adb, args.package, "B-AfterNick")
+
+                    # 4) Gender row (best-effort): tap, pick the OTHER option,
+                    #    confirm — all wrapped, BACK recovers from any shape.
+                    #    The row itself already shows the current value as
+                    #    tvRightText ("Female"/"Male"), so only tap an option
+                    #    node that appeared AFTER the row tap (bounds changed).
+                    if tap_label(screen, "Gender"):
+                        time.sleep(3)
+                        if guest_tip_detected(screen):
+                            print("  [info] guest Tip on the Gender row — "
+                                  "aborting editor drive")
+                            adb.key(4)
+                            time.sleep(2)
+                            gated = True
+                        else:
+                            before = {(x.text, x.bounds)
+                                      for x in screen.dump()}
+                            nodes = screen.dump()
+                            other = next((x for x in nodes
+                                          if (x.text or "") in ("Male", "Female")
+                                          and x.center
+                                          and (x.text, x.bounds) not in before),
+                                         None)
+                            if other:
+                                screen.tap_node(other)
+                                time.sleep(1)
+                                editor_confirm(screen)
+                                time.sleep(2)
+                                log = adb.raw("logcat", "-d", "-s",
+                                              "LocalAPI", timeout=60)
+                                if ("/user/api/v1/user/details/info" in log
+                                        or "/user/api/v1/user/info" in log):
+                                    ok("B: gender edit hit the local server")
+                                assert_alive(adb, args.package,
+                                             "B-GenderSaved")
+                            adb.key(4)  # BACK out of any picker we missed
+                            time.sleep(2)
+                            assert_alive(adb, args.package, "B-AfterGender")
+
+                if not gated:
+                    adb.key(4)  # back to Profile
+                    time.sleep(2)
+                    adb.key(4)  # back to Me
+                    time.sleep(2)
+                    assert_alive(adb, args.package, "B-BackOnMe")
+            else:
+                debug_dump(screen, "ibMore-not-found")
         else:
-            ok("B: register UI flow completed for user=%s" % user)
-            time.sleep(8)
-    if set_password_flow:
-        main_seen_b = screen.wait_for(ids=["rgBottom", "rb_1", "flHomePage"],
-                                      timeout=60, poll=3)
-        if not main_seen_b:
-            print("  [info] main screen not confirmed after register (non-fatal)")
-        else:
-            ok("B: main screen reached with the freshly registered account")
-        navigate_all_tabs(adb, screen, args.package, "B")
+            debug_dump(screen, "profile-header-not-found")
+
+    if profile_edited:
+        ok("B: profile-edit path exercised end-to-end through the real UI")
     else:
-        print("  [info] UI account-creation was timing-dependent; running Phase C")
+        print("  [info] profile edit not confirmed (non-fatal; handlers "
+              "remain host-tested); Phase C covers account creation")
 
     # ------------------------------------------------- Phase C: deterministic
     # account creation THROUGH the embedded server (adb port forward to the

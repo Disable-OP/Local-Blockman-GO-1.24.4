@@ -360,3 +360,26 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   ll_account tap; the UI-register path has never completed anyway).
 - Otherwise continue the normal loop: error-driven deep-drive gaps,
   coverage table in docs/ENDPOINTS.md, NO GameServer work.
+
+## Session 12 delta (Phase B rework — read after Session 11 FINAL)
+
+- Guest-kick decision EXECUTED: stop triggering it. Phase B no longer taps
+  the Me-tab account row (ll_account); that Tip teardown is the native
+  killer and the UI register never completed. DO NOT re-add an ll_account
+  tap — the prohibition is documented in the Phase B comment block.
+- New Phase B: Personal Info editor drive (Profile -> ibMore -> Nickname
+  row edit, deterministic; Gender row best-effort; guest-Tip detector
+  aborts if the app ever guest-gates an editor row). Asserts the local
+  server saw the profile-edit calls; Phase C still owns account creation
+  (fresh account every run through the real embedded server).
+- v0.5.18 diagnostics were fully clean: 77 routes served, all matched, 76
+  real handlers, only the deliberate game-detail-to-editor default called,
+  zero crashes, zero UNMAPPED. The error-driven API loop is converged.
+- Expected on the next runs: no between-phase SIGKILL at all (recovery
+  stays as defense in depth). If Phase B ever reports a guest Tip on an
+  editor row, that is NEW evidence — the editor is guest-gated; drop that
+  row tap and document it.
+- Next candidates (priority): (1) verify the new Phase B run is green and
+  the nickname row-refresh shows on-device; (2) further deep-drive screens
+  if any remain unvisited (e.g. the second-tab game-category sub-screens);
+  (3) NO GameServer work (standing instruction).

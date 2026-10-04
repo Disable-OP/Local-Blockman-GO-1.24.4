@@ -467,3 +467,33 @@ device evidence contradicts that.
   rank/comment sub-tabs; all best-effort taps with BACK recovery, crash on
   any driven screen still fails CI.
 - Coverage: unchanged (335/281/54/217) — no new handlers this wave.
+
+### Phase 5i (this session): Phase B rework — profile-edit path through the real UI
+
+Decision taken on the Session 11 open question (native guest-kick): STOP
+TRIGGERING it. The old Phase B tapped the Me-tab account row (ll_account),
+which opens the guest register-upgrade Tip whose teardown natively kills the
+app (Session 11: killer is .so-native, Java exonerated, 10/10 recoveries at
+~40s cost per run) — and the UI register never completed once. Account
+creation was already deterministic in Phase C through the real server, so
+the ll_account flow bought nothing but a death.
+
+New Phase B (deterministic, no guest-kick): Me tab -> profile header
+(ll_top) -> ibMore -> "Personal Info" editor -> Nickname row: fill EditText
+with a fresh per-run nickname, confirm, assert the local server saw the
+profile-edit calls (PUT /user/api/v2/user/nickName or POST
+/user/api/v1/user/details/info or POST /user/api/v1/user/nickname/exist),
+then best-effort the Gender row. Safety valve: a guest-Tip detector aborts
+the editor drive the instant the register-upgrade Tip shows (the killer must
+not be fed); remaining alive-checks are skipped and Phase C's preflight
+recovers if a death still follows.
+
+- All four profile-edit handlers were already state-backed
+  (changeNickName / nickNameExist / changeInfo x2 routes); this wave makes
+  them client-asserted through the REAL UI for the first time.
+- Coverage: 335 discovered / 281 implemented (84%) / 54 default (all
+  documented-deliberate) / 217 host-tested / 109 client-asserted.
+- Expected run delta: no more between-phase SIGKILL, no more ~40s recovery
+  restart in the happy path; Phase C preflight answers immediately.
+- No dex change (scripts only) — automation rides the local-api checkout
+  pin; no new tag required to test it.

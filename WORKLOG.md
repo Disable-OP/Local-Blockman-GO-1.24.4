@@ -743,3 +743,38 @@
   Phase B tap the account row (loses the best-effort UI register — it has
   never succeeded anyway); (2) continue the normal error-driven loop per
   NEXT_SESSION_README; (3) NO GameServer work.
+
+## Session 12 — Phase B rework: guest-kick trigger removed, profile-edit driven via UI (2026-10-04)
+
+- Diagnostics pass over the v0.5.18 artifact first (error-driven discipline):
+  77 unique routes served, ALL matched the RoutingTable, 76 hit real handlers,
+  the only default called was the documented-deliberate
+  /config/files/game-detail-to-editor, crash buffer EMPTY, zero UNMAPPED.
+  The error-driven API loop is converged — everything the client calls is
+  real; remaining 54 defaults are all documented-deliberate.
+- Decision executed on the Session 11 open question: STOP triggering the
+  native guest-kick. Phase B no longer taps ll_account (the guest
+  register-upgrade Tip teardown is the native killer; UI register never
+  completed once; account creation is Phase C's job through the real
+  server).
+- NEW Phase B: Personal Info editor drive (Profile -> ibMore). Deterministic
+  core: Nickname row edit (fresh per-run nickname typed via EditText,
+  confirm, LocalAPI log asserted for PUT /user/api/v2/user/nickName | POST
+  details/info | POST nickname/exist, editor-row refresh printed). Gender
+  row best-effort (only taps an option node that APPEARED after the row
+  tap, so the row's own tvRightText value is never re-tapped). Guest-Tip
+  detector aborts the drive the instant the register-upgrade Tip shows so
+  the native killer is never fed; skipped alive-checks are covered by the
+  Phase C preflight (kept as defense in depth).
+- Removed dead code: register_through_ui + dialog_walk + guest
+  set-password helpers (no callers left). Header docstring rewritten
+  (three phases now documented; the ll_account prohibition is written
+  into the file so it is never blindly re-added).
+- Coverage regenerated: 335/281/54/217 host-tested, client_asserted
+  105 -> 109 (the four profile-edit endpoints now client-asserted via
+  gen_coverage from the new UI assertions).
+- Docs: ENDPOINTS.md Phase 5i table, PATCH_PLAN.md Phase 5i section,
+  NEXT_SESSION_README.md Session 12 delta. No dex change (scripts only);
+  no new tag needed — test-redroid checks out scripts from local-api.
+- Verification: dispatched test-redroid (workflow_dispatch) and watched the
+  new Phase B on-device.

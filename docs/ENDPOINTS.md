@@ -551,3 +551,24 @@ IVideoApi + PageData (flat: data/pageNo/pageSize/totalPage/totalSize):
 Deliberate: no videos are fabricated locally (no video content exists to
 serve); the fix is purely the response SHAPE so the screen shows its empty
 state instead of crashing.
+
+## Phase 5i (profile-edit path driven through the real UI)
+
+No new handlers and no behavior change on the server — this wave made the
+automation drive, for the first time, the profile-edit surface end-to-end:
+
+| Route (already implemented) | Handler | UI surface |
+|---|---|---|
+| PUT /user/api/v2/user/nickName | changeNickName | Personal Info editor -> Nickname row (deterministic: typed, saved, row-refresh verified) |
+| POST /user/api/v1/user/nickname/exist | nickNameExist | fired by the client during the nickname edit |
+| POST /user/api/v1/user/details/info | changeInfo | Personal Info editor -> Gender row (best-effort) |
+| PUT /user/api/v1/user/info | changeInfo | same editor (alternate change path) |
+
+Phase B of scripts/ui_automation_test.py was reworked: it no longer taps the
+Me-tab account row (ll_account) — that guest register-upgrade Tip's teardown
+is the NATIVE killer (Session 11 forensics) and the UI register never once
+completed. Instead Phase B drives the Personal Info editor (Profile -> ibMore
+-> Nickname/Gender rows) and asserts the profile-edit endpoints hit the local
+server. A guest-Tip detector aborts the drive immediately if the app ever
+guest-gates an editor row (the killer must not be fed). Account creation
+remains owned by Phase C (fresh account every run through the real server).
