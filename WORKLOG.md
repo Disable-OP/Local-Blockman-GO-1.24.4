@@ -1066,3 +1066,19 @@
   under stage findfriends still shows the tab3 list). The real entry is the
   btnSearchFriend id. -> wave 5o (commit 1ed02a3, dispatched): friend-search
   entry via btnSearchFriend (rlSearchClan id for clans, text fallback kept).
+
+## Session 14 (cont. 2) — wave 5o RESULT: Find Friends confirmed client placeholder (run 37238214502 PASS)
+
+- Run 37238214502 PASS on 1ed02a3: one death absorbed (A-dressitem), zero
+  FATAL, 25 added paths — the clan search assertion REPRODUCED (tribe/
+  blurry/info + full NPC data render again).
+- HONEST FINDING: even the btnSearchFriend ID tap does not navigate — the
+  findfriends dump is the tab3 list in both runs. The Find Friends section
+  is the client's "Coming soon" PLACEHOLDER: there is no friend-search UI
+  surface in this 1.24.4 build. friends/info/{nickName} stays host-tested
+  with NO UI caller (same class as the two password defaults). Nothing to
+  implement server-side; the probe remains as an honest recorder.
+- Wave 5p in flight (401d255): CREATE A CLAN discovery probe on the Find
+  Clans screen (open form -> dump widgets -> BACK; navigation-aware
+  re-grounding on a bottom-nav screen afterwards). UI-driven clan creation
+  becomes possible next wave once the form shape is on record.
