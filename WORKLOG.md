@@ -449,3 +449,19 @@
   rejection + restore).
 - Host rig 318/318 PASS. No server changes in this round (test-suite only,
   no new tag needed).
+
+## Session 9 FINAL — all three release tags green (2026-10-04)
+
+- v0.5.2-mail: build 37187939798 + redroid 37188040709 GREEN.
+- v0.5.3-econ: build 37188931156 + redroid 37189041155 GREEN.
+- v0.5.4-share: build 37189015574 + redroid 37189103246 GREEN — diagnostics
+  show the real client claiming the welcome mail on-device
+  ("mail claim: userId=10002 mailId=1 +500 golds"), zero crashes, 60 unique
+  endpoints served.
+- Session releases: v0.5.2-mail, v0.5.3-econ, v0.5.4-share — ALL CI-built
+  AND CI-tested. Phase 5e test expansion pushed (no tag, test-only).
+- Final session coverage: 335 discovered / 273 implemented (81%) / 62
+  default / 215 host-tested; host rig 318/318.
+- Next session: error-driven pass over the newest diagnostics; deeper UI
+  driving (inbox/share/settings screens); everything else per the
+  NEXT_SESSION_README priority list.
