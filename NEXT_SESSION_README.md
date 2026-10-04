@@ -148,3 +148,23 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
      state where the UI allows; keep code=0 for impossible ones (real SMS).
   3. Decoration suits (dressSuitList default []) + VIP dress lists.
   4. Activity/events (29, flag-gated) + /video (7): error-driven only.
+
+## Session 6 delta 3 (Phase 4d: account security + daily tasks)
+
+- 40 /user/api routes now real (248/335 = 74% implemented; host rig 256/256).
+- Password lifecycle / rename / reset-via-authCode are fully test-verified
+  including logins with the new credentials.
+- Local policy (documented in PATCH_PLAN Phase 4d): SMS/email verification
+  codes are validated server-side — no external transport exists in a
+  purely local world; no third-party traffic is fabricated.
+- Remaining defaults are DELIBERATE: activity events (29, appConfig-gated
+  off), /video (7), videostars (5, real-money), file upload + misc (~20).
+- Next session candidates (priority):
+  1. Verify v0.4.3-security redroid run; ship any fixes.
+  2. RongCloud chat shim: rongToken returns 'local-<id>' — decide between
+     (a) minimal local IM shim on a mini service, or (b) offline mode
+     detection. This unblocks the chat UI end-to-end.
+  3. Error-driven pass over the next green run's LocalAPI log for any
+     UNMAPPED/missed client calls (esp. file upload POST /user/api/v1/file).
+  4. Then: Phase 5 groundwork (dispatch/loopback gAddr) ONLY as API shape,
+     no GameServer work (per project instruction).

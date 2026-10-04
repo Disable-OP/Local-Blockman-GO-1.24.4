@@ -126,6 +126,34 @@ final class Handlers {
         if ("groupSetManager".equals(name)) return groupSetManager(ctx, store);
         if ("groupTransfer".equals(name)) return groupTransfer(ctx, store);
         if ("groupModify".equals(name)) return groupModify(ctx, store);
+        // ---- Phase 4d: account security + daily tasks (real state) ----
+        if ("setPassword".equals(name)) return setPassword(ctx, store);
+        if ("passwordModify".equals(name)) return passwordModify(ctx, store);
+        if ("passwordCheck".equals(name)) return passwordCheck(ctx, store);
+        if ("nickNameExist".equals(name)) return nickNameExist(ctx, store);
+        if ("accountModify".equals(name)) return accountModify(ctx, store);
+        if ("bindPhone".equals(name)) return bindPhone(ctx, store);
+        if ("unbindPhone".equals(name)) return unbindPhone(ctx, store);
+        if ("bindEmail".equals(name)) return bindEmail(ctx, store);
+        if ("unbindEmail".equals(name)) return unbindEmail(ctx, store);
+        if ("tipsEmail".equals(name)) return tipsEmail(ctx, store);
+        if ("verifyAck".equals(name)) return envelope("none", null);
+        if ("verifyEmail".equals(name)) return envelope("obj", "{\"authCode\":\"\",\"count\":0,\"right\":true}");
+        if ("questionGet".equals(name)) return questionGet(ctx, store);
+        if ("questionAuth".equals(name)) return questionAuth(ctx, store);
+        if ("questionSetting".equals(name)) return questionSetting(ctx, store);
+        if ("questionResetPassword".equals(name)) return questionResetPassword(ctx, store);
+        if ("unbindSecurity".equals(name)) return unbindSecurity(ctx, store);
+        if ("loginRecord".equals(name)) return loginRecord(ctx, store);
+        if ("newDailyTasks".equals(name)) return newDailyTasks(ctx, store);
+        if ("weekTasks".equals(name)) return weekTasks(ctx, store);
+        if ("claimTask".equals(name)) return claimTask(ctx, store);
+        if ("shareReward".equals(name)) return shareReward(ctx, store);
+        if ("prefectCheck".equals(name)) return prefectCheck(ctx, store);
+        if ("prefectReward".equals(name)) return prefectReward(ctx, store);
+        if ("idCardStatus".equals(name)) return envelope("str", "\"0\"");
+        if ("idCardSubmit".equals(name)) return envelope("str", "\"0\"");
+        if ("setPsdParamCheck".equals(name)) return envelope("obj", "{}");
         if ("getVipInfo".equals(name)) return getVipInfo(ctx, store);
         if ("getSubscribeInfo".equals(name)) return getSubscribeInfo(ctx, store);
         // ---- Phase 3: decoration / dress shop / scrap exchange ----
@@ -231,6 +259,24 @@ final class Handlers {
         return envelope("none", null);
     }
 
+
+    /** Append a login record (drives GET /user/api/v1/user/login/change/record). */
+    private static void recordLogin(StateStore store, JSONObject u) {
+        JSONObject st = store.userState(u);
+        JSONArray recs = st.optJSONArray("loginRecords");
+        if (recs == null) recs = new JSONArray();
+        JSONObject rec = new JSONObject();
+        rec.put("appType", "android");
+        rec.put("loginTime", new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss",
+                java.util.Locale.US).format(new java.util.Date()));
+        recs.put(rec);
+        JSONArray capped = new JSONArray();
+        for (int i = Math.max(0, recs.length() - 10); i < recs.length(); i++) {
+            capped.put(recs.optJSONObject(i));
+        }
+        st.put("loginRecords", capped);
+    }
+
     // ---------------------------------------------------------------- auth
 
     /** POST /user/api/v1/login, /user/api/v1/app/login, /user/api/v2/app/login */
@@ -252,6 +298,7 @@ final class Handlers {
             }
             store.issueToken(u);
             u.put("isFirstLogin", false);
+            recordLogin(store, u);
             store.save();
             return userEnvelope(u);
         }
@@ -260,6 +307,7 @@ final class Handlers {
             JSONObject u = store.findOrCreateByKey("device:" + imei, true);
             store.issueToken(u);
             u.put("isFirstLogin", false);
+            recordLogin(store, u);
             store.save();
             return userEnvelope(u);
         }
@@ -283,6 +331,7 @@ final class Handlers {
         }
         store.issueToken(u);
         u.put("isFirstLogin", true);
+        recordLogin(store, u);
         store.save();
         L.i("registered new account: " + uid + " -> userId " + u.optLong("userId"));
         return userEnvelope(u);
@@ -316,6 +365,7 @@ final class Handlers {
         }
         JSONObject u = store.findOrCreateByKey("visitor:" + imei, true);
         String token = store.issueToken(u);
+        recordLogin(store, u);
         JSONObject v = new JSONObject();
         v.put("id", u.optLong("userId"));
         v.put("accessToken", token);
@@ -336,6 +386,7 @@ final class Handlers {
         JSONObject u = store.findOrCreateByKey("tourist:" + device, true);
         store.issueToken(u);
         u.put("isFirstLogin", true);
+        recordLogin(store, u);
         store.save();
         L.i("tourist login: device=" + device + " -> userId " + u.optLong("userId"));
         return userEnvelope(u);
@@ -1766,6 +1817,392 @@ final class Handlers {
         String err = Friend.reject(store, u, parseLong(ctx.pathParam("friendId"), 0));
         if (err != null) return fail(err);
         return envelope("none", null);
+    }
+
+    // ------------------------------------------------- Phase 4d: account security + daily tasks
+
+    private static final int[] SIGN_REWARDS = {200, 400, 600, 800, 1000, 1500, 3000};
+
+    /** POST /user/api/v1/app/set-password (+v2) — SetPasswordForm; guest -> password account. */
+    private static String setPassword(Ctx ctx, StateStore store) {
+        JSONObject form = body(ctx);
+        JSONObject u = store.findByToken(ctx.header("access-token"));
+        if (u == null && form.has("userId")) {
+            u = store.findByUserId(form.optLong("userId"));
+        }
+        if (u == null && form.optString("account") != null && !form.optString("account").isEmpty()) {
+            u = store.findByKey(form.optString("account"));
+        }
+        if (u == null) return fail(NO_AUTH);
+        String pw = form.optString("password");
+        if (pw.isEmpty()) return fail("password required");
+        if (form.optString("confirmPassword") != null
+                && !form.optString("confirmPassword").isEmpty()
+                && !pw.equals(form.optString("confirmPassword"))) {
+            return fail("passwords do not match");
+        }
+        u.put("password", pw);
+        u.put("hasPassword", true);
+        if (form.optString("account") != null && !form.optString("account").isEmpty()
+                && u.optString("account").isEmpty()) {
+            u.put("account", form.optString("account"));
+        }
+        store.save();
+        L.i("setPassword: userId=" + u.optLong("userId"));
+        return envelope("none", null);
+    }
+
+    /** POST /user/api/v1/user/password/modify (+v2) — ChangePasswordForm. */
+    private static String passwordModify(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject form = body(ctx);
+        String oldPw = form.optString("oldPassword");
+        String newPw = form.optString("newPassword");
+        if (u.optString("password") != null && !u.optString("password").isEmpty()
+                && !u.optString("password").equals(oldPw)) {
+            return fail("wrong old password");
+        }
+        if (newPw.isEmpty()) return fail("new password required");
+        if (form.optString("confirmPassword") != null
+                && !form.optString("confirmPassword").isEmpty()
+                && !newPw.equals(form.optString("confirmPassword"))) {
+            return fail("passwords do not match");
+        }
+        u.put("password", newPw);
+        u.put("hasPassword", true);
+        store.save();
+        return envelope("none", null);
+    }
+
+    /** POST /user/api/v1/user/password/check — UserVerifyInfo {right}. */
+    private static String passwordCheck(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String pw = body(ctx).optString("password");
+        boolean right = pw != null && !pw.isEmpty() && pw.equals(u.optString("password"));
+        return envelope("obj", "{\"authCode\":\"\",\"count\":0,\"right\":" + right + "}");
+    }
+
+    /** POST /user/api/v1/user/nickname/exist?nickName= — code 1 free, code 0 taken. */
+    private static String nickNameExist(Ctx ctx, StateStore store) {
+        String nick = ctx.query("nickName");
+        if (nick == null || nick.trim().isEmpty()) return fail("nickName required");
+        String q = nick.trim().toLowerCase(java.util.Locale.US);
+        JSONObject users = store.root().optJSONObject("users");
+        JSONArray names = users == null ? null : users.names();
+        for (int i = 0; names != null && i < names.length(); i++) {
+            JSONObject p = users.optJSONObject(names.optString(i));
+            if (p != null && q.equals(p.optString("nickName").toLowerCase(java.util.Locale.US))) {
+                return fail("nickname already exists");
+            }
+        }
+        JSONArray citizens = GameCatalog.citizens(store);
+        for (int i = 0; citizens != null && i < citizens.length(); i++) {
+            JSONObject p = citizens.optJSONObject(i);
+            if (p != null && q.equals(p.optString("nickName").toLowerCase(java.util.Locale.US))) {
+                return fail("nickname already exists");
+            }
+        }
+        return envelope("none", null);
+    }
+
+    /** POST /user/api/v1/user/account/modify — rename the login account key. */
+    private static String accountModify(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String account = body(ctx).optString("account");
+        if (account == null || account.trim().isEmpty()) return fail("account required");
+        account = account.trim();
+        if (account.equals(u.optString("account"))) return envelope("none", null);
+        if (store.findByKey(account) != null) return fail("account already exists");
+        JSONObject users = store.root().optJSONObject("users");
+        String oldKey = u.optString("key");
+        if (oldKey != null && !oldKey.isEmpty() && users != null) {
+            users.remove(oldKey);
+            users.put(account, u);
+        }
+        u.put("key", account);
+        u.put("account", account);
+        store.save();
+        L.i("accountModify: userId=" + u.optLong("userId") + " -> " + account);
+        return envelope("none", null);
+    }
+
+    /** POST /user/api/v1/user/bind/phone — PhoneBindForm (local policy: any code). */
+    private static String bindPhone(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject form = body(ctx);
+        String phone = form.optString("phone");
+        if (phone == null || phone.trim().isEmpty()) return fail("phone required");
+        u.put("telephone", phone.trim());
+        store.save();
+        return envelope("none", null);
+    }
+
+    /** POST /user/api/v1/user/unbind/phone. */
+    private static String unbindPhone(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        u.put("telephone", "");
+        store.save();
+        return envelope("none", null);
+    }
+
+    /** POST /user/api/v1/users/bind/email (+/{version}) — EmailBindForm. */
+    private static String bindEmail(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject form = body(ctx);
+        String email = form.optString("email");
+        if (email == null || !email.contains("@")) return fail("valid email required");
+        u.put("email", email.trim());
+        store.save();
+        return envelope("none", null);
+    }
+
+    /** DELETE /user/api/v1/users/{userId}/emails (+v2) — unbind email. */
+    private static String unbindEmail(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        u.put("email", "");
+        store.save();
+        return envelope("none", null);
+    }
+
+    /** GET /user/api/v1/users/security/bind/email — masked bound email or "". */
+    private static String tipsEmail(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String email = u.optString("email");
+        if (email == null || !email.contains("@")) return envelope("str", "\"\"");
+        int at = email.indexOf('@');
+        String masked = at <= 1 ? email
+                : email.charAt(0) + "***" + email.substring(at);
+        return envelope("str", "\"" + masked + "\"");
+    }
+
+    /** GET /user/api/v1/users/secret/question — List&lt;SecretQuestionInfo&gt;. */
+    private static String questionGet(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONArray q = store.userState(u).optJSONArray("secretQuestions");
+        return envelope("list", (q == null ? new JSONArray() : q).toString());
+    }
+
+    /** POST /user/api/v1/users/secret/question — save answers; issue an authCode. */
+    private static String questionAuth(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONArray list = body(ctx).optJSONArray("list");
+        if (list == null) {
+            JSONArray alt = body(ctx).names() == null ? null : body(ctx).optJSONArray("");
+            list = null;
+            // tolerate both a bare array and {list: [...]}
+            try {
+                list = new org.json.JSONArray(ctx.body());
+            } catch (Throwable ignore) {
+                // not a bare array
+            }
+        }
+        if (list == null) list = new JSONArray();
+        store.userState(u).put("secretQuestions", list);
+        String authCode = "local-" + Long.toHexString(System.currentTimeMillis());
+        store.userState(u).put("securityAuthCode", authCode);
+        store.save();
+        return envelope("obj", "{\"authCode\":\"" + authCode + "\",\"count\":"
+                + list.length() + ",\"right\":true}");
+    }
+
+    /** POST /user/api/{version}/users/secret/question/setting?authCode= — set with code check. */
+    private static String questionSetting(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String authCode = ctx.query("authCode");
+        if (authCode == null || !authCode.equals(store.userState(u).optString("securityAuthCode"))) {
+            return fail("invalid authCode");
+        }
+        JSONArray list = null;
+        try {
+            list = new org.json.JSONArray(ctx.body());
+        } catch (Throwable t) {
+            list = body(ctx).optJSONArray("list");
+        }
+        if (list == null) list = new JSONArray();
+        store.userState(u).put("secretQuestions", list);
+        store.save();
+        return envelope("none", null);
+    }
+
+    /** POST /user/api/v1/users/question/reset/password?userId=&newPwd=&authCode=. */
+    private static String questionResetPassword(Ctx ctx, StateStore store) {
+        long userId = parseLong(ctx.query("userId"), 0);
+        JSONObject u = userId > 0 ? store.findByUserId(userId) : null;
+        if (u == null) u = store.findByToken(ctx.header("access-token"));
+        if (u == null) return fail(NO_AUTH);
+        String authCode = ctx.query("authCode");
+        if (authCode == null || !authCode.equals(store.userState(u).optString("securityAuthCode"))) {
+            return fail("invalid authCode");
+        }
+        String newPwd = ctx.query("newPwd");
+        if (newPwd == null || newPwd.isEmpty()) return fail("newPwd required");
+        u.put("password", newPwd);
+        u.put("hasPassword", true);
+        store.save();
+        return envelope("none", null);
+    }
+
+    /** POST /user/api/v1/users/unbind/user/security — clear security questions. */
+    private static String unbindSecurity(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        store.userState(u).remove("secretQuestions");
+        store.userState(u).remove("securityAuthCode");
+        store.save();
+        return envelope("none", null);
+    }
+
+    /** GET /user/api/v1/user/login/change/record — AccountRecordResult. */
+    private static String loginRecord(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONArray recs = store.userState(u).optJSONArray("loginRecords");
+        if (recs != null && recs.length() > 0) {
+            JSONObject last = recs.optJSONObject(recs.length() - 1);
+            if (last != null) {
+                JSONObject out = new JSONObject();
+                out.put("appType", last.optString("appType", "android"));
+                out.put("loginTime", last.optString("loginTime"));
+                return envelope("obj", out.toString());
+            }
+        }
+        return envelope("obj", "{\"appType\":\"android\",\"loginTime\":\"\"}");
+    }
+
+    /** GET /user/api/v1/users/new/daily/tasks — DailyTaskResponse (7-slot strip). */
+    private static String newDailyTasks(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        int claimed = u == null || store.signIns(u) == null ? 0 : store.signIns(u).length();
+        boolean today = u != null && store.hasSignedIn(u, today());
+        long[] left = untilMidnightUtc();
+        JSONArray tasks = new JSONArray();
+        for (int i = 0; i < 7; i++) {
+            JSONObject t = new JSONObject();
+            t.put("type", i + 1);
+            t.put("currency", 1);
+            t.put("count", SIGN_REWARDS[i]);
+            t.put("status", (i < claimed % 7 || (today && i == claimed % 7)) ? 1 : 0);
+            tasks.put(t);
+        }
+        JSONObject out = new JSONObject();
+        out.put("count", claimed % 7);
+        out.put("hours", (int) left[0]);
+        out.put("minutes", (int) left[1]);
+        out.put("seconds", (int) left[2]);
+        out.put("tasks", tasks);
+        return envelope("obj", out.toString());
+    }
+
+    /** GET /user/api/v1/users/dairy/tasks/{type} — WeekTaskResponse {taskMap}. */
+    private static String weekTasks(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        int claimed = u == null || store.signIns(u) == null ? 0 : store.signIns(u).length();
+        long[] left = untilMidnightUtc();
+        JSONObject taskMap = new JSONObject();
+        for (int d = 1; d <= 7; d++) {
+            taskMap.put(String.valueOf(d), (d - 1) < claimed % 7 ? 1 : 0);
+        }
+        JSONObject out = new JSONObject();
+        out.put("count", claimed % 7);
+        out.put("hours", (int) left[0]);
+        out.put("minutes", (int) left[1]);
+        out.put("seconds", (int) left[2]);
+        out.put("taskMap", taskMap);
+        return envelope("obj", out.toString());
+    }
+
+    /** PUT /user/api/v1/users/tasks/{type} — claim sign-in day reward; returns wallet. */
+    private static String claimTask(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        int day = (int) parseLong(ctx.pathParam("type"), 1);
+        String date = today();
+        if (!store.hasSignedIn(u, date)) {
+            int claimed = store.signIns(u) == null ? 0 : store.signIns(u).length();
+            long reward = SIGN_REWARDS[Math.max(0, Math.min(6, (day - 1) % 7))];
+            store.markSignedIn(u, date);
+            store.award(u, "golds", reward);
+            L.i("claimTask: userId=" + u.optLong("userId") + " day=" + day + " +" + reward);
+        }
+        JSONObject w = new JSONObject();
+        w.put("userId", u.optLong("userId"));
+        w.put("golds", u.optLong("golds"));
+        w.put("diamonds", u.optLong("diamonds"));
+        w.put("gDiamonds", u.optLong("gDiamonds"));
+        return envelope("obj", w.toString());
+    }
+
+    /** POST /user/api/v1/users/sharing/reward?type= — +200 golds once per day. */
+    private static String shareReward(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject st = store.userState(u);
+        JSONObject share = st.optJSONObject("shareReward");
+        String date = today();
+        if (share == null || !date.equals(share.optString("date"))) {
+            share = new JSONObject();
+            share.put("date", date);
+            share.put("count", 0);
+        }
+        if (share.optInt("count") >= 1) return fail("reward already claimed today");
+        share.put("count", share.optInt("count") + 1);
+        st.put("shareReward", share);
+        store.award(u, "golds", 200);
+        return envelope("none", null);
+    }
+
+    /** POST /user/api/v1/users/prefect/info/reward/check/{userId} — Boolean. */
+    private static String prefectCheck(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        boolean done = u != null && prefectDone(store, u);
+        return envelope("bool", String.valueOf(done));
+    }
+
+    private static boolean prefectDone(StateStore store, JSONObject u) {
+        boolean profileFilled = !u.optString("nickName").isEmpty()
+                && (!u.optString("details").isEmpty() || !u.optString("picUrl").isEmpty());
+        JSONObject st = store.userState(u);
+        return profileFilled && !st.optBoolean("prefectClaimed");
+    }
+
+    /** POST /user/api/v1/users/prefect/info/reward/{userId} — BuyGameResponse. */
+    private static String prefectReward(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        if (!prefectDone(store, u)) return fail("profile not complete or reward claimed");
+        store.userState(u).put("prefectClaimed", true);
+        store.award(u, "golds", 500);
+        JSONObject out = new JSONObject();
+        out.put("golds", 500);
+        out.put("diamonds", 0);
+        out.put("gDiamonds", 0);
+        out.put("orderId", "local-" + Long.toHexString(System.currentTimeMillis()));
+        out.put("userId", u.optLong("userId"));
+        L.i("prefectReward: userId=" + u.optLong("userId") + " +500 golds");
+        return envelope("obj", out.toString());
+    }
+
+    private static long[] untilMidnightUtc() {
+        java.util.Calendar c = java.util.Calendar.getInstance(
+                java.util.TimeZone.getTimeZone("UTC"));
+        long now = c.getTimeInMillis();
+        c.set(java.util.Calendar.HOUR_OF_DAY, 24);
+        c.set(java.util.Calendar.MINUTE, 0);
+        c.set(java.util.Calendar.SECOND, 0);
+        c.set(java.util.Calendar.MILLISECOND, 0);
+        long diff = Math.max(0, c.getTimeInMillis() - now) / 1000L;
+        return new long[]{diff / 3600, (diff % 3600) / 60, diff % 60};
     }
 
     // ------------------------------------------------- Phase 4c: group chat

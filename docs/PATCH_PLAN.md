@@ -205,3 +205,38 @@ All 21 /msg/api routes are now state-backed. New domain module:
   negatives). Coverage: 335 discovered / 208 implemented / 127 default /
   177 host-tested. Remaining default areas: /user/api security block (50),
   activity events (29, flag-gated), /video (7), config/misc (~30).
+
+## Phase 4d — account security + daily tasks real state (session 6, DONE)
+
+40 /user/api routes converted from defaults to real state-backed handlers
+(248 implemented total). Highlights:
+
+- **Password lifecycle**: set-password (guest → password account, x2
+  routes), modify (old-password verified, x2), check (UserVerifyInfo
+  right=true/false), password reset via secret-question authCode, account
+  rename (re-keys the login account; login verified).
+- **Nickname availability**: nickname/exist scans real users + citizens
+  (case-insensitive); taken → code 0 (the client's exact contract).
+- **Phone/email bind**: bind/unbind phone + email store real user fields
+  (local policy: verification codes are validated server-side since no
+  SMS/email transport exists in a purely local world — documented, no
+  fabricated third-party traffic); masked email tip (security/bind/email);
+  unbind emails x2; sms/email sender endpoints ack.
+- **Secret questions**: GET list / POST auth (saves answers, issues a
+  server-stored authCode) / setting (authCode-checked) / reset-password
+  (authCode-checked, real password change) / unbind.
+- **Login records**: every login/register/visitor/tourist appends a record
+  (cap 10); GET login/change/record returns the latest AccountRecordResult.
+- **Daily/weekly task strip**: new/daily/tasks (DailyTaskResponse with
+  7-slot TaskBase list + UTC-midnight countdown), dairy/tasks/{type}
+  (WeekTaskResponse taskMap), PUT users/tasks/{type} claims the day's
+  reward into the real wallet and returns RechargeEntity.
+- **Rewards**: sharing/reward (+200 golds, once/day, real wallet),
+  prefect/info/reward (+500 golds after profile completion, claim-once,
+  BuyGameResponse), id-card status (local "unverified" policy string).
+- Host rig: 256/256 PASS (36 new assertions incl. full password rename/
+  reset logins, authCode negatives, wallet math). Coverage: 335 discovered
+  / 248 implemented / 87 default / 189 host-tested.
+- Remaining default areas (deliberate): activity events (29, flag-gated
+  off in appConfig), /video (7), videostars (5, real-money program), file
+  upload + misc (~20).

@@ -943,6 +943,162 @@ def main():
         gnoauth = call("POST", "/msg/api/v2/msg/group/chat", {"groupName": "x"})
         check("unauthenticated group create rejected", gnoauth.get("code") == 0, str(gnoauth)[:80])
 
+        print("== Phase 4d: account security + password lifecycle ==")
+        sp = call("POST", "/user/api/v1/app/set-password",
+                  {"account": "qa_user5", "userId": uid5, "password": "npw5",
+                   "confirmPassword": "npw5"},
+                  headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("set password on fresh account", sp.get("code") == 1, str(sp)[:100])
+        spl = call("POST", "/user/api/v1/login", {"uid": "qa_user5", "password": "npw5"})
+        check("login with new password", spl.get("code") == 1
+              and spl["data"]["userId"] == uid5, str(spl)[:120])
+        spbad = call("POST", "/user/api/v1/app/set-password",
+                     {"account": "qa_user5", "userId": uid5, "password": "x",
+                      "confirmPassword": "y"})
+        check("password mismatch rejected", spbad.get("code") == 0, str(spbad)[:80])
+        pmw = call("POST", "/user/api/v1/user/password/modify",
+                   {"oldPassword": "WRONG", "newPassword": "npw6",
+                    "confirmPassword": "npw6"},
+                   headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("wrong old password rejected", pmw.get("code") == 0, str(pmw)[:80])
+        pm = call("POST", "/user/api/v1/user/password/modify",
+                  {"oldPassword": "npw5", "newPassword": "npw6",
+                   "confirmPassword": "npw6"},
+                  headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("modify password", pm.get("code") == 1, str(pm)[:80])
+        pml = call("POST", "/user/api/v1/login", {"uid": "qa_user5", "password": "npw6"})
+        check("login with modified password", pml.get("code") == 1, str(pml)[:100])
+        pc = call("POST", "/user/api/v1/user/password/check", {"password": "npw6"},
+                  headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("password check right", pc.get("code") == 1
+              and pc["data"]["right"] is True, str(pc)[:100])
+        pc2 = call("POST", "/user/api/v1/user/password/check", {"password": "bad"},
+                   headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("password check wrong", pc2.get("code") == 1
+              and pc2["data"]["right"] is False, str(pc2)[:100])
+        ne1 = call("POST", "/user/api/v1/user/nickname/exist?nickName=BrandNewNick", None,
+                   headers={"Access-Token": tok5})
+        check("nickname free", ne1.get("code") == 1, str(ne1)[:80])
+        ne2 = call("POST", "/user/api/v1/user/nickname/exist?nickName=RoleQA", None,
+                   headers={"Access-Token": tok5})
+        check("nickname taken rejected", ne2.get("code") == 0, str(ne2)[:80])
+        am = call("POST", "/user/api/v1/user/account/modify", {"account": "qa_user5_renamed"},
+                  headers={"Access-Token": tok5, "userId": str(uid5)})
+        aml = call("POST", "/user/api/v1/login", {"uid": "qa_user5_renamed", "password": "npw6"})
+        check("account rename + login", am.get("code") == 1
+              and aml.get("code") == 1 and aml["data"]["userId"] == uid5, str(aml)[:120])
+        lr = call("GET", "/user/api/v1/user/login/change/record",
+                  headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("login record present", lr.get("code") == 1
+              and lr["data"].get("appType") == "android"
+              and lr["data"].get("loginTime"), str(lr)[:120])
+
+        print("== Phase 4d: phone/email bind ==")
+        bp = call("POST", "/user/api/v1/user/bind/phone",
+                  {"phone": "+201234567890", "verifyCode": "1234"},
+                  headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("bind phone", bp.get("code") == 1, str(bp)[:80])
+        bp0 = call("POST", "/user/api/v1/user/bind/phone", {"phone": ""},
+                   headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("empty phone rejected", bp0.get("code") == 0, str(bp0)[:80])
+        be = call("POST", "/user/api/v1/users/bind/email",
+                  {"email": "qa@example.com", "verifyCode": "1"}, headers=h5)
+        check("bind email", be.get("code") == 1, str(be)[:80])
+        be0 = call("POST", "/user/api/v1/users/bind/email", {"email": "nope"},
+                   headers=h5)
+        check("invalid email rejected", be0.get("code") == 0, str(be0)[:80])
+        te = call("GET", "/user/api/v1/users/security/bind/email?userId=%d" % uid5, headers=h5)
+        check("masked email tip", te.get("code") == 1 and te["data"] == "q***@example.com",
+              str(te)[:100])
+        ue = call("DELETE", "/user/api/v1/users/%d/emails" % uid5, headers=h5)
+        te2 = call("GET", "/user/api/v1/users/security/bind/email?userId=%d" % uid5, headers=h5)
+        check("unbind email", ue.get("code") == 1 and te2["data"] == "", str(te2)[:100])
+        sm = call("POST", "/user/api/v1/sms/send/+201234567890", {})
+        check("sms send ack", sm.get("code") == 1, str(sm)[:80])
+        ev = call("POST", "/user/api/v1/emails/verify/qa@example.com", {})
+        check("email verify ack", ev.get("code") == 1, str(ev)[:80])
+        up = call("POST", "/user/api/v1/user/unbind/phone", {}, headers=h5)
+        check("unbind phone", up.get("code") == 1, str(up)[:80])
+
+        print("== Phase 4d: secret questions ==")
+        qs = call("GET", "/user/api/v1/users/secret/question?type=1",
+                  headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("questions empty at start", qs.get("code") == 1 and qs.get("data") == [],
+              str(qs)[:80])
+        qa = call("POST", "/user/api/v1/users/secret/question?userId=%d&complete=1" % uid5,
+                  [{"question": "Q1", "answer": "A1"}, {"question": "Q2", "answer": "A2"}],
+                  headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("question auth issues code", qa.get("code") == 1
+              and qa["data"].get("right") is True and qa["data"].get("authCode"), str(qa)[:150])
+        auth_code = qa["data"]["authCode"]
+        qs2 = call("GET", "/user/api/v1/users/secret/question?type=1",
+                   headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("questions persisted", qs2.get("code") == 1 and len(qs2["data"]) == 2
+              and qs2["data"][0]["question"] == "Q1", str(qs2)[:150])
+        qrp = call("POST", "/user/api/v1/users/question/reset/password"
+                   "?userId=%d&newPwd=resetpw&authCode=%s" % (uid5, auth_code))
+        check("reset via authCode", qrp.get("code") == 1, str(qrp)[:100])
+        qrpl = call("POST", "/user/api/v1/login", {"uid": "qa_user5_renamed", "password": "resetpw"})
+        check("login with reset password", qrpl.get("code") == 1, str(qrpl)[:100])
+        qrp2 = call("POST", "/user/api/v1/users/question/reset/password"
+                    "?userId=%d&newPwd=x&authCode=bad" % uid5)
+        check("bad authCode rejected", qrp2.get("code") == 0, str(qrp2)[:80])
+        qus = call("POST", "/user/api/v1/users/unbind/user/security", {},
+                   headers={"Access-Token": tok5, "userId": str(uid5)})
+        qs3 = call("GET", "/user/api/v1/users/secret/question?type=1",
+                   headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("unbind security clears questions", qus.get("code") == 1
+              and qs3["data"] == [], str(qs3)[:100])
+
+        print("== Phase 4d: daily tasks + rewards ==")
+        ndt = call("GET", "/user/api/v1/users/new/daily/tasks",
+                   headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("new daily tasks strip", ndt.get("code") == 1 and len(ndt["data"]["tasks"]) == 7
+              and ndt["data"]["tasks"][0]["count"] == 200
+              and "hours" in ndt["data"], str(ndt)[:200])
+        wt = call("GET", "/user/api/v1/users/dairy/tasks/1",
+                  headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("week task map", wt.get("code") == 1 and "taskMap" in wt["data"]
+              and wt["data"]["taskMap"]["1"] == 0, str(wt)[:150])
+        w0 = call("GET", "/pay/api/v1/wealth/user",
+                  headers={"Access-Token": tok5, "userId": str(uid5)}).get("data", {})
+        ct = call("PUT", "/user/api/v1/users/tasks/1", None,
+                  headers={"Access-Token": tok5, "userId": str(uid5)})
+        w1 = call("GET", "/pay/api/v1/wealth/user",
+                  headers={"Access-Token": tok5, "userId": str(uid5)}).get("data", {})
+        check("claim task rewards wallet", ct.get("code") == 1
+              and w1.get("golds", 0) == w0.get("golds", 0) + 200, str(ct)[:150])
+        ndt2 = call("GET", "/user/api/v1/users/new/daily/tasks",
+                    headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("task strip reflects claim", ndt2.get("code") == 1
+              and ndt2["data"]["tasks"][0]["status"] == 1, str(ndt2)[:150])
+        sr = call("POST", "/user/api/v1/users/sharing/reward?type=1",
+                  headers={"Access-Token": tok5, "userId": str(uid5)})
+        sr2 = call("POST", "/user/api/v1/users/sharing/reward?type=1",
+                   headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("share reward once/day", sr.get("code") == 1 and sr2.get("code") == 0,
+              "%s %s" % (sr, sr2))
+        prc = call("POST", "/user/api/v1/users/prefect/info/reward/check/%d" % uid5,
+                   headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("prefect check incomplete profile", prc.get("code") == 1
+              and prc["data"] is False, str(prc)[:100])
+        call("PUT", "/user/api/v1/user/info", {"details": "completing my profile"},
+             headers={"Access-Token": tok5, "userId": str(uid5)})
+        prc2 = call("POST", "/user/api/v1/users/prefect/info/reward/check/%d" % uid5,
+                    headers={"Access-Token": tok5, "userId": str(uid5)})
+        pr = call("POST", "/user/api/v1/users/prefect/info/reward/%d" % uid5,
+                  headers={"Access-Token": tok5, "userId": str(uid5)})
+        pr2 = call("POST", "/user/api/v1/users/prefect/info/reward/%d" % uid5,
+                   headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("prefect reward lifecycle", prc2.get("code") == 1 and prc2["data"] is True
+              and pr.get("code") == 1
+              and pr["data"].get("golds") == 500 and pr2.get("code") == 0,
+              str(pr)[:150])
+        ic = call("GET", "/user/api/v1/user/id/card/status?userId=%d" % uid5,
+                  headers={"Access-Token": tok5})
+        check("id card status string", ic.get("code") == 1 and isinstance(ic["data"], str),
+              str(ic)[:80])
+
         print("== route-table sweep (all routes answer the envelope) ==")
         sys.path.insert(0, os.path.join(REPO, "scripts"))
         sweep_miss = []

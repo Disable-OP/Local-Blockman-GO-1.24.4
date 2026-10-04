@@ -258,3 +258,20 @@
   (owner only), kick, transfer, quit (owner quits -> transfer or dissolve
   when last), invite-count daily policy, recall ack (transport=RongCloud).
 - Host rig: 220/220 PASS. Coverage: 335/208/127/177.
+
+## Session 6 (cont. 3) — Phase 4d: account security + daily tasks state-backed (2026-10-04)
+
+- v0.4.2-groups FULLY GREEN (build-release 37183168184 + redroid
+  37183261851, UI AUTOMATION: PASS with friend search/status + group
+  create/list/quit + tribe lifecycle asserted on-device).
+- Account security phase: 40 /user/api routes converted to real handlers.
+  Password lifecycle (set/modify/check/reset-via-authCode + account rename
+  with re-keyed login), nickname availability scan, phone/email bind and
+  unbind (real user fields; local code-verification policy documented),
+  secret questions with server-issued authCodes, login records recorded on
+  every auth event, daily/weekly task strip (DailyTaskResponse /
+  WeekTaskResponse) claiming into the real wallet, sharing/prefect rewards
+  (once/day + claim-once-after-profile-complete), id-card status policy.
+- Fixed a self-inflicted escape-corruption compile error in the dispatch
+  table (caught by the build, fixed immediately).
+- Host rig: 256/256 PASS. Coverage: 335/248/87/189 (74% implemented).
