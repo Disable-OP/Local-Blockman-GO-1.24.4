@@ -1112,3 +1112,24 @@
   the first BACK; BACK again if the search screen is still up), the same
   guard after the create-form BACK ('enter clan' marker), and a bounded
   bottom-nav grounding loop before tab4.
+
+## Session 14 (cont. 5) — wave 5p v3 RESULT: tail un-stranded + create form decoded (run 37241853243 PASS)
+
+- Run 37241853243 PASS on b384246: the IME-aware BACKs + grounding loop
+  WORKED — clancreate] dump fired, tab4 + gamecard ran again, and the
+  "did not land on Home" line is GONE (0 hits this run). One death
+  absorbed; zero FATAL.
+- CREATE A CLAN form decoded (TemplateActivity, all dump-addressable):
+  tvTemplateTitle 'Create a clan'; iv_head + Button 'UPLOAD PROFILE';
+  etTribeName (EditText, hint 'Enter clan name (No more tha...');
+  'Clan tag' label; 'Introduction' + EditText hint 'Enter introduction to
+  let ot...' + '0/300' counter; submit row TextView 'Create a clan' +
+  '8000' (client-shown cost). Server-side clanCreate is free
+  (Tribe.create has no wallet math) and wallets seed 50000 — any local
+  cost gate passes.
+- Wave 5q in flight (69ec87d): FULL UI-driven clan creation — type
+  etTribeName (UIClan<uniq>), type the introduction, dismiss the keyboard
+  (it covers the submit row), tap the LAST 'Create a clan' node (the
+  title bar carries the same text), btnSure confirm if it appears, then
+  assert POST /clan/api/v2/clan/tribe in the LocalAPI log and dump the
+  post-create screen (clancreate2]).
