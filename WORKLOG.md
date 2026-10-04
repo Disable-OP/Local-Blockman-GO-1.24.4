@@ -437,3 +437,15 @@
   verified the client binding (picUrl→image, count→text) from the databinding
   class dj.java.
 - Host rig 308/308 PASS. Coverage 335/273/62/211 (81%).
+
+## Session 9 (cont. 4) — Phase 5e: spot checks over untested routes (2026-10-04)
+
+- Enumerated implemented-but-never-host-tested routes (65) from COVERAGE.json;
+  most were {version}-template variants already covered by the sweep.
+- Added targeted host tests for the meaningful ones: /v1/game-map (token
+  family), 4 ranking user/info variants (week/overall x active/clan/gDiamond/
+  gold x region), VIP recharge v4 (vip level + expireDate set), v2 password
+  lifecycle (set-password on a fresh account + login, modify + wrong-old
+  rejection + restore).
+- Host rig 318/318 PASS. No server changes in this round (test-suite only,
+  no new tag needed).

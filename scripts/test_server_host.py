@@ -1403,6 +1403,46 @@ def main():
               and len(srw.get("data", [])) == 1 and srw["data"][0]["count"] == 200,
               str(srw)[:120])
 
+        # --------------------------------- Phase 5e: spot checks over previously
+        # --------------------------------- implemented-but-untested routes
+        print("== Phase 5e: spot checks (game-map, ranking variants, VIP v4, password v2) ==")
+        gm = call("GET", "/v1/game-map?typeId=%s&targetId=%d&gameVersion=1" % (gid, uid1),
+                  headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("v1/game-map issues token", gm.get("code") == 1
+              and str(gm.get("data", {}).get("token", "")).startswith("mg-"), str(gm)[:120])
+        rv = [("active", "week", False), ("clan", "overall", False),
+              ("gDiamond", "week", True), ("gold", "overall", True)]
+        for rt, wk, reg in rv:
+            rr = call("GET", "/ranking/api/v1/ranking/user/info?rankType=%s&type=%s&isRegion=%s"
+                      % (wk, rt, "true" if reg else "false"),
+                      headers={"Access-Token": tok1, "userId": str(uid1)})
+            check("rank variant %s/%s/region=%s" % (wk, rt, reg), rr.get("code") == 1
+                  and rr.get("data", {}).get("rankType") == wk, str(rr)[:100])
+        vip4 = call("POST", "/pay/api/v4/pay/users/recharge?type=android",
+                    {"sku": "local.vip.1", "purchaseData": "local", "isSub": True},
+                    headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("vip recharge v4 sets vip", vip4.get("code") == 1
+              and vip4.get("data", {}).get("vip", 0) >= 1
+              and vip4["data"].get("expireDate"), str(vip4)[:120])
+        spw = call("POST", "/user/api/v2/app/set-password",
+                   {"userId": uid9, "password": "newpw9", "confirmPassword": "newpw9"})
+        check("v2 set-password", spw.get("code") == 1, str(spw)[:100])
+        relg = call("POST", "/user/api/v1/login", {"uid": "qa_mailer", "password": "newpw9"})
+        check("login with v2-set password", relg.get("code") == 1
+              and relg.get("data", {}).get("userId") == uid9, str(relg)[:120])
+        pwmod = call("POST", "/user/api/v2/user/password/modify",
+                     {"oldPassword": "pw1", "newPassword": "pw1b", "confirmPassword": "pw1b"},
+                     headers={"Access-Token": tok1, "userId": str(uid1)})
+        pwbad = call("POST", "/user/api/v2/user/password/modify",
+                     {"oldPassword": "WRONG", "newPassword": "x", "confirmPassword": "x"},
+                     headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("v2 password modify + wrong-old rejected", pwmod.get("code") == 1
+              and pwbad.get("code") == 0, "%s %s" % (str(pwmod)[:80], str(pwbad)[:80]))
+        pwback = call("POST", "/user/api/v2/user/password/modify",
+                      {"oldPassword": "pw1b", "newPassword": "pw1", "confirmPassword": "pw1"},
+                      headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("v2 password restored", pwback.get("code") == 1, str(pwback)[:80])
+
         print("== route-table sweep (all routes answer the envelope) ==")
         sys.path.insert(0, os.path.join(REPO, "scripts"))
         sweep_miss = []

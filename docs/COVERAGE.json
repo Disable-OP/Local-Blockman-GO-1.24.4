@@ -4,7 +4,7 @@
   "discovered": 335,
   "implemented": 273,
   "default": 62,
-  "host_tested": 211,
+  "host_tested": 215,
   "client_asserted": 105
  },
  "endpoints": [
@@ -1173,7 +1173,7 @@
    "path": "/v1/game-map",
    "status": "implemented",
    "handler": "miniGameMap",
-   "host_tested": false,
+   "host_tested": true,
    "client_asserted": false
   },
   {
@@ -1445,7 +1445,7 @@
    "path": "/pay/api/v4/pay/users/recharge",
    "status": "implemented",
    "handler": "rechargeVip",
-   "host_tested": false,
+   "host_tested": true,
    "client_asserted": false
   },
   {
@@ -1757,7 +1757,7 @@
    "path": "/user/api/v2/app/set-password",
    "status": "implemented",
    "handler": "setPassword",
-   "host_tested": false,
+   "host_tested": true,
    "client_asserted": false
   },
   {
@@ -1765,7 +1765,7 @@
    "path": "/user/api/v2/user/password/modify",
    "status": "implemented",
    "handler": "passwordModify",
-   "host_tested": false,
+   "host_tested": true,
    "client_asserted": false
   },
   {
