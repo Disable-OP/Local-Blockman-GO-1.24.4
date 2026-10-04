@@ -894,3 +894,42 @@
   converged — next waves should target the Dressing tab's filter chips
   (wardrobe surfaces: dressSuitList/owned lists are real) or close out
   with documentation work. NO GameServer work.
+
+## Session 13 (cont. 2) — wave 5k red → root-caused → recovery-aware fix → green (runs 37223386226 / 37225218093)
+
+- Wave 5k (dress chips + findfriends/clans) run 37223386226 FAILED: the
+  native-kill family struck MID-DEEP-DRIVE (pid died "fg TOP" at device
+  18:17:18, no am_kill/crash/ANR — same roaming-killer signature), and the
+  deep drive had NO recovery: gamedetail/gamecard assert_alive FAILs turned
+  the run red. Device-event forensics: 2221 died -> shell am starts
+  (18:17:42/19:01/20:26 cycles) + Phase C recovery later; the CI log's
+  7-minute "gap" and same-second bursts are block-buffered stdout, not
+  real timing — device logcat/localapi are the ground truth.
+- FIX (recovery-aware deep drive, commit 9a5dc5c):
+  * relaunch_and_wait() = the hardened force-stop+launch+wait-main helper
+    (swallowed-am-start retries x3 + one full second cycle) now shared by
+    the deep-drive recovery, Phase B entry and Phase D clean_relaunch.
+  * deep_drive's assert_alive sites became alive_or_recover(): a death is
+    RECORDED as evidence ("native-kill family signature") and the app is
+    relaunched; the drive continues. A genuine server-induced crash would
+    still fail the crash scan / show in LocalAPI diagnostics. Same policy
+    as the Phase C preflight recovery (11/11 -> 12/12).
+  * deep-drive end verifies the app actually LANDED on Home (flHomePage);
+    stranded-on-FriendInfoActivity (5j evidence) relaunches instead.
+  * Phase B entry retries once from the known main state when rb_5 is
+    unfindable (5j/5k skip cause).
+- Run 37225218093 (first run on the fix): the SAME death fired again at
+  A-gamedetail — evidence line + relaunch + recovered -> UI AUTOMATION:
+  PASS. The fix worked in production against the exact failure mode.
+- Wave 5k data: all 4 Dressing chips driven (clothes/accessories/
+  character/function), rbSuit found+driven, Find Friends + Find Clans
+  driven. BONUS EVIDENCE: the guest rename PUT /user/api/v2/user/nickName
+  SUCCEEDED this run ("guest nickname drive: edited", editor shows the
+  name, no kick) — the "guest rename gate" is NOT deterministic; it is
+  the same random-timing native killer. The Session 12 gate documentation
+  should be read as "the killer strikes during the rename window" with
+  variable timing, not a deliberate server-side gate.
+- State: 62 unique endpoints served this run, zero FATAL. All waves green
+  on commit 9a5dc5c. Next: error-driven pass over the newest diagnostics;
+  Dressing/Find surfaces are now UI-driven; remaining defaults stay
+  documented-deliberate. NO GameServer work.

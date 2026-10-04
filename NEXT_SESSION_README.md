@@ -456,3 +456,21 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   rb_accessories/rb_character/rb_function) to surface wardrobe-list
   calls through the real UI; (2) drive the rb_3 "Find Friends"/"Find
   Clans" search rows; (3) keep the error-driven loop; (4) NO GameServer.
+
+## Session 13 FINAL delta (recovery-aware deep drive — read first)
+
+- The deep drive is now recovery-aware: native-kill deaths mid-drive are
+  recorded as evidence and absorbed (relaunch_and_wait, shared with Phase
+  B entry + Phase D clean_relaunch). Proven in production: run 37225218093
+  took the same A-gamedetail death that failed 37223386226 and PASSED.
+- NEW EVIDENCE: the guest rename gate is NOT deterministic — run
+  37225218093 completed the guest rename PUT + editor refresh with NO
+  kick. The "gate" is the random-timing native killer striking (or not)
+  inside the save window. Phase B now records both outcomes.
+- Deep-drive surfaces now UI-driven: Me rows, Dressing chips
+  (clothes/accessories/character/function + rbSuit), Find Friends, Find
+  Clans, Store/Party/Video/Inbox/Top Up/Ranking, game detail + sub-tabs.
+- Next candidates: (1) error-driven pass over the newest diagnostics
+  artifact; (2) deeper Dressing tab drive (item rows -> detail/wear
+  actions) now that chips work; (3) Find Clans search input drive;
+  (4) NO GameServer work.
