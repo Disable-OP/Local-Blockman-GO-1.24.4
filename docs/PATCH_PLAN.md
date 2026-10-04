@@ -348,3 +348,29 @@ QuickIn/PartyList clients, partyQuerierService drives isPartyExist}.
   offline per the RongCloud-shim decision (documented, not fabricated).
 
 Host rig 291/291 PASS. Coverage: 335/268/67/209 (80% implemented).
+
+### Phase 5c (this session): real mailbox + engine telemetry
+
+Error-driven entry point: the v0.5.1 redroid diagnostics showed the client
+polling GET /mailbox/api/v1/mail/new every session (static bool until now)
+and calling PUT /game/api/v1/games/engine (mapped to `none`). Client-first
+evidence from jadx: IMailBoxApi + InboxModel/InboxDetailViewModel define the
+exact status machine (0=unread, 2=read, 3=delete), the attachment claim flow
+and the MailInfo Gson shape.
+
+- Mail.java domain: per-user mails in user state (status machine implemented
+  exactly as the client drives it), global mail id sequence, attachment
+  claiming into the real wallet (type 1=diamonds 2=golds — matching the
+  donation currency semantics), claim-once guarantee, newest-first list.
+- Welcome mail: every new account (register/visitor/tourist) gets one mail
+  with a 500-gold attachment; the per-user welcomeMail flag guarantees
+  one-time issuance even after deletion.
+- PUT /game/api/v1/games/engine (countUploadVersion): records
+  engineVersion/newEngineVersion/country into root.engineReports (last 20)
+  for observability; ack unchanged.
+- Mail reads AND writes are strict-auth (mailbox is personal data; the
+  ghost-user lenient resolve does not apply).
+
+Host rig 304/304 PASS (13 new mailbox assertions incl. no-re-credit across a
+restart). Coverage: 335 discovered / 271 implemented (81%) / 64 default /
+209 host-tested.

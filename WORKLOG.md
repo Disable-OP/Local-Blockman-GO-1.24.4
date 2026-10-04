@@ -379,3 +379,35 @@
   driven upgrades from the newest redroid diagnostics artifact, or (c)
   dispatch-side map-download groundwork served from /files/ (still no
   GameServer work per project instruction).
+
+## Session 9 — Phase 5c: real mailbox + engine telemetry (2026-10-04)
+
+- Verified v0.5.1-geo CI green (build 37186623154 + redroid 37186715159) and
+  pulled the redroid-diagnostics artifact for the error-driven pass: 60 unique
+  endpoints served to the real client, zero crashes, zero unmapped requests.
+- Error-driven findings: the client polls GET /mailbox/api/v1/mail/new every
+  session (static bool until now) and calls PUT /game/api/v1/games/engine
+  (mapped to `none`); everything else called is already a real handler.
+- Client-first jadx evidence: IMailBoxApi + InboxModel (j/g/h/i callbacks) +
+  InboxDetailViewModel define the mail status machine (0=unread, 2=read,
+  3=delete), the attachment-claim flow (renders from local copy, moves mail to
+  read) and the MailInfo Gson shape (id/title/content/type/extra/sendDate/
+  status/attachment[{type,itemId,name,icon,qty}]).
+- Mail.java domain + 4 real handlers: mailList (newest first, strict auth),
+  hasNewEmail (unread badge), mailOp (2=mark read, 3=delete, returns updated
+  list), mailAttachment (claim-once into the real wallet: type 1=diamonds,
+  2=golds; rejects re-claim; marks read). Welcome mail (500 golds) is issued
+  exactly once per new account across register/visitor/tourist paths (guarded
+  by a per-user flag — deletion never re-issues).
+- countUploadVersion wired to a real handler: records engineVersion/
+  newEngineVersion/country into root.engineReports (last 20 kept).
+- Host rig extended to 304 assertions — ALL PASS (new: welcome mail shape,
+  badge true->false, claim credits +500 golds exactly once, mark-read list
+  update, per-account mail isolation, delete path, strict-auth rejection,
+  no-re-credit across a server restart). Fixed one stale Phase 3.5 mail
+  assertion (was asserting the static empty-list behavior).
+- UI automation Phase C extended: on-device mailbox assertions via
+  adb-forward (register -> mail/new true -> welcome mail -> claim ->
+  wallet +500 -> badge false).
+- Coverage: 335 discovered / 271 implemented (81%) / 64 default / 209
+  host-tested. Tag v0.5.2-mail ships this phase.

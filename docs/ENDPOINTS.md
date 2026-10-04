@@ -360,7 +360,7 @@ HttpResponse envelope {code:1, message, data}).
 | GET /game/api/v1/games/resource/version | resCheck | {update:false} |
 | GET /game/api/v1/games/app-engine/upgrade | getUpgradeInfo | {needUpgrade:false} |
 | GET /game/api/v1/games/app-engine/check-update | getGameResource | [] (nothing to update) |
-| PUT /game/api/v1/games/engine | countUploadVersion | ack (no data) |
+| PUT /game/api/v1/games/engine | countUploadVersion | engine-version telemetry recorded into root.engineReports (last 20 kept), ack |
 | GET /user/api/v2/users/{userId}/daily/sign/in | dailySignIn | Map first..seventh DailySignInfo w/ claim status |
 | PUT /user/api/v2/users/{userId}/daily/sign/in | clickSignIn | claims today's slot, credits 200..3000 golds (7-day cycle) |
 | PUT /user/api/v1/users/{userId}/daily/tasks/ads | getAdsReward | +200 golds (cap 5/day), RechargeEntity |
@@ -461,3 +461,26 @@ Delete state.json to regenerate.
 | GET /game/api/v2/party/auth | partyAuth | PartyAuthInfo shape with partyService=127.0.0.1:18080 (host:port — the client split(":") it) + dynamic token/signature; the gRPC party transport stays offline (RongCloud-shim policy) |
 | GET /api/v1/parties/exists | partiesExists | "" (no party exists in the local world) |
 
+
+## Phase 5c handlers (real mailbox + engine telemetry)
+
+Client semantics verified from jadx (IMailBoxApi, InboxModel j/g/h/i,
+InboxDetailViewModel k): MailInfo{id, title, content, type, extra, sendDate,
+status, attachment:[{type,itemId,name,icon,qty}]}; status 0=unread, 2=read
+(opening a mail marks it read via mailOperation(2, ids)), 3=delete request
+("delete read" collects status==2 rows and sends mailOperation(3, ids));
+hasNewEmail drives the unread badge; attachment claim renders the reward
+dialog from the local copy and moves the mail to read.
+
+| Route | Handler | Behavior |
+|---|---|---|
+| GET /mailbox/api/v1/mail | mailList | the user's mails, newest first (strict auth) |
+| GET /mailbox/api/v1/mail/new | hasNewEmail | true when any mail has status 0 (strict auth) |
+| PUT /mailbox/api/v1/mail?status=&ids= | mailOp | 2=mark read, 3=delete; returns the updated mail list |
+| PUT /mailbox/api/v1/mail/attachment?mailId= | mailAttachment | claims attachments into the wallet once (type 1=diamonds, 2=golds — the local currency ids), marks read, rejects re-claim |
+| PUT /game/api/v1/games/engine | countUploadVersion | engine-version telemetry recorded into root.engineReports (last 20 kept) |
+
+Every NEW account (register / visitor / tourist paths) receives a one-time
+welcome mail (500 golds attachment) guarded by a per-user flag — deleting the
+mail never re-issues it. Mail state persists in state.json like the rest of
+the world; host rig asserts the no-re-credit guarantee across a restart.

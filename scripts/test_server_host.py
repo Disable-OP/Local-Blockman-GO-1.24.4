@@ -330,8 +330,9 @@ def main():
         sub = call("GET", "/pay/api/v1/sub/info/get?appType=android")
         check("sub info", sub.get("code") == 1 and "playerInfo" in sub.get("data", {})
               and sub["data"].get("subInfo") == [], str(sub)[:120])
-        mail = call("GET", "/mailbox/api/v1/mail/new")
-        check("mail/new bool", mail.get("code") == 1 and mail.get("data") is False, str(mail)[:80])
+        mail = call("GET", "/mailbox/api/v1/mail/new", headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("mail/new bool (auth)", mail.get("code") == 1
+              and mail.get("data") is True, str(mail)[:80])
 
         print("== Phase 2: rooms, tokens, misc ==")
         room = call("POST", "/game/api/v1/game/chat/room?roomName=qa-room", {})
@@ -453,9 +454,9 @@ def main():
         check("gdiamond weekly ranking", rk2.get("code") == 1
               and len(rk2.get("data", {}).get("data", [])) == 10, str(rk2)[:100])
         ml = call("GET", "/mailbox/api/v1/mail")
-        check("mail list empty", ml.get("code") == 1 and ml.get("data") == [], str(ml)[:80])
+        check("mail list strict (no auth rejected)", ml.get("code") == 0, str(ml)[:80])
         mo = call("PUT", "/mailbox/api/v1/mail?status=1&ids=1", [])
-        check("mail op ack", mo.get("code") == 1 and mo.get("data") == [], str(mo)[:80])
+        check("mail op strict (no auth rejected)", mo.get("code") == 0, str(mo)[:80])
         td = call("GET", "/clan/api/v2/clan/tribe?clanId=0")
         check("tribe detail no-clan rejected", td.get("code") == 0, str(td)[:80])
         tid = call("GET", "/clan/api/v1/clan/tribe/id")
@@ -1322,6 +1323,60 @@ def main():
         check("parties exists empty", pe.get("code") == 1 and pe.get("data") == "",
               str(pe)[:100])
 
+        # ------------------------------------------------ Phase 5c: real mailbox
+        print("== Phase 5c: mailbox (welcome mail / badge / claim / delete) ==")
+        mh1 = {"Access-Token": tok1, "userId": str(uid1)}
+        ml0 = call("GET", "/mailbox/api/v1/mail", headers=mh1)
+        check("welcome mail after register", ml0.get("code") == 1
+              and len(ml0.get("data", [])) >= 1, str(ml0)[:200])
+        welcome = [m for m in ml0.get("data", []) if "Welcome" in m.get("title", "")]
+        check("welcome mail unread w/ 500-gold attachment",
+              len(welcome) == 1 and welcome[0]["status"] == 0
+              and welcome[0]["attachment"][0]["qty"] == 500
+              and welcome[0]["attachment"][0]["type"] == 2, str(welcome)[:200])
+        new0 = call("GET", "/mailbox/api/v1/mail/new", headers=mh1)
+        check("mail/new true when unread", new0.get("code") == 1
+              and new0.get("data") is True, str(new0)[:80])
+        wm0 = call("GET", "/pay/api/v1/wealth/user", headers=mh1).get("data", {})
+        cl1 = call("PUT", "/mailbox/api/v1/mail/attachment?mailId=%d" % welcome[0]["id"],
+                   None, headers=mh1)
+        check("claim attachment ok", cl1.get("code") == 1, str(cl1)[:120])
+        wm1 = call("GET", "/pay/api/v1/wealth/user", headers=mh1).get("data", {})
+        cl2 = call("PUT", "/mailbox/api/v1/mail/attachment?mailId=%d" % welcome[0]["id"],
+                   None, headers=mh1)
+        wm2 = call("GET", "/pay/api/v1/wealth/user", headers=mh1).get("data", {})
+        check("claim credits +500 golds once", cl2.get("code") == 0
+              and wm1.get("golds", 0) == wm0.get("golds", 0) + 500
+              and wm2.get("golds", 0) == wm1.get("golds", 0),
+              "%s | w %s -> %s -> %s" % (str(cl2)[:80], wm0, wm1, wm2))
+        new1 = call("GET", "/mailbox/api/v1/mail/new", headers=mh1)
+        check("mail/new false after claim", new1.get("code") == 1
+              and new1.get("data") is False, str(new1)[:80])
+        mrd = call("PUT", "/mailbox/api/v1/mail?status=2&ids=%d" % welcome[0]["id"],
+                   None, headers=mh1)
+        check("mark read returns updated list", mrd.get("code") == 1 and len(mrd.get("data", [])) >= 1
+              and all(m["status"] == 2 for m in mrd["data"] if m["id"] == welcome[0]["id"]),
+              str(mrd)[:150])
+        # fresh account: delete path + engine telemetry
+        r9 = call("POST", "/user/api/v1/register",
+                  {"uid": "qa_mailer", "password": "pw9", "imei": "dev9"})
+        tok9, uid9 = r9["data"]["accessToken"], r9["data"]["userId"]
+        mh9 = {"Access-Token": tok9, "userId": str(uid9)}
+        ml9 = call("GET", "/mailbox/api/v1/mail", headers=mh9)
+        check("second account own welcome mail", ml9.get("code") == 1
+              and len(ml9.get("data", [])) == 1
+              and ml9["data"][0]["id"] != welcome[0]["id"], str(ml9)[:150])
+        del9 = call("PUT", "/mailbox/api/v1/mail?status=3&ids=%d" % ml9["data"][0]["id"],
+                    None, headers=mh9)
+        check("delete mail removes it", del9.get("code") == 1 and del9.get("data") == [],
+              str(del9)[:120])
+        new9 = call("GET", "/mailbox/api/v1/mail/new", headers=mh9)
+        check("mail/new false after delete", new9.get("code") == 1
+              and new9.get("data") is False, str(new9)[:80])
+        eng = call("PUT", "/game/api/v1/games/engine?engineVersion=9.9&newEngineVersion=3",
+                   None, headers={"CloudFront-Viewer-Country": "EG"})
+        check("engine report ack", eng.get("code") == 1, str(eng)[:80])
+
         print("== route-table sweep (all routes answer the envelope) ==")
         sys.path.insert(0, os.path.join(REPO, "scripts"))
         sweep_miss = []
@@ -1401,6 +1456,20 @@ def main():
         recp = call("GET", "/clan/api/v1/clan/tribe/recommendation", headers=h1b)
         check("npc tribes persist (not reseeded)", recp.get("code") == 1
               and len(recp.get("data", [])) == 9, str(len(recp.get("data", []))))
+        # Phase 5c: mailbox persists — welcome mail claimed (no re-credit), wallet intact
+        tok1c = tok1b
+        mh1c = {"Access-Token": tok1c, "userId": str(uid1)}
+        mlp = call("GET", "/mailbox/api/v1/mail", headers=mh1c)
+        wp = [m for m in mlp.get("data", []) if "Welcome" in m.get("title", "")]
+        check("welcome mail persists across restart", mlp.get("code") == 1 and len(wp) == 1
+              and wp[0]["status"] == 2, str(mlp)[:200])
+        wmpre = call("GET", "/pay/api/v1/wealth/user", headers=mh1c).get("data", {})
+        clp = call("PUT", "/mailbox/api/v1/mail/attachment?mailId=%d" % wp[0]["id"],
+                   None, headers=mh1c)
+        wmpost = call("GET", "/pay/api/v1/wealth/user", headers=mh1c).get("data", {})
+        check("claimed mail not re-credited after restart", clp.get("code") == 0
+              and wmpost.get("golds", 0) == wmpre.get("golds", 0),
+              "%s | w %s -> %s" % (str(clp)[:80], wmpre, wmpost))
     finally:
         proc2.terminate()
         try:

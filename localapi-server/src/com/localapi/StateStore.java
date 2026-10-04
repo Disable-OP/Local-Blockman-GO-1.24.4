@@ -48,6 +48,7 @@ public final class StateStore {
         if (!root.has("nextUserId")) root.put("nextUserId", 10001);
         if (!root.has("users")) root.put("users", new JSONObject());
         if (!root.has("tokens")) root.put("tokens", new JSONObject());
+        if (!root.has("mailSeq")) root.put("mailSeq", 1);
         save();
     }
 
@@ -421,6 +422,96 @@ public final class StateStore {
             userState(user).put("signIns", dates);
         }
         dates.put(date);
+        save();
+    }
+
+    // --------------------------------------------------------- mailbox state
+
+    /** All mails of a user (newest first is applied by the caller/domain). */
+    public synchronized JSONArray mails(JSONObject user) {
+        JSONObject st = userState(user);
+        JSONArray m = st.optJSONArray("mails");
+        if (m == null) {
+            m = new JSONArray();
+            st.put("mails", m);
+        }
+        return m;
+    }
+
+    /** Global mail id sequence (unique across all users, never reused). */
+    public synchronized long nextMailId() {
+        long id = root.optLong("mailSeq", 1L);
+        root.put("mailSeq", id + 1);
+        return id;
+    }
+
+    /** Append a mail: {id,title,content,type,extra,sendDate,status,attachment}. */
+    public synchronized JSONObject addMail(JSONObject user, String title, String content,
+                                           int type, String extra, JSONArray attachment) {
+        JSONObject mail = new JSONObject();
+        mail.put("id", nextMailId());
+        mail.put("title", title == null ? "" : title);
+        mail.put("content", content == null ? "" : content);
+        mail.put("type", type);
+        mail.put("extra", extra == null ? "" : extra);
+        mail.put("sendDate", System.currentTimeMillis());
+        mail.put("status", 0); // 0=unread, 2=read, 3=deleted
+        mail.put("attachment", attachment == null ? new JSONArray() : attachment);
+        mails(user).put(mail);
+        save();
+        return mail;
+    }
+
+    /** Find a mail by id (null when absent or already deleted). */
+    public synchronized JSONObject findMail(JSONObject user, long mailId) {
+        JSONArray m = mails(user);
+        for (int i = 0; i < m.length(); i++) {
+            JSONObject mail = m.optJSONObject(i);
+            if (mail != null && mail.optLong("id") == mailId) return mail;
+        }
+        return null;
+    }
+
+    /** Set mail status (2=read). Returns false when the mail is gone. */
+    public synchronized boolean markMail(JSONObject user, long mailId, int status) {
+        JSONObject mail = findMail(user, mailId);
+        if (mail == null) return false;
+        mail.put("status", status);
+        save();
+        return true;
+    }
+
+    /** Hard-delete a mail (client "delete" operation, status 3). */
+    public synchronized boolean deleteMail(JSONObject user, long mailId) {
+        JSONArray m = mails(user);
+        for (int i = 0; i < m.length(); i++) {
+            JSONObject mail = m.optJSONObject(i);
+            if (mail != null && mail.optLong("id") == mailId) {
+                m.remove(i);
+                save();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Record an engine-version report (telemetry observability, last 20 kept). */
+    public synchronized void recordEngineReport(String engineVersion, int newEngineVersion,
+                                                String country) {
+        JSONArray reports = root.optJSONArray("engineReports");
+        if (reports == null) {
+            reports = new JSONArray();
+            root.put("engineReports", reports);
+        }
+        JSONObject r = new JSONObject();
+        r.put("engineVersion", engineVersion == null ? "" : engineVersion);
+        r.put("newEngineVersion", newEngineVersion);
+        r.put("country", country == null ? "" : country);
+        r.put("at", System.currentTimeMillis());
+        JSONArray next = new JSONArray();
+        next.put(r);
+        for (int i = 0; i < reports.length() && next.length() < 20; i++) next.put(reports.optJSONObject(i));
+        root.put("engineReports", next);
         save();
     }
 

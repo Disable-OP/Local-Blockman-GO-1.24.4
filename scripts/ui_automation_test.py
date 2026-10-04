@@ -593,6 +593,25 @@ def main():
     check("C: gift suit claimed into wardrobe", p4.get("data") is True
           and p5.get("code") == 1 and len(p5.get("data", [])) >= 3, str(p5)[:150])
 
+    # Phase 5c surface: real mailbox (welcome mail -> badge -> claim -> wallet)
+    m0 = fcall("GET", "/mailbox/api/v1/mail/new", headers=auth_hdr)
+    check("C: mail/new true after register", m0.get("code") == 1
+          and m0.get("data") is True, str(m0)[:100])
+    m1 = fcall("GET", "/mailbox/api/v1/mail", headers=auth_hdr)
+    wmail = [m for m in m1.get("data", []) if "Welcome" in m.get("title", "")]
+    check("C: welcome mail on-device", m1.get("code") == 1 and len(wmail) == 1
+          and wmail[0]["attachment"][0]["qty"] == 500, str(m1)[:150])
+    wpre = fcall("GET", "/pay/api/v1/wealth/user", headers=auth_hdr).get("data", {})
+    m2 = fcall("PUT", "/mailbox/api/v1/mail/attachment?mailId=%d" % wmail[0]["id"],
+               None, headers=auth_hdr)
+    wpost = fcall("GET", "/pay/api/v1/wealth/user", headers=auth_hdr).get("data", {})
+    check("C: mail claim credits wallet", m2.get("code") == 1
+          and wpost.get("golds", 0) == wpre.get("golds", 0) + 500,
+          "%s | w %s -> %s" % (str(m2)[:80], wpre, wpost))
+    m3 = fcall("GET", "/mailbox/api/v1/mail/new", headers=auth_hdr)
+    check("C: mail/new false after claim", m3.get("code") == 1
+          and m3.get("data") is False, str(m3)[:100])
+
     # ------------------------------------------------- assertions
     print("== assertions ==")
     paths = localapi_paths(adb)

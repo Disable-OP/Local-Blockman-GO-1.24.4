@@ -86,7 +86,7 @@ final class Handlers {
         if ("resCheck".equals(name)) return envelope("obj", "{\"md5\":\"\",\"update\":false,\"url\":\"\"}");
         if ("getUpgradeInfo".equals(name)) return envelope("obj", "{\"needUpgrade\":false,\"downloadUrl\":\"\",\"hash\":\"\",\"resVersion\":1}");
         if ("getGameResource".equals(name)) return envelope("list", "[]");
-        if ("countUploadVersion".equals(name)) return envelope("none", null);
+        if ("countUploadVersion".equals(name)) return countUploadVersion(ctx, store);
         if ("dailySignIn".equals(name)) return dailySignIn(ctx, store);
         if ("clickSignIn".equals(name)) return clickSignIn(ctx, store);
         if ("getAdsReward".equals(name)) return getAdsReward(ctx, store);
@@ -208,8 +208,10 @@ final class Handlers {
         if ("scrapSend".equals(name)) return scrapSend(ctx, store);
         // ---- Phase 3.5: rankings from the local world + mailbox + tribe states ----
         if ("rankingPage".equals(name)) return rankingPage(name, ctx, store);
-        if ("mailList".equals(name)) return envelope("list", "[]");
-        if ("mailOp".equals(name)) return envelope("list", "[]");
+        if ("mailList".equals(name)) return mailList(ctx, store);
+        if ("mailOp".equals(name)) return mailOp(ctx, store);
+        if ("hasNewEmail".equals(name)) return hasNewEmail(ctx, store);
+        if ("mailAttachment".equals(name)) return mailAttachment(ctx, store);
         // ---- Phase 4: tribe (clan) real state ----
         if ("tribeId".equals(name)) return tribeId(ctx, store);
         if ("tribeDetail".equals(name)) return tribeDetail(ctx, store);
@@ -356,6 +358,7 @@ final class Handlers {
         if (u == null) {
             return fail("username already exists");
         }
+        Mail.ensureWelcomeMail(store, u);
         store.issueToken(u);
         u.put("isFirstLogin", true);
         recordLogin(store, u);
@@ -391,6 +394,7 @@ final class Handlers {
             imei = "unknown-device";
         }
         JSONObject u = store.findOrCreateByKey("visitor:" + imei, true);
+        Mail.ensureWelcomeMail(store, u);
         String token = store.issueToken(u);
         recordLogin(store, u);
         JSONObject v = new JSONObject();
@@ -411,6 +415,7 @@ final class Handlers {
             device = "tourist";
         }
         JSONObject u = store.findOrCreateByKey("tourist:" + device, true);
+        Mail.ensureWelcomeMail(store, u);
         store.issueToken(u);
         u.put("isFirstLogin", true);
         recordLogin(store, u);
@@ -1022,6 +1027,78 @@ final class Handlers {
         }
         if (weekly) qty = qty / 7 + 3;
         return qty;
+    }
+
+    // ---------------------------------------------------- Phase 5c: real mailbox
+
+    /** GET /mailbox/api/v1/mail — the user's mails, newest first (strict auth). */
+    private static String mailList(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return fail(NO_AUTH);
+        }
+        return envelope("list", Mail.list(store, u).toString());
+    }
+
+    /** GET /mailbox/api/v1/mail/new — unread badge (strict auth). */
+    private static String hasNewEmail(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return fail(NO_AUTH);
+        }
+        return envelope("bool", String.valueOf(Mail.hasNew(store, u)));
+    }
+
+    /**
+     * PUT /mailbox/api/v1/mail?status=&ids= — 2 = mark read, 3 = delete.
+     * Returns the updated mail list (client expects List<MailInfo>).
+     */
+    private static String mailOp(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return fail(NO_AUTH);
+        }
+        int status = (int) parseLong(ctx.query("status"), 2);
+        JSONArray ids = new JSONArray();
+        for (String v : ctx.queryValues("ids")) {
+            try {
+                ids.put(Long.parseLong(v.trim()));
+            } catch (NumberFormatException ignore) {
+                // malformed id — skip, never fail the whole batch
+            }
+        }
+        return envelope("list", Mail.operate(store, u, status, ids).toString());
+    }
+
+    /**
+     * PUT /mailbox/api/v1/mail/attachment?mailId= — claim the mail's
+     * attachments into the wallet once, mark the mail read. Returns a
+     * message string (client renders the reward dialog from its local copy).
+     */
+    private static String mailAttachment(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return fail(NO_AUTH);
+        }
+        long mailId = parseLong(ctx.query("mailId"), 0L);
+        if (mailId <= 0) {
+            return fail("mailId required");
+        }
+        if (!Mail.claim(store, u, mailId)) {
+            return fail("attachment already claimed or mail gone");
+        }
+        return envelope("str", "\"ok\"");
+    }
+
+    /**
+     * PUT /game/api/v1/games/engine?engineVersion=&newEngineVersion= —
+     * engine-version telemetry; recorded into state for observability.
+     */
+    private static String countUploadVersion(Ctx ctx, StateStore store) {
+        store.recordEngineReport(ctx.query("engineVersion"),
+                (int) parseLong(ctx.query("newEngineVersion"), 0),
+                ctx.header("cloudfront-viewer-country"));
+        return envelope("none", null);
     }
 
     /** Ranked rows (desc) across real users + citizens for one rank type. */

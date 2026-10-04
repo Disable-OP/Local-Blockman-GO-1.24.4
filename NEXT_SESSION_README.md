@@ -200,3 +200,28 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   distances), region/user rankings from real wallets, party auth shape with
   loopback host:port services. Host rig 291/291. Coverage 335/268/67/209
   (80%). Tag v0.5.1-geo ships both Phase 5 waves.
+
+## Session 9 delta (Phase 5c: real mailbox + engine telemetry)
+
+- Mailbox is now REAL state: mailList/hasNewEmail/mailOp/mailAttachment all
+  state-backed (Mail.java). Client semantics implemented exactly: status
+  0=unread/2=read/3=delete, claim-once attachments into the real wallet
+  (type 1=diamonds, 2=golds), strict auth on reads and writes.
+- Every new account gets a one-time welcome mail (500 golds) across
+  register/visitor/tourist — flag-guarded, survives deletion.
+- PUT /game/api/v1/games/engine is a real handler now (telemetry into
+  root.engineReports).
+- Host rig 304/304. Coverage 335/271/64/209 (81%). CI tags: v0.5.2-mail
+  (verify the build-release + redroid run, mailbox assertions are in Phase C).
+- Next highest-value gaps (priority order):
+  1. Verify v0.5.2-mail CI green (build-release + test-redroid).
+  2. Error-driven pass over the NEW redroid diagnostics artifact (same
+     procedure as this session: pull redroid-diagnostics, diff client calls
+     against RoutingTable kinds).
+  3. Remaining /config/files defaults (banner/share-reward/campaign lists,
+     game-detail-to-editor, indiegame introductions) — model shapes from jadx
+     first (FireConfig consumers), keep flag-gated off.
+  4. Dispatch-side map-download groundwork served from /files/ (still NO
+     GameServer work per project instruction).
+  5. videostars (5, real-money) + /video (7): stay error-driven; only
+     implement if a redroid run shows the client calling them.
