@@ -490,3 +490,30 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 - Latest green: 37227953542 (67 unique endpoints, zero FATAL).
 - Next: buy-then-wear Store decode; Find Clans search retry; error-driven
   pass over the newest diagnostics; NO GameServer work.
+
+## Session 13 FINAL (read first — the session is closed at 3d768b5)
+
+- 9 consecutive pushes this session: CI-failure triage, clean_relaunch
+  hardening, waves 5j/5k/5l/5m, recovery-aware deep drive (proven in
+  production), logcat-rotation fix, GL-shop decode + deliberate stop.
+  Latest green run: 37234955486 (65 endpoints, zero FATAL).
+- FACTS a new session must know:
+  * The deep drive absorbs native-kill deaths (evidence line + relaunch +
+    continue). Do NOT re-add bare assert_alive to drive checkpoints.
+  * Snapshot LocalAPI paths BEFORE the deep drive (paths_early) — GL
+    screens rotate the logcat buffer; never trust an end-of-run scan
+    alone.
+  * Bottom nav: rb_1=Home, rb_2=Dressing (owned items; shop mode via
+    ivShopEnter — the shop grid is GL-rendered, NOT dump-addressable,
+    buy-then-wear is a documented stop), rb_3=Friends/Clans, rb_4=Chat
+    (RongCloud offline shim), rb_5=Me.
+  * The shop grid loads from /shop/api/v1/new/shop/recommend/decorations;
+    /new/shop/decorations/{typeId} never fires from the client.
+  * The "guest rename gate" is NOT deterministic — it is the roaming
+    native killer striking (or not) inside the rename window.
+  * The two password defaults (/user/api/v1/user/password,
+    /emails/password/reset) have NO UI callers — dead client routes.
+- Next candidates: (1) Find Clans search input retry (needs a death-free
+  window); (2) error-driven pass over the newest diagnostics; (3) a
+  patched-dex accessibility entry for the GL shop would be the ONLY way
+  to client-assert the buy path — weigh cost first; (4) NO GameServer.
