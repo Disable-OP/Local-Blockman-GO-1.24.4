@@ -86,10 +86,24 @@ final class Handlers {
         if ("getAdsReward".equals(name)) return getAdsReward(ctx, store);
         if ("getAdsRewardInfo".equals(name)) return envelope("obj", "{\"currency\":1,\"quantity\":200,\"remainTime\":0}");
         if ("getSignAdsReward".equals(name)) return getSignAdsReward(ctx, store);
-        if ("friendList".equals(name)) return emptyPage(10);
-        if ("friendRequestsList".equals(name)) return emptyPage(10);
+        if ("friendList".equals(name)) return friendList(ctx, store);
+        if ("friendRequestsList".equals(name)) return friendRequestsList(ctx, store);
         if ("followFriendsList".equals(name)) return emptyPage(10);
         if ("friendRecommendation".equals(name)) return friendRecommendation(ctx, store);
+        // ---- Phase 4b: friend relationships (real state) ----
+        if ("friendSearchList".equals(name)) return friendSearchList(ctx, store);
+        if ("friendById".equals(name)) return friendById(ctx, store);
+        if ("friendDetails".equals(name)) return friendDetails(ctx, store);
+        if ("friendGamingInfo".equals(name)) return friendGamingInfo(ctx, store);
+        if ("friendStatus".equals(name)) return friendStatus(ctx, store);
+        if ("friendPublicStatus".equals(name)) return friendPublicStatus(ctx, store);
+        if ("friendAdd".equals(name)) return friendAdd(ctx, store);
+        if ("friendDelete".equals(name)) return friendDelete(ctx, store);
+        if ("friendBlacklist".equals(name)) return friendBlacklist(ctx, store);
+        if ("friendAliasSet".equals(name)) return friendAliasSet(ctx, store);
+        if ("friendAliasDelete".equals(name)) return friendAliasDelete(ctx, store);
+        if ("friendAgree".equals(name)) return friendAgree(ctx, store);
+        if ("friendReject".equals(name)) return friendReject(ctx, store);
         if ("getVipInfo".equals(name)) return getVipInfo(ctx, store);
         if ("getSubscribeInfo".equals(name)) return getSubscribeInfo(ctx, store);
         // ---- Phase 3: decoration / dress shop / scrap exchange ----
@@ -1526,6 +1540,210 @@ final class Handlers {
         s.put("signature", "");
         s.put("userId", u.optLong("userId"));
         return envelope("obj", s.toString());
+    }
+
+    // ------------------------------------------------- Phase 4b: friend relationships
+
+    /** GET /friend/api/v1/friends — PageData&lt;Friend&gt; of the caller's real friends. */
+    private static String friendList(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        int pageNo = (int) parseLong(ctx.query("pageNo"), 1);
+        int pageSize = (int) parseLong(ctx.query("pageSize"), 20);
+        JSONArray rows = new JSONArray();
+        JSONArray ids = Friend.friends(store, u);
+        for (int i = 0; i < ids.length(); i++) {
+            JSONObject f = Friend.personJson(store, u, ids.optLong(i));
+            if (f != null) rows.put(f);
+        }
+        return envelope("obj", pageData(slice(rows, pageNo, pageSize), pageNo, pageSize, rows.length()).toString());
+    }
+
+    /** GET /friend/api/v1/friends/requests — PageData&lt;FriendRequests&gt; (pending incoming). */
+    private static String friendRequestsList(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        int pageNo = (int) parseLong(ctx.query("pageNo"), 1);
+        int pageSize = (int) parseLong(ctx.query("pageSize"), 20);
+        JSONArray rows = new JSONArray();
+        JSONArray reqs = Friend.pendingRequests(store, u);
+        for (int i = 0; i < reqs.length(); i++) {
+            JSONObject r = reqs.optJSONObject(i);
+            if (r == null) continue;
+            JSONObject p = Friend.person(store, r.optLong("userId"));
+            JSONObject o = new JSONObject();
+            o.put("requestId", r.optLong("userId"));
+            o.put("userId", r.optLong("userId"));
+            o.put("nickName", p == null ? "Player" : p.optString("nickName"));
+            o.put("picUrl", p == null ? "" : (p.optString("headPic").isEmpty()
+                    ? p.optString("picUrl") : p.optString("headPic")));
+            o.put("sex", p == null ? 0 : p.optInt("sex"));
+            o.put("age", 0);
+            o.put("country", p == null ? "" : p.optString("country"));
+            o.put("language", "en");
+            o.put("vip", p == null ? 0 : p.optInt("vip"));
+            o.put("msg", r.optString("msg"));
+            o.put("status", r.optInt("status"));
+            rows.put(o);
+        }
+        return envelope("obj", pageData(slice(rows, pageNo, pageSize), pageNo, pageSize, rows.length()).toString());
+    }
+
+    /** GET /friend/api/v1/friends/info/{nickName}?fuzzyQuery= — search people by nickname. */
+    private static String friendSearchList(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        String nick = ctx.pathParam("nickName");
+        int pageNo = (int) parseLong(ctx.query("pageNo"), 1);
+        int pageSize = (int) parseLong(ctx.query("pageSize"), 20);
+        JSONArray rows = new JSONArray();
+        if (nick != null && !nick.isEmpty()) {
+            String q = nick.toLowerCase(java.util.Locale.US);
+            JSONObject users = store.root().optJSONObject("users");
+            JSONArray names = users == null ? null : users.names();
+            for (int i = 0; names != null && i < names.length(); i++) {
+                JSONObject p = users.optJSONObject(names.optString(i));
+                if (p == null || p.optLong("userId") == (u == null ? 0 : u.optLong("userId"))) continue;
+                if (p.optString("nickName").toLowerCase(java.util.Locale.US).contains(q)) {
+                    JSONObject f = Friend.personJson(store, u, p.optLong("userId"));
+                    if (f != null) rows.put(f);
+                }
+            }
+            JSONArray citizens = GameCatalog.citizens(store);
+            for (int i = 0; citizens != null && i < citizens.length(); i++) {
+                JSONObject p = citizens.optJSONObject(i);
+                if (p != null && p.optString("nickName").toLowerCase(java.util.Locale.US).contains(q)) {
+                    JSONObject f = Friend.personJson(store, u, p.optLong("userId"));
+                    if (f != null) rows.put(f);
+                }
+            }
+        }
+        return envelope("obj", pageData(slice(rows, pageNo, pageSize), pageNo, pageSize, rows.length()).toString());
+    }
+
+    /** GET /friend/api/v1/friends/info/id/{id} — Friend by id. */
+    private static String friendById(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        long id = parseLong(ctx.pathParam("id"), 0);
+        JSONObject f = Friend.personJson(store, u, id);
+        if (f == null) return fail("user not found");
+        return envelope("obj", f.toString());
+    }
+
+    /** GET /friend/api/v2/friends/{friendId} — Friend details. */
+    private static String friendDetails(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        long id = parseLong(ctx.pathParam("friendId"), 0);
+        JSONObject f = Friend.personJson(store, u, id);
+        if (f == null) return fail("user not found");
+        return envelope("obj", f.toString());
+    }
+
+    /** GET /friend/api/v1/friends/{friendId}/gaming — StatusBean (presence; game sessions come with the GameServer phase). */
+    private static String friendGamingInfo(Ctx ctx, StateStore store) {
+        long id = parseLong(ctx.pathParam("friendId"), 0);
+        if (Friend.person(store, id) == null) return fail("user not found");
+        return envelope("obj", Friend.statusBean(store, id).toString());
+    }
+
+    /** GET /friend/api/v2/friends/status — FriendStatus {cur/max, currentTime, per-friend StatusBean list}. */
+    private static String friendStatus(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONArray ids = Friend.friends(store, u);
+        JSONObject out = new JSONObject();
+        out.put("curFriendCount", ids.length());
+        out.put("maxFriendCount", Friend.MAX_FRIENDS);
+        out.put("currentTime", System.currentTimeMillis());
+        JSONArray online = new JSONArray();
+        for (int i = 0; i < ids.length(); i++) {
+            long fid = ids.optLong(i);
+            if (Friend.online(store, fid)) {
+                online.put(Friend.statusBean(store, fid));
+            }
+        }
+        out.put("status", online);
+        return envelope("obj", out.toString());
+    }
+
+    /** GET /friend/api/v1/friend/status/{friendId} — relationship code (2 self, 1 friend, 0 other). */
+    private static String friendPublicStatus(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        long id = parseLong(ctx.pathParam("friendId"), 0);
+        if (Friend.person(store, id) == null) return fail("user not found");
+        int code;
+        if (u != null && id == u.optLong("userId")) {
+            code = 2;
+        } else if (u != null && Friend.isFriend(store, u, id)) {
+            code = 1;
+        } else {
+            code = 0;
+        }
+        return envelope("num", String.valueOf(code));
+    }
+
+    /** POST /friend/api/v1/friends — FriendRequestAdd {friendId, msg}. */
+    private static String friendAdd(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject form = body(ctx);
+        String err = Friend.add(store, u, form.optLong("friendId"), form.optString("msg"));
+        if (err != null) return fail(err);
+        return envelope("none", null);
+    }
+
+    /** DELETE /friend/api/v1/friends?friendId= — unfriend (both sides). */
+    private static String friendDelete(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = Friend.remove(store, u, parseLong(ctx.query("friendId"), 0));
+        if (err != null) return fail(err);
+        return envelope("none", null);
+    }
+
+    /** DELETE /friend/api/v1/friends/black?friendId= — add to blacklist (verified call-site semantics). */
+    private static String friendBlacklist(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = Friend.blacklist(store, u, parseLong(ctx.query("friendId"), 0));
+        if (err != null) return fail(err);
+        return envelope("none", null);
+    }
+
+    /** POST /friend/api/v1/friends/{friendId}/alias?alias= — set a personal alias. */
+    private static String friendAliasSet(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = Friend.setAlias(store, u, parseLong(ctx.pathParam("friendId"), 0),
+                ctx.query("alias"));
+        if (err != null) return fail(err);
+        return envelope("none", null);
+    }
+
+    /** DELETE /friend/api/v1/friends/{friendId}/alias — remove the alias. */
+    private static String friendAliasDelete(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = Friend.setAlias(store, u, parseLong(ctx.pathParam("friendId"), 0), "");
+        if (err != null) return fail(err);
+        return envelope("none", null);
+    }
+
+    /** PUT /friend/api/v1/friends/{friendId}/agreement — accept a friend request. */
+    private static String friendAgree(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = Friend.accept(store, u, parseLong(ctx.pathParam("friendId"), 0));
+        if (err != null) return fail(err);
+        return envelope("none", null);
+    }
+
+    /** PUT /friend/api/v1/friends/{friendId}/rejection — reject a friend request. */
+    private static String friendReject(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = Friend.reject(store, u, parseLong(ctx.pathParam("friendId"), 0));
+        if (err != null) return fail(err);
+        return envelope("none", null);
     }
 
     // ------------------------------------------------- Phase 4: tribe (clan)

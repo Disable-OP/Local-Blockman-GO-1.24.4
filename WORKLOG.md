@@ -215,3 +215,32 @@
   blacklist (12), /msg/api group chat list/create/kick (21 — pairs with the
   RongCloud shim decision), /user/api account-security block (50), activity
   events (29, flag-gated), /video (7).
+
+## Session 6 (cont.) — Phase 4b: friend relationships fully state-backed (2026-10-04)
+
+- v0.4.0-tribe CI FULLY GREEN: build-release + redroid UI automation PASS
+  (run 37181913034) with the on-device tribe lifecycle assertions
+  (tribe id / recommendations / create / base / rank / dissolve).
+- Friend phase, client-first from jadx: IFriendApi (18 methods) +
+  IFriendPublicApi + models (Friend greendao entity, FriendRequests,
+  FriendStatus, StatusBean, FriendRequestAdd) + call-sites
+  (FriendListItemViewModel context actions). DELETE /friends/black is
+  ADD-TO-BLACKLIST (verified from the UI action next to friendDelete).
+- Implemented Friend.java + 15 handlers: add/accept/reject (requests with
+  status 0/2/3), unfriend (both sides), blacklist (unfriends + marks),
+  alias set/remove, friend search (real users + citizens), friend by id,
+  friend details (Friend JSON with caller-relative friend flag + alias),
+  gaming StatusBean, FriendStatus (cur/max, currentTime, online friends),
+  public relationship code (2 self/1 friend/0 other).
+- Presence is REAL STATE: StateStore.isOnline(userId) = holds >=1 live
+  token; citizens offline. friendList/friendRequestsList upgraded from
+  empty pages to real persisted data.
+- Latent host-rig bug found + fixed: HostTest stdout was an undrained pipe;
+  after ~400 requests the 64KB buffer filled and L.i() blocked, wedging all
+  handler threads (sweep timeouts). Server output now sinks to a state-dir
+  file. Diagnosed via SIGQUIT thread dump (threads parked in
+  PrintStream.writeln <- L.i <- LocalHttpd.serve).
+- Host rig: 199/199 PASS (28 new friend assertions; sweep now stable).
+- Coverage: 335 discovered / 187 implemented / 148 default / 161
+  host-tested. Remaining defaults: /user/api security block (50),
+  /msg group chat (21), activity events (29, flag-gated), /video (7).

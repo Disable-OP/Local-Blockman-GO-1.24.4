@@ -140,4 +140,41 @@ stubs). New domain module: `localapi-server/src/com/localapi/Tribe.java`.
   server on-device.
 - Remaining default areas: /user/api account-security block (50),
   /msg/api group chat (21 — RongCloud shim decision), /activity events
-  (29, flag-gated), friend detail/status (12), /video (7), misc.
+  (29, flag-gated), /video (7), misc.
+
+## Phase 4b — friend relationships real state (session 6, DONE)
+
+All 15 /friend/api routes are now state-backed (13 new + friendList/
+friendRequestsList upgraded from empty states). New domain module:
+`localapi-server/src/com/localapi/Friend.java`.
+
+- **Model shapes** from the decompiled client (Friend greendao entity,
+  FriendRequests, FriendStatus, StatusBean, FriendRequestAdd,
+  RecommendFriendEntity) and call-sites (FriendModel/FriendViewModel,
+  FriendListItemViewModel — DELETE /friends/black verified as ADD TO
+  BLACKLIST from the UI context action next to friendDelete).
+- **Lifecycle**: add request {friendId,msg} (self/duplicate/blacklisted
+  rejected; requests land in the target's incoming list) → accept
+  (agreement: both sides become friends) or reject (rejection) → alias
+  set/remove (caller-local) → unfriend (both sides) → blacklist
+  (unfriends + marks). Citizens (the persistent NPC pool) auto-accept adds
+  since nobody else can approve on a purely local server.
+- **Presence is real state**: a user is online iff it holds at least one
+  un-dropped access token (StateStore.isOnline); citizens are offline.
+  GET /friend/api/v2/friends/status returns cur/max counts, currentTime
+  (server time used by the client for "last seen"), and StatusBeans for
+  online friends; /{friendId}/gaming returns the same StatusBean shape
+  (gamingInfo stays null until the GameServer phase).
+- **friendList / friendRequestsList** now return real persisted data
+  instead of empty pages; friend search (info/{nickName}) scans real users
+  + citizens, info/id/{id} and v2 /{friendId} return full Friend JSON with
+  caller-relative fields (friend flag, alias).
+- GET /friend/api/v1/friend/status/{friendId} → relationship code
+  (2 self / 1 friend / 0 other).
+- **Host-rig bug found + fixed**: server logs went to an undrained PIPE;
+  after ~400 requests the 64KB pipe buffer filled and every L.i() write
+  blocked, wedging all handler threads (sweep timeouts). Server output now
+  sinks to a file in the state dir. (Logcat has no such backpressure
+  on-device — host-rig-only issue, but it was masking real progress.)
+- Host rig: 199/199 PASS. Coverage: 335 discovered / 187 implemented /
+  148 default / 161 host-tested.

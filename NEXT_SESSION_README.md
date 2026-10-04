@@ -129,3 +129,22 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
      client is observed calling them (error-driven).
 - Releases: tag v* to ship a new APK (build-release.yml triggers on tags
   only). Latest green: v0.3.3-pay. Tag v0.4.0-tribe ships this phase.
+
+## Session 6 delta 2 (Phase 4b: friends real state)
+
+- All 15 /friend/api routes state-backed (Friend.java): add/accept/reject,
+  unfriend, blacklist, alias, search, details, presence from live tokens.
+  friendList/friendRequestsList now return REAL data (not empty pages).
+- Host-rig lesson: never let HostTest stdout be an undrained pipe — it
+  wedges all threads once the 64KB buffer fills (now sinks to a file).
+- Coverage: 335/187/148/161. v0.4.0-tribe CI green incl. on-device tribe
+  lifecycle; tag v0.4.1-friends ships the friend phase.
+- Next priorities:
+  1. /msg/api group chat (21) — pairs with the RongCloud shim decision
+     (rongToken returns 'local-<id>' today; a minimal local group-chat
+     state store would make the chat screens functional).
+  2. /user/api account-security block (50) — settings-screen endpoints
+     (password change, email/phone bind, secret questions): implement real
+     state where the UI allows; keep code=0 for impossible ones (real SMS).
+  3. Decoration suits (dressSuitList default []) + VIP dress lists.
+  4. Activity/events (29, flag-gated) + /video (7): error-driven only.

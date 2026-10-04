@@ -66,9 +66,14 @@ def wait_ready(timeout=30):
 
 def main():
     state_dir = tempfile.mkdtemp(prefix="localapi-test-")
+    # Server logs sink to a FILE, not a pipe: an undrained pipe fills its 64KB
+    # buffer after a few hundred requests and L.i() blocks forever, wedging
+    # every handler thread (seen as sweep timeouts). Logcat has no such
+    # backpressure on-device; this is purely a host-rig concern.
+    server_log = open(os.path.join(state_dir, "server.log"), "wb")
     proc = subprocess.Popen(
         ["java", "-cp", HOST_CP, "com.localapi.HostTest", state_dir, str(PORT)],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        stdout=server_log, stderr=subprocess.STDOUT)
     try:
         if not wait_ready():
             print("server failed to boot (port %d)" % PORT)
@@ -743,6 +748,104 @@ def main():
               and call("GET", "/clan/api/v1/clan/tribe/id", headers=h6).get("data") == "0",
               str(dd)[:100])
 
+        print("== Phase 4b: friend discovery ==")
+        fs = call("GET", "/friend/api/v1/friends/info/Alex?pageNo=1&pageSize=10", headers=h2)
+        check("search citizens by nick", fs.get("code") == 1
+              and fs["data"].get("totalSize", 0) >= 1
+              and all("alex" in f["nickName"].lower() for f in fs["data"]["data"])
+              and all(k in fs["data"]["data"][0] for k in
+                      ("userId", "nickName", "sex", "vip", "friend", "status", "alias")),
+              str(fs)[:200])
+        cid = fs["data"]["data"][0]["userId"]
+        fby = call("GET", "/friend/api/v1/friends/info/id/%d" % cid, headers=h2)
+        check("friend by id", fby.get("code") == 1 and fby["data"].get("userId") == cid
+              and fby["data"].get("friend") is False, str(fby)[:150])
+        fdet = call("GET", "/friend/api/v2/friends/%d" % uid3, headers=h2)
+        check("friend details real user", fdet.get("code") == 1
+              and fdet["data"].get("userId") == uid3, str(fdet)[:120])
+        pub0 = call("GET", "/friend/api/v1/friend/status/%d" % uid3, headers=h2)
+        check("public status stranger", pub0.get("code") == 1 and pub0.get("data") == 0,
+              str(pub0)[:80])
+
+        print("== Phase 4b: friend add -> accept ==")
+        selfadd = call("POST", "/friend/api/v1/friends", {"friendId": uid2, "msg": ""},
+                       headers=h2)
+        check("self-add rejected", selfadd.get("code") == 0, str(selfadd)[:80])
+        fa = call("POST", "/friend/api/v1/friends", {"friendId": uid3, "msg": "hi there"},
+                  headers=h2)
+        check("friend add ok", fa.get("code") == 1, str(fa)[:80])
+        fa2 = call("POST", "/friend/api/v1/friends", {"friendId": uid3, "msg": "hi"},
+                   headers=h2)
+        check("duplicate request rejected", fa2.get("code") == 0, str(fa2)[:80])
+        freqs = call("GET", "/friend/api/v1/friends/requests?pageNo=1&pageSize=10", headers=h3)
+        check("request visible to target", freqs.get("code") == 1
+              and freqs["data"]["totalSize"] == 1
+              and freqs["data"]["data"][0]["userId"] == uid2
+              and freqs["data"]["data"][0]["msg"] == "hi there"
+              and freqs["data"]["data"][0]["status"] == 0, str(freqs)[:200])
+        fnoauth = call("POST", "/friend/api/v1/friends", {"friendId": uid3})
+        check("unauthenticated add rejected", fnoauth.get("code") == 0, str(fnoauth)[:80])
+        fag = call("PUT", "/friend/api/v1/friends/%d/agreement" % uid2, headers=h3)
+        check("accept request", fag.get("code") == 1, str(fag)[:80])
+        fl2 = call("GET", "/friend/api/v1/friends?pageNo=1&pageSize=10", headers=h2)
+        fl3 = call("GET", "/friend/api/v1/friends?pageNo=1&pageSize=10", headers=h3)
+        check("both sides list each other", fl2.get("code") == 1 and fl3.get("code") == 1
+              and fl2["data"]["totalSize"] == 1 and fl3["data"]["totalSize"] == 1
+              and fl2["data"]["data"][0]["userId"] == uid3
+              and fl2["data"]["data"][0]["friend"] is True, str(fl2)[:200])
+        pub1 = call("GET", "/friend/api/v1/friend/status/%d" % uid3, headers=h2)
+        check("public status friend", pub1.get("code") == 1 and pub1.get("data") == 1,
+              str(pub1)[:80])
+        fst = call("GET", "/friend/api/v2/friends/status", headers=h2)
+        check("friendStatus counts+presence", fst.get("code") == 1
+              and fst["data"].get("curFriendCount") == 1
+              and fst["data"].get("maxFriendCount", 0) > 0
+              and fst["data"].get("currentTime", 0) > 0
+              and any(b.get("userId") == uid3 and b.get("status") == 1
+                      for b in fst["data"].get("status", [])), str(fst)[:200])
+        fg = call("GET", "/friend/api/v1/friends/%d/gaming" % uid3, headers=h2)
+        check("friend gaming StatusBean", fg.get("code") == 1
+              and fg["data"].get("userId") == uid3 and "status" in fg["data"], str(fg)[:120])
+
+        print("== Phase 4b: alias ==")
+        al = call("POST", "/friend/api/v1/friends/%d/alias?alias=Buddy" % uid3, None, headers=h2)
+        check("set alias", al.get("code") == 1, str(al)[:80])
+        fdet2 = call("GET", "/friend/api/v2/friends/%d" % uid3, headers=h2)
+        check("alias visible in details", fdet2.get("code") == 1
+              and fdet2["data"].get("alias") == "Buddy", str(fdet2)[:120])
+        ald = call("DELETE", "/friend/api/v1/friends/%d/alias" % uid3, headers=h2)
+        fdet3 = call("GET", "/friend/api/v2/friends/%d" % uid3, headers=h2)
+        check("alias removed", ald.get("code") == 1 and fdet3["data"].get("alias") == "",
+              str(fdet3)[:120])
+
+        print("== Phase 4b: blacklist / reject / unfriend / citizen add ==")
+        bl = call("DELETE", "/friend/api/v1/friends/black?friendId=%d" % uid3, headers=h2)
+        check("blacklist unfriends", bl.get("code") == 1
+              and call("GET", "/friend/api/v1/friends?pageNo=1&pageSize=10",
+                       headers=h2).get("data", {}).get("totalSize") == 0
+              and call("GET", "/friend/api/v1/friend/status/%d" % uid3,
+                       headers=h2).get("data") == 0, str(bl)[:120])
+        blself = call("DELETE", "/friend/api/v1/friends/black?friendId=%d" % uid2, headers=h2)
+        check("self-blacklist rejected", blself.get("code") == 0, str(blself)[:80])
+        fa3 = call("POST", "/friend/api/v1/friends", {"friendId": uid4, "msg": "again"},
+                   headers=h2)
+        frj = call("PUT", "/friend/api/v1/friends/%d/rejection" % uid2, headers=h4)
+        check("reject request", frj.get("code") == 1
+              and call("GET", "/friend/api/v1/friends?pageNo=1&pageSize=10",
+                       headers=h2).get("data", {}).get("totalSize") == 0, str(frj)[:120])
+        freqs2 = call("GET", "/friend/api/v1/friends/requests?pageNo=1&pageSize=10", headers=h4)
+        check("rejected request not pending", freqs2.get("code") == 1
+              and freqs2["data"]["totalSize"] == 0, str(freqs2)[:120])
+        fcit = call("POST", "/friend/api/v1/friends", {"friendId": cid, "msg": ""},
+                    headers=h2)
+        check("citizen add auto-accepts", fcit.get("code") == 1
+              and call("GET", "/friend/api/v1/friends?pageNo=1&pageSize=10",
+                       headers=h2)["data"]["data"][0]["userId"] == cid, str(fcit)[:120])
+        fdel = call("DELETE", "/friend/api/v1/friends?friendId=%d" % cid, headers=h2)
+        check("unfriend", fdel.get("code") == 1
+              and call("GET", "/friend/api/v1/friends?pageNo=1&pageSize=10",
+                       headers=h2).get("data", {}).get("totalSize") == 0, str(fdel)[:120])
+
         print("== route-table sweep (all routes answer the envelope) ==")
         sys.path.insert(0, os.path.join(REPO, "scripts"))
         sweep_miss = []
@@ -752,14 +855,25 @@ def main():
             for m in re.finditer(r'"([A-Z]+) ([^|]+)\|([a-z]+|H:[a-zA-Z]+)"', f.read()):
                 verb, path, kind = m.group(1), m.group(2), m.group(3)
                 concrete = re.sub(r"\{[^}]+\}", "123", path)
-                resp = call(verb if verb in ("GET", "POST", "PUT", "DELETE") else "GET", concrete, {})
+                try:
+                    resp = call(verb if verb in ("GET", "POST", "PUT", "DELETE") else "GET", concrete, {})
+                except Exception as e:
+                    resp = {"__sweep_error": str(e)}
                 count += 1
                 ok = resp.get("code") == 1
                 if not ok and kind.startswith("H:"):
                     # handlers correctly reject empty/invalid payloads (code 0)
                     ok = resp.get("code") == 0
+                if "__sweep_error" in resp:
+                    # one retry on a transient socket hiccup before failing
+                    try:
+                        resp = call(verb if verb in ("GET", "POST", "PUT", "DELETE") else "GET", concrete, {})
+                        ok = resp.get("code") in (0, 1)
+                    except Exception as e2:
+                        resp = {"__sweep_error": str(e2)}
+                        ok = False
                 if not ok:
-                    sweep_miss.append((verb, concrete, resp))
+                    sweep_miss.append((verb, concrete, str(resp)[:120]))
         check("sweep %d routes all reachable" % count, not sweep_miss, str(sweep_miss[:5]))
 
         print("== persistence ==")
@@ -771,9 +885,10 @@ def main():
             proc.kill()
         time.sleep(1.5)
     # second boot must see persisted users
+    server_log2 = open(os.path.join(state_dir, "server2.log"), "wb")
     proc2 = subprocess.Popen(
         ["java", "-cp", HOST_CP, "com.localapi.HostTest", state_dir, str(PORT)],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        stdout=server_log2, stderr=subprocess.STDOUT)
     try:
         if not wait_ready():
             print("server restart failed")

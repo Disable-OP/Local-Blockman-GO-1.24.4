@@ -114,6 +114,16 @@ public final class StateStore {
         return uid > 0 ? findByUserId(uid) : null;
     }
 
+    /** Real presence: does the user hold at least one live (un-dropped) token? */
+    public synchronized boolean isOnline(long userId) {
+        JSONObject t = tokens();
+        JSONArray names = t.names();
+        for (int i = 0; names != null && i < names.length(); i++) {
+            if (t.optLong(names.optString(i)) == userId) return true;
+        }
+        return false;
+    }
+
     public synchronized JSONObject findOrCreateByKey(String key, boolean guest) {
         JSONObject u = users().optJSONObject(key);
         if (u != null) return u;
