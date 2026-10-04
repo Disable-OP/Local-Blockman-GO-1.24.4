@@ -56,33 +56,32 @@ LOG_TMPL = """    new-instance v{n}, Ljava/lang/Throwable;
 
 
 def patch_method(text, method_sig):
-    """Insert the stack-log right after .prologue of the given method."""
+    """Insert the stack-log right after the method's .locals directive.
+
+    apktool omits .prologue when the method carries no debug info, so the
+    only reliable anchor is the .locals line itself (inserting between
+    directives is valid smali; pX parameter mapping follows .locals).
+    """
     start = text.find(method_sig)
     if start < 0:
         return None, "method not found"
-    prologue = text.find(".prologue", start)
     body_end = text.find(".end method", start)
-    if prologue < 0 or prologue > body_end:
-        return None, ".prologue not found inside method"
+    if body_end < 0:
+        return None, "unterminated method"
     if MARKER in text[start:body_end]:
         return text, "already patched"
 
-    # find this method's .locals (search within the method header); a method
-    # using .registers instead would break the register math - refuse it
-    header = text[start:prologue]
-    m = re.search(r"\.locals\s+(\d+)", header)
+    m = re.search(r"\.locals\s+(\d+)", text[start:body_end])
     if not m:
         return None, "no .locals directive (refusing .registers method)"
     n = int(m.group(1))
+    locals_start = start + m.start()
+    locals_line_end = text.find("\n", locals_start)
     # bump .locals by 4 (new registers n..n+3 live above the old range)
-    text = (text[:start]
-            + header.replace(".locals %d" % n, ".locals %d" % (n + 4), 1)
-            + text[prologue:])
-
-    prologue = text.find(".prologue", start)
-    line_end = text.find("\n", prologue)
-    block = LOG_TMPL.format(n=n, n1=n + 1, n2=n + 2)
-    text = text[:line_end + 1] + "    # %s\n" % MARKER + block + text[line_end + 1:]
+    bumped = text[locals_start:locals_line_end].replace(
+        ".locals %d" % n, ".locals %d" % (n + 4), 1)
+    block = "\n    # %s\n" % MARKER + LOG_TMPL.format(n=n, n1=n + 1, n2=n + 2)
+    text = text[:locals_start] + bumped + block + text[locals_line_end:]
     return text, "patched (locals %d -> %d)" % (n, n + 4)
 
 
