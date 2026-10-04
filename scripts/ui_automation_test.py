@@ -712,6 +712,63 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                               % (x.res.rsplit("/", 1)[-1] if x.res else "",
                                  x.cls.rsplit(".", 1)[-1] if x.cls else "",
                                  x.text[:28], x.desc[:24]))
+                # wave 5q: UI-driven clan creation. Form shape on record
+                # (5p v3, run 37241853243): etTribeName EditText, an
+                # introduction EditText (0/300), a 'Create a clan' submit
+                # row (cost shown as 8000; server-side creation is free,
+                # wallets seed 50000 — any local cost gate passes).
+                uname = "UIClan%05d" % (int(time.time()) % 100000)
+                name_in = screen.find(ids=["etTribeName"])
+                if name_in and name_in.center:
+                    screen.tap_node(name_in)
+                    time.sleep(1)
+                    adb.text(uname)
+                    time.sleep(1)
+                    intro = next((x for x in screen.dump()
+                                  if x.cls.endswith("EditText") and x.center
+                                  and x.res.rsplit("/", 1)[-1]
+                                  != "etTribeName"), None)
+                    if intro:
+                        screen.tap_node(intro)
+                        time.sleep(1)
+                        adb.text("Local QA clan")
+                        time.sleep(1)
+                    adb.key(4)  # dismiss the keyboard (it covers submit)
+                    time.sleep(2)
+                    # the submit row is the LAST 'Create a clan' node —
+                    # the title bar carries the same text
+                    subs = [x for x in screen.dump()
+                            if (x.text or "") == "Create a clan"
+                            and x.center]
+                    if subs:
+                        screen.tap_node(subs[-1])
+                        time.sleep(3)
+                        for rid in ["btnSure", "btn_ok", "btnOk",
+                                    "btn_confirm"]:
+                            c = screen.find(ids=[rid])
+                            if c and c.center:
+                                screen.tap_node(c)
+                                break
+                        time.sleep(5)
+                        alive_or_recover("%s-clancreate-submit" % tag)
+                        clog = adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                       timeout=60)
+                        if "POST /clan/api/v2/clan/tribe" in clog:
+                            ok("5q: UI clan creation hit POST /clan/api/"
+                               "v2/clan/tribe (name=%s)" % uname)
+                        else:
+                            print("  [info] no clan-create POST observed "
+                                  "(client cost gate or submit shape "
+                                  "changed?)")
+                        for x in screen.dump():
+                            if x.res or x.text or x.desc:
+                                print("  clancreate2] %s | text=%r" % (
+                                    x.res.rsplit("/", 1)[-1]
+                                    if x.res else "", x.text[:28]))
+                    else:
+                        print("  [skip] no 'Create a clan' submit node")
+                else:
+                    print("  [skip] etTribeName not found on the form")
                 adb.key(4)
                 time.sleep(2)
                 alive_or_recover("%s-clancreate-back" % tag)
