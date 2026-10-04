@@ -326,6 +326,13 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
             if shop_enter and screen.tap_node(shop_enter):
                 time.sleep(6)
                 alive_or_recover("%s-storescreen" % tag)
+                # snapshot the shop-mode load traffic NOW (buffer rotates
+                # under GL traffic — run 37230697737 lost the evidence)
+                slog = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+                shop_reqs = sorted(set(re.findall(
+                    r"REQ (\w+) (/shop/\S+)", slog)))
+                ok("shop-mode traffic so far: %s" %
+                   (", ".join("%s %s" % r for r in shop_reqs[-6:]) or "none"))
                 for x in screen.dump():
                     if x.res or x.text or x.desc:
                         print("  store] %s | text=%r desc=%r" % (
@@ -335,12 +342,17 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                 for n in screen.dump():
                     if not n.center:
                         continue
+                    l, t, r, b = n.bounds
+                    w, h = r - l, b - t
                     y = n.center[1]
+                    # a grid CARD is small; full-screen containers are not
+                    if w > 420 or h > 420:
+                        continue
                     if y < 260 or y > 1000:
                         continue
                     if n.cls.endswith("FrameLayout") or n.cls.endswith(
                             "LinearLayout") or n.cls.endswith(
-                            "RecyclerView"):
+                            "RecyclerView") or "item" in n.res.lower():
                         product = n
                         break
                 if product and screen.tap_node(product):
