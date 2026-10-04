@@ -643,3 +643,33 @@
   automation-level recovery is the real fix for CI.
 - Next: tag v0.5.10-selfheal; verify green; pull the NEW diagnostics
   (events buffer!) and identify the killer if it recurs.
+
+## Session 11 (cont. 2) — v0.5.10-selfheal VERIFIED GREEN (2026-10-04)
+
+- v0.5.10-selfheal: build 37196133164 + redroid 37196245515 both GREEN;
+  release asset published. Zero crashes, 77 unique endpoints served,
+  0 UNMAPPED (the silent /health probe works on-device — no more probe
+  noise in the diagnostics).
+- On-device watchdog evidence: the second app process lost the cold-start
+  bind race (its probe timed out against the just-booted holder under
+  launch CPU contention), ran the 5 fast-path binds, then the watchdog
+  detected the genuine holder ("standing by") — exactly the designed
+  behavior; the loser stays warm for takeover.
+- Deep drive: gamedetail + rank sub-tab + gamecard all alive; 16 new
+  endpoint paths vs the pre-deep-drive baseline; endpoint diff vs v0.5.8
+  shows exactly ONE new route (GET /game/api/v1/games/{id}/uses/rank) and
+  it is a REAL handler (getGameMyRank). Every client-called route is a
+  real handler; nothing regressed.
+- The v0.5.9 group-SIGKILL did not recur (it is pressure-dependent and
+  flaky). Phase C preflight passed ("preflight - embedded server
+  answering"). The killer remains unidentified — the forensics channel
+  (events buffer + meminfo) is now collected, but NOTE: workflow_run
+  executes MAIN's copy of the workflow file, so the forensics step was
+  synced to main (ee3207d, scripts still come from the local-api pin).
+- Discovery addition: the deep drive now prints every clickable Me-tab
+  node (id + text + content-desc) — the next diag will reveal the real
+  settings entry-point id (the settings icon has no text label, which is
+  why the Settings probe skipped).
+- Next session: (1) target the settings screen by the discovered id and
+  drive the account-security surface on-device; (2) implement whatever the
+  surface calls that is still a default; (3) NO GameServer work.
