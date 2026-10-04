@@ -810,3 +810,18 @@
   (Gender row, Personal Profile row, account-security rows) now that the
   registered session is reproducible; (2) error-driven pass over the next
   diagnostics artifact; (3) NO GameServer work.
+
+## Session 12 (cont. 7-9) — Personal Info editor fully exercised through the real client (2026-10-04)
+
+- Surface wave across runs 37217968748 / 37218985405 / 37220314081:
+  * Gender row: jadx proves it is a CLIENT STUB (onClickSex shows a toast
+    and nothing else) — the on-device dumps matched (no picker nodes, no
+    endpoints). Documented; nothing to implement.
+  * Personal Profile row: the detail editor template drive now works —
+    per-run intro typed, saved through changeInfo, and the re-login record
+    read-back PROVES server persistence (details='localqa intro <ts>').
+  * Nickname: record read-back matches the UI rename every registered run.
+- The full registered profile-edit story is closed: UI action -> local
+  server -> persisted state -> API read-back, all through the real client.
+- 3 consecutive fully-green dispatched runs on the v0.5.19-clientfix APK;
+  64-66 unique endpoints served per run; zero crashes; zero unmapped.

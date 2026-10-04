@@ -592,3 +592,17 @@ produced through the real set-password upgrade instead.
 Coverage: 335 discovered / 281 implemented (84%) / 54 default (all
 documented-deliberate) / 217 host-tested / 109 client-asserted.
 Host rig 337/337.
+
+### Session 12 surface wave (final): Personal Info editor fully exercised
+
+Run 37220314081 (v0.5.19-clientfix APK + local-api scripts): PASS with the
+whole registered-session editor surface verified end-to-end:
+- Nickname rename: PUT /user/api/v2/user/nickName + record read-back
+  matches (nickName='qaD35034').
+- Personal Profile (details): the detail editor template drive types a
+  per-run intro, saves through changeInfo, and the re-login record shows
+  details='localqa intro 35302' — UI -> server -> read-back all green.
+- Gender row: CLIENT STUB (jadx onClickSex = toast only; no picker, no
+  network) — documented deliberate behavior, nothing to implement.
+- Birthday (wheel picker) and Profile Photo (gallery intent): deliberately
+  not driven (low value, high flake risk); handlers are host-tested.

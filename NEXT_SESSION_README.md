@@ -402,3 +402,17 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   Personal Profile / account-security rows) — the registered session is now
   reproducible; error-driven pass over the newest diagnostics; NO
   GameServer work.
+
+## Session 12 surface wave (cont. 9 — read after the Session 12 FINAL)
+
+- Personal Info editor status: Nickname + Personal Profile are exercised
+  END-TO-END through the real client with server-record read-back; Gender
+  is a client stub (toast only); Birthday (wheel picker) and Profile Photo
+  (gallery intent) are deliberately not driven.
+- The registered session is reproducible in Phase D every run (upgrade ->
+  restart -> Me tab shows the account). Any registered-only surface can now
+  be driven the same way.
+- Next candidates: (1) pick the next error-driven gap from the newest
+  diagnostics artifact; (2) consider driving the Birthday wheel picker only
+  if a run shows the client calling changeInfo from it; (3) NO GameServer
+  work.
