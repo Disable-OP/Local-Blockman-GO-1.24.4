@@ -311,6 +311,123 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
         visit("Top Up", 6)         # recharge screen (pay products path)
         visit("Ranking", 6)        # ranking screen (rank home path)
         visit("Store", 6)          # store screen (dress/suit shop path)
+        # Wave 5m — BUY through the real Store UI: the Dressing tab only
+        # shows OWNED items, so the wear path needs a purchase first. Tap
+        # the first product in the content band, then the buy control
+        # (text-based), then the confirm dialog if one appears. The
+        # visitor wallet (50000 golds / 50000 diamonds) covers a product;
+        # the purchase is REAL state (dressBuyV2 wallet math).
+        buy_seen = False
+        store_here = screen.find(texts=["Store", "Shop"],
+                                 contains=["store", "shop"])
+        if store_here and store_here.center:
+            time.sleep(1)
+            product = None
+            for n in screen.dump():
+                if not n.center:
+                    continue
+                y = n.center[1]
+                if y < 260 or y > 1000:
+                    continue
+                if n.cls.endswith("FrameLayout") or n.cls.endswith(
+                        "LinearLayout") or n.cls.endswith("RecyclerView"):
+                    product = n
+                    break
+            if product and screen.tap_node(product):
+                time.sleep(6)
+                alive_or_recover("%s-storeproduct" % tag)
+                for x in screen.dump():
+                    if x.res or x.text or x.desc:
+                        print("  storeprod] %s | text=%r desc=%r" % (
+                            x.res.rsplit("/", 1)[-1] if x.res else "",
+                            x.text[:24], x.desc[:24]))
+                buy = screen.find(texts=["Buy", "Buy Now", "Purchase",
+                                         "Get"],
+                                  contains=["buy", "purchase"])
+                if buy and buy.center:
+                    screen.tap_node(buy)
+                    time.sleep(3)
+                    # confirm dialog (same control family as the editor)
+                    for rid in ["btnSure", "btn_ok", "btnOk", "btn_confirm"]:
+                        c = screen.find(ids=[rid])
+                        if c and c.center:
+                            screen.tap_node(c)
+                            break
+                    time.sleep(5)
+                    alive_or_recover("%s-storebuy" % tag)
+                    log = adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                  timeout=60)
+                    buy_seen = ("new/shop/decorations/buy" in log)
+                    if buy_seen:
+                        ok("5m: Store buy hit POST /shop/api/v1/new/shop/"
+                           "decorations/buy")
+                    else:
+                        print("  [info] buy POST not observed in the "
+                              "LocalAPI log (dialog shape changed?)")
+                else:
+                    print("  [skip] no buy control on the product detail")
+                adb.key(4)  # back to the store
+                time.sleep(2)
+                adb.key(4)  # back to Me
+                time.sleep(2)
+            else:
+                print("  [skip] no store product candidate found")
+                adb.key(4)
+                time.sleep(2)
+        if buy_seen:
+            # the Dressing tab now holds the purchased item: drive the
+            # wear action on it (PUT /decorations/using/new). The item's
+            # category chip is unknown — probe each first-level chip and
+            # take the first non-empty grid.
+            tab2b = screen.find(ids=["rb_2"])
+            if tab2b and screen.tap_node(tab2b):
+                time.sleep(5)
+                owned = None
+                for chip in ("rb_clothes", "rb_accessories",
+                             "rb_character", "rb_function"):
+                    ch = screen.find(ids=[chip])
+                    if not (ch and screen.tap_node(ch)):
+                        continue
+                    time.sleep(4)
+                    d = screen.dump()
+                    # skip this chip when the honest empty state shows
+                    if any((n.text or "").startswith("No ") for n in d):
+                        continue
+                    for n in d:
+                        if not n.center:
+                            continue
+                        y = n.center[1]
+                        if y < 420 or y > 950:
+                            continue
+                        if n.cls.endswith("FrameLayout") or n.cls.endswith(
+                                "LinearLayout"):
+                            owned = n
+                            break
+                    if owned:
+                        break
+                if owned and screen.tap_node(owned):
+                    time.sleep(6)
+                    alive_or_recover("%s-owneditem" % tag)
+                    wear2 = screen.find(texts=["Wear", "Try", "Use",
+                                               "Put on", "Dress"],
+                                        contains=["wear", "dress", "try"])
+                    if wear2 and wear2.center:
+                        screen.tap_node(wear2)
+                        time.sleep(5)
+                        alive_or_recover("%s-wear" % tag)
+                        wlog = adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                       timeout=60)
+                        if "/decorations/using/new" in wlog:
+                            ok("5m: wear action hit PUT /decoration/api/"
+                               "v1/decorations/using/new")
+                    else:
+                        print("  [skip] no wear control on the owned item")
+                    adb.key(4)
+                    time.sleep(2)
+                else:
+                    print("  [skip] owned item not found in the grid")
+                adb.key(4)  # back to Me
+                time.sleep(2)
         visit("Party", 6)          # party screen (party auth path)
         visit("Video", 6)          # video feed (deliberate-empty probe)
         visit("Gratitude List", 6) # gratitude list row (never visited before)
