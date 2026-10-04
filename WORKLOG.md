@@ -1133,3 +1133,20 @@
   title bar carries the same text), btnSure confirm if it appears, then
   assert POST /clan/api/v2/clan/tribe in the LocalAPI log and dump the
   post-create screen (clancreate2]).
+
+## Session 14 (cont. 6) — wave 5q v1 RESULT: form fills work, submit gate hit (run 37243022871 PASS)
+
+- Run 37243022871 PASS on 69ec87d: etTribeName typed + verified on-screen
+  ('UIClan56214'), but the intro kept its hint text (0/300) and the submit
+  tap on the 'Create a clan' TEXT node fired NO POST (no [info]/clanCreate
+  server line; form unchanged, no dialog in clancreate2]). Zero FATAL, one
+  absorbed death.
+- Read: the real submit control is likely a clickable PARENT of the text
+  node (the established Me-tab-row pattern), and/or a required field (Clan
+  tag has a label but no visible EditText — possibly a custom picker)
+  gates the submit client-side.
+- Wave 5q v2 in flight (fb2c535): fill_and_verify for BOTH EditTexts
+  (retry x2, verify the typed text is IN the node), a clickable+bounds
+  evidence dump of the whole form, and the submit tap re-targeted to the
+  clickable node whose bounds COVER the 'Create a clan' text (lowest on
+  screen). POST assertion + post-submit dump kept.
