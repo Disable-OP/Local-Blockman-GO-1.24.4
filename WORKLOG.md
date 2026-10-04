@@ -301,3 +301,11 @@
   security/settings (UserVerifySettingsInfo from real state) and
   activity/title (empty list + real serverTime).
 - Host rig 259/259. Coverage: 335/250/85/190.
+
+## Session 7 FINAL — v0.4.4-errorfix green (2026-10-04)
+
+- build-release 37184479739 GREEN + redroid 37184586694 GREEN.
+- Releases to date: v0.1.0-pipeline, v0.2.0-localapi, v0.3.1-3, v0.4.0-tribe,
+  v0.4.1-friends, v0.4.2-groups, v0.4.3-security, v0.4.4-errorfix — all
+  CI-built and CI-tested.
+- Coverage: 335/250/85/190; host rig 259/259.
