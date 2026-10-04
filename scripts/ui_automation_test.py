@@ -509,6 +509,42 @@ def main():
     check("C: game rank board", r14.get("code") == 1
           and len(r14.get("data", {}).get("pageInfo", {}).get("data", [])) > 0, str(r14)[:120])
 
+    # Phase 4 surface: tribe (clan) lifecycle — all state-backed
+    t0 = fcall("GET", "/clan/api/v1/clan/tribe/id", headers=auth_hdr)
+    check("C: tribe id (no clan)", t0.get("code") == 1 and t0.get("data") == "0", str(t0)[:100])
+    t1 = fcall("GET", "/clan/api/v1/clan/tribe/recommendation", headers=auth_hdr)
+    check("C: tribe recommendations (NPC clans)", t1.get("code") == 1
+          and len(t1.get("data", [])) >= 5, str(t1)[:120])
+    t2 = fcall("POST", "/clan/api/v2/clan/tribe",
+               {"name": "QAClan%d" % (int(time.time()) % 100000), "details": "ci",
+                "headPic": "", "tags": [], "currency": 2}, headers=auth_hdr)
+    check("C: create clan", t2.get("code") == 1 and t2.get("data", {}).get("clanId", 0) > 0,
+          str(t2)[:120])
+    clan_id = t2.get("data", {}).get("clanId", 0)
+    t3 = fcall("GET", "/clan/api/v1/clan/tribe/base", headers=auth_hdr)
+    check("C: tribe base info", t3.get("code") == 1 and t3.get("data", {}).get("clanId") == clan_id
+          and t3["data"].get("currentCount") == 1, str(t3)[:120])
+    t4 = fcall("POST", "/clan/api/v1/clan/tribe/bulletin", {"content": "ci-bulletin"},
+               headers=auth_hdr)
+    t4b = fcall("GET", "/clan/api/v1/clan/tribe/bulletin", headers=auth_hdr)
+    check("C: bulletin roundtrip", t4.get("code") == 1 and t4b.get("code") == 1
+          and t4b.get("data", {}).get("content") == "ci-bulletin", str(t4b)[:120])
+    t5 = fcall("POST", "/clan/api/v3/clan/tribe/donation?currency=2&quantity=500", None,
+               headers=auth_hdr)
+    t5b = fcall("GET", "/clan/api/v1/clan/tribe/currency", headers=auth_hdr)
+    check("C: donation credits tribe currency", t5.get("code") == 1
+          and t5b.get("data", 0) >= 50, str(t5b)[:100])
+    t6 = fcall("GET", "/clan/api/v1/clan/rank?type=exp&pageNo=1&pageSize=10", headers=auth_hdr)
+    check("C: tribe rank board", t6.get("code") == 1
+          and len(t6.get("data", {}).get("pageInfo", {}).get("data", [])) > 0, str(t6)[:120])
+    t7 = fcall("GET", "/clan/api/v2/clan/tasks?type=1", headers=auth_hdr)
+    check("C: clan tasks served", t7.get("code") == 1
+          and len(t7.get("data", {}).get("tasks", [])) > 0, str(t7)[:120])
+    t8 = fcall("DELETE", "/clan/api/v1/clan/tribe?clanId=%d" % clan_id, None, headers=auth_hdr)
+    t8b = fcall("GET", "/clan/api/v1/clan/tribe/id", headers=auth_hdr)
+    check("C: dissolve clan cleans membership", t8.get("code") == 1
+          and t8b.get("data") == "0", str(t8b)[:100])
+
     # ------------------------------------------------- assertions
     print("== assertions ==")
     paths = localapi_paths(adb)

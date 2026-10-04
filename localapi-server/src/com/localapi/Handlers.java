@@ -18,6 +18,9 @@ final class Handlers {
     interface Ctx {
         String query(String name);
 
+        /** All values of a repeated query parameter (Retrofit String[] expansion). */
+        java.util.List<String> queryValues(String name);
+
         String header(String name);
 
         String body();
@@ -135,8 +138,42 @@ final class Handlers {
         if ("rankingPage".equals(name)) return rankingPage(name, ctx, store);
         if ("mailList".equals(name)) return envelope("list", "[]");
         if ("mailOp".equals(name)) return envelope("list", "[]");
-        if ("tribeDetail".equals(name)) return fail("not in a clan");
-        if ("tribeId".equals(name)) return envelope("str", "\"0\"");
+        // ---- Phase 4: tribe (clan) real state ----
+        if ("tribeId".equals(name)) return tribeId(ctx, store);
+        if ("tribeDetail".equals(name)) return tribeDetail(ctx, store);
+        if ("tribeBaseInfo".equals(name)) return tribeBaseInfo(ctx, store);
+        if ("tribeMemberList".equals(name)) return tribeMemberList(ctx, store);
+        if ("clanCreate".equals(name)) return clanCreate(ctx, store);
+        if ("clanUpdate".equals(name)) return clanUpdate(ctx, store);
+        if ("clanDissolve".equals(name)) return clanDissolve(ctx, store);
+        if ("clanExit".equals(name)) return clanExit(ctx, store);
+        if ("clanKick".equals(name)) return clanKick(ctx, store);
+        if ("clanJoin".equals(name)) return clanJoin(ctx, store);
+        if ("clanAgreeJoin".equals(name)) return clanAgreeJoin(ctx, store);
+        if ("clanRejectJoin".equals(name)) return clanRejectJoin(ctx, store);
+        if ("clanAgreeInvite".equals(name)) return clanAgreeInvite(ctx, store);
+        if ("clanRejectInvite".equals(name)) return clanRejectInvite(ctx, store);
+        if ("clanInvite".equals(name)) return clanInvite(ctx, store);
+        if ("clanSetIdentity".equals(name)) return clanSetIdentity(ctx, store);
+        if ("tribeMessageList".equals(name)) return tribeMessageList(ctx, store);
+        if ("tribeBulletinGet".equals(name)) return tribeBulletinGet(ctx, store);
+        if ("tribeBulletinPost".equals(name)) return tribeBulletinPost(ctx, store);
+        if ("tribeDonationInfo".equals(name)) return tribeDonationInfo(ctx, store);
+        if ("tribeDonate".equals(name)) return tribeDonate(ctx, store);
+        if ("tribeDonationHistory".equals(name)) return tribeDonationHistory(ctx, store);
+        if ("tribeCurrency".equals(name)) return tribeCurrency(ctx, store);
+        if ("tribeRank".equals(name)) return tribeRank(ctx, store);
+        if ("tribeUserRank".equals(name)) return tribeUserRank(ctx, store);
+        if ("tribeRecommend".equals(name)) return tribeRecommend(ctx, store);
+        if ("tribeSearch".equals(name)) return tribeSearch(ctx, store);
+        if ("tribeTasks".equals(name)) return tribeTasks(ctx, store, 1);
+        if ("tribePersonalTasks".equals(name)) return tribeTasks(ctx, store, 2);
+        if ("tribeTaskAccept".equals(name)) return tribeTaskAction(ctx, store, false);
+        if ("tribeTaskReward".equals(name)) return tribeTaskAction(ctx, store, true);
+        if ("tribeShopList".equals(name)) return tribeShopList(ctx, store);
+        if ("tribeShopDetail".equals(name)) return tribeShopDetail(ctx, store);
+        if ("tribeShopBuy".equals(name)) return tribeShopBuy(ctx, store);
+        if ("clanFreeVerify".equals(name)) return clanFreeVerify(ctx, store);
         // ---- Phase 3.6: profile/team odds and ends ----
         if ("nickNameFree".equals(name)) return envelope("obj", "{\"currencyType\":1,\"free\":true,\"quantity\":0}");
         if ("frequentlyGames".equals(name)) return frequentlyGames(ctx, store);
@@ -1489,6 +1526,605 @@ final class Handlers {
         s.put("signature", "");
         s.put("userId", u.optLong("userId"));
         return envelope("obj", s.toString());
+    }
+
+    // ------------------------------------------------- Phase 4: tribe (clan)
+
+    /**
+     * GET /clan/api/v1/clan/tribe/id — the caller's clanId as a STRING,
+     * "0" when clan-less. The client's Tribe tab bootstraps from this
+     * (TribeCenter.tribeClanId is set from it).
+     */
+    private static String tribeId(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        long clanId = u == null ? 0 : u.optLong("clanId");
+        return envelope("str", "\"" + clanId + "\"");
+    }
+
+    /** GET /clan/api/v2/clan/tribe?clanId= — public detail of any clan. */
+    private static String tribeDetail(Ctx ctx, StateStore store) {
+        long clanId = parseLong(ctx.query("clanId"), 0);
+        JSONObject clan = Tribe.find(store, clanId);
+        if (clan == null) return fail("clan not found");
+        return envelope("obj", tribeDetailJson(clan).toString());
+    }
+
+    /** GET /clan/api/v1/clan/tribe/base — the caller's clan detail. */
+    private static String tribeBaseInfo(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject clan = Tribe.clanOf(store, u);
+        if (clan == null) return fail("not in a clan");
+        return envelope("obj", tribeDetailJson(clan).toString());
+    }
+
+    /** GET /clan/api/v1/clan/tribe/member — List&lt;TribeMember&gt; of the caller's clan. */
+    private static String tribeMemberList(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject clan = Tribe.clanOf(store, u);
+        if (clan == null) return fail("not in a clan");
+        return envelope("list", tribeMembersJson(clan).toString());
+    }
+
+    /** POST /clan/api/v2/clan/tribe — create (TribeClanRequest body; currency 1=diamonds fee, else golds). */
+    private static String clanCreate(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject form = body(ctx);
+        String err = Tribe.create(store, u, form.optString("name"), form.optString("details"),
+                form.optString("headPic"), form.optJSONArray("tags"), form.optInt("currency", 2));
+        if (err != null) return fail(err);
+        JSONObject clan = Tribe.clanOf(store, u);
+        L.i("clanCreate: userId=" + u.optLong("userId") + " clanId=" + clan.optLong("clanId")
+                + " name=" + clan.optString("name"));
+        return envelope("obj", clanRequestEcho(clan).toString());
+    }
+
+    /** PUT /clan/api/v1/clan/tribe — update name/details/headPic/tags (chief). */
+    private static String clanUpdate(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject clan = Tribe.clanOf(store, u);
+        if (clan == null) return fail("not in a clan");
+        if (Tribe.roleOf(clan, u.optLong("userId")) != 20) return fail("only the chief can update");
+        JSONObject form = body(ctx);
+        String name = form.optString("name", clan.optString("name"));
+        if (name != null && !name.trim().isEmpty()) {
+            clan.put("name", name.trim().replace("\n", " "));
+        }
+        if (form.has("details")) clan.put("details", form.optString("details"));
+        if (form.has("headPic")) clan.put("headPic", form.optString("headPic"));
+        if (form.has("tags")) clan.put("tags", form.optJSONArray("tags"));
+        store.save();
+        return envelope("obj", clanRequestEcho(clan).toString());
+    }
+
+    /** DELETE /clan/api/v1/clan/tribe?clanId= — dissolve (chief). */
+    private static String clanDissolve(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = Tribe.dissolve(store, u);
+        if (err != null) return fail(err);
+        L.i("clanDissolve: userId=" + u.optLong("userId"));
+        return envelope("none", null);
+    }
+
+    /** DELETE /clan/api/v1/clan/tribe/member?clanId= — leave the clan. */
+    private static String clanExit(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = Tribe.exit(store, u);
+        if (err != null) return fail(err);
+        return envelope("none", null);
+    }
+
+    /** DELETE /clan/api/v1/clan/tribe/member/remove?otherId= — kick (chief/elder). */
+    private static String clanKick(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = Tribe.kick(store, u, parseLong(ctx.query("otherId"), 0));
+        if (err != null) return fail(err);
+        return envelope("none", null);
+    }
+
+    /** POST /clan/api/v1/clan/tribe/member — RequestJoinTribe {clanId, msg}. */
+    private static String clanJoin(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject form = body(ctx);
+        String err = Tribe.requestJoin(store, u, form.optLong("clanId"), form.optString("msg"));
+        if (err != null) return fail(err);
+        return envelope("none", null);
+    }
+
+    /** PUT /clan/api/v1/clan/tribe/member/agreement?otherId= — accept a join request. */
+    private static String clanAgreeJoin(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = Tribe.agreeJoin(store, u, parseLong(ctx.query("otherId"), 0));
+        if (err != null) return fail(err);
+        return envelope("none", null);
+    }
+
+    /** PUT /clan/api/v1/clan/tribe/member/rejection?otherId= — reject a join request. */
+    private static String clanRejectJoin(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = Tribe.rejectJoin(store, u, parseLong(ctx.query("otherId"), 0));
+        if (err != null) return fail(err);
+        return envelope("none", null);
+    }
+
+    /** PUT /clan/api/v1/clan/tribe/member/agreement/invitation?id= — invitee accepts. */
+    private static String clanAgreeInvite(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = Tribe.agreeInvitation(store, u, parseLong(ctx.query("id"), 0));
+        if (err != null) return fail(err);
+        return envelope("none", null);
+    }
+
+    /** PUT /clan/api/v1/clan/tribe/member/rejection/invitation?id= — invitee rejects. */
+    private static String clanRejectInvite(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = Tribe.rejectInvitation(store, u, parseLong(ctx.query("id"), 0));
+        if (err != null) return fail(err);
+        return envelope("none", null);
+    }
+
+    /** POST /clan/api/v1/clan/tribe/member/invite?friendIds=1&amp;friendIds=2&amp;msg= — invite. */
+    private static String clanInvite(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        java.util.List<String> vals = ctx.queryValues("friendIds");
+        JSONArray ids = new JSONArray();
+        for (String v : vals) {
+            long id = parseLong(v, 0);
+            if (id > 0) ids.put(id);
+        }
+        String err = Tribe.invite(store, u, ids, ctx.query("msg"));
+        if (err != null) return fail(err);
+        return envelope("none", null);
+    }
+
+    /** PUT /clan/api/v1/clan/tribe/member?otherId=&amp;type= — set identity (chief). */
+    private static String clanSetIdentity(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = Tribe.setIdentity(store, u, parseLong(ctx.query("otherId"), 0),
+                (int) parseLong(ctx.query("type"), 0));
+        if (err != null) return fail(err);
+        return envelope("none", null);
+    }
+
+    /**
+     * GET /clan/api/v2/clan/tribe/member/message — the caller's tribe messages:
+     * join requests for their clan (chief/elder, type 1) + invitations to them (type 2).
+     * Message status: 0 pending, 2 agreed, 3 rejected.
+     */
+    private static String tribeMessageList(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONArray out = new JSONArray();
+        long uid = u.optLong("userId");
+        JSONObject clan = Tribe.clanOf(store, u);
+        if (clan != null) {
+            int role = Tribe.roleOf(clan, uid);
+            if (role == 20 || role == 10) {
+                JSONArray reqs = clan.optJSONArray("joinRequests");
+                for (int i = 0; reqs != null && i < reqs.length(); i++) {
+                    JSONObject r = reqs.optJSONObject(i);
+                    if (r == null) continue;
+                    JSONObject requester = store.findByUserId(r.optLong("userId"));
+                    JSONObject m = new JSONObject();
+                    m.put("id", 0);
+                    m.put("clanId", (int) clan.optLong("clanId"));
+                    m.put("headPic", requester == null ? "" : requester.optString("picUrl"));
+                    m.put("nickName", r.optLong("userId") == 0 ? "Player"
+                            : (requester == null ? "Player" + r.optLong("userId") : requester.optString("nickName")));
+                    m.put("msg", r.optString("msg"));
+                    m.put("status", r.optInt("status"));
+                    m.put("type", 1);
+                    m.put("userId", r.optLong("userId"));
+                    out.put(m);
+                }
+            }
+        }
+        // invitations addressed to me (any clan)
+        JSONArray ids = store.root().optJSONObject("tribes") == null
+                ? null : store.root().optJSONObject("tribes").names();
+        for (int i = 0; ids != null && i < ids.length(); i++) {
+            JSONObject c = store.root().optJSONObject("tribes").optJSONObject(ids.optString(i));
+            if (c == null) continue;
+            JSONArray inv = c.optJSONArray("invitations");
+            for (int j = 0; inv != null && j < inv.length(); j++) {
+                JSONObject v = inv.optJSONObject(j);
+                if (v == null || v.optLong("inviteeId") != uid) continue;
+                JSONObject inviter = store.findByUserId(v.optLong("userId"));
+                JSONObject m = new JSONObject();
+                m.put("id", (int) v.optLong("id"));
+                m.put("clanId", (int) c.optLong("clanId"));
+                m.put("headPic", inviter == null ? "" : inviter.optString("picUrl"));
+                m.put("nickName", inviter == null ? "Player" : inviter.optString("nickName"));
+                m.put("msg", v.optString("msg"));
+                m.put("status", v.optInt("status"));
+                m.put("type", 2);
+                m.put("userId", v.optLong("userId"));
+                out.put(m);
+            }
+        }
+        return envelope("list", out.toString());
+    }
+
+    /** GET /clan/api/v1/clan/tribe/bulletin — TribeNoticeGet {content, updateTime}. */
+    private static String tribeBulletinGet(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject clan = Tribe.clanOf(store, u);
+        if (clan == null) return fail("not in a clan");
+        JSONObject b = clan.optJSONObject("bulletin");
+        JSONObject out = new JSONObject();
+        out.put("content", b == null ? "" : b.optString("content"));
+        out.put("updateTime", b == null ? "" : String.valueOf(b.optLong("updateTime")));
+        return envelope("obj", out.toString());
+    }
+
+    /** POST /clan/api/v1/clan/tribe/bulletin — TribeNoticePost {content} (chief/elder). */
+    private static String tribeBulletinPost(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = Tribe.setBulletin(store, u, body(ctx).optString("content"));
+        if (err != null) return fail(err);
+        return envelope("none", null);
+    }
+
+    /** GET /clan/api/v1/clan/tribe/donation — TribeDonationInfo (today's counters). */
+    private static String tribeDonationInfo(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        return envelope("obj", Tribe.donationInfo(store, u).toString());
+    }
+
+    /** POST /clan/api/v3/clan/tribe/donation?currency=&amp;quantity= — real wallet deduction. */
+    private static String tribeDonate(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        int currency = (int) parseLong(ctx.query("currency"), 2);
+        int quantity = (int) parseLong(ctx.query("quantity"), 0);
+        String err = Tribe.donate(store, u, currency, quantity);
+        if (err != null) return err.startsWith("not enough") || err.contains("limit")
+                ? failCode(5006, err) : fail(err);
+        long exp = currency == 1 ? quantity * 10L : quantity;
+        long got = Math.max(1, exp / 10);
+        JSONObject out = new JSONObject();
+        out.put("experienceGot", (int) exp);
+        out.put("totalExperience", (int) Math.min(Tribe.clanOf(store, u).optLong("experience"), Integer.MAX_VALUE));
+        out.put("tribeCurrencyGot", (int) got);
+        out.put("totalTribeCurrency", (int) Math.min(Tribe.tribeCurrency(u), Integer.MAX_VALUE));
+        out.put("userId", u.optLong("userId"));
+        L.i("tribeDonate: userId=" + u.optLong("userId") + " currency=" + currency
+                + " qty=" + quantity);
+        return envelope("obj", out.toString());
+    }
+
+    /** GET /clan/api/v2/clan/tribe/donation/history — PageData&lt;TribeDonationHistory&gt;. */
+    private static String tribeDonationHistory(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        int pageNo = (int) parseLong(ctx.query("pageNo"), 1);
+        int pageSize = (int) parseLong(ctx.query("pageSize"), 20);
+        JSONArray hist = Tribe.donationHistory(store, u);
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < hist.length(); i++) {
+            JSONObject h = hist.optJSONObject(i);
+            if (h == null) continue;
+            JSONObject o = new JSONObject();
+            o.put("date", h.optLong("date"));
+            o.put("experienceGot", String.valueOf(h.optInt("experienceGot")));
+            o.put("nickName", h.optString("nickName"));
+            o.put("quantity", h.optInt("quantity"));
+            o.put("tribeCurrencyGot", String.valueOf(h.optInt("tribeCurrencyGot")));
+            o.put("type", h.optInt("type"));
+            o.put("userId", h.optLong("userId"));
+            out.put(o);
+        }
+        return envelope("obj", pageData(slice(out, pageNo, pageSize), pageNo, pageSize, out.length()).toString());
+    }
+
+    /** GET /clan/api/v1/clan/tribe/currency — HttpResponse&lt;Long&gt; personal tribe currency. */
+    private static String tribeCurrency(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        return envelope("num", String.valueOf(Tribe.tribeCurrency(u)));
+    }
+
+    /** GET /clan/api/v1/clan/rank?type=&amp;pageNo=&amp;pageSize= — RankInfo&lt;TribeRank&gt; over all clans. */
+    private static String tribeRank(Ctx ctx, StateStore store) {
+        Tribe.ensureNpcTribes(store);
+        int pageNo = (int) parseLong(ctx.query("pageNo"), 1);
+        int pageSize = (int) parseLong(ctx.query("pageSize"), 20);
+        JSONArray sorted = clansByExperience(store);
+        JSONArray rows = new JSONArray();
+        for (int i = 0; i < sorted.length(); i++) {
+            rows.put(tribeRankJson(sorted.optJSONObject(i), i + 1));
+        }
+        JSONObject rankInfo = new JSONObject();
+        rankInfo.put("pageInfo", pageData(slice(rows, pageNo, pageSize), pageNo, pageSize, rows.length()));
+        rankInfo.put("remainTime", 0L);
+        return envelope("obj", rankInfo.toString());
+    }
+
+    /** GET /clan/api/v1/clan/user/rank?type= — the caller's clan's TribeRank row. */
+    private static String tribeUserRank(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject clan = Tribe.clanOf(store, u);
+        if (clan == null) return fail("not in a clan");
+        JSONArray sorted = clansByExperience(store);
+        for (int i = 0; i < sorted.length(); i++) {
+            if (sorted.optJSONObject(i) == clan) {
+                return envelope("obj", tribeRankJson(clan, i + 1).toString());
+            }
+        }
+        return envelope("obj", tribeRankJson(clan, sorted.length() + 1).toString());
+    }
+
+    /** GET /clan/api/v1/clan/tribe/recommendation — List&lt;TribeRecommendation&gt;. */
+    private static String tribeRecommend(Ctx ctx, StateStore store) {
+        Tribe.ensureNpcTribes(store);
+        JSONArray ids = store.root().optJSONObject("tribes").names();
+        JSONArray out = new JSONArray();
+        for (int i = 0; ids != null && i < ids.length(); i++) {
+            JSONObject c = store.root().optJSONObject("tribes").optJSONObject(ids.optString(i));
+            if (c != null) out.put(tribeRecommendationJson(store, c));
+        }
+        return envelope("list", out.toString());
+    }
+
+    /** GET /clan/api/v1/clan/tribe/blurry/info?clanName= — PageData&lt;TribeRecommendation&gt;. */
+    private static String tribeSearch(Ctx ctx, StateStore store) {
+        Tribe.ensureNpcTribes(store);
+        String q = ctx.query("clanName");
+        int pageNo = (int) parseLong(ctx.query("pageNo"), 1);
+        int pageSize = (int) parseLong(ctx.query("pageSize"), 20);
+        JSONArray ids = store.root().optJSONObject("tribes").names();
+        JSONArray hits = new JSONArray();
+        for (int i = 0; ids != null && i < ids.length(); i++) {
+            JSONObject c = store.root().optJSONObject("tribes").optJSONObject(ids.optString(i));
+            if (c == null) continue;
+            if (q == null || q.isEmpty() || c.optString("name").toLowerCase(java.util.Locale.US)
+                    .contains(q.toLowerCase(java.util.Locale.US))) {
+                hits.put(tribeRecommendationJson(store, c));
+            }
+        }
+        return envelope("obj", pageData(slice(hits, pageNo, pageSize), pageNo, pageSize, hits.length()).toString());
+    }
+
+    /** GET /clan/api/v2/clan/tasks?type=1|2 and /clan/api/v2/clan/personal/tasks — TribeTask. */
+    private static String tribeTasks(Ctx ctx, StateStore store, int type) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        if (Tribe.clanOf(store, u) == null) return fail("not in a clan");
+        int t = (int) parseLong(ctx.query("type"), type);
+        return envelope("obj", Tribe.tasks(store, u, t).toString());
+    }
+
+    /** PUT /clan/api/v1/clan/tasks/accept (claim=false) and PUT /clan/api/v1/clan/tasks (claim=true). */
+    private static String tribeTaskAction(Ctx ctx, StateStore store, boolean claim) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        long id = parseLong(ctx.query("id"), 0);
+        int type = (int) parseLong(ctx.query("type"), 1);
+        String err = Tribe.taskAction(store, u, id, type, claim);
+        if (err != null) return fail(err);
+        if (claim) {
+            L.i("tribeTaskReward: userId=" + u.optLong("userId") + " task=" + id);
+        }
+        return envelope("none", null);
+    }
+
+    /** GET /clan/api/v1/clan/decorations/{typeId} — PageData&lt;TribeShopPageList&gt; (per-caller hasPurchase). */
+    private static String tribeShopList(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        int typeId = (int) parseLong(ctx.pathParam("typeId"), 0);
+        int pageNo = (int) parseLong(ctx.query("pageNo"), 1);
+        int pageSize = (int) parseLong(ctx.query("pageSize"), 20);
+        JSONArray all = Tribe.shop(store);
+        JSONArray rows = new JSONArray();
+        for (int i = 0; i < all.length(); i++) {
+            JSONObject s = all.optJSONObject(i);
+            if (s == null || (typeId > 0 && s.optInt("typeId") != typeId)) continue;
+            JSONObject o = new JSONObject(s.toString());
+            o.put("hasPurchase", u != null && Tribe.ownsDecoration(store, u, s.optLong("id")) ? 1 : 0);
+            rows.put(o);
+        }
+        return envelope("obj", pageData(slice(rows, pageNo, pageSize), pageNo, pageSize, rows.length()).toString());
+    }
+
+    /** GET /clan/api/v1/clan/decorations/details/{decorationId} — TribeShopDetail. */
+    private static String tribeShopDetail(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        long id = parseLong(ctx.pathParam("decorationId"), 0);
+        JSONArray all = Tribe.shop(store);
+        for (int i = 0; i < all.length(); i++) {
+            JSONObject s = all.optJSONObject(i);
+            if (s != null && s.optLong("id") == id) {
+                JSONObject o = new JSONObject(s.toString());
+                o.put("hasPurchase", u != null && Tribe.ownsDecoration(store, u, id) ? 1 : 0);
+                return envelope("obj", o.toString());
+            }
+        }
+        return fail("unknown decoration");
+    }
+
+    /** PUT /clan/api/v1/clan/decorations/purchase?decorationId=A&amp;decorationId=B — pay tribe currency. */
+    private static String tribeShopBuy(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        java.util.List<String> vals = ctx.queryValues("decorationId");
+        long[] ids = new long[vals.size()];
+        for (int i = 0; i < vals.size(); i++) ids[i] = parseLong(vals.get(i), 0);
+        String err = Tribe.buyDecorations(store, u, ids);
+        if (err != null) return fail(err);
+        L.i("tribeShopBuy: userId=" + u.optLong("userId") + " items=" + vals.size());
+        return envelope("none", null);
+    }
+
+    /** PUT /clan/api/v1/clan/free/verification?freeVerify= — chief toggles auto-join; returns ClanResponse. */
+    private static String clanFreeVerify(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        int freeVerify = (int) parseLong(ctx.query("freeVerify"), 0);
+        String err = Tribe.setFreeVerify(store, u, freeVerify);
+        if (err != null) return fail(err);
+        JSONObject clan = Tribe.clanOf(store, u);
+        return envelope("obj", clanResponseJson(clan, Tribe.roleOf(clan, u.optLong("userId"))).toString());
+    }
+
+    // ------------------------------------------------- Phase 4: tribe serializers
+
+    private static JSONObject tribeDetailJson(JSONObject clan) {
+        JSONObject out = new JSONObject();
+        out.put("clanId", (int) clan.optLong("clanId"));
+        JSONArray members = Tribe.members(clan);
+        JSONArray beans = new JSONArray();
+        for (int i = 0; i < members.length(); i++) {
+            JSONObject m = members.optJSONObject(i);
+            if (m == null) continue;
+            JSONObject b = new JSONObject();
+            b.put("userId", m.optLong("userId"));
+            b.put("role", m.optInt("role"));
+            b.put("headPic", m.optString("headPic"));
+            beans.put(b);
+        }
+        out.put("clanMembers", beans);
+        out.put("currentCount", members.length());
+        out.put("maxCount", Tribe.maxMembers(clan));
+        out.put("details", clan.optString("details"));
+        out.put("experience", clan.optLong("experience"));
+        out.put("freeVerify", clan.optInt("freeVerify"));
+        out.put("headPic", clan.optString("headPic"));
+        out.put("level", Tribe.level(clan));
+        out.put("name", clan.optString("name"));
+        out.put("tags", clan.optJSONArray("tags") == null ? new JSONArray() : clan.optJSONArray("tags"));
+        return out;
+    }
+
+    private static JSONArray tribeMembersJson(JSONObject clan) {
+        JSONArray members = Tribe.members(clan);
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < members.length(); i++) {
+            JSONObject m = members.optJSONObject(i);
+            if (m == null) continue;
+            JSONObject o = new JSONObject();
+            o.put("ID", i + 1);
+            o.put("userId", m.optLong("userId"));
+            o.put("localUserId", 0L);
+            o.put("experience", m.optInt("experience"));
+            o.put("expireDate", m.optString("expireDate"));
+            o.put("headPic", m.optString("headPic"));
+            o.put("nickName", m.optString("nickName"));
+            o.put("role", m.optInt("role"));
+            o.put("status", m.optInt("status"));
+            o.put("vip", m.optInt("vip"));
+            out.put(o);
+        }
+        return out;
+    }
+
+    private static JSONObject clanRequestEcho(JSONObject clan) {
+        JSONObject out = new JSONObject();
+        out.put("clanId", clan.optLong("clanId"));
+        out.put("details", clan.optString("details"));
+        out.put("headPic", clan.optString("headPic"));
+        out.put("name", clan.optString("name"));
+        out.put("tags", clan.optJSONArray("tags") == null ? new JSONArray() : clan.optJSONArray("tags"));
+        out.put("currency", 2);
+        return out;
+    }
+
+    private static JSONObject clanResponseJson(JSONObject clan, int role) {
+        JSONObject out = new JSONObject();
+        out.put("clanId", clan.optLong("clanId"));
+        out.put("details", clan.optString("details"));
+        out.put("experience", clan.optLong("experience"));
+        out.put("freeVerify", clan.optInt("freeVerify"));
+        out.put("headPic", clan.optString("headPic"));
+        out.put("level", Tribe.level(clan));
+        out.put("name", clan.optString("name"));
+        out.put("role", role);
+        out.put("tags", clan.optJSONArray("tags") == null ? new JSONArray() : clan.optJSONArray("tags"));
+        return out;
+    }
+
+    private static JSONObject tribeRecommendationJson(StateStore store, JSONObject clan) {
+        JSONObject out = new JSONObject();
+        out.put("clanId", (int) clan.optLong("clanId"));
+        out.put("name", clan.optString("name"));
+        out.put("details", clan.optString("details"));
+        out.put("headPic", clan.optString("headPic"));
+        out.put("freeVerify", clan.optInt("freeVerify"));
+        out.put("level", Tribe.level(clan));
+        JSONArray members = Tribe.members(clan);
+        out.put("currentCount", members.length());
+        out.put("maxCount", Tribe.maxMembers(clan));
+        JSONObject chief = members.length() > 0 ? members.optJSONObject(0) : null;
+        out.put("chiefId", chief == null ? 0L : chief.optLong("userId"));
+        out.put("chiefNickName", chief == null ? "" : chief.optString("nickName"));
+        out.put("isFirst", false);
+        return out;
+    }
+
+    private static JSONObject tribeRankJson(JSONObject clan, int rank) {
+        JSONObject out = new JSONObject();
+        out.put("clanId", (int) clan.optLong("clanId"));
+        out.put("name", clan.optString("name"));
+        out.put("headPic", clan.optString("headPic"));
+        out.put("experience", String.valueOf(clan.optLong("experience")));
+        out.put("rank", String.valueOf(rank));
+        return out;
+    }
+
+    /** Clans sorted by experience desc (arrays snapshot; caller may compare identity). */
+    private static JSONArray clansByExperience(StateStore store) {
+        JSONObject clans = store.root().optJSONObject("tribes");
+        JSONArray out = new JSONArray();
+        if (clans == null) return out;
+        JSONArray ids = clans.names();
+        for (int i = 0; ids != null && i < ids.length(); i++) {
+            JSONObject c = clans.optJSONObject(ids.optString(i));
+            if (c != null) out.put(c);
+        }
+        // insertion sort (small n)
+        for (int i = 1; i < out.length(); i++) {
+            JSONObject key = out.optJSONObject(i);
+            long ke = key.optLong("experience");
+            int j = i - 1;
+            while (j >= 0 && out.optJSONObject(j).optLong("experience") < ke) {
+                out.put(j + 1, out.optJSONObject(j));
+                j--;
+            }
+            out.put(j + 1, key);
+        }
+        return out;
+    }
+
+    private static JSONObject pageData(JSONArray data, int pageNo, int pageSize, int totalSize) {
+        int size = pageSize > 0 ? pageSize : 20;
+        JSONObject page = new JSONObject();
+        page.put("data", data);
+        page.put("pageNo", pageNo);
+        page.put("pageSize", size);
+        page.put("totalPage", totalPages(totalSize, size));
+        page.put("totalSize", totalSize);
+        return page;
+    }
+
+    /** Failure with an explicit numeric code (the client maps code→onError(code)). */
+    private static String failCode(int code, String message) {
+        return "{\"code\":" + code + ",\"message\":\"" + message + "\"}";
     }
 
     // ------------------------------------------------- Phase 2 helpers

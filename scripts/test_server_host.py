@@ -484,6 +484,265 @@ def main():
                       {"sku": sku, "purchaseData": "", "isSub": False})
         check("unauthenticated recharge rejected", noauth.get("code") == 0, str(noauth)[:80])
 
+        print("== Phase 4: tribe (clan) discovery ==")
+        h1 = {"Access-Token": tok1, "userId": str(uid1), "language": "en"}
+        tid0 = call("GET", "/clan/api/v1/clan/tribe/id", headers=h1)
+        check("tribeId starts 0", tid0.get("code") == 1 and tid0.get("data") == "0", str(tid0)[:80])
+        rec = call("GET", "/clan/api/v1/clan/tribe/recommendation", headers=h1)
+        check("recommendation NPC tribes", rec.get("code") == 1 and len(rec.get("data", [])) >= 8
+              and all(k in rec["data"][0] for k in
+                      ("clanId", "name", "chiefNickName", "currentCount", "maxCount", "level", "freeVerify")),
+              str(rec)[:200])
+        sr = call("GET", "/clan/api/v1/clan/tribe/blurry/info?clanName=blocky&pageNo=1&pageSize=10",
+                  headers=h1)
+        check("search by name", sr.get("code") == 1
+              and sr.get("data", {}).get("totalSize", 0) >= 1
+              and all("blocky" in g["name"].lower() for g in sr["data"]["data"]), str(sr)[:150])
+        trank = call("GET", "/clan/api/v1/clan/rank?type=exp&pageNo=1&pageSize=10", headers=h1)
+        check("tribe rank RankInfo", trank.get("code") == 1
+              and "pageInfo" in trank.get("data", {})
+              and len(trank["data"]["pageInfo"]["data"]) >= 8
+              and all(k in trank["data"]["pageInfo"]["data"][0] for k in
+                      ("clanId", "name", "experience", "rank"))
+              and trank["data"]["pageInfo"]["data"][0]["rank"] == "1", str(trank)[:200])
+        ur = call("GET", "/clan/api/v1/clan/user/rank?type=exp", headers=h1)
+        check("user rank no-clan rejected", ur.get("code") == 0, str(ur)[:80])
+        mem0 = call("GET", "/clan/api/v1/clan/tribe/member", headers=h1)
+        check("member list no-clan rejected", mem0.get("code") == 0, str(mem0)[:80])
+
+        print("== Phase 4: create clan (real wallet cost) ==")
+        w_before = call("GET", "/pay/api/v1/wealth/user", headers=h1).get("data", {}).get("golds", 0)
+        cr = call("POST", "/clan/api/v2/clan/tribe",
+                  {"clanId": 0, "name": "QA Clan", "details": "testing clan",
+                   "headPic": "", "tags": ["qa"], "currency": 2}, headers=h1)
+        check("create clan ok", cr.get("code") == 1 and cr.get("data", {}).get("clanId", 0) > 0
+              and cr["data"].get("name") == "QA Clan", str(cr)[:150])
+        clan_id = cr.get("data", {}).get("clanId", 0)
+        w_after = call("GET", "/pay/api/v1/wealth/user", headers=h1).get("data", {}).get("golds", 0)
+        check("create fee deducted (20000 golds)", w_before - w_after == 20000,
+              "before=%s after=%s" % (w_before, w_after))
+        cr2 = call("POST", "/clan/api/v2/clan/tribe",
+                   {"name": "QA Clan 2", "currency": 2}, headers=h1)
+        check("second create rejected (already in clan)", cr2.get("code") == 0, str(cr2)[:80])
+        tid1 = call("GET", "/clan/api/v1/clan/tribe/id", headers=h1)
+        check("tribeId now clanId", tid1.get("code") == 1 and tid1.get("data") == str(clan_id),
+              str(tid1)[:80])
+        base = call("GET", "/clan/api/v1/clan/tribe/base", headers=h1)
+        check("tribeBaseInfo shape", base.get("code") == 1
+              and base["data"].get("clanId") == clan_id
+              and base["data"].get("currentCount") == 1
+              and base["data"].get("maxCount", 0) >= 20
+              and base["data"]["clanMembers"][0]["role"] == 20
+              and base["data"]["clanMembers"][0]["userId"] == uid1, str(base)[:200])
+        dup = call("POST", "/clan/api/v2/clan/tribe",
+                   {"name": "QA Clan", "currency": 2},
+                   headers={"Access-Token": call("POST", "/user/api/v1/register",
+                            {"uid": "qa_tribe_x", "password": "pw", "imei": "devx"}
+                            ).get("data", {}).get("accessToken", "")})
+        check("duplicate name rejected", dup.get("code") == 0, str(dup)[:80])
+
+        print("== Phase 4: bulletin ==")
+        r2 = call("POST", "/user/api/v1/register",
+                  {"uid": "qa_user2", "password": "pw2", "imei": "dev2"})
+        uid2, tok2 = r2["data"]["userId"], r2["data"]["accessToken"]
+        h2 = {"Access-Token": tok2, "userId": str(uid2), "language": "en"}
+        bn = call("POST", "/clan/api/v1/clan/tribe/bulletin", {"content": "Welcome to QA Clan"},
+                  headers=h1)
+        check("post bulletin", bn.get("code") == 1, str(bn)[:80])
+        bng = call("GET", "/clan/api/v1/clan/tribe/bulletin", headers=h1)
+        check("get bulletin", bng.get("code") == 1
+              and bng["data"].get("content") == "Welcome to QA Clan"
+              and bng["data"].get("updateTime"), str(bng)[:120])
+
+        print("== Phase 4: join request -> agree ==")
+        rj = call("POST", "/clan/api/v1/clan/tribe/member", {"clanId": clan_id, "msg": "let me in"},
+                  headers=h2)
+        check("requestJoin ok", rj.get("code") == 1, str(rj)[:80])
+        msgs1 = call("GET", "/clan/api/v2/clan/tribe/member/message", headers=h1)
+        join_msgs = [m for m in msgs1.get("data", []) if m.get("type") == 1
+                     and m.get("userId") == uid2]
+        check("chief sees join request message", msgs1.get("code") == 1 and len(join_msgs) == 1
+              and join_msgs[0]["status"] == 0 and join_msgs[0]["msg"] == "let me in"
+              and "nickName" in join_msgs[0], str(msgs1)[:200])
+        ag = call("PUT", "/clan/api/v1/clan/tribe/member/agreement?otherId=%d" % uid2,
+                  headers=h1)
+        check("agreeJoin ok", ag.get("code") == 1, str(ag)[:80])
+        ml = call("GET", "/clan/api/v1/clan/tribe/member", headers=h1)
+        check("member joined (2 members)", ml.get("code") == 1
+              and len(ml.get("data", [])) == 2
+              and any(m["userId"] == uid2 and m["role"] == 0 for m in ml["data"])
+              and all("nickName" in m and "experience" in m and "vip" in m for m in ml["data"]),
+              str(ml)[:200])
+        tid2 = call("GET", "/clan/api/v1/clan/tribe/id", headers=h2)
+        check("member tribeId set", tid2.get("code") == 1 and tid2.get("data") == str(clan_id),
+              str(tid2)[:80])
+
+        print("== Phase 4: invite -> agree ==")
+        r3 = call("POST", "/user/api/v1/register",
+                  {"uid": "qa_user3", "password": "pw3", "imei": "dev3"})
+        uid3, tok3 = r3["data"]["userId"], r3["data"]["accessToken"]
+        h3 = {"Access-Token": tok3, "userId": str(uid3), "language": "en"}
+        inv = call("POST", "/clan/api/v1/clan/tribe/member/invite?friendIds=%d&msg=join%%20us" % uid3,
+                   None, headers=h1)
+        check("invite ok", inv.get("code") == 1, str(inv)[:80])
+        msgs3 = call("GET", "/clan/api/v2/clan/tribe/member/message", headers=h3)
+        inv_msgs = [m for m in msgs3.get("data", []) if m.get("type") == 2]
+        check("invitee sees invitation", msgs3.get("code") == 1 and len(inv_msgs) == 1
+              and inv_msgs[0].get("status") == 0 and inv_msgs[0].get("id", 0) > 0, str(msgs3)[:200])
+        agi = call("PUT", "/clan/api/v1/clan/tribe/member/agreement/invitation?id=%d"
+                   % inv_msgs[0]["id"], headers=h3)
+        check("agree invitation joins", agi.get("code") == 1
+              and call("GET", "/clan/api/v1/clan/tribe/id", headers=h3).get("data") == str(clan_id),
+              str(agi)[:100])
+        ml3 = call("GET", "/clan/api/v1/clan/tribe/member", headers=h1)
+        check("3 members now", ml3.get("code") == 1 and len(ml3.get("data", [])) == 3, str(ml3)[:120])
+
+        print("== Phase 4: roles ==")
+        si = call("PUT", "/clan/api/v1/clan/tribe/member?otherId=%d&type=10" % uid2, headers=h1)
+        check("chief promotes elder", si.get("code") == 1, str(si)[:80])
+        ml4 = call("GET", "/clan/api/v1/clan/tribe/member", headers=h2)
+        check("elder role 10 visible", ml4.get("code") == 1
+              and any(m["userId"] == uid2 and m["role"] == 10 for m in ml4["data"]), str(ml4)[:120])
+        si2 = call("PUT", "/clan/api/v1/clan/tribe/member?otherId=%d&type=10" % uid3, headers=h2)
+        check("elder cannot set roles", si2.get("code") == 0, str(si2)[:80])
+        si3 = call("PUT", "/clan/api/v1/clan/tribe/member?otherId=%d&type=0" % uid1, headers=h1)
+        check("cannot demote chief", si3.get("code") == 0, str(si3)[:80])
+
+        print("== Phase 4: donation (wallet -> clan experience -> tribe currency) ==")
+        w2_before = call("GET", "/pay/api/v1/wealth/user", headers=h2).get("data", {})
+        dn = call("POST", "/clan/api/v3/clan/tribe/donation?currency=2&quantity=1000", None, headers=h2)
+        check("donate gold", dn.get("code") == 1 and dn["data"].get("experienceGot") == 1000
+              and dn["data"].get("tribeCurrencyGot") == 100
+              and dn["data"].get("userId") == uid2, str(dn)[:150])
+        w2_after = call("GET", "/pay/api/v1/wealth/user", headers=h2).get("data", {})
+        check("donation deducted golds", w2_after.get("golds", 0) == w2_before.get("golds", 0) - 1000,
+              str(w2_after)[:120])
+        di = call("GET", "/clan/api/v1/clan/tribe/donation", headers=h2)
+        check("donationInfo counters", di.get("code") == 1 and di["data"].get("currentGold") == 1000
+              and di["data"].get("maxGold") == 20000 and di["data"].get("currentTask") == 1
+              and "clanId" in di["data"], str(di)[:150])
+        dnd = call("POST", "/clan/api/v3/clan/tribe/donation?currency=1&quantity=10", None, headers=h2)
+        check("donate diamonds x10 exp", dnd.get("code") == 1
+              and dnd["data"].get("experienceGot") == 100, str(dnd)[:120])
+        dcap = call("POST", "/clan/api/v3/clan/tribe/donation?currency=2&quantity=30000", None, headers=h2)
+        check("donation cap rejected code 5006", dcap.get("code") == 5006, str(dcap)[:100])
+        dnoauth = call("POST", "/clan/api/v3/clan/tribe/donation?currency=2&quantity=100")
+        check("unauthenticated donation rejected", dnoauth.get("code") == 0, str(dnoauth)[:80])
+        dh = call("GET", "/clan/api/v2/clan/tribe/donation/history?pageNo=1&pageSize=10", headers=h1)
+        check("donation history rows", dh.get("code") == 1
+              and dh["data"].get("totalSize", 0) == 2
+              and all(k in dh["data"]["data"][0] for k in
+                      ("date", "nickName", "quantity", "type", "experienceGot", "tribeCurrencyGot", "userId")),
+              str(dh)[:200])
+        tc2 = call("GET", "/clan/api/v1/clan/tribe/currency", headers=h2)
+        check("tribe currency accumulated", tc2.get("code") == 1 and tc2.get("data") == 110,
+              str(tc2)[:80])
+
+        print("== Phase 4: tasks ==")
+        tk = call("GET", "/clan/api/v2/clan/tasks?type=1", headers=h2)
+        check("clan tasks list", tk.get("code") == 1 and len(tk["data"].get("tasks", [])) == 3
+              and all(k in tk["data"]["tasks"][0] for k in
+                      ("id", "taskId", "name", "need", "finished", "status",
+                       "currencyReward", "experienceReward")), str(tk)[:200])
+        donate_task = [t for t in tk["data"]["tasks"] if t["taskId"] == 1][0]
+        check("donate task finished", donate_task.get("finished") == 1, str(donate_task)[:120])
+        ta = call("PUT", "/clan/api/v1/clan/tasks/accept?id=1&type=1", headers=h2)
+        check("accept task", ta.get("code") == 1, str(ta)[:80])
+        tc_before = call("GET", "/clan/api/v1/clan/tribe/currency", headers=h2).get("data", 0)
+        trw = call("PUT", "/clan/api/v1/clan/tasks?id=1&type=1", headers=h2)
+        tc_after = call("GET", "/clan/api/v1/clan/tribe/currency", headers=h2).get("data", 0)
+        check("claim task reward (+50)", trw.get("code") == 1 and tc_after == tc_before + 50,
+              "resp=%s before=%s after=%s" % (trw, tc_before, tc_after))
+        trw2 = call("PUT", "/clan/api/v1/clan/tasks?id=1&type=1", headers=h2)
+        check("double claim rejected", trw2.get("code") == 0, str(trw2)[:80])
+        pt = call("GET", "/clan/api/v2/clan/personal/tasks?type=2", headers=h2)
+        check("personal tasks list", pt.get("code") == 1 and len(pt["data"].get("tasks", [])) == 2,
+              str(pt)[:150])
+
+        print("== Phase 4: tribe shop (tribe currency purchases) ==")
+        shop = call("GET", "/clan/api/v1/clan/decorations/1?pageNo=1&pageSize=10", headers=h2)
+        check("tribe shop page", shop.get("code") == 1 and shop["data"].get("totalSize", 0) == 6
+              and all(k in shop["data"]["data"][0] for k in
+                      ("id", "name", "price", "currency", "typeId", "clanLevel", "hasPurchase")),
+              str(shop)[:200])
+        item = shop["data"]["data"][0]
+        det = call("GET", "/clan/api/v1/clan/decorations/details/%d" % item["id"], headers=h2)
+        check("shop detail", det.get("code") == 1 and det["data"].get("id") == item["id"]
+              and det["data"].get("name") == item["name"], str(det)[:150])
+        buy = call("PUT", "/clan/api/v1/clan/decorations/purchase?decorationId=%d" % item["id"],
+                   None, headers=h2)
+        check("buy decoration", buy.get("code") == 1, str(buy)[:80])
+        tc_after_buy = call("GET", "/clan/api/v1/clan/tribe/currency", headers=h2).get("data", 0)
+        check("purchase charged tribe currency", tc_after_buy == tc_after - item["price"],
+              "before=%s price=%s after=%s" % (tc_after, item["price"], tc_after_buy))
+        shop2 = call("GET", "/clan/api/v1/clan/decorations/1?pageNo=1&pageSize=10", headers=h2)
+        bought = [g for g in shop2["data"]["data"] if g["id"] == item["id"]][0]
+        check("hasPurchase flagged", bought.get("hasPurchase") == 1, str(bought)[:120])
+        rebuy = call("PUT", "/clan/api/v1/clan/decorations/purchase?decorationId=%d" % item["id"],
+                     None, headers=h2)
+        check("re-buy free (already owned)", rebuy.get("code") == 1, str(rebuy)[:80])
+        poor = call("PUT", "/clan/api/v1/clan/decorations/purchase?decorationId=9006",
+                    None, headers=h3)
+        check("insufficient tribe currency rejected", poor.get("code") == 0, str(poor)[:80])
+
+        print("== Phase 4: free verification + auto join ==")
+        fv = call("PUT", "/clan/api/v1/clan/free/verification?freeVerify=1", headers=h1)
+        check("free verify on (ClanResponse)", fv.get("code") == 1
+              and fv["data"].get("freeVerify") == 1 and fv["data"].get("role") == 20
+              and fv["data"].get("clanId") == clan_id, str(fv)[:150])
+        r4 = call("POST", "/user/api/v1/register",
+                  {"uid": "qa_user4", "password": "pw4", "imei": "dev4"})
+        uid4, tok4 = r4["data"]["userId"], r4["data"]["accessToken"]
+        h4 = {"Access-Token": tok4, "userId": str(uid4), "language": "en"}
+        aj = call("POST", "/clan/api/v1/clan/tribe/member", {"clanId": clan_id, "msg": ""},
+                  headers=h4)
+        check("auto-join when free verify", aj.get("code") == 1
+              and call("GET", "/clan/api/v1/clan/tribe/id", headers=h4).get("data") == str(clan_id),
+              str(aj)[:100])
+        kj = call("DELETE", "/clan/api/v1/clan/tribe/member/remove?otherId=%d" % uid4, headers=h1)
+        check("chief kicks member", kj.get("code") == 1
+              and call("GET", "/clan/api/v1/clan/tribe/id", headers=h4).get("data") == "0",
+              str(kj)[:100])
+        fv0 = call("PUT", "/clan/api/v1/clan/free/verification?freeVerify=0", headers=h1)
+        check("free verify off again", fv0.get("code") == 1
+              and fv0["data"].get("freeVerify") == 0, str(fv0)[:100])
+
+        print("== Phase 4: update / exit / reject / dissolve guards ==")
+        up = call("PUT", "/clan/api/v1/clan/tribe", {"details": "updated details"}, headers=h1)
+        check("chief updates clan", up.get("code") == 1 and up["data"].get("details") == "updated details",
+              str(up)[:120])
+        up2 = call("PUT", "/clan/api/v1/clan/tribe", {"details": "hijack"}, headers=h2)
+        check("elder cannot update", up2.get("code") == 0, str(up2)[:80])
+        rj3 = call("POST", "/user/api/v1/register",
+                   {"uid": "qa_user5", "password": "pw5", "imei": "dev5"})
+        uid5, tok5 = rj3["data"]["userId"], rj3["data"]["accessToken"]
+        h5 = {"Access-Token": tok5, "userId": str(uid5), "language": "en"}
+        call("POST", "/clan/api/v1/clan/tribe/member", {"clanId": clan_id, "msg": "hi"}, headers=h5)
+        rjct = call("PUT", "/clan/api/v1/clan/tribe/member/rejection?otherId=%d" % uid5, headers=h2)
+        check("elder rejects join", rjct.get("code") == 1, str(rjct)[:80])
+        check("rejectee not in clan", call("GET", "/clan/api/v1/clan/tribe/id", headers=h5).get("data") == "0",
+              "uid5 should have no clan")
+        ex = call("DELETE", "/clan/api/v1/clan/tribe/member?clanId=%d" % clan_id, headers=h3)
+        check("member exits", ex.get("code") == 1
+              and call("GET", "/clan/api/v1/clan/tribe/id", headers=h3).get("data") == "0", str(ex)[:100])
+        chief_exit = call("DELETE", "/clan/api/v1/clan/tribe/member?clanId=%d" % clan_id, headers=h1)
+        check("chief cannot exit", chief_exit.get("code") == 0, str(chief_exit)[:80])
+        # dissolve guard: non-chief try (uid2 creates own clan, then uid3... uid2 is in main clan)
+        dc = call("DELETE", "/clan/api/v1/clan/tribe?clanId=%d" % clan_id, headers=h2)
+        check("elder cannot dissolve", dc.get("code") == 0, str(dc)[:80])
+        # throwaway clan dissolve by its chief
+        rc2c = call("POST", "/user/api/v1/register",
+                    {"uid": "qa_user6", "password": "pw6", "imei": "dev6"})
+        tok6 = rc2c["data"]["accessToken"]
+        h6 = {"Access-Token": tok6, "userId": str(rc2c["data"]["userId"]), "language": "en"}
+        cr6 = call("POST", "/clan/api/v2/clan/tribe", {"name": "Throwaway", "currency": 1},
+                   headers=h6)
+        check("diamond-fee create ok", cr6.get("code") == 1, str(cr6)[:100])
+        dd = call("DELETE", "/clan/api/v1/clan/tribe?clanId=%d" % cr6["data"]["clanId"], headers=h6)
+        check("chief dissolves own clan", dd.get("code") == 1
+              and call("GET", "/clan/api/v1/clan/tribe/id", headers=h6).get("data") == "0",
+              str(dd)[:100])
+
         print("== route-table sweep (all routes answer the envelope) ==")
         sys.path.insert(0, os.path.join(REPO, "scripts"))
         sweep_miss = []
@@ -531,6 +790,26 @@ def main():
                    headers={"Access-Token": tok1, "userId": str(uid1)})
         check("sign-in state persists", si3.get("code") == 1
               and si3.get("data", {}).get("first", {}).get("status") == 1, str(si3)[:120])
+        # Phase 4: tribe state persists (uid1 chief + uid2 elder remain; uid3 exited, uid4 kicked)
+        lg4 = call("POST", "/user/api/v1/login", {"uid": "qa_user1", "password": "pw1"})
+        tok1b = lg4["data"]["accessToken"]
+        h1b = {"Access-Token": tok1b, "userId": str(uid1), "language": "en"}
+        tidp = call("GET", "/clan/api/v1/clan/tribe/id", headers=h1b)
+        check("tribe membership persists", tidp.get("code") == 1 and tidp.get("data") == str(clan_id),
+              str(tidp)[:100])
+        basep = call("GET", "/clan/api/v1/clan/tribe/base", headers=h1b)
+        check("clan roster persists", basep.get("code") == 1
+              and basep["data"].get("currentCount") == 2
+              and basep["data"].get("name") == "QA Clan", str(basep)[:150])
+        bnp = call("GET", "/clan/api/v1/clan/tribe/bulletin", headers=h1b)
+        check("bulletin persists", bnp.get("code") == 1
+              and bnp["data"].get("content") == "Welcome to QA Clan", str(bnp)[:100])
+        dhp = call("GET", "/clan/api/v2/clan/tribe/donation/history?pageNo=1&pageSize=10", headers=h1b)
+        check("donation history persists", dhp.get("code") == 1
+              and dhp["data"].get("totalSize", 0) == 2, str(dhp)[:120])
+        recp = call("GET", "/clan/api/v1/clan/tribe/recommendation", headers=h1b)
+        check("npc tribes persist (not reseeded)", recp.get("code") == 1
+              and len(recp.get("data", [])) == 9, str(len(recp.get("data", []))))
     finally:
         proc2.terminate()
         try:

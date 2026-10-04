@@ -51,6 +51,11 @@ public class LocalHttpd extends NanoHTTPD {
                 return (vals == null || vals.isEmpty()) ? null : vals.get(0);
             }
 
+            public java.util.List<String> queryValues(String name) {
+                List<String> vals = session.getParameters().get(name);
+                return vals == null ? java.util.Collections.<String>emptyList() : vals;
+            }
+
             public String header(String name) {
                 String v = session.getHeaders().get(name);
                 if (v == null && name.equals("userid")) {

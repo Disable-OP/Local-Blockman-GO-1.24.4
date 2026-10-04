@@ -102,3 +102,30 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   state, (2) Dispatch/miniGameToken groundwork for the Engine 10068 bridge,
   (3) event endpoints still default (worldCup/halloween/slot — flag-gated),
   (4) decoration suits, (5) RongCloud chat shim decision.
+
+## Session 6 delta (Phase 4: tribe/clan real state)
+
+- ALL 35 /clan/api routes are now real state-backed handlers (Tribe.java).
+  Host rig 176/176; coverage 335/174/161/158. Phase C CI drives a tribe
+  lifecycle on-device (create/base/bulletin/donate/rank/tasks/dissolve).
+- Client-derived semantics are documented in docs/PATCH_PLAN.md "Phase 4"
+  section (roles 20/10/0, donation currency 1=diamond 2=gold, message
+  types/statuses, getTribeId STRING bootstrap).
+- Next highest-value gaps (priority order):
+  1. Friend detail/status block (12 defaults): GET friends/status,
+     friends/info/{nickName}, friends/info/id/{id}, friends/{friendId}
+     (v2), friends/{friendId}/gaming, alias get/set/delete, agreement/
+     rejection (accept/reject friend requests — requests list already
+     implemented), add/delete/blacklist. Models: Friend (greendao),
+     FriendActivityIntentInfo; IFriendApi in com/disabngo/blockynexus/web.
+  2. /msg/api group chat (21): list/create/invite/kick/forbidden/modify —
+     decide the RongCloud offline shim first (rongToken currently returns
+     'local-<id>'); a minimal self-hosted group-chat state store would pair
+     with these endpoints.
+  3. /user/api account-security block (50): password change, email/phone
+     bind, secret questions — mostly code=0-able but several are called on
+     the settings screens; implement real state where the UI allows it.
+  4. Activity/events (29, flag-gated) + /video (7): keep dormant unless the
+     client is observed calling them (error-driven).
+- Releases: tag v* to ship a new APK (build-release.yml triggers on tags
+  only). Latest green: v0.3.3-pay. Tag v0.4.0-tribe ships this phase.

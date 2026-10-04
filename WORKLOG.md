@@ -176,3 +176,42 @@
   classes1/2/5 — re-decompile if missing), gameblocky dispatch groundwork
   (Dispatch -> loopback gAddr) as the GameServer bridge plan, RongCloud
   offline shim decision, remaining flag-gated event endpoints.
+
+## Session 6 — Phase 4 complete: tribe (clan) fully state-backed (2026-10-04)
+
+- Client-first analysis from jadx sources: all 36 ITribeApi methods +
+  every referenced Gson model (TribeDetail, TribeClanMembersBean, TribeMember,
+  TribeDonationInfo/History/Response, TribeNoticeGet/Post, TribeTask(List),
+  TribeMessage, TribeRank/RankInfo, TribeRecommendation, RequestJoinTribe,
+  ClanResponse, TribeShopPageList/Detail) + call-sites (TribeHasFragment,
+  TribeNoFragment, MakeFriendModel, TribeMessageItemViewModel,
+  TribeContributionViewModel, TribeCenter bootstrap via getTribeId STRING).
+- Key semantics verified from client code:
+  * getTribeId -> data is the clanId as a STRING, "0" = no clan (drives
+    TribeCenter.tribeClanId).
+  * roles: 20 chief / 10 elder / 0 member (getStringRole + role guards in
+    TribeMessageItemViewModel branch on viewer role).
+  * donation currency: 1 = diamonds ("clan_cube_donate_suc"), 2 = golds
+    ("clan_gold_donate_suc") — mapping taken from the client's own analytics
+    event names in TribeContributionViewModel callbacks.
+  * message status: 0 pending / 2 agreed / 3 rejected; type 1 join request
+    (action by otherId), type 2 invitation (action by message id).
+- Implemented Tribe.java domain (clans persisted under root.tribes; membership
+  on user.clanId; personal tribeCurrency; join requests/invitations with
+  statuses; donation history; purchases; bulletin; 8 seeded NPC tribes).
+- Wired ALL 35 /clan/api routes to real handlers (33 new + tribeId/tribeDetail
+  upgraded). Router ctx gained queryValues() for Retrofit String[] params.
+- Host rig: 176/176 PASS — full multi-user lifecycle (create fee 20000 golds /
+  200 diamonds deducted from the wallet, join-request -> agree, invite ->
+  agree, elder promotion guards, donation wallet math + 5006 cap rejection,
+  task accept/claim +50 tribeCurrency, shop purchase/hasPurchase/insufficient
+  funds, freeVerify auto-join, kick/exit/reject/dissolve guards, 333-route
+  sweep, restart persistence incl. roster/bulletin/history/no-reseed).
+- UI automation Phase C now drives a deterministic tribe lifecycle through
+  adb-forward against the embedded server (create -> base -> bulletin ->
+  donate -> rank -> tasks -> dissolve).
+- Coverage: 335 discovered / 174 implemented / 161 default / 158 host-tested.
+- Next highest-value gaps (in order): friend detail/status + add/delete/
+  blacklist (12), /msg/api group chat list/create/kick (21 — pairs with the
+  RongCloud shim decision), /user/api account-security block (50), activity
+  events (29, flag-gated), /video (7).

@@ -64,9 +64,12 @@ Retrofit + Gson expect JSON bodies; errors follow the app's `BaseResponse` shape
   rooms/appreciation, daily sign-in + ad rewards crediting real wallets,
   friend recommendations from persistent citizens pool, VIP/mail).
   Host rig 70/70 PASS incl. 321-route sweep + restart persistence.
-- Phase 3 social/tribe/scrap/decoration: NEXT (IScrapApi 16, IDecorationApi 17,
-  IShopApi dress shop, tribe/mailbox lists)
-- Phase 4 game runtime: dispatch/join (Dispatch model, MiniGameToken.dispUrl)
+- Phase 3 social/dress/scrap/pay: DONE (sessions 5) — dress shop/wardrobe,
+  scrap exchange, rankings, mailbox, local wallet/pay layer (strict auth).
+- Phase 3.6/3.7: DONE (profile extras + complete IPayApi local wallet).
+- Phase 4 tribe/clan: DONE (session 6) — all 35 /clan/api routes
+  state-backed (see the Phase 4 section below).
+- Phase 5 game runtime: dispatch/join (Dispatch model, MiniGameToken.dispUrl)
   hands the client a game-server address — needs the Engine 10068 GameServer
   phase; API surface (token/dispatch) already state-backed with real tokens.
 
@@ -95,3 +98,46 @@ Retrofit + Gson expect JSON bodies; errors follow the app's `BaseResponse` shape
   flags isShowActivity/isShowCampaign/isShowAds=false): worldCup, halloween,
   slot machine, bgtube, lucky turntable, activity tasks. Revisit if the client
   is observed calling them (error-driven development).
+
+## Phase 4 — tribe (clan) real state (session 6, DONE)
+
+All 35 /clan/api routes are now state-backed handlers (was 33 defaults + 2
+stubs). New domain module: `localapi-server/src/com/localapi/Tribe.java`.
+
+- **Model shapes** verified from the decompiled client (TribeDetail,
+  TribeClanMembersBean, TribeMember greendao entity, TribeDonationInfo/
+  History/Response, TribeNoticeGet/Post, TribeTask(List), TribeMessage,
+  TribeRank/RankInfo, TribeRecommendation, RequestJoinTribe, ClanResponse,
+  TribeShopPageList/Detail) and call-sites (TribeHasFragment/TribeNoFragment,
+  MakeFriendModel, TribeMessageItemViewModel, TribeContributionViewModel).
+- **Lifecycle**: create (wallet fee: 20000 golds or 200 diamonds, name
+  uniqueness, chief role 20) → update (chief) → invite/join-request flows
+  (joinRequests + invitations with pending/agreed/rejected statuses;
+  auto-join when freeVerify=1) → agree/reject by otherId (requests) or
+  message id (invitations) → roles (elder 10 / member 0, chief-protected) →
+  kick → exit (chief blocked) → dissolve (chief only, clears all members).
+- **Economy**: donation currency=1 diamonds / 2 golds (verified from the
+  client's clan_gold/cube_donate event names), daily per-currency caps +
+  count cap (client error path 5006), wallet deduction → clan experience →
+  personal tribeCurrency (1/10 of exp); donation history PageData newest
+  first; tasks (clan type 1 / personal type 2) derive progress from real
+  state (donations, games played, sign-in) and pay tribeCurrency+experience.
+- **Shop**: 12 persisted clan decorations (frames/bubbles typeIds 1/2),
+  per-caller hasPurchase, clan-level gates, purchases paid in tribeCurrency.
+- **Discovery**: 8 seeded NPC tribes (generated once, persisted) power
+  recommendation/search/rank; rank boards sort by experience desc with
+  RankInfo{pageInfo,remainTime}; getTribeId returns the caller's clanId as a
+  STRING ("0" = none) which is exactly what TribeCenter bootstraps from.
+- **Messages**: GET /clan/api/v2/clan/tribe/member/message merges join
+  requests (type 1, visible to chief/elder) + invitations (type 2, visible
+  to the invitee); status 0/2/3 = pending/agreed/rejected.
+- Multi-value query support added to the router ctx (`queryValues`) for
+  Retrofit `String[]` params (friendIds, decorationId).
+- Host rig: 176/176 PASS (incl. 333-route sweep + tribe persistence across
+  restart). Coverage: 335 discovered / 174 implemented / 161 default /
+  158 host-tested. CI Phase C now drives a full tribe lifecycle (create →
+  base → bulletin → donate → rank → tasks → dissolve) through the embedded
+  server on-device.
+- Remaining default areas: /user/api account-security block (50),
+  /msg/api group chat (21 — RongCloud shim decision), /activity events
+  (29, flag-gated), friend detail/status (12), /video (7), misc.
