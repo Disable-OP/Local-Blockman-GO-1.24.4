@@ -339,8 +339,10 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                             x.res.rsplit("/", 1)[-1] if x.res else "",
                             x.text[:24], x.desc[:24]))
                 product = None
+                rv = screen.find(ids=["rvData"])
+                rvb = rv.bounds if rv else None
                 for n in screen.dump():
-                    if not n.center:
+                    if not (n.center and n.bounds):
                         continue
                     l, t, r, b = n.bounds
                     w, h = r - l, b - t
@@ -350,13 +352,26 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                         continue
                     if y < 260 or y > 1000:
                         continue
+                    # must sit INSIDE the shop grid (rvData) — chips/filters
+                    # live outside it (v4 evidence: a chip was tapped)
+                    if rvb:
+                        rl, rt, rr, rb = rvb
+                        cx, cy = n.center
+                        if not (rl <= cx <= rr and rt <= cy <= rb):
+                            continue
                     if n.cls.endswith("FrameLayout") or n.cls.endswith(
                             "LinearLayout") or n.cls.endswith(
                             "RecyclerView") or "item" in n.res.lower():
                         product = n
                         break
                 if product and screen.tap_node(product):
-                    time.sleep(8)
+                    # the DressBuyDialog (FullScreenDialog, GL-backed) takes a
+                    # moment; wait for its ivBigPic marker (v3 evidence)
+                    dlg = screen.wait_for(ids=["ivBigPic"], timeout=15,
+                                          poll=2)
+                    if not dlg:
+                        print("  [info] buy dialog did not open (no ivBigPic)")
+                    time.sleep(3)
                     alive_or_recover("%s-storeproduct" % tag)
                     for x in screen.dump():
                         l2, t2, r2, b2 = x.bounds or (0, 0, 0, 0)
