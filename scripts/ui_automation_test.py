@@ -242,6 +242,14 @@ def deep_drive(adb, screen, package, tag, paths_before):
                 screen.tap_node(more)
                 time.sleep(6)
                 assert_alive(adb, package, "%s-MoreSettings" % tag)
+                # discovery channel: the settings screen's rows carry no
+                # "account" text (probe found nothing in v0.5.13) — dump the
+                # identified nodes so the next wave can target the real ids
+                for n in screen.dump():
+                    if n.res or n.text or n.desc:
+                        print("  [more] %s | text=%r desc=%r" % (
+                            n.res.rsplit("/", 1)[-1] if n.res else "",
+                            n.text[:24], n.desc[:24]))
                 # account/security row inside settings (best-effort, one level)
                 acc = screen.find(contains=["account"])
                 if acc and acc.center:
@@ -293,6 +301,14 @@ def deep_drive(adb, screen, package, tag, paths_before):
     ok("deep drive added %d new endpoint paths" % len(added))
     for p in added:
         print("    + %s" % p)
+    # Return the app to a SAFE screen. Evidence (v0.5.9/0511/0513): all three
+    # between-phase SIGKILL incidents happened while the app sat IDLE on
+    # FriendInfoActivity (the rank/comment probes can land there); the runs
+    # that ended on Home/Me survived. Land on Home before the next phase.
+    home_tab = screen.find(ids=["rb_1"])
+    if home_tab and home_tab.center:
+        screen.tap_node(home_tab)
+        time.sleep(3)
     return added
 
 
