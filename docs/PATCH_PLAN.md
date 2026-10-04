@@ -606,3 +606,19 @@ whole registered-session editor surface verified end-to-end:
   network) — documented deliberate behavior, nothing to implement.
 - Birthday (wheel picker) and Profile Photo (gallery intent): deliberately
   not driven (low value, high flake risk); handlers are host-tested.
+
+### Wave 5j (session 13): category-tab probe + relaunch hardening
+
+- clean_relaunch (test-redroid automation): after the hardened pid-retry,
+  a full second force-stop+launch cycle now runs when the main screen
+  never appears. Evidence: run 37216002760 (pre-hardening script) showed
+  a swallowed am start (START logged, no am_proc_start) and Gallery3D in
+  foreground after the app's own image PICK during the kick self-relaunch.
+- Deep-drive extension: rb_2 (game categories) gets a discovery node dump
+  ("ab2]" lines) plus ONE best-effort row tap; engine-action words
+  (play/start/quick/join/enter/go) are denylisted so automation can never
+  trigger the engine connect (deferred GameServer phase). If the row
+  opens a game list, one card is opened (same band heuristic as Home).
+  rb_3/rb_4 get discovery-only dumps ("tab3]/tab4]" lines).
+- Server surface unchanged (no dex change, no tag): this wave is pure
+  automation + observability, riding the local-api checkout pin.

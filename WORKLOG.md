@@ -825,3 +825,39 @@
   server -> persisted state -> API read-back, all through the real client.
 - 3 consecutive fully-green dispatched runs on the v0.5.19-clientfix APK;
   64-66 unique endpoints served per run; zero crashes; zero unmapped.
+
+## Session 13 — evidence pass + wave 5j prep (2026-10-04)
+
+- CI triage of the ONE red run (workflow_run 37216002760, main's copy,
+  v0.5.19-clientfix): the failure was "D: clean relaunch did not reach the
+  main screen" AFTER 62 real endpoints + all Phase A-C assertions passed.
+  Primary evidence: the run executed the PRE-hardening script (zero
+  "[am start #N]" prints; commit 578af4e landed ~13 min later) and logcat
+  shows the 16:21:33 START intent with NO am_proc_start — exactly the
+  swallowed-am-start failure mode 578af4e fixes. The 3 subsequent runs
+  with the hardened script are green (3/3). No code regression.
+- NEW evidence from that run: after the native-kick self-relaunch the app
+  auto-fired an image PICK (ChooserActivity + Gallery3D came foreground,
+  0.7s after the relaunch — the Profile Photo restore path). Harmless but
+  noted: a relaunch wait must tolerate a foreign task in front.
+- clean_relaunch hardened again (evidence-based): if the process exists
+  but the main screen never appears, ONE more full force-stop+launch
+  cycle is attempted before giving up (covers splash stalls and
+  foreground-foreign-task cases that the pid-retry alone cannot).
+- Defaults audit: the two password routes in the default list
+  (POST /user/api/v1/user/password = retrievePassword(PhoneBindForm),
+  POST /user/api/v1/emails/password/reset = resetPassword(email)) have NO
+  UI callers in the decompiled client (only the UserApi wrappers exist);
+  the real password lifecycle runs through /user/api/v1/user/password/
+  modify (+v2), /check and /users/question/reset/password — all real.
+  Both defaults stay documented-deliberate.
+- Wave 5j (this commit, scripts only, no dex change): deep-drive extends
+  to the game-category tab (rb_2) — node-dump discovery channel + ONE
+  best-effort row tap with an engine-action denylist (play/start/quick/
+  join/enter/go never tapped — the engine connect is the deferred
+  GameServer phase and must not be triggered from automation) + optional
+  game-card open inside the category page; discovery-only dumps for
+  rb_3/rb_4 (targeting evidence for later waves).
+- Next session: verify the dispatched run, diff the new "+ path" lines
+  and the ab2/tab3/tab4 node dumps against RoutingTable kinds, implement
+  any surfaced gap client-first from jadx. NO GameServer work.

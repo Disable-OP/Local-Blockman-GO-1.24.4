@@ -416,3 +416,25 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   diagnostics artifact; (2) consider driving the Birthday wheel picker only
   if a run shows the client calling changeInfo from it; (3) NO GameServer
   work.
+
+## Session 13 delta (read after the Session 12 surface wave)
+
+- The ONE red workflow_run (37216002760) is triaged CLOSED: it ran the
+  PRE-hardening script (no "[am start #]" prints) and hit the swallowed
+  am start 578af4e fixes; 3/3 green with the hardened script since. Also
+  captured: the app can auto-fire an image PICK during its kick
+  self-relaunch (Gallery3D foreground) — clean_relaunch now does ONE full
+  extra force-stop+launch cycle when the main screen never appears.
+- Defaults audit result: POST /user/api/v1/user/password and POST
+  /user/api/v1/emails/password/reset have NO UI callers (jadx); the real
+  password lifecycle is /user/api/v1/user/password/modify (+v2) + /check +
+  /users/question/reset/password (all real). Defaults stay deliberate.
+- Wave 5j in flight: deep-drive rb_2 (game categories) row probe with an
+  engine-action denylist + rb_3/rb_4 discovery dumps. Diff the run's
+  "ab2]/tab3]/tab4]" node dumps and the "+ path" lines against
+  RoutingTable kinds for the next error-driven pass.
+- Next candidates: (1) verify the 5j dispatched run green; (2) implement
+  any surfaced gap client-first from jadx; (3) the change-password UI
+  entry is still untraced (PasswordSettingDialog is the SET-password
+  flow) — only worth driving if a run shows the client reaching it;
+  (4) NO GameServer work.

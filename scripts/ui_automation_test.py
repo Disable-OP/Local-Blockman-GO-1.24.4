@@ -7,7 +7,8 @@ Three deterministic phases, driven purely over adb + uiautomator dumps:
       pm clear -> launch -> the app auto-logs-in as a tourist/visitor account
       through the embedded local server -> navigate all 5 bottom tabs ->
       deep drive (Inbox / Top Up / Ranking / Store / Party / Video / Personal
-      Info editor / game detail + rank/comment sub-tabs).
+      Info editor / game-category tab row probe / game detail + rank/comment
+      sub-tabs).
       Asserts tourist/auth-token traffic in logcat.
 
   Phase B — PROFILE EDIT through the Personal Info editor:
@@ -204,9 +205,11 @@ def assert_alive(adb, package, stage):
 
 def deep_drive(adb, screen, package, tag, paths_before):
     """Deeper UI driving: visit labeled Me-tab rows (Inbox / Top Up /
-    Ranking), open a game card from Home, and print which endpoints the
-    newly visited screens added. Best-effort taps; the hard requirement is
-    only that the app stays alive (a crash here is a real finding)."""
+    Ranking), the game-category tab (rb_2, with a safe row probe),
+    discovery dumps for rb_3/rb_4, open a game card from Home, and print
+    which endpoints the newly visited screens added. Best-effort taps; the
+    hard requirement is only that the app stays alive (a crash here is a
+    real finding)."""
     def visit(label, wait_s, back=True, contains=None):
         n = screen.find(texts=[label], contains=contains)
         if not (n and n.center):
@@ -285,6 +288,70 @@ def deep_drive(adb, screen, package, tag, paths_before):
             adb.key(4)  # back to Me
             time.sleep(2)
             assert_alive(adb, package, "%s-ProfileBack" % tag)
+    # Game-category tab (rb_2): never visited below the tab itself. Dump the
+    # rows (discovery channel for the next wave), then best-effort tap ONE
+    # row that carries text and does NOT look like an engine action
+    # (play/start/quick/join words are skipped — the engine connect is the
+    # deferred GameServer phase and must not be triggered from automation).
+    # Then, if a game list appeared, open one card from it like Home's.
+    tab2 = screen.find(ids=["rb_2"])
+    if tab2 and screen.tap_node(tab2):
+        time.sleep(5)
+        for n in screen.dump():
+            if n.res or n.text or n.desc:
+                print("  ab2] %s | text=%r desc=%r clickable=%s" % (
+                    n.res.rsplit("/", 1)[-1] if n.res else "",
+                    n.text[:24], n.desc[:24], n.clickable))
+        deny = re.compile(r"play|start|quick|join|enter|go\b", re.I)
+        row = None
+        for n in screen.dump():
+            if not (n.center and n.text):
+                continue
+            y = n.center[1]
+            if y < 200 or y > 980 or deny.search(n.text):
+                continue
+            if n.cls.endswith("RecyclerView") or n.cls.endswith(
+                    "LinearLayout") or "tv" in (n.res.rsplit("/", 1)[-1]
+                                                if n.res else "").lower():
+                row = n
+                break
+        if row and screen.tap_node(row):
+            time.sleep(6)
+            assert_alive(adb, package, "%s-category-row" % tag)
+            # inside the category page: try a game card (same band heuristic)
+            inner = None
+            for n in screen.dump():
+                if not n.center:
+                    continue
+                y = n.center[1]
+                if y < 200 or y > 980:
+                    continue
+                if n.cls.endswith("RecyclerView") or n.cls.endswith(
+                        "LinearLayout"):
+                    inner = n
+                    break
+            if inner and screen.tap_node(inner):
+                time.sleep(7)
+                assert_alive(adb, package, "%s-category-game" % tag)
+                adb.key(4)  # back to the category list
+                time.sleep(2)
+            adb.key(4)  # back to the tab
+            time.sleep(2)
+        else:
+            print("  [skip] no category row candidate found on tab2")
+        assert_alive(adb, package, "%s-tab2-done" % tag)
+    # Discovery-only dumps for the remaining tabs (no taps beyond the tab
+    # itself) — the node dumps are the targeting evidence for later waves.
+    for tab, label in (("rb_3", "tab3"), ("rb_4", "tab4")):
+        n = screen.find(ids=[tab])
+        if n and screen.tap_node(n):
+            time.sleep(4)
+            for x in screen.dump():
+                if x.res or x.text or x.desc:
+                    print("  %s] %s | text=%r desc=%r" % (
+                        label, x.res.rsplit("/", 1)[-1] if x.res else "",
+                        x.text[:24], x.desc[:24]))
+            assert_alive(adb, package, "%s-%s" % (tag, label))
     # Home tab: tap the first tappable card above the bottom nav
     home = screen.find(ids=["rb_1"])
     if home and screen.tap_node(home):
@@ -903,31 +970,44 @@ def main():
         The am start can be silently swallowed by a transient adbd hiccup
         (v0.5.19 run evidence: force-stop logged, no Start proc, no
         traceback) — print the launch output and retry until the process
-        exists before waiting for the main screen."""
-        adb.sh("am force-stop %s" % args.package)
-        time.sleep(3)
-        pid = None
-        for attempt in range(3):
-            out = adb.sh("am start -n %s/%s" % (args.package, args.activity),
-                         timeout=45)
-            print("  [am start #%d] %s" % (attempt + 1,
-                                           (out or "").strip()[:160]))
-            deadline = time.time() + 30
-            while time.time() < deadline:
-                pid = adb.pid(args.package)
+        exists before waiting for the main screen.
+        If the process exists but the main screen never appears (splash
+        stall, another task in front — run 37216002760 showed Gallery3D
+        foreground after the app fired an image PICK during its kick
+        self-relaunch), ONE more full force-stop + launch cycle is
+        attempted before giving up."""
+        for cycle in range(2):
+            adb.sh("am force-stop %s" % args.package)
+            time.sleep(3)
+            pid = None
+            for attempt in range(3):
+                out = adb.sh("am start -n %s/%s" % (args.package,
+                                                    args.activity),
+                             timeout=45)
+                print("  [am start #%d] %s" % (attempt + 1,
+                                               (out or "").strip()[:160]))
+                deadline = time.time() + 30
+                while time.time() < deadline:
+                    pid = adb.pid(args.package)
+                    if pid:
+                        break
+                    time.sleep(2)
                 if pid:
                     break
-                time.sleep(2)
-            if pid:
-                break
-            time.sleep(3)
-        if not pid:
-            return False
-        time.sleep(12)
-        dismiss_permission_dialogs(screen)
-        up = bool(screen.wait_for(ids=["rgBottom", "rb_1", "flHomePage"],
-                                  timeout=90, poll=3))
-        return up and assert_alive(adb, args.package, stage)
+                time.sleep(3)
+            if not pid:
+                return False
+            time.sleep(12)
+            dismiss_permission_dialogs(screen)
+            up = bool(screen.wait_for(ids=["rgBottom", "rb_1", "flHomePage"],
+                                      timeout=90, poll=3))
+            if up and assert_alive(adb, args.package, stage):
+                return True
+            if cycle == 0:
+                print("  [retry] %s: main screen not reached "
+                      "(pid=%s) - one more full relaunch cycle" %
+                      (stage, pid or "none"))
+        return False
 
     # The guest rename in Phase B ends in the native kick whose
     # self-relaunch restores the Personal Info editor (top-activity
