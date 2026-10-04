@@ -712,36 +712,97 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                               % (x.res.rsplit("/", 1)[-1] if x.res else "",
                                  x.cls.rsplit(".", 1)[-1] if x.cls else "",
                                  x.text[:28], x.desc[:24]))
-                # wave 5q: UI-driven clan creation. Form shape on record
-                # (5p v3, run 37241853243): etTribeName EditText, an
-                # introduction EditText (0/300), a 'Create a clan' submit
-                # row (cost shown as 8000; server-side creation is free,
-                # wallets seed 50000 — any local cost gate passes).
+                # wave 5q v2: UI-driven clan creation, evidence-first.
+                # v1 (run 37243022871): the name field filled fine, but the
+                # intro stayed empty (0/300) and the submit tap on the
+                # 'Create a clan' TEXT node fired no POST — the real
+                # button is probably a clickable PARENT (same pattern as
+                # the Me-tab rows). Dump clickable+bounds, verify both
+                # fills, then tap the clickable node covering the submit
+                # text (lowest on screen).
                 uname = "UIClan%05d" % (int(time.time()) % 100000)
                 name_in = screen.find(ids=["etTribeName"])
-                if name_in and name_in.center:
-                    screen.tap_node(name_in)
-                    time.sleep(1)
-                    adb.text(uname)
-                    time.sleep(1)
+                if not (name_in and name_in.center):
+                    print("  [skip] etTribeName not found on the form")
+                else:
+                    def fill_and_verify(node, value, want_sub):
+                        for _ in range(2):
+                            screen.tap_node(node)
+                            time.sleep(1)
+                            adb.text(value)
+                            time.sleep(1)
+                            adb.key(4)  # dismiss the keyboard
+                            time.sleep(2)
+                            d = screen.dump()
+                            hit = next((x for x in d if x.center and (
+                                (x.res.rsplit("/", 1)[-1]
+                                 == (node.res.rsplit("/", 1)[-1])
+                                 and node.res)
+                                or (not node.res
+                                    and x.cls.endswith("EditText")
+                                    and want_sub in (x.text or "").lower()))),
+                                       None)
+                            if hit and want_sub in (hit.text or "").lower():
+                                return hit
+                        return None
+                    filled_name = fill_and_verify(name_in, uname, uname.lower())
+                    if filled_name:
+                        ok("5q v2: name field verified: %r" % filled_name.text)
+                    else:
+                        print("  [info] name field fill NOT verified "
+                              "(continuing with evidence dump)")
+                    # intro EditText: the one WITHOUT the etTribeName id
                     intro = next((x for x in screen.dump()
                                   if x.cls.endswith("EditText") and x.center
                                   and x.res.rsplit("/", 1)[-1]
                                   != "etTribeName"), None)
                     if intro:
-                        screen.tap_node(intro)
-                        time.sleep(1)
-                        adb.text("Local QA clan")
-                        time.sleep(1)
-                    adb.key(4)  # dismiss the keyboard (it covers submit)
-                    time.sleep(2)
-                    # the submit row is the LAST 'Create a clan' node —
-                    # the title bar carries the same text
-                    subs = [x for x in screen.dump()
-                            if (x.text or "") == "Create a clan"
-                            and x.center]
-                    if subs:
-                        screen.tap_node(subs[-1])
+                        filled_intro = fill_and_verify(intro,
+                                                       "Local QA clan",
+                                                       "local qa clan")
+                        if filled_intro:
+                            ok("5q v2: intro field verified: %r"
+                               % filled_intro.text)
+                        else:
+                            print("  [info] intro fill NOT verified")
+                    else:
+                        print("  [info] no second EditText (intro) found")
+                    # evidence dump: clickable + bounds for every node
+                    for x in screen.dump():
+                        if x.res or x.text or x.desc or x.clickable:
+                            b = "%dx%d" % ((x.bounds[2] - x.bounds[0]),
+                                           (x.bounds[3] - x.bounds[1])) \
+                                if x.bounds else "?"
+                            print("  clancreate] %s | cls=%s text=%r "
+                                  "clickable=%s bounds=%s" % (
+                                      x.res.rsplit("/", 1)[-1]
+                                      if x.res else "",
+                                      x.cls.rsplit(".", 1)[-1]
+                                      if x.cls else "",
+                                      x.text[:24], x.clickable, b))
+                    # submit candidates: clickable nodes whose bounds cover
+                    # a 'Create a clan' text node, excluding the title bar
+                    subs_text = [x for x in screen.dump()
+                                 if (x.text or "") == "Create a clan"
+                                 and x.center and x.center[1] > 400]
+                    target = None
+                    if subs_text:
+                        st = subs_text[-1]
+                        sc = st.center
+                        cands = [x for x in screen.dump()
+                                 if x.clickable and x.bounds
+                                 and x.bounds[0] <= sc[0] <= x.bounds[2]
+                                 and x.bounds[1] <= sc[1] <= x.bounds[3]]
+                        target = cands[-1] if cands else (st if st.clickable
+                                                          else None)
+                    if target:
+                        print("  [info] submitting via %s clickable=%s "
+                              "bounds=%s" % (
+                                  target.res.rsplit("/", 1)[-1]
+                                  if target.res else target.cls,
+                                  target.clickable, target.bounds))
+                        before_create = set(localapi_paths(adb))
+                        screen.tap_node(target)
                         time.sleep(3)
                         for rid in ["btnSure", "btn_ok", "btnOk",
                                     "btn_confirm"]:
@@ -754,21 +815,20 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                         clog = adb.raw("logcat", "-d", "-s", "LocalAPI",
                                        timeout=60)
                         if "POST /clan/api/v2/clan/tribe" in clog:
-                            ok("5q: UI clan creation hit POST /clan/api/"
-                               "v2/clan/tribe (name=%s)" % uname)
+                            ok("5q v2: UI clan creation hit POST /clan/"
+                               "api/v2/clan/tribe (name=%s)" % uname)
                         else:
                             print("  [info] no clan-create POST observed "
-                                  "(client cost gate or submit shape "
-                                  "changed?)")
+                                  "(required field gate (tag?) or submit "
+                                  "shape changed?)")
                         for x in screen.dump():
                             if x.res or x.text or x.desc:
                                 print("  clancreate2] %s | text=%r" % (
                                     x.res.rsplit("/", 1)[-1]
                                     if x.res else "", x.text[:28]))
                     else:
-                        print("  [skip] no 'Create a clan' submit node")
-                else:
-                    print("  [skip] etTribeName not found on the form")
+                        print("  [skip] no clickable submit candidate "
+                              "covering the 'Create a clan' text")
                 adb.key(4)
                 time.sleep(2)
                 alive_or_recover("%s-clancreate-back" % tag)
