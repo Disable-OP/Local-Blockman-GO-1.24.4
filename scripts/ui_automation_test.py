@@ -356,16 +356,37 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                         product = n
                         break
                 if product and screen.tap_node(product):
-                    time.sleep(6)
+                    time.sleep(8)
                     alive_or_recover("%s-storeproduct" % tag)
                     for x in screen.dump():
-                        if x.res or x.text or x.desc:
-                            print("  storeprod] %s | text=%r desc=%r" % (
-                                x.res.rsplit("/", 1)[-1] if x.res else "",
-                                x.text[:24], x.desc[:24]))
+                        l2, t2, r2, b2 = x.bounds or (0, 0, 0, 0)
+                        print("  storeprod] %s | text=%r desc=%r "
+                              "btn=%s bounds=%dx%d" % (
+                                  x.res.rsplit("/", 1)[-1] if x.res else "",
+                                  x.text[:24], x.desc[:24],
+                                  x.cls.rsplit(".", 1)[-1],
+                                  r2 - l2, b2 - t2))
+                    # duration choice (7/30/forever radios): forever is the
+                    # clean semantics for the wear-assertion path
+                    forever = screen.find(ids=["rbForever"])
+                    if forever and forever.center:
+                        screen.tap_node(forever)
+                        time.sleep(1)
                     buy = screen.find(texts=["Buy", "Buy Now", "Purchase",
                                              "Get"],
                                       contains=["buy", "purchase"])
+                    if not (buy and buy.center):
+                        # the DressBuyDialog is databinding-driven: its two
+                        # action Buttons carry no guaranteed text — fall back
+                        # to the LAST Button in the dialog (Buy sits below
+                        # Try in the ItemDressBuy layout)
+                        btns = [n for n in screen.dump()
+                                if n.cls.endswith("Button") and n.center
+                                and n.center[1] > 200]
+                        if btns:
+                            buy = btns[-1]
+                            print("  [info] text buy control not found; "
+                                  "using Button node at %r" % (buy.center,))
                     if buy and buy.center:
                         screen.tap_node(buy)
                         time.sleep(3)
