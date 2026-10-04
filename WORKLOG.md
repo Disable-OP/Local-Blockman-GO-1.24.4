@@ -964,3 +964,42 @@
   loop remains converged. Next: (1) buy-then-wear UI decode (last
   untested economy path through the real UI); (2) Find Clans search
   retry; (3) NO GameServer work.
+
+## Session 13 (cont. 4) — wave 5m: buy-then-wear decode, GL-shop limit found (runs 37229376549 / 37230697737 / 37233650826 / 37234955486)
+
+- The Dressing tab is an OWNED-ITEMS wardrobe (fresh visitor = honest empty
+  grid), so client-asserting the wear endpoints needs a purchase first.
+  Four decode iterations:
+  * v1/v2: Me-row "Store" tap timing was flaky (stale dumps) -> entry
+    reworked to rb_2 -> ivShopEnter (id from the 5j dump) — deterministic.
+  * KEY DECODE: the store is not a separate screen — ivShopEnter toggles
+    the DRESS VIEW GROUP into shop mode (same dressViewGroup; the shop
+    grid loads from GET /shop/api/v1/new/shop/recommend/decorations, 6
+    items — NOT from /new/shop/decorations/{typeId}, which never fires).
+  * v3: a container tap DID open the buy preview (ivBigPic + bgView/bga
+    FullScreenDialog backed by the GL avatar). v4: the tap hit a filter
+    chip instead (card picking was positionally ambiguous).
+  * v5 (rvData-bounds-constrained pick): the recommend grid has ZERO
+    uiautomator nodes inside rvData — the 3D shop cards are GL-RENDERED
+    and invisible to dumps. Tapping them would need hard coordinates,
+    which the project discipline forbids ("every UI step derived from
+    live dumps, never coordinates").
+- DECISION (deliberate stop): the buy-then-wear UI drive is not safely
+  automatable without violating the no-coordinates rule. dressBuyV2 and
+  the wear endpoints (PUT/DELETE /decorations/using/new, /using/{id})
+  stay implemented + host-tested; their client-assertion is recorded as
+  blocked by the GL shop. The heuristic now skips cleanly (no blind taps).
+- Host probe (scripts/... shopprobe): swept /shop/api/v1/new/shop/
+  decorations/{0..16,100,999} + recommend + details + recommends + v1 —
+  ALL code=1, shapes clean. The 5m-v1 "An error occurred during" empty
+  state was a transient of the recommend load, not a server contract bug
+  (the same grid loaded fine in v3/v4/v5).
+- All four runs PASSED (recovery absorbing the roaming killer as needed);
+  65-67 unique endpoints served per run; zero FATAL.
+- Session state: automation waves 5j..5m landed (recovery-aware deep
+  drive, dress chips, find friends/clans, store decode); server surface
+  unchanged and fully converged; commits a07b18d..34e3ddc pushed.
+- Next session candidates: (1) Find Clans search input retry on a
+  death-free run; (2) any new diagnostics; (3) the GL-shop buy assertion
+  could only be revisited with an exported accessibility entry (patched
+  dex) — weigh before attempting; (4) NO GameServer work.
