@@ -362,3 +362,20 @@
   Monday UTC), userRankInfo (real rank rows), partyAuth (loopback host:port,
   dynamic token), partiesExists ("").
 - Host rig 291/291 PASS. Coverage 335/268/67/209 (80% implemented).
+
+## Session 8 FINAL — v0.5.1-geo green, session wrap (2026-10-04)
+
+- v0.5.1-geo: build-release 37186623154 GREEN + test-redroid 37186715159
+  GREEN (dispatch bridge + suit gift asserted on-device again, 56 unique
+  endpoints served to the real client, UI AUTOMATION: PASS).
+- Session releases: v0.5.0-dispatch, v0.5.1-geo — both CI-built + CI-tested.
+- Final session coverage: 335 discovered / 268 implemented (80%) / 67
+  default / 209 host-tested; host rig 291/291.
+- Remaining defaults are the deliberate set: activity events (28,
+  appConfig-gated off), /config/files leftovers (~8), /video (7),
+  videostars (5, real-money), mail attachment/new, misc acks.
+- Next session: verify nothing regressed, then either (a) model-shape
+  pass over the leftover /config/files consumers in jadx, or (b) error-
+  driven upgrades from the newest redroid diagnostics artifact, or (c)
+  dispatch-side map-download groundwork served from /files/ (still no
+  GameServer work per project instruction).
