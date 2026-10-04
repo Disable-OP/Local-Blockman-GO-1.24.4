@@ -681,36 +681,34 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
             else:
                 print("  [skip] no search input found on the %s screen"
                       % stage)
-            if stage == "findclans":
-                # wave 5p: CREATE A CLAN discovery probe (the button sits
-                # on the Find Clans screen). Discovery only this wave:
-                # open the form, dump its widgets, BACK out. UI-driven
-                # clan creation is the follow-up once the form shape is
-                # on record (Phase C owns the API-level lifecycle).
-                create = screen.find(texts=["CREATE A CLAN"])
-                if create and screen.tap_node(create):
-                    time.sleep(5)
-                    alive_or_recover("%s-clancreate" % tag)
-                    for x in screen.dump():
-                        if x.res or x.text or x.desc:
-                            print("  clancreate] %s | cls=%s text=%r "
-                                  "desc=%r" % (
-                                      x.res.rsplit("/", 1)[-1]
-                                      if x.res else "",
-                                      x.cls.rsplit(".", 1)[-1]
-                                      if x.cls else "",
-                                      x.text[:28], x.desc[:24]))
-                    adb.key(4)
-                    time.sleep(2)
-                    alive_or_recover("%s-clancreate-back" % tag)
-                    # BACK may have closed the Find Clans screen itself if
-                    # the create button was a placeholder — re-ground on a
-                    # bottom-nav screen before continuing
-                    if not screen.find(ids=["rb_3"]):
-                        adb.key(4)
-                        time.sleep(2)
             adb.key(4)  # back to the tab
             time.sleep(2)
+        # wave 5p v2: CREATE A CLAN discovery probe on a FRESH Find Clans
+        # entry. 5p v1 evidence (run 37239560885): the create banner
+        # belongs to the recommendation state — after a search drive the
+        # list shows results only, so the probe needs its own re-entry.
+        # Discovery only this wave: open the form, dump its widgets, BACK
+        # out. UI-driven clan creation is the follow-up once the form
+        # shape is on record (Phase C owns the API-level lifecycle).
+        clanrow = screen.find(ids=["rlSearchClan"])
+        if clanrow and screen.tap_node(clanrow):
+            time.sleep(5)
+            alive_or_recover("%s-clanscreen2" % tag)
+            create = screen.find(texts=["CREATE A CLAN"])
+            if create and screen.tap_node(create):
+                time.sleep(5)
+                alive_or_recover("%s-clancreate" % tag)
+                for x in screen.dump():
+                    if x.res or x.text or x.desc:
+                        print("  clancreate] %s | cls=%s text=%r desc=%r"
+                              % (x.res.rsplit("/", 1)[-1] if x.res else "",
+                                 x.cls.rsplit(".", 1)[-1] if x.cls else "",
+                                 x.text[:28], x.desc[:24]))
+                adb.key(4)
+                time.sleep(2)
+                alive_or_recover("%s-clancreate-back" % tag)
+            adb.key(4)  # Find Clans -> tab3 (or tab3 -> Home if the tap
+            time.sleep(2)  # was a placeholder; the nav finds below heal)
         alive_or_recover("%s-tab3-done" % tag)
     # Discovery-only dump for the chat tab (no taps beyond the tab itself)
     tab4 = screen.find(ids=["rb_4"])
