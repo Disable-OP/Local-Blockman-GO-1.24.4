@@ -713,3 +713,33 @@
     MoreSettings/Personal-Info screen nodes for the next wave.
 - State: 5 consecutive green device runs; recovery path proven 4/4;
   77 unique endpoints served; zero unmapped; coverage 335/281 (84%).
+
+## Session 11 (cont. 4) — KILLER CASE CLOSED: native kill, Java fully exonerated (2026-10-04)
+
+- Killlog hardening journey: v0.5.11 (4 hand-picked sites) -> v0.5.12
+  (scan ALL app smali; 26 sites) -> v0.5.13/14 (MainActivity onPause +
+  a(Boolean) guest-kick confirms NEUTRALIZED on-device — and death #7/#8
+  still happened) -> v0.5.15-18 (widened to ALL packages incl. SDKs;
+  three smali-patcher correctness bugs found and fixed en route: the v15
+  non-range register limit, raw-v parameter references surviving a
+  .locals bump, and the log block itself needing /range forms at high
+  registers; refusals made non-fatal).
+- v0.5.18 final evidence: 37 Java-site fires logged (compact 2-register
+  block), MainActivity.onPause fired last 40s before death (kill nopped,
+  log-only) — and ZERO Java kill sites fired inside the 40s pre-death
+  window. FriendInfoActivity START + engine-surface teardown + crashsdk
+  tags surround the death. CONCLUSION: the SIGKILL originates in NATIVE
+  code (crashsdk/engine .so) during the guest-kick teardown. No Java
+  patch can (or should) intercept it.
+- Status: the Phase C preflight recovery has now succeeded 9/9 times
+  across 10 consecutive GREEN device runs; the death is a ~40s app
+  restart inside the run, invisible to the final result. The watchdog +
+  recovery architecture absorbs the native killer by design.
+- Ships: v0.5.13-nokill, v0.5.14-nokill2, v0.5.15/16 (widescan),
+  v0.5.17/18 (killtrace + patcher hardening). Release assets published
+  for all tags; v0.5.18 is the current best APK.
+- Recommended next session: (1) treat the native guest-kick as accepted
+  behavior (recovery covers it) OR prevent the trigger by not letting
+  Phase B tap the account row (loses the best-effort UI register — it has
+  never succeeded anyway); (2) continue the normal error-driven loop per
+  NEXT_SESSION_README; (3) NO GameServer work.
