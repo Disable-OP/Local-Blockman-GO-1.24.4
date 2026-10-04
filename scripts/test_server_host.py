@@ -1398,6 +1398,10 @@ def main():
         eng = call("PUT", "/game/api/v1/games/engine?engineVersion=9.9&newEngineVersion=3",
                    None, headers={"CloudFront-Viewer-Country": "EG"})
         check("engine report ack", eng.get("code") == 1, str(eng)[:80])
+        srw = call("GET", "/config/files/blockymods-share-reward")
+        check("share reward config matches grant", srw.get("code") == 1
+              and len(srw.get("data", [])) == 1 and srw["data"][0]["count"] == 200,
+              str(srw)[:120])
 
         print("== route-table sweep (all routes answer the envelope) ==")
         sys.path.insert(0, os.path.join(REPO, "scripts"))

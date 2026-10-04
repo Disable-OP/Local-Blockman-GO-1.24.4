@@ -397,3 +397,10 @@ restart). Coverage: 335 discovered / 271 implemented (81%) / 64 default /
   unknown prop; suit buy now asserts the corrected currency).
 - Coverage: 335 discovered / 272 implemented (81%) / 63 default / 210
   host-tested.
+
+### Phase 5d addendum: share-reward config real
+
+GET /config/files/blockymods-share-reward returns one ShareRewardEntity row
+{id, picUrl, count} whose count (200) matches the actual once-per-day share
+grant — display config and server behavior can no longer disagree. Host rig
+308/308. Coverage 335/273/62/211 (81%).

@@ -59,7 +59,7 @@ public final class RoutingTable {
         "GET /config/files/blockymods-activity-logo|obj",
         "GET /config/files/blockymods-banner|list",
         "GET /config/files/blockymods-check-version|H:checkVersion",
-        "GET /config/files/blockymods-share-reward|list",
+        "GET /config/files/blockymods-share-reward|H:shareRewardList",
         "GET /config/files/campaign-precious-reward|list",
         "GET /config/files/dress-guide-config|H:dressGuideConfig",
         "GET /config/files/game-detail-to-editor|obj",

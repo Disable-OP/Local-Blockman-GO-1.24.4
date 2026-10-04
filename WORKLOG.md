@@ -429,3 +429,11 @@
 - PUT /shop/api/v3/shop/game/props/new implemented (buyGameProp): strict
   auth, real wallet deduction, one-time ownership, re-buy/unknown rejected.
 - Host rig 307/307 PASS. Coverage 335/272/63/210 (81%).
+
+## Session 9 (cont. 3) — share-reward config (2026-10-04)
+
+- GET /config/files/blockymods-share-reward upgraded from static [] to a real
+  config row ({id:1, picUrl:"", count:200}) matching the actual share grant;
+  verified the client binding (picUrl→image, count→text) from the databinding
+  class dj.java.
+- Host rig 308/308 PASS. Coverage 335/273/62/211 (81%).

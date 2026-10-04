@@ -75,6 +75,7 @@ final class Handlers {
         if ("getGameMyRank".equals(name)) return getGameMyRank(ctx, store);
         if ("getGameDetailShop".equals(name)) return getGameDetailShop(ctx, store);
         if ("buyGameProp".equals(name)) return buyGameProp(ctx, store);
+        if ("shareRewardList".equals(name)) return shareRewardList();
         if ("getGameUpdateContent".equals(name)) return envelope("obj", "{\"content\":\"\",\"count\":0}");
         if ("getGameUpdateContentList".equals(name)) return envelope("obj", "{}");
         if ("getPartyCreateGameConfig".equals(name)) return getPartyCreateGameConfig(ctx, store);
@@ -1157,6 +1158,21 @@ final class Handlers {
         L.i("buyGameProp: userId=" + u.optLong("userId") + " game=" + gameId
                 + " prop=" + propsId + " -" + price + " " + kind);
         return envelope("none", null);
+    }
+
+    /**
+     * GET /config/files/blockymods-share-reward — the share reward display
+     * config. One row describing EXACTLY what POST sharing/reward grants:
+     * 200 golds once per day (picUrl empty — the local world has no CDN art).
+     */
+    private static String shareRewardList() {
+        JSONArray out = new JSONArray();
+        JSONObject row = new JSONObject();
+        row.put("id", 1);
+        row.put("picUrl", "");
+        row.put("count", 200);
+        out.put(row);
+        return envelope("list", out.toString());
     }
 
     /** Ranked rows (desc) across real users + citizens for one rank type. */

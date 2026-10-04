@@ -500,3 +500,7 @@ stays default BY DECISION: an empty wheel list keeps AdsTurntableDialog from
 opening, and its spin is triggered by the ad-watch completion message —
 ads do not exist in the local world. Implementing the list would surface a
 dialog that can never spin.
+
+GET /config/files/blockymods-share-reward is now real (shareRewardList): one
+row {id:1, picUrl:"", count:200} — exactly what POST sharing/reward grants
+(200 golds once per day). The client binds picUrl→icon and count→label.
