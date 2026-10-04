@@ -610,37 +610,68 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                 print("  tab3] %s | text=%r desc=%r" % (
                     x.res.rsplit("/", 1)[-1] if x.res else "",
                     x.text[:24], x.desc[:24]))
-        for label, stage in (("Find Friends", "findfriends"),
-                             ("Find Clans", "findclans")):
+        # wave 5n input picker: run 37234955486 proved the clan-search
+        # screen exposes NO EditText-class node — the input surfaces as a
+        # hint-text node "Enter clan name (No more...)". Match either an
+        # EditText-family class or the hint-bearing node; the stage dumps
+        # now print classes so the real widget type lands in the log.
+        def search_input():
+            for x in screen.dump():
+                if not x.center:
+                    continue
+                if (x.cls.endswith("EditText")
+                        or x.cls.endswith("AutoCompleteTextView")):
+                    return x
+                if (x.text or "").startswith("Enter clan"):
+                    return x
+            return None
+        for label, stage, typed in (("Find Friends", "findfriends", "alex"),
+                                    ("Find Clans", "findclans", "pixel")):
             n = screen.find(texts=[label])
-            if n and screen.tap_node(n):
-                time.sleep(5)
-                alive_or_recover("%s-%s" % (tag, stage))
-                if stage == "findclans":
-                    # wave 5l: drive the clan-search input (type a name,
-                    # IME enter) so the search endpoint is client-asserted
-                    edit = next((x for x in screen.dump()
-                                 if x.cls.endswith("EditText") and x.center),
-                                None)
-                    if edit:
-                        screen.tap_node(edit)
-                        time.sleep(1)
-                        adb.text("qa")
-                        time.sleep(1)
-                        adb.key(66)  # IME action / enter
-                        time.sleep(5)
-                        alive_or_recover("%s-clansearch" % tag)
-                    else:
-                        print("  [skip] no clan-search EditText found")
-                        for x in screen.dump():
-                            if x.res or x.text or x.desc:
-                                print("  clansrch] %s | text=%r desc=%r" % (
-                                    x.res.rsplit("/", 1)[-1] if x.res else "",
-                                    x.text[:24], x.desc[:24]))
-                adb.key(4)  # back to the tab
-                time.sleep(2)
-            else:
+            if not (n and screen.tap_node(n)):
                 print("  [skip] '%s' row not found" % label)
+                continue
+            time.sleep(5)
+            alive_or_recover("%s-%s" % (tag, stage))
+            before = set(localapi_paths(adb))
+            for x in screen.dump():
+                if x.res or x.text or x.desc:
+                    print("  %s] %s | cls=%s text=%r desc=%r" % (
+                        stage, x.res.rsplit("/", 1)[-1] if x.res else "",
+                        x.cls.rsplit(".", 1)[-1] if x.cls else "",
+                        x.text[:28], x.desc[:24]))
+            edit = search_input()
+            if edit:
+                screen.tap_node(edit)
+                time.sleep(1)
+                adb.text(typed)
+                time.sleep(1)
+                adb.key(66)  # IME action / enter
+                time.sleep(5)
+                alive_or_recover("%s-%s-search" % (tag, stage))
+                log = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+                if stage == "findclans":
+                    if "tribe/blurry/info" in log:
+                        ok("5n: clan search hit GET /clan/api/v1/clan/"
+                           "tribe/blurry/info (fuzzy match, NPC tribes "
+                           "seeded: 'Pixel Wolves' answers 'pixel')")
+                    else:
+                        print("  [info] clan-search endpoint not observed "
+                              "(hint node may not be the real input)")
+                else:
+                    friend_hits = [p for p in sorted(set(localapi_paths(adb))
+                                                     - before)
+                                   if "/friend/" in p]
+                    if friend_hits:
+                        ok("5n: friend search surfaced %s" % friend_hits)
+                    else:
+                        print("  [info] no friend-search endpoint surfaced "
+                              "(discovery only)")
+            else:
+                print("  [skip] no search input found on the %s screen"
+                      % stage)
+            adb.key(4)  # back to the tab
+            time.sleep(2)
         alive_or_recover("%s-tab3-done" % tag)
     # Discovery-only dump for the chat tab (no taps beyond the tab itself)
     tab4 = screen.find(ids=["rb_4"])
