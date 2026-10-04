@@ -429,6 +429,19 @@ def main():
         tid = call("GET", "/clan/api/v1/clan/tribe/id")
         check("tribe id zero", tid.get("code") == 1 and tid.get("data") == "0", str(tid)[:80])
 
+
+        print("== Phase 3.6: profile/team extras ==")
+        nf = call("GET", "/user/api/v1/user/nickName/free")
+        check("nickName free", nf.get("code") == 1 and nf.get("data", {}).get("free") is True,
+              str(nf)[:80])
+        fq = call("GET", "/user/api/v1/data/frequently/game/%d" % uid1,
+                  headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("frequently games", fq.get("code") == 1 and len(fq.get("data", [])) > 0
+              and "gameId" in fq["data"][0], str(fq)[:100])
+        tm = call("GET", "/game/api/v1/games/team/member/77")
+        check("team members", tm.get("code") == 1 and len(tm.get("data", [])) > 0
+              and all("userId" in a and "nickName" in a for a in tm["data"]), str(tm)[:100])
+
         print("== route-table sweep (all routes answer the envelope) ==")
         sys.path.insert(0, os.path.join(REPO, "scripts"))
         sweep_miss = []

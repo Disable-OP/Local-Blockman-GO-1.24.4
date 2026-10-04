@@ -137,6 +137,12 @@ final class Handlers {
         if ("mailOp".equals(name)) return envelope("list", "[]");
         if ("tribeDetail".equals(name)) return fail("not in a clan");
         if ("tribeId".equals(name)) return envelope("str", "\"0\"");
+        // ---- Phase 3.6: profile/team odds and ends ----
+        if ("nickNameFree".equals(name)) return envelope("obj", "{\"currencyType\":1,\"free\":true,\"quantity\":0}");
+        if ("frequentlyGames".equals(name)) return frequentlyGames(ctx, store);
+        if ("teamMembers".equals(name)) return teamMembers(ctx, store);
+        if ("dressAdsInfo".equals(name)) return envelope("obj", "{\"adType\":1,\"currency\":1,\"nextCurrency\":1,\"qty\":0,\"nextQty\":100,\"status\":0}");
+        if ("dressAdsReward".equals(name)) return envelope("obj", "{\"picUrl\":\"\",\"quantity\":150}");
         L.e("unknown handler name: " + name);
         return envelope("none", null);
     }
@@ -1229,6 +1235,43 @@ final class Handlers {
         page.put("totalPage", totalPages(rows.length(), pageSize));
         page.put("totalSize", rows.length());
         return envelope("obj", page.toString());
+    }
+
+    // ------------------------- Phase 3.6: profile/team odds and ends
+
+    /** GET /user/api/v1/data/frequently/game/{userId} — played history, else catalog. */
+    private static String frequentlyGames(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONArray ids = store.recentGames(u, 8);
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < ids.length(); i++) {
+            JSONObject g = GameCatalog.byId(store, ids.optString(i));
+            if (g != null) out.put(g);
+        }
+        if (out.length() == 0) {
+            out = GameCatalog.page(store, "online", 0, false, 1, 8);
+        }
+        return envelope("list", out.toString());
+    }
+
+    /** GET /game/api/v1/games/team/member/{teamId} — AuthorInfo rows from citizens. */
+    private static String teamMembers(Ctx ctx, StateStore store) {
+        long teamId = parseLong(ctx.pathParam("teamId"), 0);
+        JSONArray citizens = GameCatalog.citizens(store);
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < citizens.length() && out.length() < 8; i++) {
+            JSONObject c = citizens.getJSONObject(i);
+            JSONObject a = new JSONObject();
+            a.put("userId", c.optLong("userId"));
+            a.put("nickName", c.optString("nickName"));
+            a.put("headPic", c.optString("headPic"));
+            a.put("teamId", teamId);
+            a.put("isTeam", i == 0 ? 1 : 0);
+            a.put("isAddFriend", 0);
+            a.put("isLast", i == Math.min(8, citizens.length()) - 1);
+            out.put(a);
+        }
+        return envelope("list", out.toString());
     }
 
     // ------------------------------------------------- Phase 2 helpers

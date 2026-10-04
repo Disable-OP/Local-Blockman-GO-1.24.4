@@ -122,3 +122,21 @@
   "patched-aligned-debugSigned.apk" — no "-unsigned-" in the name, so the
   original glob could never match. Glob widened + verified against the real
   output name locally; shipped as tag v0.3.1-phase3.
+
+## Session 5 (cont. 3) — FULL PIPELINE GREEN with Phase 2+3 API (2026-10-04)
+
+- CI run 37178178577 (workflow_dispatch, local-api): build-release GREEN for
+  the first time ever (signer naming fixed) -> release v0.3.1-phase3 with a
+  CI-built APK -> test-redroid GREEN with the new UI assertions.
+- The real client, on device: auto-tourist login, 5 tabs, and THE APP ITSELF
+  pulled game-hall data from the embedded server:
+  /game/api/v1/game/revision/list/more, /revision/list/recommend,
+  /games/engine (countUploadVersion). 39 unique endpoints served locally,
+  account creation deterministic via adb-forward (register/login/visitor/
+  tourist/auth-token/config + catalog/detail/categories/sign-in/friends/
+  shop/rank), zero FATAL EXCEPTION, process alive end-to-end.
+- Phase 3.6 shipped to local-api: nickNameFree, frequentlyGames, teamMembers,
+  dressAdsInfo/Reward (102/102 host tests). Tag v0.3.2 next.
+- Root-cause note: workflow_run executes MAIN's copy of the workflow file —
+  the checkout pin had to land on main too (commit 219b304, worktree surgery,
+  only workflow files touched; main stays diverged otherwise).
