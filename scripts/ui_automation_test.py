@@ -846,91 +846,126 @@ def main():
         check("C: mail/new false after claim", m3.get("code") == 1
               and m3.get("data") is False, str(m3)[:100])
 
-    # ------------------------------------------------- Phase D: registered
-    # session: UI login as the fresh account + a REAL profile edit.
-    # Evidence: guests are client-side BLOCKED from profile edits (Phase B
-    # kick capture — no API call, native self-relaunch). A registered
-    # session must not kick. Drive the real LoginActivity (in the manifest,
-    # shell-startable), sign in as the Phase C account, re-drive the
-    # Personal Info editor, then verify SERVER state through the forward.
-    print("== PHASE D: UI login as %s + registered profile edit ==" % qa_uid)
-    qa_nick_d = "qaD%05d" % (int(time.time()) % 100000)
-    logins_before_d = adb.raw("logcat", "-d", "-s", "LocalAPI",
-                              timeout=60).count("REQ POST /user/api/v1/login")
-    d_login_ok = False
+    # ------------------------------------------------- Phase D: UI register
+    # through the REAL RegisterActivity + registered-session profile edit.
+    # Evidence trail: (a) am-start of LoginActivity redirects to the main
+    # screen when a session exists (v0.5.18c run); (b) guests are blocked
+    # from profile edits (Phase B kick capture). The REAL register UI is
+    # com.sandbox.login.view.fragment.register.RegisterActivity (in the
+    # manifest, shell-startable, no session redirect):
+    #   step 1  (login_register_step_1): account + password + confirm
+    #           (3 TextInputEditText) + protocol CheckBox + submit
+    #           TextView; account rules: ^(?!\d+$)[a-zA-Z0-9_]{6,16}$
+    #   step 2  (login_fragment_make_role): nickname + gender -> the app
+    #           fires POST /user/api/v1/user/register (H:userRegister) and
+    #           switches the session to the fresh account
+    # Then the Personal Info editor runs under a REGISTERED session: the
+    # save must hit PUT /user/api/v2/user/nickName and the server state is
+    # verified through the forward (nickname/exist flips to taken).
+    print("== PHASE D: UI register via RegisterActivity + registered profile edit ==")
+    qa_uid_d = "uiqa%05d" % (int(time.time()) % 100000)
+    password_d = "LocalQA%05d" % (int(time.time()) % 100000)
+    nick_make = "qaM%05d" % (int(time.time()) % 100000)
+    nick_edit = "qaD%05d" % (int(time.time()) % 100000)
+    regs_before_d = adb.raw("logcat", "-d", "-s", "LocalAPI",
+                            timeout=60).count("REQ POST /user/api/v1/user/register")
+    d_registered = False
     d_edited = False
 
-    adb.sh("am start -n %s/com.sandbox.login.view.activity.login.LoginActivity"
-           " --ez key.is.with.back.btn true" % args.package)
+    def type_and_hide(node, value):
+        screen.tap_node(node)
+        time.sleep(0.5)
+        adb.key(123)  # MOVE_END
+        for _ in range(40):
+            adb.key(67)  # DEL
+        adb.text(value)
+        time.sleep(0.5)
+        adb.key(111)  # hide keyboard
+        time.sleep(1)
+
+    def tap_submit(screen):
+        """The register screens submit via TextViews/Buttons — text first,
+        then known ids, then any clickable Button."""
+        for label in ("Next", "NEXT", "Register", "REGISTER", "Sign up",
+                      "Confirm", "OK", "Done", "Create"):
+            n = screen.find(texts=[label])
+            if n and n.center:
+                screen.tap_node(n)
+                return True
+        n = screen.find(ids=["btn_sign", "btnSign", "btn_next", "btnSure",
+                             "btn_ok", "btn_save"])
+        if n and n.center:
+            screen.tap_node(n)
+            return True
+        n = next((x for x in screen.dump()
+                  if x.cls.endswith("Button") and x.clickable and x.center),
+                 None)
+        if n:
+            screen.tap_node(n)
+            return True
+        return False
+
+    adb.sh("am start -n %s/com.sandbox.login.view.fragment.register.RegisterActivity"
+           % args.package)
     time.sleep(6)
     dismiss_permission_dialogs(screen)
-    if assert_alive(adb, args.package, "D-LoginScreen"):
+    if assert_alive(adb, args.package, "D-RegisterScreen"):
         edits = [n for n in screen.dump()
                  if n.cls.endswith("EditText") and n.center]
         if len(edits) >= 2:
-            # account first, password second (login_activity_login layout)
-            screen.tap_node(edits[0])
-            time.sleep(0.5)
-            adb.key(123)  # MOVE_END
-            for _ in range(40):
-                adb.key(67)  # DEL
-            adb.text(qa_uid)
-            adb.key(111)  # hide keyboard
-            time.sleep(1)
-            screen.tap_node(edits[1])
-            time.sleep(0.5)
-            adb.key(123)
-            for _ in range(40):
-                adb.key(67)
-            adb.text(password)
-            adb.key(111)
-            time.sleep(1)
-            # protocol checkbox blocks submission until ticked
+            # step 1: account, password, confirm-password
+            for node, val in zip(edits[:3],
+                                 [qa_uid_d, password_d, password_d]):
+                type_and_hide(node, val)
             for cb in [n for n in screen.dump()
                        if n.cls.endswith("CheckBox") and not n.checked
                        and n.center]:
                 screen.tap_node(cb)
                 time.sleep(1)
-            sign = screen.find(ids=["btn_sign", "btnSign", "btn_ok"])
-            if not sign:
-                sign = screen.find(texts=["Log in", "login", "Sign in",
-                                          "LOGIN", "LOG IN"])
-            if sign and screen.tap_node(sign):
+            tap_submit(screen)
+            time.sleep(6)
+            # step 2: MakeRole — nickname (+ gender pick) then submit
+            edits2 = [n for n in screen.dump()
+                      if n.cls.endswith("EditText") and n.center]
+            if edits2:
+                type_and_hide(edits2[0], nick_make)
+                if len(edits2) >= 2:
+                    type_and_hide(edits2[1], password_d)
+                gen = next((x for x in screen.dump()
+                            if (x.text or "").lower() in ("male", "female")
+                            and x.center), None)
+                if gen:
+                    screen.tap_node(gen)
+                    time.sleep(1)
+                tap_submit(screen)
                 time.sleep(8)
-                main_d = screen.wait_for(ids=["rgBottom", "rb_1",
-                                              "flHomePage"],
-                                         timeout=60, poll=3)
-                logins_after_d = adb.raw(
-                    "logcat", "-d", "-s", "LocalAPI",
-                    timeout=60).count("REQ POST /user/api/v1/login")
-                if main_d and logins_after_d > logins_before_d:
-                    d_login_ok = True
-                    ok("D: UI login as %s completed (app fired its own "
-                       "login %d -> %d; main screen up)"
-                       % (qa_uid, logins_before_d, logins_after_d))
-                elif main_d:
-                    d_login_ok = True
-                    print("  [info] main screen up but no new /login seen "
-                          "(count %d -> %d) — trusting the screen"
-                          % (logins_before_d, logins_after_d))
-                else:
-                    print("  [info] login did not reach the main screen "
-                          "(count %d -> %d)"
-                          % (logins_before_d, logins_after_d))
+            main_d = screen.wait_for(ids=["rgBottom", "rb_1", "flHomePage"],
+                                     timeout=60, poll=3)
+            regs_after_d = adb.raw(
+                "logcat", "-d", "-s", "LocalAPI",
+                timeout=60).count("REQ POST /user/api/v1/user/register")
+            if regs_after_d > regs_before_d:
+                d_registered = True
+                ok("D: UI REGISTER fired POST /user/api/v1/user/register "
+                   "(%d -> %d)%s" % (regs_before_d, regs_after_d,
+                                     "; main screen up" if main_d else
+                                     " (main screen not confirmed)"))
             else:
-                print("  [info] sign button not found on the login screen")
-                debug_dump(screen, "D-no-sign-button")
+                print("  [info] UI register did not complete (no "
+                      "/user/register call, count %d -> %d)"
+                      % (regs_before_d, regs_after_d))
+                debug_dump(screen, "D-register-stuck")
         else:
-            print("  [info] login screen did not show >=2 EditTexts (%d "
-              "found)" % len(edits))
-            debug_dump(screen, "D-login-screen")
+            print("  [info] RegisterActivity did not show the expected "
+                  "fields (%d EditTexts)" % len(edits))
+            debug_dump(screen, "D-register-screen")
     else:
-        print("  [info] app died at D-LoginScreen")
+        print("  [info] app died at D-RegisterScreen")
 
-    if d_login_ok:
+    if d_registered:
         if open_personal_info_editor(adb, screen, args.package, "D"):
             outcome_d = editor_nickname_drive(adb, screen, args.package, "D",
-                                              qa_nick_d)
+                                              nick_edit)
             print("  [outcome] registered nickname drive: %s" % outcome_d)
             log_d = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
             if outcome_d == "edited":
@@ -948,13 +983,13 @@ def main():
                 # server-state proof: the fresh nickname must now be TAKEN
                 taken = fcall("POST",
                               "/user/api/v1/user/nickname/exist?nickName=%s"
-                              % qa_nick_d, None, headers=auth_hdr)
+                              % nick_edit, None, headers=auth_hdr)
                 check("D: server state holds the new nickname (taken)",
                       taken.get("code") == 0, str(taken)[:120])
-                shown = any(qa_nick_d in (n.text or "")
+                shown = any(nick_edit in (n.text or "")
                             for n in screen.dump())
                 print("  [%s] editor row shows %r after save"
-                      % ("ok" if shown else "info", qa_nick_d))
+                      % ("ok" if shown else "info", nick_edit))
             adb.key(4)  # back to Profile
             time.sleep(2)
             adb.key(4)  # back to Me
@@ -963,8 +998,8 @@ def main():
         else:
             print("  [skip] D: Personal Info editor not reached")
     else:
-        print("  [info] D: UI login not completed (non-fatal; the login "
-              "flow is new — evidence guides the next wave)")
+        print("  [info] D: UI register not completed (non-fatal; the flow "
+              "is new — evidence guides the next wave)")
 
     # ------------------------------------------------- assertions
     print("== assertions ==")

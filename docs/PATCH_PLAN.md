@@ -497,3 +497,32 @@ recovers if a death still follows.
   restart in the happy path; Phase C preflight answers immediately.
 - No dex change (scripts only) — automation rides the local-api checkout
   pin; no new tag required to test it.
+
+### Phase 5i addendum (same session): the UI register flow decoded + Phase D
+
+Evidence from two dispatched runs (v0.5.18b/c artifacts):
+- A GUEST saving a nickname in the Personal Info editor makes NO API call;
+  the process natively self-kills and relaunches with a TemplateActivity on
+  top (pid 2208 -> 5140; delayed variant observed: pid change after the
+  drive returned). The editor is guest-gated client-side — the same killer
+  family as the ll_account Tip.
+- am-start of LoginActivity redirects straight to main when a session
+  exists — no login UI is reachable that way.
+
+Jadx decode of the REAL register flow (com.sandbox.login):
+- RegisterActivity (in the manifest, shell-startable, NO session redirect)
+  drives two steps: step 1 `login_register_step_1` (account + password +
+  confirm, account regex ^(?!\d+$)[a-zA-Z0-9_]{6,16}$, protocol checkbox)
+  submits POST /user/api/v2/app/set-password (H:setPassword — upgrades the
+  token's user with account+password, i.e. the designed guest upgrade);
+  step 2 `login_fragment_make_role` (nickname + gender) submits POST
+  /user/api/v1/user/register (H:userRegister — sets nickName/sex). After
+  that the session is a registered user (hasPassword=true -> the kick
+  condition in LoginService.a() is false).
+
+New Phase D in the automation: am-start RegisterActivity, drive both steps
+from live dumps, assert the app itself fired /user/api/v1/user/register,
+then drive the Personal Info editor under the registered session (PUT
+/user/api/v2/user/nickName) and prove server state through the forward
+(nickname/exist flips to taken). This revives the UI-register requirement
+through the real client UI without ever touching the lethal guest paths.
