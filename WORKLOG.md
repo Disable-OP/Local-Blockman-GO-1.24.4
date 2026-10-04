@@ -1082,3 +1082,17 @@
   Clans screen (open form -> dump widgets -> BACK; navigation-aware
   re-grounding on a bottom-nav screen afterwards). UI-driven clan creation
   becomes possible next wave once the form shape is on record.
+
+## Session 14 (cont. 3) — wave 5p v1 RESULT: probe must precede the search (run 37239560885 PASS)
+
+- Run 37239560885 PASS on 401d255: one death absorbed (A-dress-accessories),
+  zero FATAL, 27 added paths (new high), clan-search assertion reproduced.
+- 5p v1 finding: the CREATE A CLAN probe never fired — the probe ran AFTER
+  the search drive, and after a search the Find Clans list shows RESULTS
+  only; the create banner belongs to the RECOMMENDATION state (it is not
+  rendered post-search). Evidence: no clancreate] lines, direct jump from
+  "5n: clan search hit" to tab3-done.
+- Wave 5p v2 in flight (93036f1): the probe moved to a FRESH Find Clans
+  re-entry after the search stage (tap rlSearchClan again -> recommendation
+  state returns -> CREATE A CLAN visible -> open form -> dump -> BACK).
+  BACK-count is placeholder-safe (self-heals onto a nav screen either way).
