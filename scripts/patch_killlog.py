@@ -35,6 +35,17 @@ LOG_TMPL = """    new-instance v{n}, Ljava/lang/Throwable;
     invoke-static {{v{n1}, v{n}}}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
 """
 
+# Range-form twin for methods whose insertion registers exceed v15 (non-range
+# invokes are 35c opcodes addressing v0-v15 only; /range opcodes take any
+# single-register or multi-register ranges).
+LOG_TMPL_RANGE = """    new-instance v{m}, Ljava/lang/Throwable;
+    invoke-direct/range {{v{m} .. v{m}}}, Ljava/lang/Throwable;-><init>()V
+    invoke-static/range {{v{m} .. v{m}}}, Landroid/util/Log;->getStackTraceString(Ljava/lang/Throwable;)Ljava/lang/String;
+    move-result-object v{m}
+    const-string v{t}, "LocalAPI"
+    invoke-static/range {{v{t} .. v{m}}}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
+"""
+
 KILL_INVOKE = "Landroid/os/Process;->killProcess"
 SCAN_DIRS = ("smali", "smali_classes2", "smali_classes3",
              "smali_classes4", "smali_classes5")
@@ -95,8 +106,12 @@ def main():
                         find_methods_with_kill(text)):
                     new_text, status = patch_method_at(text, start, body_end)
                     if new_text is None:
-                        print("FAIL %s :: %s :: %s" % (fn, sig.strip(), status))
-                        sys.exit(1)
+                        # refusal (missing .locals etc.) — warn and keep going;
+                        # a broken build over an observability patcher is worse
+                        # than a missed evidence site
+                        print("WARN %s :: %s :: %s" % (fn, sig.strip(), status))
+                        skipped += 1
+                        continue
                     if status.startswith("patched"):
                         text = new_text
                         changed += 1
@@ -160,19 +175,30 @@ def patch_method_at(text, start, body_end):
         return None, "no .locals directive (refusing .registers method)"
     n = int(m.group(1))
     pregs = param_registers(sig)
+    # SAFETY: if the body references RAW v-registers at or above the locals
+    # count (raw parameter access — apktool usually emits pX, but range
+    # invokes sometimes keep raw v-numbers), a .locals bump would silently
+    # re-point those references. Skip such methods entirely.
+    for raw in re.findall(r"\bv(\d+)\b", text[start:body_end]):
+        if int(raw) >= n:
+            return text, "skipped (raw v%d ref >= locals %d)" % (int(raw), n)
     # Dalvik non-range invokes address v0-v15 only. Bumping .locals shifts
-    # parameter registers up (base n+4). This is ONLY a hazard when the
+    # parameter registers up (base n+2). This is ONLY a hazard when the
     # original parameters fit inside v15 (n+p-1 <= 15) — such code may legally
     # use non-range {pX} invokes — and the bump pushes them out. Methods whose
-    # parameters ALREADY live beyond v15 (e.g. .locals 21) necessarily use
-    # range invokes and are safe to patch.
-    if n + pregs - 1 <= 15 and n + 4 + pregs - 1 > 15:
+    # parameters ALREADY live beyond v15 necessarily use range invokes.
+    if n + pregs - 1 <= 15 and n + 2 + pregs - 1 > 15:
         return text, "skipped (register budget: locals=%d params=%d)" % (n, pregs)
     locals_start = start + m.start()
     locals_line_end = text.find("\n", locals_start)
     bumped = text[locals_start:locals_line_end].replace(
         ".locals %d" % n, ".locals %d" % (n + 2), 1)
-    block = "\n    # %s\n" % MARKER + LOG_TMPL.format(n=n, n1=n + 1)
+    # the log block's OWN registers: msg=n+1, tag=n. Above v15 the block must
+    # use /range invoke forms (35c opcodes cannot address high registers).
+    if n + 1 > 15:
+        block = "\n    # %s\n" % MARKER + LOG_TMPL_RANGE.format(m=n + 1, t=n)
+    else:
+        block = "\n    # %s\n" % MARKER + LOG_TMPL.format(n=n, n1=n + 1)
     text = text[:locals_start] + bumped + block + text[locals_line_end:]
     return text, "patched (locals %d -> %d)" % (n, n + 2)
 
