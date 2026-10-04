@@ -627,7 +627,17 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
             return None
         for label, stage, typed in (("Find Friends", "findfriends", "alex"),
                                     ("Find Clans", "findclans", "pixel")):
-            n = screen.find(texts=[label])
+            # wave 5o: run 37236799029 proved the "Find Friends" TEXT tap
+            # never navigates (the dump under stage findfriends still shows
+            # the tab3 list) — the real friend-search entry is the
+            # btnSearchFriend id. Clans: the text tap DID navigate (the
+            # text node sits inside rlSearchClan). Prefer the id, fall
+            # back to the text label.
+            n = screen.find(ids=(["btnSearchFriend"]
+                                 if stage == "findfriends" else
+                                 ["rlSearchClan"]))
+            if not (n and screen.tap_node(n)):
+                n = screen.find(texts=[label])
             if not (n and screen.tap_node(n)):
                 print("  [skip] '%s' row not found" % label)
                 continue
