@@ -143,6 +143,17 @@ final class Handlers {
         if ("teamMembers".equals(name)) return teamMembers(ctx, store);
         if ("dressAdsInfo".equals(name)) return envelope("obj", "{\"adType\":1,\"currency\":1,\"nextCurrency\":1,\"qty\":0,\"nextQty\":100,\"status\":0}");
         if ("dressAdsReward".equals(name)) return envelope("obj", "{\"picUrl\":\"\",\"quantity\":150}");
+        // ---- Phase 3.7: local wallet + pay products (no real money) ----
+        if ("wallet".equals(name)) return wallet(ctx, store);
+        if ("payHistory".equals(name)) return payHistory(ctx, store);
+        if ("products".equals(name)) return products(ctx, store);
+        if ("recharge".equals(name)) return recharge(ctx, store);
+        if ("rechargeVip".equals(name)) return rechargeVip(ctx, store);
+        if ("firstTopReward".equals(name)) return envelope("obj", "{\"status\":1,\"rewardList\":[]}");
+        if ("thirdPayFlag".equals(name)) return envelope("bool", "false");
+        if ("payssionSignature".equals(name)) return payssionSignature(ctx, store);
+        if ("vipProducts".equals(name)) return envelope("obj", "{\"expireDate\":\"\",\"vip\":0,\"products\":{}}");
+        if ("thirdPayList".equals(name)) return envelope("obj", "{\"show\":false,\"payChannel\":[],\"currency\":\"\"}");
         L.e("unknown handler name: " + name);
         return envelope("none", null);
     }
@@ -655,7 +666,10 @@ final class Handlers {
 
     /** PUT /user/api/v2/users/{userId}/daily/sign/in — claim today's slot, award golds. */
     private static String clickSignIn(Ctx ctx, StateStore store) {
-        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return fail(NO_AUTH);
+        }
         String date = today();
         if (!store.hasSignedIn(u, date)) {
             int[] rewards = {200, 400, 600, 800, 1000, 1500, 3000};
@@ -670,7 +684,10 @@ final class Handlers {
 
     /** PUT /user/api/v1/users/{userId}/daily/tasks/ads — award 200 golds (cap 5/day). */
     private static String getAdsReward(Ctx ctx, StateStore store) {
-        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return fail(NO_AUTH);
+        }
         String date = today();
         if (store.adRewardCount(u, date) < 5) {
             store.countAdReward(u, date);
@@ -690,7 +707,10 @@ final class Handlers {
 
     /** PUT /user/api/v1/users/daily/sign/ads — AdsSignReward, award 300 golds (cap 3/day). */
     private static String getSignAdsReward(Ctx ctx, StateStore store) {
-        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return fail(NO_AUTH);
+        }
         String date = today();
         int count = store.adRewardCount(u, date);
         long quantity = count < 3 ? 300 : 0;
@@ -891,7 +911,10 @@ final class Handlers {
     }
 
     private static String useDecoration(Ctx ctx, StateStore store) {
-        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return fail(NO_AUTH);
+        }
         long id = parseLong(ctx.pathParam("decorationId"), 0);
         if (!DressShop.owned(store, u, id)) {
             return fail("decoration not owned");
@@ -904,7 +927,10 @@ final class Handlers {
     }
 
     private static String useSuitDecoration(Ctx ctx, StateStore store) {
-        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return fail(NO_AUTH);
+        }
         JSONArray ids = csvIds(ctx.query("ids"));
         for (int i = 0; i < ids.length(); i++) {
             if (!DressShop.owned(store, u, ids.optLong(i))) {
@@ -921,7 +947,10 @@ final class Handlers {
     }
 
     private static String dressBuyOne(Ctx ctx, StateStore store) {
-        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return fail(NO_AUTH);
+        }
         long id = parseLong(ctx.pathParam("decorationId"), 0);
         if (!DressShop.buy(store, u, id)) {
             return fail("insufficient currency or unknown decoration");
@@ -930,7 +959,10 @@ final class Handlers {
     }
 
     private static String dressBuyMany(Ctx ctx, StateStore store) {
-        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return fail(NO_AUTH);
+        }
         JSONArray ids = csvIds(ctx.query("decorationId"));
         JSONArray ok = new JSONArray();
         long golds = 0, diamonds = 0;
@@ -949,7 +981,10 @@ final class Handlers {
     }
 
     private static String dressBuyV2(Ctx ctx, StateStore store) {
-        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return fail(NO_AUTH);
+        }
         JSONObject form = body(ctx);
         JSONArray items = form.optJSONArray("buyDecorationList");
         JSONArray ids = new JSONArray();
@@ -1144,7 +1179,10 @@ final class Handlers {
     }
 
     private static String scrapCombineCard(Ctx ctx, StateStore store) {
-        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return fail(NO_AUTH);
+        }
         String cardId = ctx.query("cardId");
         int amount = (int) parseLong(ctx.query("amount"), 1);
         JSONObject out = ScrapBag.combine(store, u, cardId, amount);
@@ -1153,7 +1191,10 @@ final class Handlers {
     }
 
     private static String scrapSend(Ctx ctx, StateStore store) {
-        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return fail(NO_AUTH);
+        }
         String scrapId = ctx.query("scrapId");
         if (ScrapBag.scrapNum(store, u, scrapId) < 1) {
             return fail("no scrap to send");
@@ -1272,6 +1313,182 @@ final class Handlers {
             out.put(a);
         }
         return envelope("list", out.toString());
+    }
+
+    // ------------------- Phase 3.7: local wallet + pay products
+
+    /** GET /pay/api/v1/wealth/user — RechargeEntity of the CURRENT wallet. */
+    private static String wallet(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        return envelope("obj", rechargeEntity(u, 0).toString());
+    }
+
+    private static JSONObject rechargeEntity(JSONObject u, long rewardQuantity) {
+        JSONObject r = new JSONObject();
+        r.put("userId", u.optLong("userId"));
+        r.put("currency", 1);
+        r.put("golds", u.optLong("golds"));
+        r.put("diamonds", u.optLong("diamonds"));
+        r.put("gDiamonds", u.optLong("gDiamonds"));
+        r.put("gDiamondsProfit", 0);
+        r.put("money", 0);
+        r.put("rewardQuantity", rewardQuantity);
+        return r;
+    }
+
+    /** GET /pay/api/v1/wealth/record/users/{userId} — persisted pay records. */
+    private static String payHistory(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONArray recs = store.userState(u).optJSONArray("payRecords");
+        JSONArray data = recs == null ? new JSONArray() : recs;
+        JSONObject page = new JSONObject();
+        page.put("data", data);
+        page.put("pageNo", 1);
+        page.put("pageSize", 20);
+        page.put("totalPage", data.length() > 0 ? 1 : 0);
+        page.put("totalSize", data.length());
+        return envelope("obj", page.toString());
+    }
+
+    /** Generate (once) the local product catalog: gold/diamond packs + VIP. */
+    private static synchronized JSONArray ensureProducts(StateStore store) {
+        JSONArray prods = store.root().optJSONArray("products");
+        if (prods != null) return prods;
+        prods = new JSONArray();
+        Object[][] defs = {
+                {"local.golds.1", "Pouch of Golds", 1, 1000, 0.99, 0},
+                {"local.golds.2", "Bag of Golds", 1, 5500, 4.99, 0},
+                {"local.golds.3", "Chest of Golds", 1, 12000, 9.99, 500},
+                {"local.diamonds.1", "Handful of Diamonds", 2, 80, 0.99, 0},
+                {"local.diamonds.2", "Case of Diamonds", 2, 500, 4.99, 50},
+                {"local.diamonds.3", "Vault of Diamonds", 2, 1200, 9.99, 120},
+                {"local.vip.1", "VIP Level 1 (30 days)", 0, 0, 2.99, 0},
+                {"local.vip.2", "VIP Level 2 (30 days)", 0, 0, 4.99, 0},
+        };
+        for (int i = 0; i < defs.length; i++) {
+            Object[] d = defs[i];
+            JSONObject p = new JSONObject();
+            p.put("id", 8001 + i);
+            p.put("productId", (String) d[0]);
+            p.put("name", d[1]);
+            p.put("desc", "Local purchase — credits your wallet instantly.");
+            p.put("currency", (int) d[2]);
+            p.put("price", (double) d[4]);
+            p.put("diamonds", (int) d[3]);
+            p.put("golds", (int) d[3]);
+            p.put("gift", (int) d[5]);
+            p.put("month", ((String) d[0]).startsWith("local.vip") ? 1 : 0);
+            p.put("level", ((String) d[0]).equals("local.vip.2") ? 2 : 1);
+            p.put("isVip", ((String) d[0]).startsWith("local.vip"));
+            p.put("isFree", false);
+            p.put("status", 1);
+            prods.put(p);
+        }
+        store.root().put("products", prods);
+        store.save();
+        return prods;
+    }
+
+    /** GET /pay/api/v1/pay/products — List<ProductEntity>. */
+    private static String products(Ctx ctx, StateStore store) {
+        return envelope("list", ensureProducts(store).toString());
+    }
+
+    /** Strict auth for economy-mutating endpoints: token must resolve to a real user. */
+    private static JSONObject requireUser(Ctx ctx, StateStore store) {
+        return store.findByToken(ctx.header("access-token"));
+    }
+
+    private static final String NO_AUTH = "authentication required";
+
+    /** POST /pay/api/v2/pay/users/recharge — credit the sku's currency for real. */
+    private static String recharge(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return fail(NO_AUTH);
+        }
+        JSONObject form = body(ctx);
+        String sku = form.optString("sku");
+        JSONArray prods = ensureProducts(store);
+        JSONObject product = null;
+        for (int i = 0; i < prods.length(); i++) {
+            if (sku.equals(prods.getJSONObject(i).optString("productId"))) {
+                product = prods.getJSONObject(i);
+                break;
+            }
+        }
+        if (product == null) {
+            return fail("unknown product: " + sku);
+        }
+        long qty = product.optLong("golds") + product.optLong("diamonds");
+        store.award(u, product.optInt("currency") == 2 ? "diamonds" : "golds", qty);
+        store.award(u, "gDiamonds", product.optLong("gift"));
+        recordPay(store, u, product, qty);
+        L.i("recharge: userId=" + u.optLong("userId") + " sku=" + sku + " +" + qty);
+        return envelope("obj", rechargeEntity(u, qty).toString());
+    }
+
+    /** POST /pay/api/v3|v4/pay/users/recharge — VIP purchase sets vip level. */
+    private static String rechargeVip(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return fail(NO_AUTH);
+        }
+        JSONObject form = body(ctx);
+        String sku = form.optString("sku");
+        JSONArray prods = ensureProducts(store);
+        for (int i = 0; i < prods.length(); i++) {
+            JSONObject product = prods.getJSONObject(i);
+            if (sku.equals(product.optString("productId"))) {
+                int level = product.optInt("level");
+                u.put("vip", Math.max(u.optInt("vip"), level));
+                String until = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss",
+                        java.util.Locale.US).format(
+                        new java.util.Date(System.currentTimeMillis() + 30L * 86_400_000L));
+                u.put("expireDate", until);
+                store.save();
+                JSONObject v = new JSONObject();
+                v.put("vip", u.optInt("vip"));
+                v.put("expireDate", until);
+                v.put("gDiamonds", u.optLong("gDiamonds"));
+                recordPay(store, u, product, 0);
+                return envelope("obj", v.toString());
+            }
+        }
+        return fail("unknown product: " + sku);
+    }
+
+    private static void recordPay(StateStore store, JSONObject u, JSONObject product,
+                                  long qty) {
+        JSONObject st = store.userState(u);
+        JSONArray recs = st.optJSONArray("payRecords");
+        if (recs == null) {
+            recs = new JSONArray();
+            st.put("payRecords", recs);
+        }
+        java.text.SimpleDateFormat fmt =
+                new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US);
+        fmt.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+        JSONObject rec = new JSONObject();
+        rec.put("orderId", "local-" + Long.toHexString(System.nanoTime()));
+        rec.put("userId", u.optLong("userId"));
+        rec.put("description", product.optString("name"));
+        rec.put("currency", product.optInt("currency"));
+        rec.put("qty", qty > 0 ? qty : 1);
+        rec.put("status", 2);
+        rec.put("inoutType", 1);
+        rec.put("transactionType", 1);
+        rec.put("created", fmt.format(new java.util.Date()));
+        recs.put(rec);
+        store.save();
+    }
+
+    private static String payssionSignature(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONObject s = new JSONObject();
+        s.put("signature", "");
+        s.put("userId", u.optLong("userId"));
+        return envelope("obj", s.toString());
     }
 
     // ------------------------------------------------- Phase 2 helpers

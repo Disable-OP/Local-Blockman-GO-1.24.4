@@ -140,3 +140,25 @@
 - Root-cause note: workflow_run executes MAIN's copy of the workflow file —
   the checkout pin had to land on main too (commit 219b304, worktree surgery,
   only workflow files touched; main stays diverged otherwise).
+
+## Session 5 (cont. 4) — Phase 3.7 local wallet/pay layer + STRICT AUTH on economy writes (2026-10-04)
+
+- Error-driven discovery from the green run's LocalAPI log: the client calls
+  GET /pay/api/v1/wealth/user — which was NOT in the RoutingTable (the whole
+  IPayApi extraction had silently failed: 15 of 16 routes missing).
+- Implemented the complete local pay layer (no real money, real state):
+  wealth/user (live RechargeEntity wallet), products (generated catalog of
+  gold/diamond/VIP packs), recharge (sku -> credits wallet + pay record),
+  v3/v4 recharge -> VIP level + expiry, wealth/record (history),
+  payssion/third-party flags off, first-punch reward.
+- SECURITY/CONSISTENCY: economy-mutating handlers now REQUIRE a valid
+  Access-Token (requireUser): recharge, rechargeVip, clickSignIn, ads
+  rewards, dress buys, wear/unwear, scrap combine/send. Previously they
+  silently applied to a "ghost" user when unauthenticated (found because a
+  scratch test without headers credited the ghost — the lenient resolve()
+  is now only used for reads).
+- Fixed a latent test-suite blind spot: tests kept using tok1 AFTER logging
+  it out; now re-login (like the real client) and pass auth headers on all
+  user-scoped calls.
+- 110/110 host tests. Coverage: 335 discovered / 141 implemented / 194
+  default / 129 host-tested.

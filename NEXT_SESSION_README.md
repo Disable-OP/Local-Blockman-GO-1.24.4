@@ -73,3 +73,14 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   mailbox/msg lists, halloween/worldcup/slot events, videostars.
 - Next: verify v0.3.0-phase3 redroid run green; then Phase 3.5 (tribe/mailbox
   real empty-states + gameblocky props), then Phase 4 dispatch groundwork.
+
+## Session 5 delta 3 (pay layer + strict auth)
+
+- IPayApi fully implemented as a LOCAL WALLET EMULATOR (products + recharge +
+  VIP + history). Economy writes REQUIRE Access-Token now (requireUser).
+- Scratch-test lesson: a POST without headers resolves to the "ghost" user
+  on READ endpoints (lenient resolve) and is REJECTED on economy writes.
+- Next candidates (priority): tribe create/join flow (real clan state),
+  blocky game dispatch groundwork (Dispatch with loopback gAddr), RongCloud
+  offline shim decision, remaining event endpoints (all flag-gated).
+- Tag v0.3.3 ships this; CI (build-release -> test-redroid) must stay green.

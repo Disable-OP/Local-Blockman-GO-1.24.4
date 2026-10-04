@@ -262,6 +262,7 @@ def main():
 
         print("== Phase 2: daily economy ==")
         before = call("POST", "/user/api/v1/login", {"uid": "qa_user1", "password": "pw1", "imei": "dev1"})
+        tok1 = before.get("data", {}).get("accessToken", tok1)  # re-login (old token was logged out)
         golds0 = before.get("data", {}).get("golds", 0)
         si = call("GET", "/user/api/v2/users/%d/daily/sign/in" % uid1,
                   headers={"Access-Token": tok1, "userId": str(uid1)})
@@ -380,26 +381,31 @@ def main():
 
         print("== Phase 3: scrap exchange ==")
         bag = call("GET", "/activity/api/v1/collect/exchange/user/scrap?type=1",
-                   headers={"language": "en"})
+                   headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
         check("scrap backpack", bag.get("code") == 1
               and bag.get("data", {}).get("totalSize", 0) > 0
               and "amount" in bag["data"]["data"][0], str(bag)[:150])
-        bv = call("GET", "/activity/api/v1/collect/exchange/user/scrap/value")
+        bv = call("GET", "/activity/api/v1/collect/exchange/user/scrap/value",
+                  headers={"Access-Token": tok1, "userId": str(uid1)})
         check("scrap bag value", bv.get("code") == 1 and isinstance(bv.get("data"), int)
               and bv["data"] > 0, str(bv)[:100])
         cards = call("GET", "/activity/api/v1/collect/exchange/card/list?type=1")
         check("scrap card list", cards.get("code") == 1
               and len(cards.get("data", {}).get("data", [])) == 6, str(cards)[:120])
-        cd = call("GET", "/activity/api/v1/collect/exchange/card/details?cardId=c1")
+        cd = call("GET", "/activity/api/v1/collect/exchange/card/details?cardId=c1",
+                  headers={"Access-Token": tok1, "userId": str(uid1)})
         check("scrap card details", cd.get("code") == 1
               and len(cd.get("data", {}).get("scrapResponses", [])) == 2, str(cd)[:120])
-        cmb = call("POST", "/activity/api/v1/collect/exchange/user/combine/card?cardId=c1&amount=1")
+        cmb = call("POST", "/activity/api/v1/collect/exchange/user/combine/card?cardId=c1&amount=1",
+                   None, headers={"Access-Token": tok1, "userId": str(uid1)})
         check("combine card c1", cmb.get("code") == 1
               and cmb.get("data", {}).get("amount") == 1, str(cmb)[:120])
-        hist = call("GET", "/activity/api/v1/collect/exchange/user/combine/record?pageNo=1&pageSize=10")
+        hist = call("GET", "/activity/api/v1/collect/exchange/user/combine/record?pageNo=1&pageSize=10",
+                    headers={"Access-Token": tok1, "userId": str(uid1)})
         check("combine history recorded", hist.get("code") == 1
               and hist.get("data", {}).get("totalSize", 0) >= 1, str(hist)[:120])
-        badc = call("POST", "/activity/api/v1/collect/exchange/user/combine/card?cardId=c6&amount=999")
+        badc = call("POST", "/activity/api/v1/collect/exchange/user/combine/card?cardId=c6&amount=999",
+                    None, headers={"Access-Token": tok1, "userId": str(uid1)})
         check("combine insufficient rejected", badc.get("code") == 0, str(badc)[:100])
         targets = call("GET", "/activity/api/v1/collect/exchange/card/details/scrap?scrapId=s1&pageNo=1&pageSize=10")
         check("scrap request targets", targets.get("code") == 1
@@ -441,6 +447,42 @@ def main():
         tm = call("GET", "/game/api/v1/games/team/member/77")
         check("team members", tm.get("code") == 1 and len(tm.get("data", [])) > 0
               and all("userId" in a and "nickName" in a for a in tm["data"]), str(tm)[:100])
+
+
+        print("== Phase 3.7: local wallet + pay ==")
+        w0 = call("GET", "/pay/api/v1/wealth/user", headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("wallet endpoint", w0.get("code") == 1
+              and w0.get("data", {}).get("golds", 0) > 0
+              and w0["data"].get("userId") == uid1, str(w0)[:150])
+        prods = call("GET", "/pay/api/v1/pay/products?type=android&appType=android")
+        check("product list", prods.get("code") == 1 and len(prods.get("data", [])) >= 6
+              and all("productId" in p for p in prods["data"]), str(prods)[:150])
+        sku = prods["data"][0]["productId"]
+        rc2 = call("POST", "/pay/api/v2/pay/users/recharge?type=android",
+                   {"sku": sku, "purchaseData": "local", "signature": "local",
+                    "isSub": False}, headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("recharge credits wallet", rc2.get("code") == 1
+              and rc2.get("data", {}).get("rewardQuantity", 0) > 0, str(rc2)[:150])
+        w1 = call("GET", "/pay/api/v1/wealth/user", headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("wallet grew", w1.get("data", {}).get("golds", 0)
+              == w0["data"]["golds"] + rc2["data"]["rewardQuantity"], str(w1)[:120])
+        hist = call("GET", "/pay/api/v1/wealth/record/users/%d?pageNo=1&pageSize=10" % uid1,
+                    headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("pay history recorded", hist.get("code") == 1
+              and hist.get("data", {}).get("totalSize", 0) >= 1, str(hist)[:120])
+        vipr = call("POST", "/pay/api/v3/pay/users/recharge?type=android",
+                    {"sku": "local.vip.1", "purchaseData": "local", "isSub": False},
+                    headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("vip purchase", vipr.get("code") == 1
+              and vipr.get("data", {}).get("vip") == 1
+              and vipr["data"].get("expireDate"), str(vipr)[:150])
+        bad = call("POST", "/pay/api/v2/pay/users/recharge?type=android",
+                   {"sku": "nope", "purchaseData": "", "isSub": False},
+                   headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("unknown sku rejected", bad.get("code") == 0, str(bad)[:80])
+        noauth = call("POST", "/pay/api/v2/pay/users/recharge?type=android",
+                      {"sku": sku, "purchaseData": "", "isSub": False})
+        check("unauthenticated recharge rejected", noauth.get("code") == 0, str(noauth)[:80])
 
         print("== route-table sweep (all routes answer the envelope) ==")
         sys.path.insert(0, os.path.join(REPO, "scripts"))
@@ -485,7 +527,8 @@ def main():
         check("catalog persists across restart", cond.get("code") == 1
               and len(cond.get("data", {}).get("pageInfo", {}).get("data", [])) == 10,
               str(cond)[:120])
-        si3 = call("GET", "/user/api/v2/users/%d/daily/sign/in" % uid1)
+        si3 = call("GET", "/user/api/v2/users/%d/daily/sign/in" % uid1,
+                   headers={"Access-Token": tok1, "userId": str(uid1)})
         check("sign-in state persists", si3.get("code") == 1
               and si3.get("data", {}).get("first", {}).get("status") == 1, str(si3)[:120])
     finally:
