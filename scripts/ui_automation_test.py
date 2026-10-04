@@ -199,6 +199,9 @@ def deep_drive(adb, screen, package, tag, paths_before):
         visit("Inbox", 6)          # mail list screen (mailList/mailOp path)
         visit("Top Up", 6)         # recharge screen (pay products path)
         visit("Ranking", 6)        # ranking screen (rank home path)
+        visit("Store", 6)          # store screen (dress/suit shop path)
+        visit("Party", 6)          # party screen (party auth path)
+        visit("Video", 6)          # video feed (deliberate-empty probe)
     # Home tab: tap the first tappable card above the bottom nav
     home = screen.find(ids=["rb_1"])
     if home and screen.tap_node(home):
