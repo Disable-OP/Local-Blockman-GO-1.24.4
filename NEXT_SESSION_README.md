@@ -438,3 +438,21 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   entry is still untraced (PasswordSettingDialog is the SET-password
   flow) — only worth driving if a run shows the client reaching it;
   (4) NO GameServer work.
+
+## Session 13 delta 2 (wave 5j verified green — read first)
+
+- Run 37222222759 PASS: 64 endpoints, zero crashes; rb_2/rb_3/rb_4 node
+  dumps are in the log (discovery channel). Bottom-nav map complete:
+  rb_1=Home, rb_2=Dressing (wardrobe filter chips + rvData grid),
+  rb_3=Friends/Clans ("Find Friends"/"Find Clans", client "Coming soon"
+  placeholder), rb_4=Chat (RongCloud "Connecting..."/"No chats info" —
+  offline shim per Session 7 decision), rb_5=Me.
+- The Dressing tab's empty state is HONEST for fresh visitors (they wear
+  nothing); wearing state is real. The 5j row-probe correctly skipped
+  (filter-chip screen, not a category list) — do not force taps there.
+- Phase C recovery absorbed another process death mid-run (native-kick
+  family) — recovery design 11/11 now. Phase B skip was covered by D.
+- Next candidates: (1) drive the Dressing tab filter chips (rb_clothes/
+  rb_accessories/rb_character/rb_function) to surface wardrobe-list
+  calls through the real UI; (2) drive the rb_3 "Find Friends"/"Find
+  Clans" search rows; (3) keep the error-driven loop; (4) NO GameServer.

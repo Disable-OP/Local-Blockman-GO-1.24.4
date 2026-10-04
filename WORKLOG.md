@@ -861,3 +861,36 @@
 - Next session: verify the dispatched run, diff the new "+ path" lines
   and the ab2/tab3/tab4 node dumps against RoutingTable kinds, implement
   any surfaced gap client-first from jadx. NO GameServer work.
+
+## Session 13 (cont.) — wave 5j verified green (run 37222222759)
+
+- PASS: zero FATAL/ANR, 64 unique endpoints served, all assertions green.
+  clean_relaunch printed [am start #1] and reached the main screen first
+  try in both D relaunches (no retry needed).
+- NEW DISCOVERY CHANNEL OUTPUT (targets for later waves):
+  * rb_2 = DRESSING tab (wardrobe): dressViewGroup + radio tabs
+    rb_clothes/rb_accessories/rb_character/rb_function and sub-filter
+    rbAll/rbSuit/rbOnesies/rbCloth/rbPants/rbShoes/rbHair/rbEmoticon over
+    rvData; fresh visitor shows the honest empty state "No dressing in
+    use now" (the account genuinely wears nothing; /decorations/<uid>/
+    using called 3x and answered from real state). The 5j row-probe
+    safely skipped (filter found no list row — correct, it is a
+    filter-chip screen, not a category list).
+  * rb_3 = FRIENDS/CLANS tab: "Find Friends" + "Find Clans" +
+    rlSearchClan/btnSearchFriend + ivTribe/ivClanMsg0; a "Coming soon"
+    label exists client-side (clan-search area placeholder).
+  * rb_4 = CHAT tab: RongCloud conversation list (rc_content, empty
+    state "No chats info", status "Connecting..."). The offline-shim
+    decision (Session 7) still holds; the screen stays functional.
+- Phase C preflight recovery fired once more ([recover] app process is
+  dead -> relaunch -> recovered) — the native-kick family death, absorbed
+  by design; defense in depth continues to work.
+- Phase B best-effort skip this run ("Personal Info editor not reached");
+  Phase D's registered re-drive covered ALL profile edits end-to-end
+  (PUT nickName asserted + record read-back nickName/details match).
+- Bottom-nav map is now complete: rb_1=Home, rb_2=Dressing, rb_3=
+  Friends/Clans, rb_4=Chat, rb_5=Me. No unmapped traffic; everything the
+  client calls remains a real handler. The error-driven loop stays
+  converged — next waves should target the Dressing tab's filter chips
+  (wardrobe surfaces: dressSuitList/owned lists are real) or close out
+  with documentation work. NO GameServer work.
