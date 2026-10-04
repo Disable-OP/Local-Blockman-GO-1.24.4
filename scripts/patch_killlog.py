@@ -31,15 +31,8 @@ LOG_TMPL = """    new-instance v{n}, Ljava/lang/Throwable;
     invoke-direct {{v{n}}}, Ljava/lang/Throwable;-><init>()V
     invoke-static {{v{n}}}, Landroid/util/Log;->getStackTraceString(Ljava/lang/Throwable;)Ljava/lang/String;
     move-result-object v{n}
-    new-instance v{n1}, Ljava/lang/StringBuilder;
-    invoke-direct {{v{n1}}}, Ljava/lang/StringBuilder;-><init>()V
-    const-string v{n2}, "killAppProcess CALLED from:\\n"
-    invoke-virtual {{v{n1}, v{n2}}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-    invoke-virtual {{v{n1}, v{n}}}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-    invoke-virtual {{v{n1}}}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
-    move-result-object v{n}
-    const-string v{n2}, "LocalAPI"
-    invoke-static {{v{n2}, v{n}}}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
+    const-string v{n1}, "LocalAPI"
+    invoke-static {{v{n1}, v{n}}}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
 """
 
 KILL_INVOKE = "Landroid/os/Process;->killProcess"
@@ -166,19 +159,22 @@ def patch_method_at(text, start, body_end):
     if not m:
         return None, "no .locals directive (refusing .registers method)"
     n = int(m.group(1))
-    # Dalvik non-range invokes address v0-v15 only; bumping .locals shifts
-    # the parameter registers up. If params would land beyond v15, existing
-    # non-range {pX} invokes become invalid smali — skip such methods.
-    if n + 4 + param_registers(sig) > 15:
-        return text, "skipped (register budget: locals=%d params=%d)" % (
-            n, param_registers(sig))
+    pregs = param_registers(sig)
+    # Dalvik non-range invokes address v0-v15 only. Bumping .locals shifts
+    # parameter registers up (base n+4). This is ONLY a hazard when the
+    # original parameters fit inside v15 (n+p-1 <= 15) — such code may legally
+    # use non-range {pX} invokes — and the bump pushes them out. Methods whose
+    # parameters ALREADY live beyond v15 (e.g. .locals 21) necessarily use
+    # range invokes and are safe to patch.
+    if n + pregs - 1 <= 15 and n + 4 + pregs - 1 > 15:
+        return text, "skipped (register budget: locals=%d params=%d)" % (n, pregs)
     locals_start = start + m.start()
     locals_line_end = text.find("\n", locals_start)
     bumped = text[locals_start:locals_line_end].replace(
-        ".locals %d" % n, ".locals %d" % (n + 4), 1)
-    block = "\n    # %s\n" % MARKER + LOG_TMPL.format(n=n, n1=n + 1, n2=n + 2)
+        ".locals %d" % n, ".locals %d" % (n + 2), 1)
+    block = "\n    # %s\n" % MARKER + LOG_TMPL.format(n=n, n1=n + 1)
     text = text[:locals_start] + bumped + block + text[locals_line_end:]
-    return text, "patched (locals %d -> %d)" % (n, n + 4)
+    return text, "patched (locals %d -> %d)" % (n, n + 2)
 
 
 if __name__ == "__main__":
