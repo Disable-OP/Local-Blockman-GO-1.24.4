@@ -104,13 +104,17 @@ def main():
                     if new_text is None:
                         print("FAIL %s :: %s :: %s" % (fn, sig.strip(), status))
                         sys.exit(1)
-                    if status != "already patched":
+                    if status.startswith("patched"):
                         text = new_text
                         changed += 1
                         print("patched %s :: %s" % (
                             os.path.relpath(path, OUT), sig.strip()))
                     else:
                         skipped += 1
+                        if status != "already patched":
+                            print("SKIPPED %s :: %s :: %s" % (
+                                os.path.relpath(path, OUT), sig.strip(),
+                                status))
                     # proven-killer suppression (see NEUTRALIZE comment above)
                     if path.endswith(NEUTRALIZE_FILE_SUFFIX):
                         # patch_method_at inserted lines inside the method, so
@@ -141,6 +145,17 @@ def neutralize_kills(text, start, body_end):
     return head + "\n".join(lines) + tail, nops
 
 
+def param_registers(sig):
+    """Register footprint of a method signature's parameters (J/D are wide)."""
+    mm = re.search(r"\(([^)]*)\)", sig)
+    if not mm:
+        return 0
+    total = 0
+    for t in re.findall(r"\*?(?:[ZBSCIJFD]|L[^;]+;)", mm.group(1)):
+        total += 2 if t in ("J", "D") else 1
+    return total
+
+
 def patch_method_at(text, start, body_end):
     """patch_method core, positioned by byte offsets (method already known
     to contain a killProcess call)."""
@@ -151,6 +166,12 @@ def patch_method_at(text, start, body_end):
     if not m:
         return None, "no .locals directive (refusing .registers method)"
     n = int(m.group(1))
+    # Dalvik non-range invokes address v0-v15 only; bumping .locals shifts
+    # the parameter registers up. If params would land beyond v15, existing
+    # non-range {pX} invokes become invalid smali — skip such methods.
+    if n + 4 + param_registers(sig) > 15:
+        return text, "skipped (register budget: locals=%d params=%d)" % (
+            n, param_registers(sig))
     locals_start = start + m.start()
     locals_line_end = text.find("\n", locals_start)
     bumped = text[locals_start:locals_line_end].replace(
