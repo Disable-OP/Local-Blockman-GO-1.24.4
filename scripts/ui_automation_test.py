@@ -312,67 +312,83 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
         visit("Ranking", 6)        # ranking screen (rank home path)
         visit("Store", 6)          # store screen (dress/suit shop path)
         # Wave 5m — BUY through the real Store UI: the Dressing tab only
-        # shows OWNED items, so the wear path needs a purchase first. Tap
-        # the first product in the content band, then the buy control
-        # (text-based), then the confirm dialog if one appears. The
-        # visitor wallet (50000 golds / 50000 diamonds) covers a product;
-        # the purchase is REAL state (dressBuyV2 wallet math).
+        # shows OWNED items, so the wear path needs a purchase first.
+        # Entry: rb_2 -> ivShopEnter (id from the 5j on-device dump) so we
+        # never depend on Me-row tap timing. Then the first product in the
+        # content band, the buy control (text-based), and the confirm
+        # dialog if one appears. The purchase is REAL state (dressBuyV2
+        # wallet math; the visitor wallet covers a product).
         buy_seen = False
-        store_here = screen.find(texts=["Store", "Shop"],
-                                 contains=["store", "shop"])
-        if store_here and store_here.center:
-            time.sleep(1)
-            product = None
-            for n in screen.dump():
-                if not n.center:
-                    continue
-                y = n.center[1]
-                if y < 260 or y > 1000:
-                    continue
-                if n.cls.endswith("FrameLayout") or n.cls.endswith(
-                        "LinearLayout") or n.cls.endswith("RecyclerView"):
-                    product = n
-                    break
-            if product and screen.tap_node(product):
+        tab2s = screen.find(ids=["rb_2"])
+        if tab2s and screen.tap_node(tab2s):
+            time.sleep(5)
+            shop_enter = screen.find(ids=["ivShopEnter"])
+            if shop_enter and screen.tap_node(shop_enter):
                 time.sleep(6)
-                alive_or_recover("%s-storeproduct" % tag)
+                alive_or_recover("%s-storescreen" % tag)
                 for x in screen.dump():
                     if x.res or x.text or x.desc:
-                        print("  storeprod] %s | text=%r desc=%r" % (
+                        print("  store] %s | text=%r desc=%r" % (
                             x.res.rsplit("/", 1)[-1] if x.res else "",
                             x.text[:24], x.desc[:24]))
-                buy = screen.find(texts=["Buy", "Buy Now", "Purchase",
-                                         "Get"],
-                                  contains=["buy", "purchase"])
-                if buy and buy.center:
-                    screen.tap_node(buy)
-                    time.sleep(3)
-                    # confirm dialog (same control family as the editor)
-                    for rid in ["btnSure", "btn_ok", "btnOk", "btn_confirm"]:
-                        c = screen.find(ids=[rid])
-                        if c and c.center:
-                            screen.tap_node(c)
-                            break
-                    time.sleep(5)
-                    alive_or_recover("%s-storebuy" % tag)
-                    log = adb.raw("logcat", "-d", "-s", "LocalAPI",
-                                  timeout=60)
-                    buy_seen = ("new/shop/decorations/buy" in log)
-                    if buy_seen:
-                        ok("5m: Store buy hit POST /shop/api/v1/new/shop/"
-                           "decorations/buy")
+                product = None
+                for n in screen.dump():
+                    if not n.center:
+                        continue
+                    y = n.center[1]
+                    if y < 260 or y > 1000:
+                        continue
+                    if n.cls.endswith("FrameLayout") or n.cls.endswith(
+                            "LinearLayout") or n.cls.endswith(
+                            "RecyclerView"):
+                        product = n
+                        break
+                if product and screen.tap_node(product):
+                    time.sleep(6)
+                    alive_or_recover("%s-storeproduct" % tag)
+                    for x in screen.dump():
+                        if x.res or x.text or x.desc:
+                            print("  storeprod] %s | text=%r desc=%r" % (
+                                x.res.rsplit("/", 1)[-1] if x.res else "",
+                                x.text[:24], x.desc[:24]))
+                    buy = screen.find(texts=["Buy", "Buy Now", "Purchase",
+                                             "Get"],
+                                      contains=["buy", "purchase"])
+                    if buy and buy.center:
+                        screen.tap_node(buy)
+                        time.sleep(3)
+                        # confirm dialog (same control family as the editor)
+                        for rid in ["btnSure", "btn_ok", "btnOk",
+                                    "btn_confirm"]:
+                            c = screen.find(ids=[rid])
+                            if c and c.center:
+                                screen.tap_node(c)
+                                break
+                        time.sleep(5)
+                        alive_or_recover("%s-storebuy" % tag)
+                        log = adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                      timeout=60)
+                        buy_seen = ("new/shop/decorations/buy" in log)
+                        if buy_seen:
+                            ok("5m: Store buy hit POST /shop/api/v1/new/"
+                               "shop/decorations/buy")
+                        else:
+                            print("  [info] buy POST not observed in the "
+                                  "LocalAPI log (dialog shape changed?)")
                     else:
-                        print("  [info] buy POST not observed in the "
-                              "LocalAPI log (dialog shape changed?)")
+                        print("  [skip] no buy control on the product "
+                              "detail")
+                    adb.key(4)  # back to the store
+                    time.sleep(2)
                 else:
-                    print("  [skip] no buy control on the product detail")
-                adb.key(4)  # back to the store
-                time.sleep(2)
-                adb.key(4)  # back to Me
-                time.sleep(2)
+                    print("  [skip] no store product candidate found")
             else:
-                print("  [skip] no store product candidate found")
-                adb.key(4)
+                print("  [skip] ivShopEnter not found on the Dressing tab")
+            # return to the Me tab directly (BACK on the main activity is
+            # double-back-to-exit territory)
+            me_tab = screen.find(ids=["rb_5"])
+            if me_tab and me_tab.center:
+                screen.tap_node(me_tab)
                 time.sleep(2)
         if buy_seen:
             # the Dressing tab now holds the purchased item: drive the
@@ -426,7 +442,10 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                     time.sleep(2)
                 else:
                     print("  [skip] owned item not found in the grid")
-                adb.key(4)  # back to Me
+            # return to the Me tab directly
+            me_tab2 = screen.find(ids=["rb_5"])
+            if me_tab2 and me_tab2.center:
+                screen.tap_node(me_tab2)
                 time.sleep(2)
         visit("Party", 6)          # party screen (party auth path)
         visit("Video", 6)          # video feed (deliberate-empty probe)
