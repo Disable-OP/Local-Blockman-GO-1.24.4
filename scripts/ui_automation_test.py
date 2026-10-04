@@ -201,14 +201,14 @@ def deep_drive(adb, screen, package, tag, paths_before):
     more = screen.find(ids=["rb_5"])
     if more and screen.tap_node(more):
         time.sleep(4)
-        # discovery channel: print every clickable node on the Me tab so the
-        # diagnostics show the real entry-point ids (e.g. the settings icon,
-        # which has no text label and is invisible to contains=["setting"])
+        # discovery channel: print every identified node on the Me tab (the
+        # row labels are NOT clickable=true nodes themselves — a parent view
+        # handles the taps — so filter only on id/text/desc presence)
         for n in screen.dump():
-            if n.clickable and (n.res or n.text or n.desc):
-                print("  [me-tab] %s | text=%r desc=%r" % (
+            if n.res or n.text or n.desc:
+                print("  [me-tab] %s | text=%r desc=%r clickable=%s" % (
                     n.res.rsplit("/", 1)[-1] if n.res else "",
-                    n.text[:24], n.desc[:24]))
+                    n.text[:24], n.desc[:24], n.clickable))
         # Inbox: open the list, then a mail row (drives mailOp/detail via UI)
         inbox = screen.find(texts=["Inbox"])
         if inbox and inbox.center:
