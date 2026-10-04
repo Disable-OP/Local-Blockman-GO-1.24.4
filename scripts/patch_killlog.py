@@ -27,18 +27,6 @@ OUT = os.path.join(ROOT, "build", "apktool_out")
 
 MARKER = "killAppProcess stack-log"
 
-SITES = [
-    ("smali_classes2/com/sandboxol/blockmango/EchoesHelper.smali",
-     ".method public static killAppProcess()V"),
-    ("smali_classes2/com/sandboxol/blockmango/EchoesHelper.smali",
-     ".method public static terminateProcess()V"),
-    ("smali_classes2/com/sandboxol/blockmango/GameFailedDialog.smali",
-     ".method public onClick(Landroid/view/View;)V"),
-    ("smali_classes3/com/sandboxol/common/base/app/CrashAppManager.smali",
-     ".method public exitProcess()V"),
-]
-
-# vN/vN+1/vN+2/vN+3 must be substituted with real register numbers.
 LOG_TMPL = """    new-instance v{n}, Ljava/lang/Throwable;
     invoke-direct {{v{n}}}, Ljava/lang/Throwable;-><init>()V
     invoke-static {{v{n}}}, Landroid/util/Log;->getStackTraceString(Ljava/lang/Throwable;)Ljava/lang/String;
@@ -54,56 +42,84 @@ LOG_TMPL = """    new-instance v{n}, Ljava/lang/Throwable;
     invoke-static {{v{n2}, v{n}}}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
 """
 
+KILL_INVOKE = "Landroid/os/Process;->killProcess"
+SCAN_DIRS = ("smali", "smali_classes2", "smali_classes3",
+             "smali_classes4", "smali_classes5")
+SCAN_PKGS = ("com/sandboxol", "com/disabngo")
 
-def patch_method(text, method_sig):
-    """Insert the stack-log right after the method's .locals directive.
 
-    apktool omits .prologue when the method carries no debug info, so the
-    only reliable anchor is the .locals line itself (inserting between
-    directives is valid smali; pX parameter mapping follows .locals).
-    """
-    start = text.find(method_sig)
-    if start < 0:
-        return None, "method not found"
-    body_end = text.find(".end method", start)
-    if body_end < 0:
-        return None, "unterminated method"
+def find_methods_with_kill(text):
+    """Yield (method_start, method_sig_line, body_end) for every method whose
+    body contains a Process.killProcess invocation."""
+    out = []
+    for m in re.finditer(r"^\.method[^\n]*$", text, re.M):
+        start = m.start()
+        body_end = text.find(".end method", start)
+        if body_end < 0:
+            continue
+        if KILL_INVOKE in text[start:body_end]:
+            out.append((start, m.group(0), body_end))
+    return out
+
+
+def main():
+    changed = skipped = 0
+    for d in SCAN_DIRS:
+        base = os.path.join(OUT, d)
+        if not os.path.isdir(base):
+            continue
+        for root, _dirs, files in os.walk(base):
+            rel = os.path.relpath(root, OUT).replace(os.sep, "/")
+            # rel = "smali_classesN/com/sandboxol/..." — scope-check the part
+            # AFTER the smali dir component
+            parts = rel.split("/")
+            pkg_path = "/".join(parts[1:]) if len(parts) > 1 else ""
+            if not pkg_path.startswith(SCAN_PKGS):
+                continue
+            for fn in files:
+                if not fn.endswith(".smali"):
+                    continue
+                path = os.path.join(root, fn)
+                with open(path, "r", encoding="utf-8") as f:
+                    text = f.read()
+                if KILL_INVOKE not in text:
+                    continue
+                # patch methods from LAST to FIRST so earlier offsets survive
+                for start, sig, body_end in reversed(
+                        find_methods_with_kill(text)):
+                    new_text, status = patch_method_at(text, start, body_end)
+                    if new_text is None:
+                        print("FAIL %s :: %s :: %s" % (fn, sig.strip(), status))
+                        sys.exit(1)
+                    if status != "already patched":
+                        text = new_text
+                        changed += 1
+                        print("patched %s :: %s" % (
+                            os.path.relpath(path, OUT), sig.strip()))
+                    else:
+                        skipped += 1
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(text)
+    print("killlog scan: %d site(s) patched, %d already done" % (changed, skipped))
+
+
+def patch_method_at(text, start, body_end):
+    """patch_method core, positioned by byte offsets (method already known
+    to contain a killProcess call)."""
+    sig = text[start:text.find("\n", start)]
     if MARKER in text[start:body_end]:
         return text, "already patched"
-
     m = re.search(r"\.locals\s+(\d+)", text[start:body_end])
     if not m:
         return None, "no .locals directive (refusing .registers method)"
     n = int(m.group(1))
     locals_start = start + m.start()
     locals_line_end = text.find("\n", locals_start)
-    # bump .locals by 4 (new registers n..n+3 live above the old range)
     bumped = text[locals_start:locals_line_end].replace(
         ".locals %d" % n, ".locals %d" % (n + 4), 1)
     block = "\n    # %s\n" % MARKER + LOG_TMPL.format(n=n, n1=n + 1, n2=n + 2)
     text = text[:locals_start] + bumped + block + text[locals_line_end:]
     return text, "patched (locals %d -> %d)" % (n, n + 4)
-
-
-def main():
-    changed = 0
-    for rel, sig in SITES:
-        path = os.path.join(OUT, rel)
-        if not os.path.exists(path):
-            print("WARN missing smali: %s" % rel)
-            continue
-        with open(path, "r", encoding="utf-8") as f:
-            text = f.read()
-        new_text, status = patch_method(text, sig)
-        if new_text is None:
-            print("FAIL %s %s: %s" % (rel, sig, status))
-            sys.exit(1)
-        if status != "already patched":
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(new_text)
-            changed += 1
-        print("%s %s :: %s" % (rel.rsplit("/", 1)[-1], sig.split(" ")[-1], status))
-    print("killlog patch: %d site(s) changed" % changed)
 
 
 if __name__ == "__main__":
