@@ -898,10 +898,30 @@ def main():
         return None
 
     def clean_relaunch(stage):
-        """force-stop + launch + wait for main - a known screen state."""
+        """force-stop + launch + wait for main - a known screen state.
+        The am start can be silently swallowed by a transient adbd hiccup
+        (v0.5.19 run evidence: force-stop logged, no Start proc, no
+        traceback) — print the launch output and retry until the process
+        exists before waiting for the main screen."""
         adb.sh("am force-stop %s" % args.package)
         time.sleep(3)
-        adb.sh("am start -n %s/%s" % (args.package, args.activity))
+        pid = None
+        for attempt in range(3):
+            out = adb.sh("am start -n %s/%s" % (args.package, args.activity),
+                         timeout=45)
+            print("  [am start #%d] %s" % (attempt + 1,
+                                           (out or "").strip()[:160]))
+            deadline = time.time() + 30
+            while time.time() < deadline:
+                pid = adb.pid(args.package)
+                if pid:
+                    break
+                time.sleep(2)
+            if pid:
+                break
+            time.sleep(3)
+        if not pid:
+            return False
         time.sleep(12)
         dismiss_permission_dialogs(screen)
         up = bool(screen.wait_for(ids=["rgBottom", "rb_1", "flHomePage"],
