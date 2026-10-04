@@ -29,8 +29,8 @@ BASE = "http://127.0.0.1:%d" % PORT
 passed, failed = [], []
 
 
-def call(method, path, body=None, headers=None):
-    req = urllib.request.Request(BASE + path, method=method)
+def call(method, path, body=None, headers=None, base=None):
+    req = urllib.request.Request((base or BASE) + path, method=method)
     req.add_header("Content-Type", "application/json")
     for k, v in (headers or {}).items():
         req.add_header(k, v)
@@ -1566,6 +1566,76 @@ def main():
             proc2.wait(timeout=5)
         except Exception:
             proc2.kill()
+
+    print("== boot resilience: watchdog takeover (v0.5.9 EADDRINUSE fix) ==")
+    # v0.5.8 device evidence: a relaunched app process failed 5 binds against
+    # the live holder then gave up FOREVER — if the holder died later that
+    # instance would have no server. HostBootTest simulates it in-process:
+    # a junk holder socket owns the port for 9s, LocalServer.start runs beside
+    # it (fast path fails, watchdog starts), holder releases -> watchdog must
+    # take the port over and serve state.
+    port2 = random.randint(20000, 40000)
+    while port2 == PORT:
+        port2 = random.randint(20000, 40000)
+    state_b = tempfile.mkdtemp(prefix="localapi-boot-")
+    boot_log = open(os.path.join(state_b, "boot.log"), "wb")
+    boot = subprocess.Popen(
+        ["java", "-cp", HOST_CP, "com.localapi.HostBootTest", state_b,
+         str(port2), "blocked"],
+        stdout=boot_log, stderr=subprocess.STDOUT)
+    try:
+        base2 = "http://127.0.0.1:%d" % port2
+        deadline = time.time() + 45
+        up = False
+        while time.time() < deadline:
+            try:
+                v = call("GET", "/config/files/blockymods-check-version", base=base2)
+                if v.get("code") == 1:
+                    up = True
+                    break
+            except Exception:
+                pass
+            time.sleep(0.7)
+        check("watchdog takes over after holder release", up)
+        if up:
+            u = call("POST", "/user/api/v1/visitor", {"imei": "bootqa1"}, base=base2)
+            check("post-takeover visitor ok", u.get("code") == 1
+                  and bool(u.get("data", {}).get("accessToken")), str(u)[:120])
+    finally:
+        boot.terminate()
+        try:
+            boot.wait(timeout=5)
+        except Exception:
+            boot.kill()
+
+    print("== boot resilience: standby does not disturb the holder ==")
+    # A second process starts while a REAL LocalAPI instance is serving: its
+    # fast path must fail quietly, its watchdog must detect genuine HTTP and
+    # stand by — and the holder must keep serving untouched throughout.
+    state_s = tempfile.mkdtemp(prefix="localapi-standby-")
+    sb_log = open(os.path.join(state_s, "sb.log"), "wb")
+    sb = subprocess.Popen(
+        ["java", "-cp", HOST_CP, "com.localapi.HostBootTest", state_s,
+         str(PORT), "standby"],
+        stdout=sb_log, stderr=subprocess.STDOUT)
+    try:
+        time.sleep(9)  # fast path (5 x 1s) + at least one watchdog probe cycle
+        v1 = call("GET", "/config/files/blockymods-check-version")
+        check("holder still serving while standby watches", v1.get("code") == 1,
+              str(v1)[:100])
+        alive = sb.poll() is None
+        time.sleep(3)
+        v2 = call("GET", "/config/files/blockymods-check-version")
+        check("holder unaffected by standby probes", v2.get("code") == 1,
+              str(v2)[:100])
+        check("standby process stayed alive (no crash)",
+              alive and sb.poll() is None)
+    finally:
+        sb.terminate()
+        try:
+            sb.wait(timeout=5)
+        except Exception:
+            sb.kill()
 
     print("\nRESULT: %d passed, %d failed" % (len(passed), len(failed)))
     if failed:

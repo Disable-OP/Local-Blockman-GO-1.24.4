@@ -436,3 +436,34 @@ grant — display config and server behavior can no longer disagree. Host rig
   logcat killed the crash scan with UnicodeDecodeError before it could
   report; the app itself was fine).
 - Coverage: 335/281 implemented (84%) / 54 default / 218 host-tested.
+
+### Phase 5h (this session): boot resilience + probe extension
+
+Evidence first: the v0.5.8 redroid diagnostics showed a second app process
+booting while the first was alive; it failed 5 binds (EADDRINUSE) and gave
+up forever. Loopback traffic kept working only because the first process
+kept serving — had it died, every API call in the second instance would
+black-hole. The old design assumed only non-main processes multi-boot; the
+device evidence contradicts that.
+
+- LocalServer now separates a Context-free boot core from a daemon watchdog:
+  fast path unchanged (5 quick binds); while not up, the watchdog probes the
+  port with a real HTTP request. A genuine LocalAPI instance answering ->
+  stand by silently (one log line). Nothing answering -> full takeover boot.
+  State is shared disk JSON in the app files dir, so a takeover serves the
+  same accounts/wallets/tokens with no data loss.
+- probeServing() requires an HTTP/ status line — a bare TCP connect or a
+  junk socket never counts as "served" (and can't be taken over until it
+  releases the port anyway).
+- Host rig 329/329 (new HostBootTest main, host-only): (a) junk holder holds
+  the port 9s -> watchdog takes over and the visitor flow works afterwards;
+  (b) a standby process started against a REAL holder detects HTTP, stands
+  by, and the holder keeps serving untouched.
+- build_server_dex.sh: both HostTest.java and HostBootTest.java excluded
+  from classes6.dex (the old single-name exclusion would have shipped
+  HostBootTest in the APK).
+- Deep-drive extension (discovery channel only, no behavior change on the
+  server): Me-tab Settings row + one account row inside it, and game-detail
+  rank/comment sub-tabs; all best-effort taps with BACK recovery, crash on
+  any driven screen still fails CI.
+- Coverage: unchanged (335/281/54/217) — no new handlers this wave.

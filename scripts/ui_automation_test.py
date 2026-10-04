@@ -221,6 +221,23 @@ def deep_drive(adb, screen, package, tag, paths_before):
         visit("Store", 6)          # store screen (dress/suit shop path)
         visit("Party", 6)          # party screen (party auth path)
         visit("Video", 6)          # video feed (deliberate-empty probe)
+        # Settings: probes the account-security surface (password/email rows)
+        st = screen.find(contains=["setting"])
+        if st and st.center:
+            screen.tap_node(st)
+            time.sleep(6)
+            assert_alive(adb, package, "%s-Settings" % tag)
+            # inside settings: account/security row (best-effort, one level)
+            n = screen.find(contains=["account"])
+            if n and n.center:
+                screen.tap_node(n)
+                time.sleep(5)
+                adb.key(4)
+                time.sleep(2)
+                assert_alive(adb, package, "%s-SettingsAccount" % tag)
+            adb.key(4)  # back to Me
+            time.sleep(2)
+            assert_alive(adb, package, "%s-SettingsBack" % tag)
     # Home tab: tap the first tappable card above the bottom nav
     home = screen.find(ids=["rb_1"])
     if home and screen.tap_node(home):
@@ -239,6 +256,17 @@ def deep_drive(adb, screen, package, tag, paths_before):
         if card:
             screen.tap_node(card)
             time.sleep(8)          # game detail fires its whole surface
+            assert_alive(adb, package, "%s-gamedetail" % tag)
+            # game-detail sub-screens (rank / comments) — best-effort probes;
+            # labels may vary per game detail layout, BACK always recovers
+            for sub in ("rank", "comment"):
+                sn = screen.find(contains=[sub])
+                if sn and sn.center:
+                    screen.tap_node(sn)
+                    time.sleep(5)
+                    adb.key(4)
+                    time.sleep(2)
+                    assert_alive(adb, package, "%s-gamesub-%s" % (tag, sub))
             adb.key(4)
             time.sleep(2)
             assert_alive(adb, package, "%s-gamecard" % tag)

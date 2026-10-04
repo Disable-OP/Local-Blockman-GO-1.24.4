@@ -572,3 +572,37 @@
   all probed; every client call lands on a real handler.
 - Next session candidates: game-detail sub-screens (rank/comments tabs),
   settings screen rows, or any error-driven finding from the next run.
+
+## Session 11 — boot resilience (EADDRINUSE fix) + deep-drive extension (2026-10-04)
+
+- v0.5.8 CI verified green from the API (build 37192850753 + redroid
+  37192950358). Diagnostics pass over diag-v058: 77 unique endpoints served,
+  zero client-visible errors, no UNMAPPED calls.
+- REAL FINDING from the diag: a second app process booted while the first
+  was alive, failed 5 binds (EADDRINUSE) and gave up forever — if the
+  holder had died later, that instance would have had NO server and every
+  API call would black-hole. The old "loser gives up silently" assumption
+  (only non-main processes multi-boot) is contradicted by the evidence.
+- Fix (LocalServer.java): Context-free boot core + daemon watchdog. Fast
+  path unchanged (5 quick binds for cold start). While not up, the watchdog
+  probes 127.0.0.1:18080 with a real HTTP request: a genuine LocalAPI
+  instance answers -> stand by silently (log once); nothing answers ->
+  attempt a full takeover boot. State is JSON in the shared app files dir,
+  so a takeover serves the exact same accounts/wallets/tokens.
+- New host-rig rig entries (HostBootTest.java, compiled host-only): junk
+  holder holds the port 9s -> watchdog must take over and serve (visitor
+  flow works post-takeover); a standby process against a REAL holder must
+  detect HTTP and stand by without disturbing it. Host rig 329/329.
+- Packaging fix found en route: build_server_dex.sh excluded only
+  'HostTest.java' by name, so HostBootTest would have shipped in
+  classes6.dex; now both rig mains are excluded (verified 0 Host* classes
+  in the dexed build; dex 210184 bytes).
+- Deep-drive extension (ui_automation_test.py): Me-tab Settings row probes
+  the account-security surface (one account row inside), and the home game
+  card probes rank/comment sub-tabs — all best-effort taps with BACK
+  recovery; a crash on any driven screen still fails CI (real finding).
+- Coverage unchanged this wave (infra + discovery, no new handlers):
+  335 discovered / 281 implemented (84%) / 54 default / 217 host-tested.
+- Next: verify v0.5.9 CI green, pull the new diagnostics, error-driven pass
+  over whatever the settings/account surfaces and game sub-tabs add.
+  NO GameServer work (standing instruction).

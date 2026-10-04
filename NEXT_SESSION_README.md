@@ -303,3 +303,20 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   home game card. Everything the client calls is a real handler.
 - Next: game-detail sub-screen probes (rank/comments tabs), settings rows,
   or whatever the next diagnostics surface. NO GameServer work.
+
+## Session 11 delta (boot resilience + deeper probes)
+
+- Boot watchdog SHIPPED: a second app process no longer gives up after 5
+  EADDRINUSE binds — it probes 127.0.0.1:18080 with real HTTP; a genuine
+  LocalAPI holder -> stand by; no holder -> full takeover boot (state is
+  shared disk JSON, so the handover is seamless). Host rig 329/329 incl.
+  takeover + standby-no-disturb tests (HostBootTest.java, host-only).
+- build_server_dex.sh now excludes BOTH rig mains from classes6.dex
+  (HostBootTest would have shipped before the fix).
+- Deep-drive now also probes: Me-tab Settings (+ one account row) and
+  game-detail rank/comment sub-tabs. Expect NEW "+ path" lines in the next
+  diagnostics artifact — diff them against RoutingTable kinds.
+- Next priorities: (1) verify v0.5.9-resilient CI green; (2) error-driven
+  pass over the new diagnostics; (3) implement any surfaced gaps
+  client-first from jadx; (4) NO GameServer work.
+- Tag: v0.5.9-resilient ships this wave.

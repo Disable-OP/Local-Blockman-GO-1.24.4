@@ -35,7 +35,7 @@ fetch https://repo1.maven.org/maven2/org/json/json/20231013/json-20231013.jar "$
 echo "[1/3] compiling java sources (ecj)"
 rm -rf "$OUT/classes" "$OUT/host" "$OUT/dex"
 mkdir -p "$OUT/classes" "$OUT/host" "$OUT/dex"
-SRCS=$(find "$SRC/com/localapi" -name '*.java' ! -name 'HostTest.java')
+SRCS=$(find "$SRC/com/localapi" -name '*.java' ! -name 'HostTest.java' ! -name 'HostBootTest.java')
 java -Xmx900m -jar "$ECJ" -nowarn -source 8 -target 8 \
   -cp "$NANO:$STUBS:$JSON" \
   -d "$OUT/classes" \
@@ -46,13 +46,14 @@ java -Xmx900m -jar "$ECJ" -nowarn -source 8 -target 8 \
 java -Xmx900m -jar "$ECJ" -nowarn -source 8 -target 8 \
   -cp "$NANO:$STUBS:$JSON:$OUT/classes" \
   -d "$OUT/host" \
-  "$SRC/com/localapi/HostTest.java" 1>&2
+  "$SRC/com/localapi/HostTest.java" \
+  "$SRC/com/localapi/HostBootTest.java" 1>&2
 
 echo "[2/3] dexing (d8: server + nanohttpd, HostTest excluded)"
 java -Xmx1400m -cp "$R8" com.android.tools.r8.D8 \
   --release --min-api 21 --lib "$STUBS" \
   --output "$OUT/dex" \
-  $(find "$OUT/classes/com/localapi" -name '*.class' ! -name 'HostTest*') \
+  $(find "$OUT/classes/com/localapi" -name '*.class' ! -name 'HostTest*' ! -name 'HostBootTest*') \
   "$NANO" 1>&2
 
 mv "$OUT/dex/classes.dex" "$OUT/classes6.dex"
