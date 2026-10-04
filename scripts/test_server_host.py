@@ -408,6 +408,27 @@ def main():
         check("scrap rules list", rule.get("code") == 1 and isinstance(rule.get("data"), list),
               str(rule)[:80])
 
+
+        print("== Phase 3.5: rankings + mailbox + tribe ==")
+        rk = call("GET", "/ranking/api/v1/active/global/overall/rank?pageNo=1&pageSize=10")
+        check("ranking page PageData", rk.get("code") == 1
+              and len(rk.get("data", {}).get("data", [])) == 10
+              and all("rank" in r and "quantity" in r for r in rk["data"]["data"])
+              and rk["data"]["data"][0]["rank"] == 1, str(rk)[:150])
+        quants = [r["quantity"] for r in rk["data"]["data"]]
+        check("ranking desc order", quants == sorted(quants, reverse=True), str(quants[:5]))
+        rk2 = call("GET", "/ranking/api/v1/gold/diamond/global/weekly/rank?pageNo=1&pageSize=10")
+        check("gdiamond weekly ranking", rk2.get("code") == 1
+              and len(rk2.get("data", {}).get("data", [])) == 10, str(rk2)[:100])
+        ml = call("GET", "/mailbox/api/v1/mail")
+        check("mail list empty", ml.get("code") == 1 and ml.get("data") == [], str(ml)[:80])
+        mo = call("PUT", "/mailbox/api/v1/mail?status=1&ids=1", [])
+        check("mail op ack", mo.get("code") == 1 and mo.get("data") == [], str(mo)[:80])
+        td = call("GET", "/clan/api/v2/clan/tribe?clanId=0")
+        check("tribe detail no-clan rejected", td.get("code") == 0, str(td)[:80])
+        tid = call("GET", "/clan/api/v1/clan/tribe/id")
+        check("tribe id zero", tid.get("code") == 1 and tid.get("data") == "0", str(tid)[:80])
+
         print("== route-table sweep (all routes answer the envelope) ==")
         sys.path.insert(0, os.path.join(REPO, "scripts"))
         sweep_miss = []

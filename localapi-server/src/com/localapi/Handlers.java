@@ -23,6 +23,9 @@ final class Handlers {
         String body();
 
         String pathParam(String name);
+
+        /** Raw request URI (no query string). */
+        String path();
     }
 
     static String handle(String name, Ctx ctx, StateStore store) {
@@ -128,6 +131,12 @@ final class Handlers {
         if ("scrapAsk".equals(name)) return envelope("none", null);
         if ("scrapReceive".equals(name)) return envelope("none", null);
         if ("scrapSend".equals(name)) return scrapSend(ctx, store);
+        // ---- Phase 3.5: rankings from the local world + mailbox + tribe states ----
+        if ("rankingPage".equals(name)) return rankingPage(name, ctx, store);
+        if ("mailList".equals(name)) return envelope("list", "[]");
+        if ("mailOp".equals(name)) return envelope("list", "[]");
+        if ("tribeDetail".equals(name)) return fail("not in a clan");
+        if ("tribeId".equals(name)) return envelope("str", "\"0\"");
         L.e("unknown handler name: " + name);
         return envelope("none", null);
     }
@@ -1146,6 +1155,80 @@ final class Handlers {
         ScrapBag.addScrap(store, u, scrapId, -1);
         return envelope("str", JSONObject.quote(
                 "send-" + Long.toHexString(System.nanoTime())));
+    }
+
+    // ------------------------- Phase 3.5: rankings / mailbox / tribe
+
+    /**
+     * All /ranking/api/v1/{board}/rank pages. Rows are DERIVED state:
+     * real users ranked by their actual wallets/claims, padded with the
+     * persistent citizens pool so every board has a living top-100.
+     */
+    private static String rankingPage(String handlerName, Ctx ctx, StateStore store) {
+        int pageNo = (int) parseLong(ctx.query("pageNo"), 1);
+        int pageSize = (int) parseLong(ctx.query("pageSize"), 20);
+        String p = ctx.path() == null ? "" : ctx.path();
+        String board = p.startsWith("/ranking/api/v1/")
+                ? p.substring("/ranking/api/v1/".length()) : "active";
+        if (board.endsWith("/rank")) {
+            board = board.substring(0, board.length() - "/rank".length());
+        }
+        boolean weekly = board.contains("weekly");
+        JSONArray rows = new JSONArray();
+        // real accounts first
+        JSONObject users = store.root().optJSONObject("users");
+        JSONArray keys = users.names();
+        if (keys != null) {
+            for (int i = 0; i < keys.length(); i++) {
+                JSONObject u = users.optJSONObject(keys.optString(i));
+                if (u == null) continue;
+                long qty = board.contains("gold/diamond")
+                        ? u.optLong("diamonds") : u.optLong("golds");
+                if (weekly) qty = qty / 7 + 10;
+                JSONObject r = new JSONObject();
+                r.put("id", u.optLong("userId"));
+                r.put("name", u.optString("nickName"));
+                r.put("pic", u.optString("picUrl"));
+                r.put("quantity", qty);
+                rows.put(r);
+            }
+        }
+        // citizens fill the board (deterministic per board name)
+        JSONArray citizens = GameCatalog.citizens(store);
+        int seed = Math.abs(board.hashCode());
+        for (int i = 0; i < citizens.length(); i++) {
+            JSONObject c = citizens.getJSONObject(i);
+            long base = board.contains("gold/diamond") ? 40_000 : 9_000;
+            long qty = base - ((seed + i * 977) % base) + (weekly ? 0 : i);
+            if (qty < 1) qty = 1;
+            JSONObject r = new JSONObject();
+            r.put("id", c.optLong("userId"));
+            r.put("name", c.optString("nickName"));
+            r.put("pic", c.optString("headPic"));
+            r.put("quantity", qty);
+            rows.put(r);
+        }
+        // sort desc by quantity + assign rank
+        for (int i = 1; i < rows.length(); i++) {
+            JSONObject key = rows.getJSONObject(i);
+            int j = i - 1;
+            while (j >= 0 && rows.getJSONObject(j).optLong("quantity") < key.optLong("quantity")) {
+                rows.put(j + 1, rows.getJSONObject(j));
+                j--;
+            }
+            rows.put(j + 1, key);
+        }
+        for (int i = 0; i < rows.length(); i++) {
+            rows.getJSONObject(i).put("rank", i + 1);
+        }
+        JSONArray slice = slice(rows, pageNo, pageSize);
+        JSONObject page = new JSONObject();
+        page.put("data", slice);
+        page.put("pageNo", pageNo);
+        page.put("pageSize", pageSize);
+        page.put("totalPage", totalPages(rows.length(), pageSize));
+        page.put("totalSize", rows.length());
+        return envelope("obj", page.toString());
     }
 
     // ------------------------------------------------- Phase 2 helpers

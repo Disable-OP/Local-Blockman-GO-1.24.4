@@ -43,6 +43,7 @@ public class LocalHttpd extends NanoHTTPD {
         final String body = readBody(session);
 
         final java.util.Map<String, String> pathParams = new java.util.HashMap<>();
+        final String fUri = uri;
         final String fBody = body;
         final Handlers.Ctx ctx = new Handlers.Ctx() {
             public String query(String name) {
@@ -63,6 +64,10 @@ public class LocalHttpd extends NanoHTTPD {
 
             public String body() {
                 return fBody;
+            }
+
+            public String path() {
+                return fUri;
             }
 
             public String pathParam(String name) {

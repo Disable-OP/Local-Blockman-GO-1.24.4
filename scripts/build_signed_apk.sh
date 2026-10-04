@@ -56,9 +56,12 @@ java -jar "$TOOLS/uber-apk-signer.jar" \
   --apks "$BUILD/patched-unsigned.apk" \
   --out "$OUT_DIR" ${KEYSTORE:+--ks "$KEYSTORE"} ${KS_PASS:+--ks-pass "$KS_PASS"} ${KS_ALIAS:+--ks-key-alias "$KS_ALIAS"}
 
-APK_PATH=$(ls "$OUT_DIR"/patched-unsigned-*igned*.apk 2>/dev/null | head -1 || true)
+# uber-apk-signer renames "<in>-unsigned.apk" to "<base>-aligned-debugSigned.apk"
+APK_PATH=$(ls "$OUT_DIR"/patched-*igned*.apk 2>/dev/null | head -1 || true)
 if [ -z "$APK_PATH" ]; then
-  # uber-apk-signer names outputs alignedDebugApr2.apk etc under --out; normalize
+  APK_PATH=$(ls "$OUT_DIR"/*igned*.apk 2>/dev/null | rg -v '\.idsig' | head -1 || true)
+fi
+if [ -z "$APK_PATH" ]; then
   APK_PATH=$(ls "$OUT_DIR"/patched-unsigned.apk 2>/dev/null | head -1 || true)
 fi
 if [ -n "$APK_PATH" ]; then
