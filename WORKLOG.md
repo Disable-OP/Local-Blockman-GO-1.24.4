@@ -1096,3 +1096,19 @@
   re-entry after the search stage (tap rlSearchClan again -> recommendation
   state returns -> CREATE A CLAN visible -> open form -> dump -> BACK).
   BACK-count is placeholder-safe (self-heals onto a nav screen either way).
+
+## Session 14 (cont. 4) — wave 5p v2 RESULT: the IME stranding bug (run 37240694732 PASS)
+
+- Run 37240694732 PASS on 93036f1: one death absorbed (A-dressitem), zero
+  FATAL — but the fresh re-entry probe did NOT fire (no clanscreen2/
+  clancreate lines), and tab4/gamecard silently skipped again.
+- ROOT CAUSE NAMED: after the clan-search drive the FIRST BACK only closes
+  the IME — the drive stays stranded on the Find Clans screen (no bottom
+  nav). Everything after (5p probes, tab4, gamecard) skips; the deep drive
+  then reports "did not land on Home - relaunching". This ALSO explains why
+  every run since wave 5n ended with that relaunch line (pre-5n run
+  37234955486 completed tab4/gamecard and did NOT print it).
+- Wave 5p v3 in flight (b384246): IME-aware exit BACKs (check rb_3 after
+  the first BACK; BACK again if the search screen is still up), the same
+  guard after the create-form BACK ('enter clan' marker), and a bounded
+  bottom-nav grounding loop before tab4.
