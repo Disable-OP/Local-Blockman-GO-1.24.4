@@ -550,3 +550,25 @@ force-stop + relaunch (boot restores the saved session, now registered),
 assert the Me tab shows the new account name, and — only if Phase B's PUT
 never fired — re-drive the editor under the registered session with the
 nickname/exist taken-check as the server-state proof.
+
+### Session 12 win: two REAL server bugs exposed by the on-device client (v0.5.18e run)
+
+The Phase D registered-upgrade run drove the real client into paths the host
+rig had only exercised with synthetic params, and caught two contract bugs:
+
+1. PUT /user/api/v2/user/nickName was a SILENT NO-OP for the real client:
+   IUserApi.changeNickName sends `newName=` + `oldName=` query params, the
+   handler only read `nickName=`. Fixed (newName first, nickName kept as a
+   legacy alias) + host regression: rename via newName= must persist and
+   nickname/exist must flip to taken.
+2. POST /user/api/v1/login could not resolve a guest upgraded through
+   /user/api/v2/app/set-password: the upgrade sets `account` on the record
+   but the record's storage KEY stays the guest key, so findByKey missed it
+   ("account not found, please register"). Fixed with StateStore.findByAccount
+   (case-insensitive account-field scan) + host regression: upgrade a guest,
+   login with the new credentials, same userId.
+
+Both verified by the host rig: 337/337 PASS. The Phase D registered-editor
+drive also proved on-device that with a registered session the rename flow
+reaches PUT /user/api/v2/user/nickName (the guest gate blocks exactly that
+final step).

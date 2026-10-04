@@ -99,6 +99,22 @@ public final class StateStore {
         return users().optJSONObject(key);
     }
 
+    /** Resolve a user by its account name (guests upgraded via
+     *  set-password keep their original storage key, so the login account
+     *  lives on the record, not in the key). */
+    public synchronized JSONObject findByAccount(String account) {
+        if (account == null || account.isEmpty()) return null;
+        JSONArray keys = users().names();
+        if (keys == null) return null;
+        for (int i = 0; i < keys.length(); i++) {
+            JSONObject u = users().optJSONObject(keys.optString(i));
+            if (u != null && account.equalsIgnoreCase(u.optString("account"))) {
+                return u;
+            }
+        }
+        return null;
+    }
+
     public synchronized JSONObject findByUserId(long userId) {
         JSONArray keys = users().names();
         if (keys == null) return null;

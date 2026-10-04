@@ -327,6 +327,11 @@ final class Handlers {
         if (uid != null && !uid.isEmpty()) {
             JSONObject u = store.findByKey(uid);
             if (u == null) {
+                // guests upgraded via /user/api/v2/app/set-password keep their
+                // original storage key — the login account lives on the record
+                u = store.findByAccount(uid);
+            }
+            if (u == null) {
                 return fail("account not found, please register");
             }
             String saved = u.optString("password");
@@ -467,16 +472,22 @@ final class Handlers {
 
     // ------------------------------------------------------------- profile
 
-    /** PUT /user/api/v2/user/nickName?nickName= */
+    /** PUT /user/api/v2/user/nickName?newName=&oldName= (client contract;
+     *  nickName= kept as a legacy alias for older call sites). */
     private static String changeNickName(Ctx ctx, StateStore store) {
         JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
-        String nick = ctx.query("nickName");
+        JSONObject form = body(ctx);
+        String nick = ctx.query("newName");
         if (nick == null || nick.isEmpty()) {
-            nick = body(ctx).optString("nickName");
+            nick = ctx.query("nickName");
+        }
+        if (nick == null || nick.isEmpty()) {
+            nick = form.optString("newName", form.optString("nickName"));
         }
         if (nick != null && !nick.isEmpty()) {
             u.put("nickName", nick);
             store.save();
+            L.i("changeNickName: userId=" + u.optLong("userId") + " -> " + nick);
         }
         return userEnvelope(u);
     }

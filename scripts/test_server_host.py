@@ -1454,6 +1454,33 @@ def main():
         relg = call("POST", "/user/api/v1/login", {"uid": "qa_mailer", "password": "newpw9"})
         check("login with v2-set password", relg.get("code") == 1
               and relg.get("data", {}).get("userId") == uid9, str(relg)[:120])
+
+        # client-contract regression (Session 12 on-device findings):
+        # (a) the rename PUT uses newName=/oldName= (not nickName=) and MUST
+        #     persist — the silent no-op the v0.5.18e run exposed;
+        # (b) a guest upgraded via set-password gains an account name, and
+        #     /user/api/v1/login must resolve it (findByAccount) — the
+        #     'account not found' the v0.5.18e run exposed.
+        cn2 = call("PUT", "/user/api/v2/user/nickName?newName=NewNameQA&oldName=QAChanged",
+                   headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("changeNickName client contract (newName=)", cn2.get("code") == 1
+              and cn2.get("data", {}).get("nickName") == "NewNameQA", str(cn2)[:150])
+        ne2 = call("POST", "/user/api/v1/user/nickname/exist?nickName=NewNameQA", None)
+        check("renamed nickname is taken on the server", ne2.get("code") == 0,
+              str(ne2)[:100])
+        atg = call("GET", "/user/api/v1/app/auth-token?userId=%d" % uid9)
+        gtok = (atg.get("data") or {}).get("accessToken", "")
+        gu = call("POST", "/user/api/v2/app/set-password",
+                  {"account": "upgraded_guest_qa", "password": "upgpw1",
+                   "confirmPassword": "upgpw1"},
+                  headers={"Access-Token": gtok, "userId": str(uid9)})
+        check("guest upgrade sets account", gu.get("code") == 1, str(gu)[:100])
+        glog = call("POST", "/user/api/v1/login",
+                    {"uid": "upgraded_guest_qa", "password": "upgpw1"})
+        check("login resolves the upgraded account (findByAccount)",
+              glog.get("code") == 1 and glog.get("data", {}).get("userId") == uid9,
+              str(glog)[:120])
+
         pwmod = call("POST", "/user/api/v2/user/password/modify",
                      {"oldPassword": "pw1", "newPassword": "pw1b", "confirmPassword": "pw1b"},
                      headers={"Access-Token": tok1, "userId": str(uid1)})
