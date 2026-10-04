@@ -47,6 +47,15 @@ SCAN_DIRS = ("smali", "smali_classes2", "smali_classes3",
              "smali_classes4", "smali_classes5")
 SCAN_PKGS = ("com/sandboxol", "com/disabngo")
 
+# Proven killer (v0.5.12-killall evidence): MainActivity.onPause executes
+# Process.killProcess on its finishing path — the guest/login flow finishes
+# MainActivity and the hard exit SIGKILLs the app pair (~5m20s after launch,
+# consistently killing the CI run between phases). The kill is a real-server
+# session hygiene measure that has no meaning in the local world; suppress
+# the invocation while keeping the stack log (observability).
+NEUTRALIZE_FILE_SUFFIX = "view/activity/main/MainActivity.smali"
+NEUTRALIZE_METHOD = "onPause"
+
 
 def find_methods_with_kill(text):
     """Yield (method_start, method_sig_line, body_end) for every method whose
@@ -98,9 +107,35 @@ def main():
                             os.path.relpath(path, OUT), sig.strip()))
                     else:
                         skipped += 1
+                    # proven-killer suppression (see NEUTRALIZE comment above)
+                    if (path.endswith(NEUTRALIZE_FILE_SUFFIX)
+                            and NEUTRALIZE_METHOD in sig):
+                        # patch_method_at inserted lines inside the method, so
+                        # the original body_end offset is stale — recompute
+                        cur_end = text.find(".end method", start)
+                        text, nops = neutralize_kills(text, start, cur_end)
+                        if nops:
+                            print("NEUTRALIZED %d killProcess invoke(s) in %s :: %s"
+                                  % (nops, os.path.relpath(path, OUT),
+                                     sig.strip()))
                 with open(path, "w", encoding="utf-8") as f:
                     f.write(text)
     print("killlog scan: %d site(s) patched, %d already done" % (changed, skipped))
+
+
+def neutralize_kills(text, start, body_end):
+    """Replace every killProcess invoke inside ONE method's body with nop
+    (the stack-log stays). Operates on [start, body_end] so other methods in
+    the same file keep their own evidence-only patches. Returns
+    (text, number_of_replaced_lines)."""
+    head, body, tail = text[:start], text[start:body_end], text[body_end:]
+    lines = body.split("\n")
+    nops = 0
+    for i, line in enumerate(lines):
+        if KILL_INVOKE in line and line.strip().startswith("invoke-static"):
+            lines[i] = line.replace(line.strip(), "nop")
+            nops += 1
+    return head + "\n".join(lines) + tail, nops
 
 
 def patch_method_at(text, start, body_end):
