@@ -229,23 +229,32 @@ def deep_drive(adb, screen, package, tag, paths_before):
         visit("Store", 6)          # store screen (dress/suit shop path)
         visit("Party", 6)          # party screen (party auth path)
         visit("Video", 6)          # video feed (deliberate-empty probe)
-        # Settings: probes the account-security surface (password/email rows)
-        st = screen.find(contains=["setting"])
-        if st and st.center:
-            screen.tap_node(st)
+        visit("Gratitude List", 6) # gratitude list row (never visited before)
+        # Profile surface: the Me tab has NO settings entry (discovered via
+        # the node dump); settings lives behind the profile screen (ibMore).
+        prof = screen.find(ids=["ll_top", "rl_header"])
+        if prof and prof.center:
+            screen.tap_node(prof)
             time.sleep(6)
-            assert_alive(adb, package, "%s-Settings" % tag)
-            # inside settings: account/security row (best-effort, one level)
-            n = screen.find(contains=["account"])
-            if n and n.center:
-                screen.tap_node(n)
-                time.sleep(5)
-                adb.key(4)
+            assert_alive(adb, package, "%s-Profile" % tag)
+            more = screen.find(ids=["ibMore"])
+            if more and more.center:
+                screen.tap_node(more)
+                time.sleep(6)
+                assert_alive(adb, package, "%s-MoreSettings" % tag)
+                # account/security row inside settings (best-effort, one level)
+                acc = screen.find(contains=["account"])
+                if acc and acc.center:
+                    screen.tap_node(acc)
+                    time.sleep(5)
+                    adb.key(4)
+                    time.sleep(2)
+                    assert_alive(adb, package, "%s-MoreAccount" % tag)
+                adb.key(4)  # back to profile
                 time.sleep(2)
-                assert_alive(adb, package, "%s-SettingsAccount" % tag)
             adb.key(4)  # back to Me
             time.sleep(2)
-            assert_alive(adb, package, "%s-SettingsBack" % tag)
+            assert_alive(adb, package, "%s-ProfileBack" % tag)
     # Home tab: tap the first tappable card above the bottom nav
     home = screen.find(ids=["rb_1"])
     if home and screen.tap_node(home):
