@@ -201,7 +201,21 @@ def deep_drive(adb, screen, package, tag, paths_before):
     more = screen.find(ids=["rb_5"])
     if more and screen.tap_node(more):
         time.sleep(4)
-        visit("Inbox", 6)          # mail list screen (mailList/mailOp path)
+        # Inbox: open the list, then a mail row (drives mailOp/detail via UI)
+        inbox = screen.find(texts=["Inbox"])
+        if inbox and inbox.center:
+            screen.tap_node(inbox)
+            time.sleep(6)
+            assert_alive(adb, package, "%s-Inbox" % tag)
+            row = screen.find(texts=["Welcome"], contains=["welcome"])
+            if row and row.center:
+                screen.tap_node(row)
+                time.sleep(5)
+                adb.key(4)  # back to the list
+                time.sleep(2)
+                assert_alive(adb, package, "%s-MailRow" % tag)
+            adb.key(4)  # back to Me
+            time.sleep(2)
         visit("Top Up", 6)         # recharge screen (pay products path)
         visit("Ranking", 6)        # ranking screen (rank home path)
         visit("Store", 6)          # store screen (dress/suit shop path)
