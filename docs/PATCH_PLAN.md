@@ -572,3 +572,23 @@ Both verified by the host rig: 337/337 PASS. The Phase D registered-editor
 drive also proved on-device that with a registered session the rename flow
 reaches PUT /user/api/v2/user/nickName (the guest gate blocks exactly that
 final step).
+
+### Session 12 FINAL (verified green): the registered profile-edit chain
+
+v0.5.19-clientfix + the clean_relaunch hardening: test-redroid PASS with the
+FULL chain on-device — guest gate evidence (B) -> auth-token + set-password
+upgrade -> login with the new credentials (findByAccount fix verified) ->
+restart onto the registered session -> Me tab shows the new account ->
+registered rename PUT (newName= contract fix verified) -> nickname/exist
+flips to taken (server-state proof). 63 unique endpoints served, zero
+crashes, zero unmapped.
+
+Deliberate behavior documented (not a bug): the guest rename confirm fires
+the native kick (the client's guest gate) — the automation records it and
+recovers via D's clean relaunch. am-start of the non-exported
+LoginActivity/RegisterActivity is denied; the registered session is
+produced through the real set-password upgrade instead.
+
+Coverage: 335 discovered / 281 implemented (84%) / 54 default (all
+documented-deliberate) / 217 host-tested / 109 client-asserted.
+Host rig 337/337.

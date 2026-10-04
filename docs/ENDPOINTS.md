@@ -572,3 +572,22 @@ completed. Instead Phase B drives the Personal Info editor (Profile -> ibMore
 server. A guest-Tip detector aborts the drive immediately if the app ever
 guest-gates an editor row (the killer must not be fed). Account creation
 remains owned by Phase C (fresh account every run through the real server).
+
+## Phase 5i final (session 12 verified green — v0.5.19-clientfix)
+
+The full registered-session profile-edit chain is now exercised through the
+REAL client on-device (test-redroid PASS, 63 unique endpoints, zero
+crashes):
+
+| Step | Surface | Verification |
+|---|---|---|
+| Guest rename attempt (Phase B) | ChangeNameFragment + GET /user/api/v1/user/nickName/free | the client's native guest gate fires (kick); PUT never allowed — documented client behavior |
+| Session upgrade (Phase D) | GET /user/api/v1/app/auth-token?userId= + POST /user/api/v2/app/set-password | the live Me-tab user id is upgraded; login with the new credentials returns the same userId |
+| Registered restart (Phase D) | boot restores the saved session | the Me tab shows the new account name on-device |
+| Registered rename (Phase D) | PUT /user/api/v2/user/nickName?newName=&oldName= | handler fixed for the client contract (was a silent no-op); server state proven via nickname/exist -> taken |
+
+Two real server bugs were exposed by the real client and fixed this wave
+(host rig 337/337 incl. 4 new client-contract regressions):
+1. changeNickName read `nickName=` while the client sends `newName=`.
+2. login could not resolve guests upgraded via set-password (findByAccount
+   added).

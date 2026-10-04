@@ -778,3 +778,35 @@
   no new tag needed — test-redroid checks out scripts from local-api.
 - Verification: dispatched test-redroid (workflow_dispatch) and watched the
   new Phase B on-device.
+
+## Session 12 (cont. 2-6) — registered profile-edit chain VERIFIED GREEN; 2 server contract bugs fixed (2026-10-04)
+
+- Evidence arc across 6 dispatched runs (v0.5.18b..v0.5.19):
+  * The guest rename = ChangeNameFragment -> GET nickName/free ->
+    ChangeNicknameDialog -> confirm; EVERY guest attempt ends in the native
+    kick (immediate or delayed) and PUT /user/api/v2/user/nickName is never
+    allowed — a documented client gate, not a bug.
+  * am-start of LoginActivity/RegisterActivity is DENIED (non-exported);
+    the registered session is produced through the real set-password
+    upgrade instead.
+  * The kick's self-relaunch restores the Personal Info editor — D starts
+    from a force-stop relaunch; one run showed a silently swallowed
+    am-start (no Start proc, no traceback) -> clean_relaunch now prints the
+    launch output, waits for the process, and retries x3.
+- TWO REAL SERVER BUGS the real client exposed (the host rig had only ever
+  exercised these with synthetic params):
+  1. changeNickName read `nickName=` — the client sends `newName=` — the
+     PUT was a silent no-op on-device. Fixed; host regression added.
+  2. login could not resolve a guest upgraded via set-password ("account
+     not found") — StateStore.findByAccount added (account lives on the
+     record, not the storage key). Host regression added.
+- FINAL GREEN (run 37216804260, v0.5.19-clientfix APK): guest gate evidence
+  (B) -> upgrade -> login with new credentials -> restart onto the
+  registered session -> Me tab shows the account on-device -> registered
+  rename PUT -> nickname/exist taken. 63 unique endpoints, zero crashes.
+- Ships: v0.5.19-clientfix (build+release assets published, redroid PASS).
+  Host rig 337/337. Coverage 335/281/54/217, client_asserted 109.
+- Next session candidates: (1) drive MORE registered-session surfaces
+  (Gender row, Personal Profile row, account-security rows) now that the
+  registered session is reproducible; (2) error-driven pass over the next
+  diagnostics artifact; (3) NO GameServer work.

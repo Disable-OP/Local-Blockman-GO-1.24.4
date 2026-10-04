@@ -383,3 +383,22 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   the nickname row-refresh shows on-device; (2) further deep-drive screens
   if any remain unvisited (e.g. the second-tab game-category sub-screens);
   (3) NO GameServer work (standing instruction).
+
+## Session 12 FINAL (read first — verified green v0.5.19-clientfix)
+
+- The registered-session profile-edit chain is DONE and verified on-device:
+  Phase D upgrades the live guest (auth-token -> set-password -> login
+  check -> restart -> Me tab shows the account) and the rename PUT hits the
+  server (nickname/exist flips to taken). Two REAL server bugs fixed:
+  changeNickName's client contract (newName=) and login-by-upgraded-account
+  (findByAccount). Host rig 337/337.
+- The guest rename gate (native kick on the save confirm) is DOCUMENTED
+  DELIBERATE client behavior — Phase B records it and D recovers; do not
+  "fix" the kick.
+- clean_relaunch prints am-start output + retries x3 (one run had a
+  silently swallowed launch). If a death recurs inside D, the retry log
+  disambiguates denial vs hiccup vs kill.
+- Next candidates: drive more registered-session surfaces (Gender /
+  Personal Profile / account-security rows) — the registered session is now
+  reproducible; error-driven pass over the newest diagnostics; NO
+  GameServer work.
