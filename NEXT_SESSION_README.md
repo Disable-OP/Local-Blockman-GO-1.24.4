@@ -245,3 +245,21 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
      automation never triggers.
   4. Dispatch-side groundwork stays available (map files from /files/) but is
      blocked behind the Engine 10068 GameServer phase per project instruction.
+
+## Session 10 delta (Phase 5f: chat-room lifecycle + deep-drive)
+
+- v0.5.5-chat ships: DELETE /game/api/v1/game/chat/room real (binding
+  forgotten; fresh id on re-enter; idempotent). Host rig 321/321.
+- Config-shape pass CLOSED as deliberate (data:{} == honest empty for every
+  remaining /config/files obj default; shapes documented in ENDPOINTS.md).
+- The redroid deep-drive now visits Inbox / Top Up / Ranking + a Home game
+  card and logs the added endpoint paths — pull the diagnostics artifact
+  and diff the "+ path" lines against RoutingTable kinds for the next
+  error-driven pass.
+- Remaining defaults (all documented): activity events (28, flag-gated),
+  /video (7), videostars (5, real-money), datareport (3), turntable
+  (ad-driven), VIP (dead code), shop pay/game (isPay=0).
+- Next priorities: (1) verify v0.5.5 CI green; (2) error-driven pass over
+  the v0.5.5 diagnostics (deep-drive may surface video/rank/pay calls);
+  (3) if the deep drive hit /video or videostars screens, implement honest
+  shapes client-first from jadx (IVideoApi models); (4) NO GameServer work.

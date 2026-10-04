@@ -465,3 +465,32 @@
 - Next session: error-driven pass over the newest diagnostics; deeper UI
   driving (inbox/share/settings screens); everything else per the
   NEXT_SESSION_README priority list.
+
+## Session 10 — Phase 5f: chat-room lifecycle + deep-drive discovery (2026-10-04)
+
+- Verified session-9 state: all three release tags green (v0.5.2-mail,
+  v0.5.3-econ, v0.5.4-share); pulled the v0.5.4 redroid diagnostics — 60
+  unique endpoints served, zero crashes, and a cross-reference of every
+  client-called route against the routing table shows ZERO client calls on
+  default kinds (the 81% implemented set covers 100% of observed traffic).
+- Config-shape pass (planned last session) evaluated and CLOSED as
+  deliberate: the remaining /config/files obj defaults parse data:{} into
+  identical Gson outcomes as honest empties — no handler added; jadx shapes
+  (AdsCdConfig, BannerEntity, BannerInfo, CampaignLogo,
+  game-detail-to-editor Map) recorded in ENDPOINTS.md Phase 5f.
+- Phase 5f implemented: DELETE /game/api/v1/game/chat/room is now real
+  state (deleteChatRoom -> GameCatalog.removeChatRoom): leaving a game
+  chat drops the persisted name->roomId binding, re-entering issues a
+  fresh persistent id, unknown ids idempotent-ok. Found + fixed a missing
+  Handlers.handle dispatch entry on the way (the method existed but the
+  route fell through to the unknown-handler fallback).
+- Host rig 321/321 PASS (new: delete ok, fresh id re-issued after delete,
+  idempotent delete of unknown id).
+- Deep-drive discovery: ui_automation_test.py now (Phase A) visits the
+  Me-tab rows Inbox / Top Up / Ranking (labels verified from the v0.5.4
+  on-device UI dump) and taps a Home game card, then prints which endpoint
+  paths the newly visited screens added. Crash on any driven screen = CI
+  failure (real finding, not flakiness).
+- Coverage: 335 discovered / 274 implemented (82%) / 61 default / 215
+  host-tested. Docs updated (ENDPOINTS, PATCH_PLAN, COVERAGE).
+- Tag v0.5.5-chat ships this phase (build-release + redroid on the tag).

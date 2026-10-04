@@ -362,6 +362,29 @@ final class GameCatalog {
         return roomId;
     }
 
+    /**
+     * DELETE /game/api/v1/game/chat/room?roomId= — drop a chat-room binding.
+     * The client deletes the room when it leaves a game chat; the local world
+     * treats that as truth: the name->id binding is forgotten so a later
+     * request for the same room name issues a fresh room id.
+     *
+     * @return true if a binding existed and was removed.
+     */
+    static synchronized boolean removeChatRoom(StateStore store, String roomId) {
+        if (roomId == null || roomId.isEmpty()) return false;
+        JSONObject rooms = store.root().optJSONObject("chatRooms");
+        String[] names = JSONObject.getNames(rooms);
+        boolean removed = false;
+        for (int i = 0; names != null && i < names.length; i++) {
+            if (roomId.equals(rooms.optString(names[i]))) {
+                rooms.remove(names[i]);
+                removed = true;
+            }
+        }
+        if (removed) store.save();
+        return removed;
+    }
+
     // --------------------------------------------------------- catalog drift
 
     /**

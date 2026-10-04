@@ -504,3 +504,28 @@ dialog that can never spin.
 GET /config/files/blockymods-share-reward is now real (shareRewardList): one
 row {id:1, picUrl:"", count:200} — exactly what POST sharing/reward grants
 (200 golds once per day). The client binds picUrl→icon and count→label.
+
+## Phase 5f handlers (chat-room lifecycle + deep-drive discovery wave)
+
+| Route | Handler | Behavior |
+|---|---|---|
+| DELETE /game/api/v1/game/chat/room?roomId= | deleteChatRoom | drops the name→roomId binding for the room the client left (idempotent: unknown ids answer ok); a later POST for the same room name issues a fresh persistent id |
+
+POST /game/api/v1/game/chat/room keeps issuing stable persistent ids per
+roomName; DELETE now makes the lifecycle symmetric (leave = forget).
+
+Config-shape pass evaluated, NOT implemented (deliberate): the remaining
+`obj` defaults (`indiegame-{gameId}`/`indiegame-new-{gameId}` AdsCdConfig,
+`game-detail-to-editor` Map, `blockymods-activity-logo` CampaignLogo) would
+parse from `data:{}` to identical Gson outcomes as any honest empty value —
+zero client-observable change — so no handler was added. Shapes are recorded
+here from jadx: AdsCdConfig{adsCdTimeFirst:int, adsCdTimeSecond:int};
+game-detail-to-editor: Map<String,List<String>>; CampaignLogo{normalLogo,
+redPointLogo}; banner rows BannerEntity{id, image, isFullScreen, isInside,
+isTest, title, titles:Map<String,String>, url, version, videoId,
+countryList}; moregame rows BannerInfo{image, packageName, title}.
+
+Deep-drive discovery: the redroid UI automation now visits the Inbox / Top Up
+/ Ranking rows of the Me tab and taps a Home game card (labels verified from
+the on-device uiautomator dump), printing which endpoint paths the newly
+visited screens add. A crash on any driven screen fails CI (real finding).

@@ -80,6 +80,7 @@ final class Handlers {
         if ("getGameUpdateContentList".equals(name)) return envelope("obj", "{}");
         if ("getPartyCreateGameConfig".equals(name)) return getPartyCreateGameConfig(ctx, store);
         if ("getChatRoom".equals(name)) return getChatRoom(ctx, store);
+        if ("deleteChatRoom".equals(name)) return deleteChatRoom(ctx, store);
         if ("appreciation".equals(name)) return appreciation(ctx, store);
         if ("miniGameToken".equals(name)) return miniGameToken(ctx, store);
         if ("followGameAuth".equals(name)) return miniGameToken(ctx, store);
@@ -760,6 +761,28 @@ final class Handlers {
         r.put("roomId", GameCatalog.chatRoom(store, roomName));
         r.put("roomName", roomName);
         return envelope("obj", r.toString());
+    }
+
+    /**
+     * DELETE /game/api/v1/game/chat/room?roomId= — the client leaves a game
+     * chat room; the local world drops the name->id binding for it. Missing
+     * rooms still answer ok (idempotent delete semantics).
+     */
+    private static String deleteChatRoom(Ctx ctx, StateStore store) {
+        String roomId = ctx.query("roomId");
+        if (roomId == null || roomId.isEmpty()) {
+            // the Retrofit signature sends roomId as a query; tolerate a body
+            String b = ctx.body();
+            if (b != null && b.contains("roomId")) {
+                try {
+                    JSONObject bj = new JSONObject(b);
+                    roomId = bj.optString("roomId");
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        GameCatalog.removeChatRoom(store, roomId);
+        return envelope("none", null);
     }
 
     /** PUT /game/api/v1/games/{gameId}/appreciation — increments praise, returns new total. */

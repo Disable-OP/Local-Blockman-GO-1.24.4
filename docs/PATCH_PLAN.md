@@ -404,3 +404,21 @@ GET /config/files/blockymods-share-reward returns one ShareRewardEntity row
 {id, picUrl, count} whose count (200) matches the actual once-per-day share
 grant — display config and server behavior can no longer disagree. Host rig
 308/308. Coverage 335/273/62/211 (81%).
+
+### Phase 5f (this session): chat-room lifecycle + deep-drive discovery
+
+- DELETE /game/api/v1/game/chat/room?roomId= is real (deleteChatRoom +
+  GameCatalog.removeChatRoom): leaving a game chat drops the persisted
+  name→roomId binding; re-entering the same room name issues a fresh
+  persistent id. Idempotent for unknown ids. Host rig 321/321 (new:
+  delete ok, fresh id re-issued, idempotent delete).
+- Config-shape pass evaluated and CLOSED as deliberate: every remaining
+  /config/files `obj` default parses `data:{}` into the same Gson outcome
+  any honest empty value would produce (fields 0/null/empty). No handler
+  added; model shapes documented in ENDPOINTS.md Phase 5f for future waves.
+- UI automation deep-drive: the redroid run now visits Inbox / Top Up /
+  Ranking (Me-tab rows, labels from the real uiautomator dump) and taps a
+  Home game card, logging the endpoint paths each newly visited screen
+  adds — the discovery channel for the next error-driven pass.
+- Coverage: 335 discovered / 274 implemented (82%) / 61 default / 215
+  host-tested.

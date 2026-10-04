@@ -361,6 +361,15 @@ def main():
         room2 = call("POST", "/game/api/v1/game/chat/room?roomName=qa-room", {})
         check("chatRoom stable id", room.get("code") == 1 and room.get("data", {}).get("roomId")
               and room["data"]["roomId"] == room2.get("data", {}).get("roomId"), str(room)[:100])
+        qa_room_id = room.get("data", {}).get("roomId", "")
+        del1 = call("DELETE", "/game/api/v1/game/chat/room?roomId=%s" % qa_room_id)
+        check("chatRoom delete answers ok", del1.get("code") == 1, str(del1)[:80])
+        room3 = call("POST", "/game/api/v1/game/chat/room?roomName=qa-room", {})
+        check("chatRoom re-issued after delete", room3.get("code") == 1
+              and room3.get("data", {}).get("roomId")
+              and room3["data"]["roomId"] != qa_room_id, str(room3)[:100])
+        del2 = call("DELETE", "/game/api/v1/game/chat/room?roomId=local-room-99999")
+        check("chatRoom delete idempotent (unknown id ok)", del2.get("code") == 1, str(del2)[:80])
         app2 = call("PUT", "/game/api/v1/games/%s/appreciation" % gid)
         check("appreciation int", app2.get("code") == 1
               and isinstance(app2.get("data"), int) and app2["data"] > 0, str(app2)[:100])

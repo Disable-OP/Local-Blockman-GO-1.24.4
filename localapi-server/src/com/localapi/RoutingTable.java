@@ -12,7 +12,7 @@ public final class RoutingTable {
         "DELETE /decoration/api/v1/decorations/using/new|H:multiUnclothe",
         "DELETE /friend/api/v1/friends|H:friendDelete",
         "DELETE /friend/api/v1/friends/black|H:friendBlacklist",
-        "DELETE /game/api/v1/game/chat/room|none",
+        "DELETE /game/api/v1/game/chat/room|H:deleteChatRoom",
         "GET /activity/api/v1/activity/action|list",
         "GET /activity/api/v1/activity/integral/rank|obj",
         "GET /activity/api/v1/activity/task|list",

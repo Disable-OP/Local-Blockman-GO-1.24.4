@@ -175,6 +175,60 @@ def assert_alive(adb, package, stage):
     return True
 
 
+def deep_drive(adb, screen, package, tag, paths_before):
+    """Deeper UI driving: visit labeled Me-tab rows (Inbox / Top Up /
+    Ranking), open a game card from Home, and print which endpoints the
+    newly visited screens added. Best-effort taps; the hard requirement is
+    only that the app stays alive (a crash here is a real finding)."""
+    def visit(label, wait_s, back=True, contains=None):
+        n = screen.find(texts=[label], contains=contains)
+        if not (n and n.center):
+            print("  [skip] '%s' not on screen" % label)
+            return False
+        screen.tap_node(n)
+        time.sleep(wait_s)
+        if back:
+            adb.key(4)  # BACK
+            time.sleep(2)
+        return assert_alive(adb, package, "%s-%s" % (tag, label.replace(" ", "")))
+
+    # Me tab rows (labels verified from the on-device UI dump)
+    more = screen.find(ids=["rb_5"])
+    if more and screen.tap_node(more):
+        time.sleep(4)
+        visit("Inbox", 6)          # mail list screen (mailList/mailOp path)
+        visit("Top Up", 6)         # recharge screen (pay products path)
+        visit("Ranking", 6)        # ranking screen (rank home path)
+    # Home tab: tap the first tappable card above the bottom nav
+    home = screen.find(ids=["rb_1"])
+    if home and screen.tap_node(home):
+        time.sleep(5)
+        nodes = screen.dump()
+        card = None
+        for n in nodes:
+            if not n.center:
+                continue
+            y = n.center[1]
+            if y < 200 or y > 980:
+                continue
+            if n.cls.endswith("RecyclerView") or n.cls.endswith("LinearLayout"):
+                card = n
+                break
+        if card:
+            screen.tap_node(card)
+            time.sleep(8)          # game detail fires its whole surface
+            adb.key(4)
+            time.sleep(2)
+            assert_alive(adb, package, "%s-gamecard" % tag)
+        else:
+            print("  [skip] no home card candidate found")
+    added = sorted(set(localapi_paths(adb)) - paths_before)
+    ok("deep drive added %d new endpoint paths" % len(added))
+    for p in added:
+        print("    + %s" % p)
+    return added
+
+
 def navigate_all_tabs(adb, screen, package, tag):
     tabs_seen = 0
     for tab in ["rb_1", "rb_2", "rb_3", "rb_4", "rb_5"]:
@@ -268,6 +322,7 @@ def main():
         finish()
     ok("A: main screen reached without manual login (visitor account)")
     navigate_all_tabs(adb, screen, args.package, "A")
+    deep_drive(adb, screen, args.package, "A", set(localapi_paths(adb)))
     paths_a = localapi_paths(adb)
     visitor_hits = [p for p in paths_a if any(
         k in p for k in ("/tourist", "/visitor", "/auth-token", "/login"))]
