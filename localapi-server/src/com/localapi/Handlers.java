@@ -154,6 +154,8 @@ final class Handlers {
         if ("idCardStatus".equals(name)) return envelope("str", "\"0\"");
         if ("idCardSubmit".equals(name)) return envelope("str", "\"0\"");
         if ("setPsdParamCheck".equals(name)) return envelope("obj", "{}");
+        if ("securitySettings".equals(name)) return securitySettings(ctx, store);
+        if ("activityTitle".equals(name)) return activityTitle(ctx, store);
         if ("getVipInfo".equals(name)) return getVipInfo(ctx, store);
         if ("getSubscribeInfo".equals(name)) return getSubscribeInfo(ctx, store);
         // ---- Phase 3: decoration / dress shop / scrap exchange ----
@@ -2190,6 +2192,35 @@ final class Handlers {
         out.put("orderId", "local-" + Long.toHexString(System.currentTimeMillis()));
         out.put("userId", u.optLong("userId"));
         L.i("prefectReward: userId=" + u.optLong("userId") + " +500 golds");
+        return envelope("obj", out.toString());
+    }
+
+    /** GET /user/api/v2/users/verify/user/security/settings — UserVerifySettingsInfo (client calls at boot). */
+    private static String securitySettings(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String email = u.optString("email");
+        JSONArray questions = store.userState(u).optJSONArray("secretQuestions");
+        JSONArray ids = new JSONArray();
+        for (int i = 0; questions != null && i < questions.length(); i++) {
+            ids.put(i + 1);
+        }
+        JSONObject out = new JSONObject();
+        out.put("bindEmail", email != null && !email.isEmpty());
+        out.put("email", email == null ? "" : email);
+        out.put("ids", ids);
+        out.put("secretQuestionList", questions == null ? new JSONArray() : questions);
+        out.put("userId", u.optLong("userId"));
+        return envelope("obj", out.toString());
+    }
+
+    /** GET /activity/api/v2/activity/title — ActivityTaskTitleList (activities are
+     *  flag-gated off in appConfig; the list stays empty, serverTime is real). */
+    private static String activityTitle(Ctx ctx, StateStore store) {
+        JSONObject out = new JSONObject();
+        out.put("activityTitleList", new JSONArray());
+        out.put("cumulativeTime", 0L);
+        out.put("serverTime", System.currentTimeMillis());
         return envelope("obj", out.toString());
     }
 

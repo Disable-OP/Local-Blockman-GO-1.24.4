@@ -290,3 +290,14 @@
   confirms the scheduled webDevReview task IS firing and spawning sessions.
 - Next session: continue the loop per NEXT_SESSION_README delta 3
   (RongCloud shim decision, error-driven log pass, then Phase 5 API shapes).
+
+## Session 7 — error-driven pass over client traffic + RongCloud decision (2026-10-04)
+
+- Pulled the redroid-diagnostics artifact from the v0.4.3 run and analyzed
+  the full LocalAPI request log (51 unique endpoints, zero unmapped).
+- RongCloud decision FINAL: offline shim (SDK stays UNCONNECTED gracefully;
+  no proprietary IM protocol emulation; documented in PATCH_PLAN).
+- Upgraded the two client-called defaults to real handlers:
+  security/settings (UserVerifySettingsInfo from real state) and
+  activity/title (empty list + real serverTime).
+- Host rig 259/259. Coverage: 335/250/85/190.

@@ -240,3 +240,36 @@ All 21 /msg/api routes are now state-backed. New domain module:
 - Remaining default areas (deliberate): activity events (29, flag-gated
   off in appConfig), /video (7), videostars (5, real-money program), file
   upload + misc (~20).
+
+## Session 7 — error-driven fixes + RongCloud decision (2026-10-04)
+
+### RongCloud decision: OFFLINE SHIM (no local IM transport)
+
+Evidence from the v0.4.3 redroid diagnostics (logcat):
+- RongIMClient init succeeds; native lib loads; RongService starts in :ipc.
+- ConnectionService: `initConnectToken null` -> ConnectionState UNCONNECTED,
+  reconnect interval 10s, retries in background, ZERO crashes/ANRs, app
+  fully usable end-to-end.
+
+Decision: do NOT emulate RongCloud's proprietary nav/binary protocol
+(disproportionate effort; message transport inside games runs via the game
+server in a later phase anyway). The HTTP-side social graph (friends, groups,
+tribe chat metadata) is fully implemented; message send endpoints ack; chat
+UIs degrade gracefully exactly as observed. `rongToken` keeps returning the
+local token. Revisit only if a future phase needs text chat in lobbies.
+
+### Error-driven fixes from the v0.4.3 run's client traffic
+
+Diagnostics artifact (redroid-diagnostics.tgz: logcat + localapi.txt +
+crash buffer) analyzed for the whole client session:
+- ZERO unmapped requests — every endpoint the real client called was
+  matched by the RoutingTable (incl. the {version}-template scrap routes).
+- Two client-called defaults upgraded to real handlers:
+  * GET /user/api/v2/users/verify/user/security/settings ->
+    UserVerifySettingsInfo from real user state (bindEmail/email/
+    secretQuestionList/ids/userId).
+  * GET /activity/api/v2/activity/title -> ActivityTaskTitleList with an
+    empty activityTitleList (activities are appConfig-gated off) and a
+    real serverTime.
+- Host rig: 259/259 PASS. Coverage: 335 discovered / 250 implemented /
+  85 default / 190 host-tested.

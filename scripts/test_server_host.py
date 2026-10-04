@@ -1098,6 +1098,24 @@ def main():
                   headers={"Access-Token": tok5})
         check("id card status string", ic.get("code") == 1 and isinstance(ic["data"], str),
               str(ic)[:80])
+        # error-driven fixes from the v0.4.3 run's client traffic
+        ss = call("GET", "/user/api/v2/users/verify/user/security/settings?userId=%d" % uid5,
+                  headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("security settings shape", ss.get("code") == 1
+              and ss["data"].get("bindEmail") is False
+              and isinstance(ss["data"].get("secretQuestionList"), list)
+              and ss["data"].get("userId") == uid5, str(ss)[:150])
+        call("POST", "/user/api/v1/users/bind/email", {"email": "qa@example.com"}, headers=h5)
+        ss2 = call("GET", "/user/api/v2/users/verify/user/security/settings?userId=%d" % uid5,
+                   headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("security settings reflect bind", ss2.get("code") == 1
+              and ss2["data"]["bindEmail"] is True
+              and ss2["data"]["email"] == "qa@example.com", str(ss2)[:150])
+        at = call("GET", "/activity/api/v2/activity/title",
+                  headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("activity title empty + serverTime", at.get("code") == 1
+              and at["data"].get("activityTitleList") == []
+              and at["data"].get("serverTime", 0) > 0, str(at)[:150])
 
         print("== route-table sweep (all routes answer the envelope) ==")
         sys.path.insert(0, os.path.join(REPO, "scripts"))
