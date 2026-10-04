@@ -681,8 +681,16 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
             else:
                 print("  [skip] no search input found on the %s screen"
                       % stage)
-            adb.key(4)  # back to the tab
+            adb.key(4)  # back (closes the IME first if the search opened it)
             time.sleep(2)
+            if stage == "findclans" and not screen.find(ids=["rb_3"]):
+                # IME evidence (runs 37236799029..37240694732): the first
+                # BACK only dismissed the keyboard — the search screen was
+                # still up, stranding the drive (tab4/gamecard/probes
+                # skipped, "did not land on Home"). Leave it for real.
+                adb.key(4)
+                time.sleep(2)
+                alive_or_recover("%s-tab3-reentered" % tag)
         # wave 5p v2: CREATE A CLAN discovery probe on a FRESH Find Clans
         # entry. 5p v1 evidence (run 37239560885): the create banner
         # belongs to the recommendation state — after a search drive the
@@ -707,9 +715,24 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                 adb.key(4)
                 time.sleep(2)
                 alive_or_recover("%s-clancreate-back" % tag)
+                # a form that auto-focused its input swallows the first
+                # BACK into the keyboard — check the Find Clans marker
+                if not screen.find(contains=["enter clan"]):
+                    adb.key(4)
+                    time.sleep(2)
             adb.key(4)  # Find Clans -> tab3 (or tab3 -> Home if the tap
-            time.sleep(2)  # was a placeholder; the nav finds below heal)
+            time.sleep(2)  # was a placeholder; the grounding loop heals)
         alive_or_recover("%s-tab3-done" % tag)
+        # grounding loop: never continue to tab4/gamecard from a screen
+        # without the bottom nav (Find Clans/form/IME stranding)
+        for _ in range(3):
+            if screen.find(ids=["rb_3"]):
+                break
+            print("  [evidence] no bottom nav after tab3 - BACKing once "
+                  "more")
+            adb.key(4)
+            time.sleep(2)
+            alive_or_recover("%s-tab3-grounded" % tag)
     # Discovery-only dump for the chat tab (no taps beyond the tab itself)
     tab4 = screen.find(ids=["rb_4"])
     if tab4 and screen.tap_node(tab4):
