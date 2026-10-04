@@ -577,10 +577,15 @@ def main():
         fail("A: main screen not reached on fresh data (auto tourist login failed?)")
         finish()
     ok("A: main screen reached without manual login (visitor account)")
+    # Snapshot the visitor auth traffic NOW: the deep-drive's dress-detail
+    # GL rendering floods the logcat main buffer and rotates early LocalAPI
+    # lines out (run 37226628540 evidence), so a single end-of-run scan
+    # misses the login/auth-token evidence entirely.
+    paths_early = localapi_paths(adb)
     navigate_all_tabs(adb, screen, args.package, "A")
     deep_drive(adb, screen, args.package, args.activity, "A",
-               set(localapi_paths(adb)))
-    paths_a = localapi_paths(adb)
+               set(paths_early))
+    paths_a = sorted(set(paths_early) | set(localapi_paths(adb)))
     visitor_hits = [p for p in paths_a if any(
         k in p for k in ("/tourist", "/visitor", "/auth-token", "/login"))]
     if not visitor_hits:
@@ -1257,7 +1262,9 @@ def main():
 
     # ------------------------------------------------- assertions
     print("== assertions ==")
-    paths = localapi_paths(adb)
+    # Union with the early snapshot: GL-heavy screens rotate the logcat
+    # main buffer, so end-of-run scans alone miss early traffic.
+    paths = sorted(set(paths_early) | set(localapi_paths(adb)))
     print("  LocalAPI unique endpoints hit: %d" % len(paths))
     for p in paths:
         print("    - %s" % p)
@@ -1265,7 +1272,11 @@ def main():
     register_endpoints = ("REQ POST /user/api/v1/register" in reg_hit
                           or "REQ POST /user/api/v1/app/set-password" in reg_hit
                           or "REQ POST /user/api/v2/app/set-password" in reg_hit
-                          or "REQ POST /user/api/v1/user/register" in reg_hit)
+                          or "REQ POST /user/api/v1/user/register" in reg_hit
+                          # buffer-rotation-resilient fallback: the path set
+                          # (merged with the early snapshot) is authoritative
+                          or "/register" in " ".join(paths)
+                          or "set-password" in " ".join(paths))
     check("account-creation endpoint hit the embedded server", register_endpoints,
           "no register/set-password request seen")
     check("visitor account path exercised", "REQ POST /user/api/v1/visitor" in reg_hit
