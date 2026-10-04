@@ -45,7 +45,11 @@ LOG_TMPL = """    new-instance v{n}, Ljava/lang/Throwable;
 KILL_INVOKE = "Landroid/os/Process;->killProcess"
 SCAN_DIRS = ("smali", "smali_classes2", "smali_classes3",
              "smali_classes4", "smali_classes5")
-SCAN_PKGS = ("com/sandboxol", "com/disabngo")
+# Scan EVERYTHING (bundled SDKs included — the v0.5.14 death outlived the
+# neutralized MainActivity kills, and a crashsdk/anti-addiction SDK is the
+# prime suspect); skip only our own injected package and obvious framework
+#/library noise where a killProcess call is legitimate tooling.
+SCAN_EXCLUDES = ("com/localapi", "androidx/", "android/support")
 
 # Proven killers (v0.5.12/v0.5.13 evidence): MainActivity hard-exits the
 # whole app pair via Process.killProcess from (a) onPause's finishing path
@@ -83,7 +87,7 @@ def main():
             # AFTER the smali dir component
             parts = rel.split("/")
             pkg_path = "/".join(parts[1:]) if len(parts) > 1 else ""
-            if not pkg_path.startswith(SCAN_PKGS):
+            if pkg_path.startswith(SCAN_EXCLUDES):
                 continue
             for fn in files:
                 if not fn.endswith(".smali"):
