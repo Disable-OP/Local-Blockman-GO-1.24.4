@@ -162,3 +162,17 @@
   user-scoped calls.
 - 110/110 host tests. Coverage: 335 discovered / 141 implemented / 194
   default / 129 host-tested.
+
+## Session 5 FINAL — release pipeline fully green end-to-end (2026-10-04)
+
+- v0.3.2-phase36: build-release GREEN + redroid UI automation GREEN (37178849133).
+- v0.3.3-pay: build-release GREEN + redroid GREEN (37179611872) — the CI-built
+  APK with the local pay layer + strict auth passed the whole client suite.
+- Final coverage: 335 routes discovered / 141 state-backed implemented /
+  194 schema-true defaults / 129 host-tested; host rig 110/110.
+- Sessions releases on GitHub: v0.1.0-pipeline, v0.2.0-localapi (manual),
+  v0.3.1-phase3, v0.3.2-phase36, v0.3.3-pay (ALL CI-built + CI-tested).
+- Next session priorities: tribe create/join real state (models in
+  classes1/2/5 — re-decompile if missing), gameblocky dispatch groundwork
+  (Dispatch -> loopback gAddr) as the GameServer bridge plan, RongCloud
+  offline shim decision, remaining flag-gated event endpoints.

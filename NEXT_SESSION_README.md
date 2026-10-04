@@ -84,3 +84,21 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   blocky game dispatch groundwork (Dispatch with loopback gAddr), RongCloud
   offline shim decision, remaining event endpoints (all flag-gated).
 - Tag v0.3.3 ships this; CI (build-release -> test-redroid) must stay green.
+
+## Session 5 status line (end of session)
+
+- Pipeline: FULLY GREEN (tag -> CI build -> release -> redroid client test).
+  Releases v0.3.1/v0.3.2/v0.3.3 are CI-built and CI-tested.
+- API: 141 of 335 routes are real state-backed handlers (auth complete,
+  catalog complete, detail/shop/rank, dress+wardrobe, scrap exchange,
+  rankings, mailbox, pay/wallet/VIP). 110/110 host tests.
+- CI note: workflow_run runs MAIN's copy of the workflow file — the checkout
+  pin to local-api is on main (219b304). Keep main's workflow files in sync
+  if you edit them.
+- Sandbox restore (fresh sandbox): base APK = release asset
+  base-apk-1.24.4.apk; jadx 1.5.6 from GitHub; decompile per-dex
+  (-Xmx2400m); models referenced this session live in classes1/2/3/5.
+- Do NEXT (highest value first): (1) tribe create/join/bulletin/donation real
+  state, (2) Dispatch/miniGameToken groundwork for the Engine 10068 bridge,
+  (3) event endpoints still default (worldCup/halloween/slot — flag-gated),
+  (4) decoration suits, (5) RongCloud chat shim decision.
