@@ -241,10 +241,10 @@ public final class StateStore {
         return out;
     }
 
-    /** Credit currency to a user's wallet. kind: golds | diamonds | gDiamonds. */
-    public synchronized void award(JSONObject user, String kind, long quantity) {
-        if (quantity <= 0) return;
-        user.put(kind, user.optLong(kind) + quantity);
+    /** Apply a currency delta to a user's wallet (negative delta = spend). */
+    public synchronized void award(JSONObject user, String kind, long delta) {
+        if (delta == 0) return;
+        user.put(kind, user.optLong(kind) + delta);
         save();
     }
 

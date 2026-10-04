@@ -59,3 +59,17 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 - Recreate sandbox artifacts if missing: base APK is release asset
   "base-apk-1.24.4.apk" (v0.1.0-pipeline); jadx 1.5.6 from GitHub releases;
   decompile per-dex with -Xmx2400m (4GB RAM sandbox).
+
+## Session 5 delta 2 (Phase 3 + CI fixes)
+
+- Phase 3 DONE: dresses/wardrobe/purchases/wearing + scrap exchange loop.
+  92/92 host tests. New domain files: DressShop.java, ScrapBag.java.
+- build-release.yml was ALWAYS red (naming bug); fixed. If a build fails,
+  check the "Build patched + signed APK" step for the FATAL banner.
+- Workflows pin checkout to local-api. Main is diverged (archives) — do NOT
+  merge main into local-api; CI reads scripts from local-api now.
+- Remaining default-only areas: suits, VIP dress lists, clan decorations,
+  gameblocky IShopApi (2 game props endpoints), IPayApi (payment), tribe/
+  mailbox/msg lists, halloween/worldcup/slot events, videostars.
+- Next: verify v0.3.0-phase3 redroid run green; then Phase 3.5 (tribe/mailbox
+  real empty-states + gameblocky props), then Phase 4 dispatch groundwork.

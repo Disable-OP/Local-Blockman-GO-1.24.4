@@ -86,6 +86,48 @@ final class Handlers {
         if ("friendRecommendation".equals(name)) return friendRecommendation(ctx, store);
         if ("getVipInfo".equals(name)) return getVipInfo(ctx, store);
         if ("getSubscribeInfo".equals(name)) return getSubscribeInfo(ctx, store);
+        // ---- Phase 3: decoration / dress shop / scrap exchange ----
+        if ("dressList".equals(name)) return dressList(ctx, store);
+        if ("friendUsingList".equals(name)) return friendUsingList(ctx, store);
+        if ("dressExpireList".equals(name)) return envelope("list", "[]");
+        if ("dressOwnedByType".equals(name)) return dressOwnedByType(ctx, store);
+        if ("dressSuitList".equals(name)) return envelope("list", "[]");
+        if ("dressRecommend".equals(name)) return dressRecommend(ctx, store);
+        if ("isUsingList".equals(name)) return isUsingList(ctx, store);
+        if ("dressGuideConfig".equals(name)) return envelope("obj", "{\"dressShopGuideConfigMap\":{}}");
+        if ("multiClothe".equals(name)) return multiClothe(ctx, store);
+        if ("multiUnclothe".equals(name)) return multiUnclothe(ctx, store);
+        if ("removeDecoration".equals(name)) return removeDecoration(ctx, store);
+        if ("removeSuitDecoration".equals(name)) return removeSuitDecoration(ctx, store);
+        if ("useDecoration".equals(name)) return useDecoration(ctx, store);
+        if ("useSuitDecoration".equals(name)) return useSuitDecoration(ctx, store);
+        if ("vipDress".equals(name)) return envelope("list", "[]");
+        if ("dressResCheck".equals(name)) return envelope("obj", "{\"md5\":\"\",\"update\":false,\"url\":\"\"}");
+        if ("dressCheckResource".equals(name)) return envelope("obj", "{\"needUpdate\":false,\"cdns\":[],\"fileCount\":0,\"fileSize\":0,\"hash\":\"\",\"url\":\"\",\"version\":1}");
+        if ("dressBuyOne".equals(name)) return dressBuyOne(ctx, store);
+        if ("dressBuyMany".equals(name)) return dressBuyMany(ctx, store);
+        if ("dressBuyV2".equals(name)) return dressBuyV2(ctx, store);
+        if ("dressDetails".equals(name)) return dressDetails(ctx, store);
+        if ("dressRecommendList".equals(name)) return dressRecommendList(ctx, store);
+        if ("shopList".equals(name)) return shopList(ctx, store);
+        if ("shopRecommendV2".equals(name)) return shopRecommendV2(ctx, store);
+        if ("giftSuitCanReceive".equals(name)) return envelope("bool", "false");
+        if ("scrapBackpack".equals(name)) return scrapBackpack(ctx, store);
+        if ("scrapCombineNum".equals(name)) return envelope("num", "3");
+        if ("scrapRequestTargets".equals(name)) return scrapRequestTargets(ctx, store);
+        if ("scrapRewardValue".equals(name)) return envelope("num", "3000");
+        if ("scrapBagValue".equals(name)) return scrapBagValue(ctx, store);
+        if ("scrapHistory".equals(name)) return scrapHistory(ctx, store);
+        if ("scrapNum".equals(name)) return scrapNum(ctx, store);
+        if ("scrapCardDetails".equals(name)) return scrapCardDetails(ctx, store);
+        if ("scrapCardList".equals(name)) return scrapCardList(ctx, store);
+        if ("scrapRule".equals(name)) return envelope("list", "[\"Collect scraps in the local world.\",\"Combine them into cards.\",\"Exchange cards for golds.\"]");
+        if ("scrapTreasureBox".equals(name)) return envelope("obj", "{\"boxList\":[],\"date\":\"\",\"probsNum\":0,\"rewardValue\":0,\"secondsLeft\":0}");
+        if ("scrapVipConvert".equals(name)) return envelope("obj", "{\"newVip\":{},\"vip\":{}}");
+        if ("scrapCombineCard".equals(name)) return scrapCombineCard(ctx, store);
+        if ("scrapAsk".equals(name)) return envelope("none", null);
+        if ("scrapReceive".equals(name)) return envelope("none", null);
+        if ("scrapSend".equals(name)) return scrapSend(ctx, store);
         L.e("unknown handler name: " + name);
         return envelope("none", null);
     }
@@ -713,6 +755,397 @@ final class Handlers {
         sub.put("playerInfo", p);
         sub.put("subInfo", new JSONArray());
         return envelope("obj", sub.toString());
+    }
+
+    // ------------------------------- Phase 3: decoration + dress shop
+
+    private static String dressList(Ctx ctx, StateStore store) {
+        long typeId = parseLong(ctx.pathParam("typeId"), 0);
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONArray list = DressShop.ensureType(store, typeId);
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < list.length(); i++) {
+            out.put(DressShop.singleJson(store, u, list.getJSONObject(i)));
+        }
+        return envelope("list", out.toString());
+    }
+
+    private static String friendUsingList(Ctx ctx, StateStore store) {
+        long otherId = parseLong(ctx.pathParam("otherId"), 0);
+        JSONObject other = store.findByUserId(otherId);
+        if (other == null) {
+            other = store.findOrCreateByKey("ghost", true);
+        }
+        return envelope("list", DressShop.usingList(store, other).toString());
+    }
+
+    private static String dressOwnedByType(Ctx ctx, StateStore store) {
+        long typeId = parseLong(ctx.pathParam("typeId"), 0);
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONArray list = DressShop.ensureType(store, typeId);
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < list.length(); i++) {
+            JSONObject d = list.getJSONObject(i);
+            if (DressShop.owned(store, u, d.optLong("id"))) {
+                out.put(DressShop.singleJson(store, u, d));
+            }
+        }
+        return envelope("list", out.toString());
+    }
+
+    private static String dressRecommend(Ctx ctx, StateStore store) {
+        long typeId = parseLong(ctx.pathParam("typeId"), 0);
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONArray list = DressShop.ensureType(store, typeId);
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < list.length() && out.length() < 5; i++) {
+            JSONObject d = list.getJSONObject(i);
+            if (!DressShop.owned(store, u, d.optLong("id"))) {
+                JSONObject row = new JSONObject();
+                row.put("id", d.optLong("id"));
+                row.put("iconUrl", "");
+                row.put("hasPurchase", 0);
+                row.put("isNew", d.optInt("isNew"));
+                row.put("shopDecorationInfo", DressShop.singleJson(store, u, d));
+                out.put(row);
+            }
+        }
+        return envelope("list", out.toString());
+    }
+
+    private static String isUsingList(Ctx ctx, StateStore store) {
+        long otherId = parseLong(ctx.query("otherId"), 0);
+        JSONObject target = otherId > 0
+                ? (store.findByUserId(otherId) != null
+                   ? store.findByUserId(otherId) : store.findOrCreateByKey("ghost", true))
+                : store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        return envelope("list", DressShop.usingList(store, target).toString());
+    }
+
+    private static JSONArray csvIds(String csv) {
+        JSONArray ids = new JSONArray();
+        if (csv != null) {
+            for (String s : csv.split(",")) {
+                long v = parseLong(s.trim(), 0);
+                if (v > 0) ids.put(v);
+            }
+        }
+        return ids;
+    }
+
+    private static String multiClothe(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONArray ids = csvIds(ctx.query("ids"));
+        DressShop.setUsing(store, u, ids, true);
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < ids.length(); i++) {
+            JSONObject d = DressShop.byId(store, ids.optLong(i));
+            if (d != null) out.put(DressShop.singleJson(store, u, d));
+        }
+        return envelope("list", out.toString());
+    }
+
+    private static String multiUnclothe(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONArray ids = csvIds(ctx.query("ids"));
+        DressShop.setUsing(store, u, ids, false);
+        return envelope("obj", null);
+    }
+
+    private static String removeDecoration(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        long id = parseLong(ctx.pathParam("decorationId"), 0);
+        JSONArray one = new JSONArray();
+        one.put(id);
+        DressShop.setUsing(store, u, one, false);
+        JSONObject d = DressShop.byId(store, id);
+        return d == null ? fail("decoration not found")
+                : envelope("obj", DressShop.singleJson(store, u, d).toString());
+    }
+
+    private static String removeSuitDecoration(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONArray ids = csvIds(ctx.query("ids"));
+        DressShop.setUsing(store, u, ids, false);
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < ids.length(); i++) {
+            JSONObject d = DressShop.byId(store, ids.optLong(i));
+            if (d != null) out.put(DressShop.singleJson(store, u, d));
+        }
+        return envelope("list", out.toString());
+    }
+
+    private static String useDecoration(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        long id = parseLong(ctx.pathParam("decorationId"), 0);
+        if (!DressShop.owned(store, u, id)) {
+            return fail("decoration not owned");
+        }
+        JSONArray one = new JSONArray();
+        one.put(id);
+        DressShop.setUsing(store, u, one, true);
+        JSONObject d = DressShop.byId(store, id);
+        return envelope("obj", DressShop.singleJson(store, u, d).toString());
+    }
+
+    private static String useSuitDecoration(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONArray ids = csvIds(ctx.query("ids"));
+        for (int i = 0; i < ids.length(); i++) {
+            if (!DressShop.owned(store, u, ids.optLong(i))) {
+                return fail("decoration not owned: " + ids.optLong(i));
+            }
+        }
+        DressShop.setUsing(store, u, ids, true);
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < ids.length(); i++) {
+            JSONObject d = DressShop.byId(store, ids.optLong(i));
+            if (d != null) out.put(DressShop.singleJson(store, u, d));
+        }
+        return envelope("list", out.toString());
+    }
+
+    private static String dressBuyOne(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        long id = parseLong(ctx.pathParam("decorationId"), 0);
+        if (!DressShop.buy(store, u, id)) {
+            return fail("insufficient currency or unknown decoration");
+        }
+        return envelope("none", null);
+    }
+
+    private static String dressBuyMany(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONArray ids = csvIds(ctx.query("decorationId"));
+        JSONArray ok = new JSONArray();
+        long golds = 0, diamonds = 0;
+        for (int i = 0; i < ids.length(); i++) {
+            JSONObject d = DressShop.byId(store, ids.optLong(i));
+            if (d == null) continue;
+            if (d.optInt("currency") == 2) diamonds += d.optLong("price");
+            else golds += d.optLong("price");
+        }
+        if (u.optLong("golds") >= golds && u.optLong("diamonds") >= diamonds) {
+            for (int i = 0; i < ids.length(); i++) {
+                if (DressShop.buy(store, u, ids.optLong(i))) ok.put(ids.optLong(i));
+            }
+        }
+        return envelope("obj", DressShop.buyResponse(ids, ok, golds, diamonds).toString());
+    }
+
+    private static String dressBuyV2(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONObject form = body(ctx);
+        JSONArray items = form.optJSONArray("buyDecorationList");
+        JSONArray ids = new JSONArray();
+        if (items != null) {
+            for (int i = 0; i < items.length(); i++) {
+                ids.put(items.optJSONObject(i).optLong("decorationId"));
+            }
+        }
+        JSONArray ok = new JSONArray();
+        long golds = 0, diamonds = 0;
+        for (int i = 0; i < ids.length(); i++) {
+            JSONObject d = DressShop.byId(store, ids.optLong(i));
+            if (d == null) continue;
+            if (d.optInt("currency") == 2) diamonds += d.optLong("price");
+            else golds += d.optLong("price");
+        }
+        if (u.optLong("golds") >= golds && u.optLong("diamonds") >= diamonds) {
+            for (int i = 0; i < ids.length(); i++) {
+                if (DressShop.buy(store, u, ids.optLong(i))) ok.put(ids.optLong(i));
+            }
+        }
+        return envelope("obj", DressShop.buyResponse(ids, ok, golds, diamonds).toString());
+    }
+
+    private static String dressDetails(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONObject d = DressShop.byId(store, parseLong(ctx.pathParam("decorationId"), 0));
+        return d == null ? fail("decoration not found")
+                : envelope("obj", DressShop.singleJson(store, u, d).toString());
+    }
+
+    private static String dressRecommendList(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONObject base = DressShop.byId(store, parseLong(ctx.pathParam("decorationId"), 0));
+        long typeId = base == null ? 0 : base.optLong("typeId");
+        JSONArray list = DressShop.ensureType(store, typeId);
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < list.length() && out.length() < 6; i++) {
+            JSONObject d = list.getJSONObject(i);
+            if (d.optLong("id") != (base == null ? -1 : base.optLong("id"))) {
+                out.put(DressShop.singleJson(store, u, d));
+            }
+        }
+        return envelope("list", out.toString());
+    }
+
+    private static String shopList(Ctx ctx, StateStore store) {
+        return dressList(ctx, store);
+    }
+
+    private static String shopRecommendV2(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONObject all = store.root().optJSONObject("dresses");
+        JSONArray out = new JSONArray();
+        if (all != null) {
+            JSONArray keys = all.names();
+            if (keys != null) {
+                for (int k = 0; k < keys.length() && out.length() < 6; k++) {
+                    JSONArray list = all.optJSONArray(keys.optString(k));
+                    if (list == null || list.length() == 0) continue;
+                    JSONObject d = list.getJSONObject(0);
+                    JSONObject row = new JSONObject();
+                    row.put("id", d.optLong("id"));
+                    row.put("iconUrl", "");
+                    row.put("hasPurchase", 0);
+                    row.put("isNew", d.optInt("isNew"));
+                    row.put("shopDecorationInfo", DressShop.singleJson(store, u, d));
+                    out.put(row);
+                }
+            }
+        }
+        return envelope("list", out.toString());
+    }
+
+    // --------------------------------------- Phase 3: scrap exchange
+
+    private static String scrapBackpack(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONObject bag = ScrapBag.backpack(store, u);
+        JSONArray out = new JSONArray();
+        JSONArray keys = bag.names();
+        if (keys != null) {
+            for (int i = 0; i < keys.length(); i++) {
+                String sid = keys.optString(i);
+                int amount = bag.optInt(sid);
+                if (amount <= 0) continue;
+                JSONObject s = new JSONObject();
+                s.put("scrapId", sid);
+                s.put("scrapName", "Scrap " + sid.toUpperCase());
+                s.put("scrapDesc", "A fragment used for exchange.");
+                s.put("scrapPic", "");
+                s.put("scrapLevel", 1);
+                s.put("scrapType", 1);
+                s.put("scrapValue", ScrapBag.valueOf(sid));
+                s.put("amount", amount);
+                s.put("rewardType", 1);
+                out.put(s);
+            }
+        }
+        JSONObject page = new JSONObject();
+        page.put("data", out);
+        page.put("pageNo", 1);
+        page.put("pageSize", 20);
+        page.put("totalPage", 1);
+        page.put("totalSize", out.length());
+        return envelope("obj", page.toString());
+    }
+
+    private static String scrapRequestTargets(Ctx ctx, StateStore store) {
+        JSONArray citizens = GameCatalog.citizens(store);
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < citizens.length() && out.length() < 10; i++) {
+            JSONObject c = citizens.getJSONObject(i);
+            JSONObject t = new JSONObject();
+            t.put("friendId", c.optLong("userId"));
+            t.put("friendName", c.optString("nickName"));
+            t.put("friendPic", "");
+            t.put("helpStatus", 0);
+            t.put("scrapNum", 1 + (i % 3));
+            out.put(t);
+        }
+        JSONObject page = new JSONObject();
+        page.put("data", out);
+        page.put("pageNo", 1);
+        page.put("pageSize", 10);
+        page.put("totalPage", 1);
+        page.put("totalSize", out.length());
+        return envelope("obj", page.toString());
+    }
+
+    private static String scrapBagValue(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        return envelope("num", String.valueOf(ScrapBag.bagValue(store, u)));
+    }
+
+    private static String scrapHistory(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONArray hist = store.userState(u).optJSONArray("combineHistory");
+        JSONArray data = hist == null ? new JSONArray() : hist;
+        JSONObject page = new JSONObject();
+        page.put("data", data);
+        page.put("pageNo", 1);
+        page.put("pageSize", 20);
+        page.put("totalPage", data.length() > 0 ? 1 : 0);
+        page.put("totalSize", data.length());
+        return envelope("obj", page.toString());
+    }
+
+    private static String scrapNum(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        return envelope("num", String.valueOf(
+                ScrapBag.scrapNum(store, u, ctx.pathParam("scrapId"))));
+    }
+
+    private static String scrapCardDetails(Ctx ctx, StateStore store) {
+        JSONObject card = ScrapBag.card(ctx.query("cardId"));
+        if (card == null) {
+            return fail("card not found");
+        }
+        JSONObject d = new JSONObject();
+        d.put("cardName", card.optString("cardName"));
+        d.put("cardDesc", "Collect the listed scraps, then combine.");
+        d.put("cardPic", "");
+        d.put("cardValue", card.optInt("cardValue"));
+        d.put("scrapResponses", card.optJSONArray("needs"));
+        return envelope("obj", d.toString());
+    }
+
+    private static String scrapCardList(Ctx ctx, StateStore store) {
+        JSONArray out = new JSONArray();
+        for (int n = 1; n <= 6; n++) {
+            JSONObject card = ScrapBag.card("c" + n);
+            if (card == null) continue;
+            JSONObject row = new JSONObject();
+            row.put("cardId", card.optString("cardId"));
+            row.put("cardName", card.optString("cardName"));
+            row.put("cardPic", "");
+            row.put("cardProgress", "0/" + card.optJSONArray("needs").optJSONObject(0).optInt("scrapNum"));
+            row.put("cardQuality", card.optInt("cardQuality"));
+            row.put("cardRewardType", 1);
+            row.put("rewardExpires", 0);
+            row.put("status", 0);
+            out.put(row);
+        }
+        JSONObject page = new JSONObject();
+        page.put("data", out);
+        page.put("pageNo", 1);
+        page.put("pageSize", 20);
+        page.put("totalPage", 1);
+        page.put("totalSize", out.length());
+        return envelope("obj", page.toString());
+    }
+
+    private static String scrapCombineCard(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        String cardId = ctx.query("cardId");
+        int amount = (int) parseLong(ctx.query("amount"), 1);
+        JSONObject out = ScrapBag.combine(store, u, cardId, amount);
+        return out == null ? fail("not enough scraps or unknown card")
+                : envelope("obj", out.toString());
+    }
+
+    private static String scrapSend(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        String scrapId = ctx.query("scrapId");
+        if (ScrapBag.scrapNum(store, u, scrapId) < 1) {
+            return fail("no scrap to send");
+        }
+        ScrapBag.addScrap(store, u, scrapId, -1);
+        return envelope("str", JSONObject.quote(
+                "send-" + Long.toHexString(System.nanoTime())));
     }
 
     // ------------------------------------------------- Phase 2 helpers

@@ -69,3 +69,15 @@ Retrofit + Gson expect JSON bodies; errors follow the app's `BaseResponse` shape
 - Phase 4 game runtime: dispatch/join (Dispatch model, MiniGameToken.dispUrl)
   hands the client a game-server address — needs the Engine 10068 GameServer
   phase; API surface (token/dispatch) already state-backed with real tokens.
+
+## Phase 3 addendum (same session)
+
+- Dress catalog + wardrobe + purchases + wearing are DONE and state-backed
+  (see docs/ENDPOINTS.md Phase 3 table). Remaining defaults: suits (empty),
+  VIP dress lists, clan decorations, gameblocky IShopApi, IPayApi.
+- Scrap collect-exchange loop is DONE: backpack/value/cards/combine/history.
+- CI fixes this session: build_signed_apk.sh exit-2 bug (uber-apk-signer
+  output glob never matched -> signed APK was never renamed; ALL previous
+  build-release runs failed on this and release APKs were built manually);
+  workflows now pin checkout to local-api (main has diverged with archive
+  uploads and carries an older UI test that hard-fails Phase B).

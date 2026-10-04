@@ -86,3 +86,29 @@
   friends/shop/rank through adb-forward (deterministic).
 - build_server_dex.sh now globs sources (GameCatalog.java would have been
   silently dropped by the fixed list).
+
+## Session 5 (cont.) — Phase 3 complete: dress/shop/scrap state-backed + CI release pipeline FIXED (2026-10-04)
+
+- Phase 3 implemented (~40 more state-backed handlers):
+  * Decoration: per-typeId dress catalogs generated once + persisted; wardrobe
+    (owned/using) per user; wear/unwear single+multi+suit; friend worn lists.
+  * Dress shop: buy one/many/v2 with REAL wallet deduction (golds/diamonds),
+    BuyDressResponse per-id status, details/recommendations, gift-suit=false.
+  * Scrap exchange: per-user backpack (6 scraps), bag value, 6 cards w/
+    requirements, combine (consume scraps -> credit golds -> history row),
+    send-scrap, request targets from citizens.
+- New domain files: DressShop.java, ScrapBag.java (kept out of Handlers).
+- Host rig: 92/92 PASS (incl. buy->wardrobe->wear->unwear lifecycle, wallet
+  math, combine consume+history, insufficient-funds rejection, 319-route sweep).
+- CI BUGS FIXED:
+  1. build_signed_apk.sh: uber-apk-signer's output "…-debugSigned.apk" never
+     matched the "…-signed*.apk" glob; the unguarded fallback ls then exited 2
+     under set -euo pipefail. This killed EVERY build-release run so far
+     (release APKs in v0.1/v0.2 were built manually). Fixed glob + guarded
+     fallback + explicit FATAL when nothing was signed.
+  2. test-redroid/build-release now pin actions/checkout ref: local-api —
+     main has diverged (engine archives) and its older UI test hard-fails
+     Phase B ("login screen could not be reached"), which caused a stray red
+     redroid run on main.
+- Tag v0.3.0-phase2 (Phase 2 code) built + signed fine in CI but died at the
+  rename step; deleting it and shipping v0.3.0-phase3 with all fixes.

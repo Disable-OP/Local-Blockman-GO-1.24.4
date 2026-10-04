@@ -23,6 +23,8 @@ jobs:
       ACTIVITY: com.disabngo.blockynexus.view.activity.start.StartActivity
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: local-api  # workflow_run fires on the default branch; always test the newest scripts
 
       - name: Fetch latest patched APK from releases (prerelease-aware)
         env:

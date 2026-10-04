@@ -387,3 +387,39 @@ Delete state.json to regenerate.
 - gameId is a String in the client model — catalog ids are numeric strings.
 - Game join/dispatch (POST /v1/dispatch, Dispatch model) is Phase 4: needs the
   game-service layer. Token endpoints currently return empty dispUrl.
+
+## Phase 3 handlers (this session, decoration + dress shop + scrap)
+
+| Route | Handler | Behavior |
+|---|---|---|
+| GET /decoration/api/{version}/decorations/{typeId} | dressList | per-type catalog, generated once + persisted (10 items/type) |
+| GET /decoration/api/v1/new/decorations/users/{userId}/type/{typeId} | dressOwnedByType | user's owned dresses of that type (wardrobe state) |
+| GET /decoration/api/v1/decorations/using | isUsingList | worn dresses (own via token, others via otherId) |
+| GET /decoration/api/v1/decorations/{otherId}/using | friendUsingList | another player's worn dresses |
+| PUT /decoration/api/v1/decorations/using/{decorationId} | useDecoration | wear (must be owned) |
+| PUT /decoration/api/v1/decorations/using/new?ids= | multiClothe | wear many |
+| PUT /decoration/api/v1/decorations/using?ids= | useSuitDecoration | wear list (ownership checked) |
+| DELETE /decoration/api/v1/decorations/using/{decorationId} | removeDecoration | unwear one |
+| DELETE /decoration/api/v1/decorations/using?ids= | removeSuitDecoration | unwear list |
+| DELETE /decoration/api/v1/decorations/using/new?ids= | multiUnclothe | unwear list |
+| PUT /shop/api/v1/shop/decorations/buy/{decorationId} | dressBuyOne | real purchase: wallet deduction + ownership |
+| PUT /shop/api/v1/shop/decorations/buy?decorationId=a,b | dressBuyMany | BuyDressResponse w/ per-id status |
+| POST /shop/api/v1/new/shop/decorations/buy | dressBuyV2 | BuyRequest{buyDecorationList[{decorationId}]} |
+| GET /shop/api/v1/shop/decorations/details/{decorationId} | dressDetails | SingleDressInfo |
+| GET /shop/api/v1/shop/decorations/recommends/{decorationId} | dressRecommendList | same-type suggestions |
+| GET /shop/api/{version}/shop/decorations/{typeId} + v1/new/... | shopList | same generated catalog |
+| GET /shop/api/v1/new/shop/recommend/decorations | shopRecommendV2 | ShopRecommendDecorationInfo rows |
+| GET /shop/api/v1/new/shop/user/gift/suit/receive | giftSuitCanReceive | false (no gifts) |
+| GET /config/files/dress-guide-config | dressGuideConfig | empty map |
+| GET /decoration/api/v1/decoration/versions + new/.../check/resource | res checks | no update |
+| GET /activity/api/{version}/collect/exchange/user/scrap | scrapBackpack | 6 scrap types generated per user, amounts persist |
+| GET /activity/api/v1/collect/exchange/user/scrap/{scrapId} | scrapNum | from backpack |
+| GET /activity/api/v1/collect/exchange/user/scrap/value | scrapBagValue | sum of values |
+| GET /activity/api/{version}/collect/exchange/card/list | scrapCardList | 6 cards (generated) |
+| GET /activity/api/{version}/collect/exchange/card/details | scrapCardDetails | card -> required scraps |
+| POST /activity/api/{version}/collect/exchange/user/combine/card | scrapCombineCard | consumes scraps, credits golds, records history |
+| GET /activity/api/v1/collect/exchange/user/combine/record | scrapHistory | persistent history |
+| GET /activity/api/v1/collect/exchange/card/details/scrap | scrapRequestTargets | citizens as helpers |
+| GET /activity/api/v1/collect/exchange/description | scrapRule | rules text |
+| POST /activity/api/{version}/collect/exchange/scrap/send | scrapSend | consumes 1 scrap, returns uuid |
+| GET .../scrap/ask + scrap/receive + treasurebox + vip/convert + reward/value + card/combine | simple state | acks/constants |

@@ -329,6 +329,85 @@ def main():
         check("partyCreateGameConfig", pc.get("code") == 1
               and pc.get("data", {}).get("memberMax", 0) > 0, str(pc)[:100])
 
+        print("== Phase 3: dress catalog + wardrobe + shop ==")
+        dl = call("GET", "/decoration/api/v1/decorations/101", headers={"language": "en"})
+        check("dressList generated", dl.get("code") == 1 and len(dl.get("data", [])) == 10
+              and all("id" in d and "price" in d for d in dl["data"]), str(dl)[:150])
+        dress0 = dl["data"][0]
+        own = call("GET", "/decoration/api/v1/new/decorations/users/%d/type/101" % uid1,
+                   headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        check("wardrobe empty at start", own.get("code") == 1 and own.get("data") == [],
+              str(own)[:100])
+        buy1 = call("PUT", "/shop/api/v1/shop/decorations/buy/%d" % dress0["id"], None,
+                    headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("dress buy one", buy1.get("code") == 1, str(buy1)[:100])
+        own2 = call("GET", "/decoration/api/v1/new/decorations/users/%d/type/101" % uid1,
+                    headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        check("wardrobe has bought dress", own2.get("code") == 1
+              and len(own2.get("data", [])) == 1
+              and own2["data"][0]["id"] == dress0["id"], str(own2)[:120])
+        use = call("PUT", "/decoration/api/v1/decorations/using/%d" % dress0["id"], None,
+                   headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("use decoration", use.get("code") == 1
+              and use.get("data", {}).get("id") == dress0["id"], str(use)[:120])
+        wearing = call("GET", "/decoration/api/v1/decorations/using?otherId=%d" % uid1)
+        check("isUsingList shows worn", wearing.get("code") == 1
+              and len(wearing.get("data", [])) == 1, str(wearing)[:120])
+        unw = call("DELETE", "/decoration/api/v1/decorations/using/%d" % dress0["id"],
+                   headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("remove decoration", unw.get("code") == 1, str(unw)[:100])
+        buy2 = call("PUT", "/shop/api/v1/shop/decorations/buy?decorationId=%d,%d" %
+                    (dl["data"][1]["id"], dl["data"][2]["id"]), None,
+                    headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("dress buy many response", buy2.get("code") == 1
+              and "decorationPurchaseStatus" in buy2.get("data", {})
+              and buy2["data"].get("goldsNeed", 0) > 0, str(buy2)[:150])
+        after2 = call("POST", "/user/api/v1/login", {"uid": "qa_user1", "password": "pw1", "imei": "dev1"})
+        check("buy deducted wallet", after2.get("data", {}).get("golds", 0) < golds1 + 200,
+              str(after2.get("data", {}).get("golds")))
+        poor = call("PUT", "/shop/api/v1/shop/decorations/buy/3000009990", None,
+                    headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("buy unknown dress rejected", poor.get("code") == 0, str(poor)[:100])
+        recs = call("GET", "/shop/api/v1/shop/decorations/recommends/%d" % dress0["id"])
+        check("dress recommends", recs.get("code") == 1 and len(recs.get("data", [])) > 0,
+              str(recs)[:100])
+        shopv2 = call("GET", "/shop/api/v1/new/shop/decorations/102?os=android&engineVersion=1")
+        check("shop list v2", shopv2.get("code") == 1 and len(shopv2.get("data", [])) == 10,
+              str(shopv2)[:100])
+        srec = call("GET", "/shop/api/v1/new/shop/recommend/decorations?os=android")
+        check("shop recommend v2", srec.get("code") == 1 and len(srec.get("data", [])) > 0,
+              str(srec)[:100])
+
+        print("== Phase 3: scrap exchange ==")
+        bag = call("GET", "/activity/api/v1/collect/exchange/user/scrap?type=1",
+                   headers={"language": "en"})
+        check("scrap backpack", bag.get("code") == 1
+              and bag.get("data", {}).get("totalSize", 0) > 0
+              and "amount" in bag["data"]["data"][0], str(bag)[:150])
+        bv = call("GET", "/activity/api/v1/collect/exchange/user/scrap/value")
+        check("scrap bag value", bv.get("code") == 1 and isinstance(bv.get("data"), int)
+              and bv["data"] > 0, str(bv)[:100])
+        cards = call("GET", "/activity/api/v1/collect/exchange/card/list?type=1")
+        check("scrap card list", cards.get("code") == 1
+              and len(cards.get("data", {}).get("data", [])) == 6, str(cards)[:120])
+        cd = call("GET", "/activity/api/v1/collect/exchange/card/details?cardId=c1")
+        check("scrap card details", cd.get("code") == 1
+              and len(cd.get("data", {}).get("scrapResponses", [])) == 2, str(cd)[:120])
+        cmb = call("POST", "/activity/api/v1/collect/exchange/user/combine/card?cardId=c1&amount=1")
+        check("combine card c1", cmb.get("code") == 1
+              and cmb.get("data", {}).get("amount") == 1, str(cmb)[:120])
+        hist = call("GET", "/activity/api/v1/collect/exchange/user/combine/record?pageNo=1&pageSize=10")
+        check("combine history recorded", hist.get("code") == 1
+              and hist.get("data", {}).get("totalSize", 0) >= 1, str(hist)[:120])
+        badc = call("POST", "/activity/api/v1/collect/exchange/user/combine/card?cardId=c6&amount=999")
+        check("combine insufficient rejected", badc.get("code") == 0, str(badc)[:100])
+        targets = call("GET", "/activity/api/v1/collect/exchange/card/details/scrap?scrapId=s1&pageNo=1&pageSize=10")
+        check("scrap request targets", targets.get("code") == 1
+              and targets.get("data", {}).get("totalSize", 0) > 0, str(targets)[:120])
+        rule = call("GET", "/activity/api/v1/collect/exchange/description")
+        check("scrap rules list", rule.get("code") == 1 and isinstance(rule.get("data"), list),
+              str(rule)[:80])
+
         print("== route-table sweep (all routes answer the envelope) ==")
         sys.path.insert(0, os.path.join(REPO, "scripts"))
         sweep_miss = []

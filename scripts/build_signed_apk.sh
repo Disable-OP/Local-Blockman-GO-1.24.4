@@ -56,12 +56,19 @@ java -jar "$TOOLS/uber-apk-signer.jar" \
   --apks "$BUILD/patched-unsigned.apk" \
   --out "$OUT_DIR" ${KEYSTORE:+--ks "$KEYSTORE"} ${KS_PASS:+--ks-pass "$KS_PASS"} ${KS_ALIAS:+--ks-key-alias "$KS_ALIAS"}
 
-APK_PATH=$(ls "$OUT_DIR"/patched-unsigned-*-signed*.apk 2>/dev/null | head -1 || true)
+APK_PATH=$(ls "$OUT_DIR"/patched-unsigned-*igned*.apk 2>/dev/null | head -1 || true)
 if [ -z "$APK_PATH" ]; then
   # uber-apk-signer names outputs alignedDebugApr2.apk etc under --out; normalize
-  APK_PATH=$(ls "$OUT_DIR"/patched-unsigned.apk 2>/dev/null | head -1)
+  APK_PATH=$(ls "$OUT_DIR"/patched-unsigned.apk 2>/dev/null | head -1 || true)
 fi
-if [ -n "$APK_PATH" ] && [ "$(readlink -f "$APK_PATH" || true)" != "$(readlink -f "$OUT_DIR/BlockyNexus-localapi.apk" || true)" ]; then
-  mv -f "$APK_PATH" "$OUT_DIR/BlockyNexus-localapi.apk" || true
+if [ -n "$APK_PATH" ]; then
+  if [ "$(readlink -f "$APK_PATH" || true)" != "$(readlink -f "$OUT_DIR/BlockyNexus-localapi.apk" || true)" ]; then
+    mv -f "$APK_PATH" "$OUT_DIR/BlockyNexus-localapi.apk" || true
+  fi
+else
+  echo "FATAL: no signed APK found in $OUT_DIR" >&2
+  ls -la "$OUT_DIR" >&2 || true
+  exit 1
 fi
 echo "SIGNED APK: $OUT_DIR/BlockyNexus-localapi.apk"
+[ -f "$OUT_DIR/BlockyNexus-localapi.apk" ]
