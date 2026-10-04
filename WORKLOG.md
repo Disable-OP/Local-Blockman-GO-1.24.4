@@ -1150,3 +1150,18 @@
   evidence dump of the whole form, and the submit tap re-targeted to the
   clickable node whose bounds COVER the 'Create a clan' text (lowest on
   screen). POST assertion + post-submit dump kept.
+
+## Session 14 (cont. 7) — wave 5q v2 RESULT: submit control proven, tag gate isolated (run 37244155197 PASS)
+
+- Run 37244155197 PASS on fb2c535: BOTH fields verified (name 'UIClan57362',
+  intro 'Local QA clan', counter 13/300) — the fill_and_verify pattern
+  works. Full clickable/bounds evidence captured.
+- KEY EVIDENCE: the submit bar is a clickable RelativeLayout
+  (32,1096)-(688,1184) holding 'Create a clan' + '8000' — tapped via the
+  parent this time, STILL no POST. Also captured: the Clan tag row has a
+  CLICKABLE ImageView (120x60) right after the label (the tag picker),
+  and UPLOAD PROFILE is a plain Button.
+- Conclusion: the create POST is gated by the Clan tag (client-side
+  required-field check). Wave 5q v3 in flight (fc1fbd5): open the tag
+  picker (clickable node after the 'Clan tag' label), dump it, pick the
+  first clearly selectable option, verify, then submit again.
