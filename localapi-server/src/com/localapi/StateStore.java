@@ -70,6 +70,11 @@ public final class StateStore {
         }
     }
 
+    /** Direct (synchronized read) access to the store root — used by GameCatalog. */
+    public synchronized JSONObject root() {
+        return root;
+    }
+
     private JSONObject users() {
         return root.optJSONObject("users");
     }
@@ -187,6 +192,105 @@ public final class StateStore {
             }
         }
         return findOrCreateByKey("ghost", true);
+    }
+
+    // ------------------------------------------------- per-user economy state
+
+    /** Lazy per-user state object (played games, sign-ins, rewards). */
+    public synchronized JSONObject userState(JSONObject user) {
+        JSONObject st = user.optJSONObject("state");
+        if (st == null) {
+            st = new JSONObject();
+            st.put("playedGames", new JSONArray());          // [{gameId, at}]
+            st.put("signIns", new JSONArray());              // ["2026-10-04", ...]
+            st.put("adRewards", new JSONObject());           // {date, count}
+            user.put("state", st);
+        }
+        return st;
+    }
+
+    /** Record that the user played a game (most-recent-first, capped). */
+    public synchronized void recordPlay(JSONObject user, String gameId) {
+        if (gameId == null || gameId.isEmpty()) return;
+        JSONObject st = userState(user);
+        JSONArray played = st.optJSONArray("playedGames");
+        JSONArray next = new JSONArray();
+        JSONObject entry = new JSONObject();
+        entry.put("gameId", gameId);
+        entry.put("at", System.currentTimeMillis());
+        next.put(entry);
+        if (played != null) {
+            for (int i = 0; i < played.length() && next.length() < 30; i++) {
+                JSONObject e = played.optJSONObject(i);
+                if (e != null && !gameId.equals(e.optString("gameId"))) next.put(e);
+            }
+        }
+        st.put("playedGames", next);
+        save();
+    }
+
+    /** Most recently played games of a user (list of gameId strings, newest first). */
+    public synchronized JSONArray recentGames(JSONObject user, int limit) {
+        JSONArray played = userState(user).optJSONArray("playedGames");
+        JSONArray out = new JSONArray();
+        if (played == null) return out;
+        for (int i = 0; i < played.length() && out.length() < limit; i++) {
+            JSONObject e = played.optJSONObject(i);
+            if (e != null) out.put(e.optString("gameId"));
+        }
+        return out;
+    }
+
+    /** Credit currency to a user's wallet. kind: golds | diamonds | gDiamonds. */
+    public synchronized void award(JSONObject user, String kind, long quantity) {
+        if (quantity <= 0) return;
+        user.put(kind, user.optLong(kind) + quantity);
+        save();
+    }
+
+    /** Count of ad rewards claimed by a user on the given calendar date. */
+    public synchronized int adRewardCount(JSONObject user, String date) {
+        JSONObject ad = userState(user).optJSONObject("adRewards");
+        return (ad != null && date.equals(ad.optString("date"))) ? ad.optInt("count") : 0;
+    }
+
+    public synchronized void countAdReward(JSONObject user, String date) {
+        JSONObject st = userState(user);
+        JSONObject ad = st.optJSONObject("adRewards");
+        if (ad == null || !date.equals(ad.optString("date"))) {
+            ad = new JSONObject();
+            ad.put("date", date);
+            ad.put("count", 0);
+        }
+        ad.put("count", ad.optInt("count") + 1);
+        st.put("adRewards", ad);
+        save();
+    }
+
+    /** Calendar dates on which the user already claimed the daily sign-in. */
+    public synchronized JSONArray signIns(JSONObject user) {
+        return userState(user).optJSONArray("signIns");
+    }
+
+    public synchronized boolean hasSignedIn(JSONObject user, String date) {
+        JSONArray dates = signIns(user);
+        if (dates != null) {
+            for (int i = 0; i < dates.length(); i++) {
+                if (date.equals(dates.optString(i))) return true;
+            }
+        }
+        return false;
+    }
+
+    public synchronized void markSignedIn(JSONObject user, String date) {
+        if (hasSignedIn(user, date)) return;
+        JSONArray dates = signIns(user);
+        if (dates == null) {
+            dates = new JSONArray();
+            userState(user).put("signIns", dates);
+        }
+        dates.put(date);
+        save();
     }
 
 }

@@ -89,3 +89,20 @@ Auth entry points: `POST /user/api/v1/login`, `POST /user/api/v1/app/login`, `PO
 3. Embedded HTTP server started in `App.smali`/`BaseApplication.onCreate` before any network use
 4. RongCloud: phase 2 (needs IM server emulation or graceful offline)
 5. Game runtime sockets: phase 3 (join flow hands out server addresses via API responses)
+
+## 8. Embedded server internals (Phase 1+2)
+
+Files (localapi-server/src/com/localapi/):
+- `LocalServer` — bootstrap hook (App.smali → startIfNeeded), bind-retry across app multi-process races
+- `LocalHttpd` — NanoHTTPD router; raw body reader (keep-alive safe); logs REQ/RES under tag LocalAPI
+- `RoutingTable` — generated 321-route table; `match()` returns kind + {path} captures
+- `Handlers` — Phase 1 auth/profile/config + Phase 2 catalog/economy/social handlers
+- `GameCatalog` — generates + serves the persistent game catalog, citizens, prop shops, rank boards
+- `StateStore` — JSON persistence (files/localapi/state.json): users, tokens, wallets, per-user economy state, catalog
+
+Request graph the client actually drives (verified from decompiled call sites):
+boot config (checkVersion, appConfig) → auth (tourist/visitor/login) → auth-token
+→ main screen: recently-played + announcements + daily sign-in + VIP + mail
+→ discover: revision/list/by/condition (TypePageData, local DB cache + network refresh)
+→ game detail: v2/games/{id} + warmup + prop shop + rank
+→ join: dispatch/token (Phase 4)

@@ -42,6 +42,7 @@ public class LocalHttpd extends NanoHTTPD {
         final String uri = session.getUri();
         final String body = readBody(session);
 
+        final java.util.Map<String, String> pathParams = new java.util.HashMap<>();
         final String fBody = body;
         final Handlers.Ctx ctx = new Handlers.Ctx() {
             public String query(String name) {
@@ -63,9 +64,13 @@ public class LocalHttpd extends NanoHTTPD {
             public String body() {
                 return fBody;
             }
+
+            public String pathParam(String name) {
+                return pathParams.get(name);
+            }
         };
 
-        String json = route(verb, uri, ctx);
+        String json = route(verb, uri, ctx, pathParams);
         L.i("REQ " + verb + " " + uri
                 + (fBody.isEmpty() ? "" : " body=" + Handlers.abbrev(fBody)));
         L.i("RES " + verb + " " + uri + " " + json.length() + "b");
@@ -104,11 +109,18 @@ public class LocalHttpd extends NanoHTTPD {
         }
     }
 
-    private String route(String verb, String uri, Handlers.Ctx ctx) {
+    private String route(String verb, String uri, Handlers.Ctx ctx,
+                         java.util.Map<String, String> pathParams) {
         String cleanUri = uri == null ? "/" : (uri.length() > 1 ? uri.replaceAll("/+$", "") : uri);
         String kind;
         try {
-            kind = RoutingTable.lookup(verb, cleanUri);
+            RoutingTable.Match m = RoutingTable.match(verb, cleanUri);
+            if (m != null) {
+                kind = m.kind;
+                pathParams.putAll(m.params);
+            } else {
+                kind = null;
+            }
         } catch (Throwable t) {
             L.e("routing table lookup failed: " + t);
             kind = null;

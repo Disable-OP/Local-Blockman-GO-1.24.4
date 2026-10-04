@@ -275,6 +275,12 @@ def main():
         fail("A: no visitor/tourist/auth traffic seen (paths: %s)" % paths_a[:8])
     else:
         ok("A: visitor auth traffic: %s" % ", ".join(visitor_hits))
+    game_hits = [p for p in paths_a if "/game/api" in p or "/shop/api" in p]
+    if not game_hits:
+        fail("A: the app requested no game/shop data from the local server")
+    else:
+        ok("A: game-hall traffic served locally (%d endpoints, e.g. %s)"
+           % (len(game_hits), ", ".join(game_hits[:3])))
 
     # ------------------------------------------------- Phase B: register
     print("== PHASE B: register a fresh account through the UI ==")
@@ -467,6 +473,41 @@ def main():
           and r5.get("data", {}).get("accessToken"), str(r5)[:120])
     r6 = fcall("GET", "/config/files/blockymods-check-version")
     check("C: version config served locally", r6.get("code") == 1, str(r6)[:120])
+
+    # Phase 2 surface: catalog / detail / economy / social — all state-backed now
+    r7 = fcall("GET", "/game/api/v1/game/revision/list/by/condition"
+               "?sortType=online&filterTypeId=0&pageNo=1&pageSize=10&os=android&isFilter=1",
+               headers={"language": "en"})
+    page_info = r7.get("data", {}).get("pageInfo", {})
+    check("C: game catalog served (TypePageData, non-empty)",
+          r7.get("code") == 1 and len(page_info.get("data", [])) == 10
+          and page_info.get("totalSize", 0) >= 20, str(r7)[:120])
+    first_game = (page_info.get("data") or [{}])[0].get("gameId", "5001")
+    r8 = fcall("GET", "/game/api/v2/games/%s?appVersion=4003" % first_game,
+               headers={"language": "en"})
+    check("C: game detail for catalog game", r8.get("code") == 1
+          and r8.get("data", {}).get("gameId") == first_game, str(r8)[:120])
+    r9 = fcall("GET", "/game/api/v1/category/list/by/language", headers={"language": "en"})
+    check("C: category tabs served", r9.get("code") == 1 and len(r9.get("data", [])) >= 3,
+          str(r9)[:120])
+    qa_uid_num = r1.get("data", {}).get("userId", 0)
+    auth_hdr = {"Access-Token": r2.get("data", {}).get("accessToken", ""),
+                "userId": str(qa_uid_num), "language": "en"}
+    r10 = fcall("GET", "/user/api/v2/users/%d/daily/sign/in" % qa_uid_num, headers=auth_hdr)
+    check("C: daily sign-in map", r10.get("code") == 1
+          and "first" in r10.get("data", {}), str(r10)[:120])
+    r11 = fcall("PUT", "/user/api/v2/users/%d/daily/sign/in" % qa_uid_num, None, headers=auth_hdr)
+    check("C: daily sign-in claim", r11.get("code") == 1, str(r11)[:100])
+    r12 = fcall("GET", "/friend/api/v1/friends/recommendation", headers={"language": "en"})
+    check("C: friend recommendations (local world)", r12.get("code") == 1
+          and len(r12.get("data", [])) > 0, str(r12)[:120])
+    r13 = fcall("GET", "/shop/api/v2/shop/game/props/new?gameId=%s&engineVersion=1" % first_game,
+                headers=auth_hdr)
+    check("C: game prop shop", r13.get("code") == 1 and len(r13.get("data", [])) >= 1,
+          str(r13)[:120])
+    r14 = fcall("GET", "/game/api/v1/games/%s/rank?type=complex&pageNo=1&pageSize=20" % first_game)
+    check("C: game rank board", r14.get("code") == 1
+          and len(r14.get("data", {}).get("pageInfo", {}).get("data", [])) > 0, str(r14)[:120])
 
     # ------------------------------------------------- assertions
     print("== assertions ==")

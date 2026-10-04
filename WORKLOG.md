@@ -46,3 +46,43 @@
   * One lmk kill of the app under redroid memory pressure observed once (v13) — state.json survived (users persisted), server re-bound on relaunch.
 - build-release.yml moved to x86 runner: apktool's bundled aapt2 is x86-only; arm64-native EXECUTION stays in test-redroid per project requirement.
 - main branch now carries the user's engine-source archive uploads — all project work pushes to local-api only.
+
+## Session 5 — Phase 2 complete: game catalog + economy + social are state-backed (2026-10-04)
+
+- Fresh sandbox: prior artifacts (APK/jadx out) were gone — restored toolchain
+  (jadx 1.5.6) + base APK from release asset, re-decompiled 4 dexes per-dex.
+- Client-first analysis from decompiled sources: IGameApi 41 endpoints' exact
+  response types (Game entity fields, PageData/TypePageData wrappers,
+  GameRankingInfo, Dispatch, MiniGameToken, DailySignInfo map first..seventh,
+  RechargeEntity/AdsSignReward/BuyVipEntity/VipSubInfo, Friend,
+  RecommendFriendEntity). Call sites: MainModel (bc.java) fires
+  recentlyPlayList/checkAppVersion/loadAppConfig/dailySignIn/mail/VIP;
+  DiscoverGameModel (m.java) needs TypePageData.typeId echoed + PageData
+  paging + sortType online/new/appreciate; greendao cache merges network rows.
+- Implemented Phase 2 (45+ new state-backed handlers):
+  * Catalog: /game/api/v1/games, revision/list/{by/condition,more,recommend},
+    v2/recommendation(+type), games/ugc, all/open/party, category/list
+  * Detail: v1+v2 games/{id}, warmup/{id}/languages/{lang}, prop shop
+    (/shop/api/v2/shop/game/props/new), game rank + uses/rank boards,
+    party config, chat rooms (persistent ids), appreciation (praise++)
+  * Tokens: v2/game/auth + flow/game/auth + v1/game-map → dynamic
+    token/timestamp (dispUrl empty until GameServer phase — documented)
+  * Economy: daily sign-in (GET map / PUT claim → real gold credits,
+    7-slot cycle), daily ads task (+200 golds, 5/day cap), sign ads reward
+    (+300 golds, 3/day cap) — wallets update and persist
+  * Social: friend pages (valid empty PageData), friend recommendations from
+    real accounts + persistent citizens pool, VIP info, subscribe info, mail/new
+- New GameCatalog: generated-once + persisted (6 categories / 42 games / 36
+  citizens / per-game shops+rank boards), onlineNumber drift per boot.
+  StateStore: root() accessor, per-user state (playedGames, signIns, adRewards),
+  award()/recordPlay()/recentGames().
+- Router upgrade: RoutingTable.match() now captures {path} params →
+  Handlers.Ctx.pathParam(). Fixed regex-escape regression caught by host tests.
+- Host rig: 70/70 PASS (Phase 2 assertions: paging/sorting/filtering, model
+  shapes, unknown-game code=0, wallet credit math, restart persistence,
+  321-route sweep).
+- UI automation: Phase A now asserts the APP ITSELF pulls game/shop data from
+  the embedded server; Phase C exercises catalog/detail/categories/sign-in/
+  friends/shop/rank through adb-forward (deterministic).
+- build_server_dex.sh now globs sources (GameCatalog.java would have been
+  silently dropped by the fixed list).

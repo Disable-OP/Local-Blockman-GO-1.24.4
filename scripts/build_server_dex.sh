@@ -35,16 +35,11 @@ fetch https://repo1.maven.org/maven2/org/json/json/20231013/json-20231013.jar "$
 echo "[1/3] compiling java sources (ecj)"
 rm -rf "$OUT/classes" "$OUT/host" "$OUT/dex"
 mkdir -p "$OUT/classes" "$OUT/host" "$OUT/dex"
+SRCS=$(find "$SRC/com/localapi" -name '*.java' ! -name 'HostTest.java')
 java -Xmx900m -jar "$ECJ" -nowarn -source 8 -target 8 \
   -cp "$NANO:$STUBS:$JSON" \
   -d "$OUT/classes" \
-  "$SRC/com/localapi/LocalServer.java" \
-  "$SRC/com/localapi/LocalHttpd.java" \
-  "$SRC/com/localapi/Handlers.java" \
-  "$SRC/com/localapi/StateStore.java" \
-  "$SRC/com/localapi/RoutingTable.java" \
-  "$SRC/com/localapi/L.java" \
-  "$SRC/com/localapi/HostTest.java" 1>&2
+  $SRCS 1>&2
 
 # host test classes get the real org.json on the runtime classpath (device has
 # org.json in the framework; the JVM does not)

@@ -54,3 +54,18 @@ Retrofit + Gson expect JSON bodies; errors follow the app's `BaseResponse` shape
 ## 7. Testing (Redroid, arm64-native)
 
 `.github/workflows/test-redroid.yml`: `ubuntu-24.04-arm` runner → `modprobe binder_linux` → `redroid/redroid:12.0.0-latest` (arm64 variant matches arm64-v8a-only APK — no translation) → adb wait-for-boot → install APK → launch `StartActivity` → assert process alive + collect logcat artifacts on failure.
+
+## Phase status (updated this session)
+
+- Phase 0 pipeline: DONE (URL rewiring + CI build/release/redroid)
+- Phase 1 auth & shell: DONE (session 4; 21 state-backed handlers)
+- Phase 2 economy & catalog: DONE this session — 45+ state-backed handlers
+  (game catalog pages/detail/warmup/categories/rank boards/prop shop/chat
+  rooms/appreciation, daily sign-in + ad rewards crediting real wallets,
+  friend recommendations from persistent citizens pool, VIP/mail).
+  Host rig 70/70 PASS incl. 321-route sweep + restart persistence.
+- Phase 3 social/tribe/scrap/decoration: NEXT (IScrapApi 16, IDecorationApi 17,
+  IShopApi dress shop, tribe/mailbox lists)
+- Phase 4 game runtime: dispatch/join (Dispatch model, MiniGameToken.dispUrl)
+  hands the client a game-server address — needs the Engine 10068 GameServer
+  phase; API surface (token/dispatch) already state-backed with real tokens.

@@ -42,3 +42,20 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 ## Auth headers the app sends (server must accept)
 
 `Access-Token`, `userId`, `appVersion`, `packageName`, `androidVersion`, `OS: android` (from BaseUrlInterceptor). Token comes from login response — find the exact JSON keys by reading the login response model in jadx sources.
+
+## Session 5 delta (read after WORKLOG)
+
+- Phase 2 DONE: catalog/detail/shop/rank/daily/social all state-backed.
+  70/70 host tests; see docs/ENDPOINTS.md implementation table.
+- Next highest-value gaps (priority order):
+  1. Phase 3: IScrapApi (16 scrap-exchange endpoints) + IDecorationApi (17) +
+     IShopApi dress shop (14) — models in com/sandboxol/{center,decorate}/entity;
+     decoration "using" endpoints return the user's worn decorations (state).
+  2. Tribe/mailbox/msg list endpoints (obj defaults today) → real empty-state
+     objects or generated content.
+  3. Phase 4 prep: Dispatch shape is known (gAddr/dispUrl/mapUrl...) — the join
+     flow needs Engine 10068 GameServer addresses; defer until GameServer phase.
+  4. Keep CI green; tag v* to ship new APKs (build-release only triggers on tags).
+- Recreate sandbox artifacts if missing: base APK is release asset
+  "base-apk-1.24.4.apk" (v0.1.0-pipeline); jadx 1.5.6 from GitHub releases;
+  decompile per-dex with -Xmx2400m (4GB RAM sandbox).

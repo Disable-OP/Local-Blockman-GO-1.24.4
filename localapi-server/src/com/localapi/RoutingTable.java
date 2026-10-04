@@ -68,31 +68,31 @@ public final class RoutingTable {
         "GET /decoration/api/v1/decoration/versions|obj",
         "GET /decoration/api/v1/decorations/using|list",
         "GET /decoration/api/v1/new/decorations/check/resource|obj",
-        "GET /friend/api/v1/friends|obj",
-        "GET /friend/api/v1/friends/follow|obj",
-        "GET /friend/api/v1/friends/recommendation|list",
-        "GET /friend/api/v1/friends/recommendation/new|list",
-        "GET /friend/api/v1/friends/requests|obj",
+        "GET /friend/api/v1/friends|H:friendList",
+        "GET /friend/api/v1/friends/follow|H:followFriendsList",
+        "GET /friend/api/v1/friends/recommendation|H:friendRecommendation",
+        "GET /friend/api/v1/friends/recommendation/new|H:friendRecommendation",
+        "GET /friend/api/v1/friends/requests|H:friendRequestsList",
         "GET /friend/api/v2/friends/status|obj",
-        "GET /game/api/v1/category/list/by/language|list",
-        "GET /game/api/v1/flow/game/auth|obj",
-        "GET /game/api/v1/game/revision/list/by/condition|obj",
-        "GET /game/api/v1/game/revision/list/more|obj",
-        "GET /game/api/v1/game/revision/list/recommend|list",
-        "GET /game/api/v1/games|obj",
-        "GET /game/api/v1/games/all/open/party|list",
-        "GET /game/api/v1/games/announcement/info|obj",
-        "GET /game/api/v1/games/app-engine/check-update|list",
-        "GET /game/api/v1/games/app-engine/upgrade|obj",
-        "GET /game/api/v1/games/playlist/friends|list",
-        "GET /game/api/v1/games/playlist/recently|list",
-        "GET /game/api/v1/games/resource/version|obj",
-        "GET /game/api/v1/games/stop/announcement/info|obj",
-        "GET /game/api/v1/games/ugc|obj",
+        "GET /game/api/v1/category/list/by/language|H:getGameTypeList",
+        "GET /game/api/v1/flow/game/auth|H:followGameAuth",
+        "GET /game/api/v1/game/revision/list/by/condition|H:gameListByCondition",
+        "GET /game/api/v1/game/revision/list/more|H:gameListMore",
+        "GET /game/api/v1/game/revision/list/recommend|H:gameListGuessYouLike",
+        "GET /game/api/v1/games|H:category",
+        "GET /game/api/v1/games/all/open/party|H:getAllGameIdInfo",
+        "GET /game/api/v1/games/announcement/info|H:getSystemAnnouncementInfo",
+        "GET /game/api/v1/games/app-engine/check-update|H:getGameResource",
+        "GET /game/api/v1/games/app-engine/upgrade|H:getUpgradeInfo",
+        "GET /game/api/v1/games/playlist/friends|H:friendPlayList",
+        "GET /game/api/v1/games/playlist/recently|H:recentlyPlayList",
+        "GET /game/api/v1/games/resource/version|H:resCheck",
+        "GET /game/api/v1/games/stop/announcement/info|H:getStopServiceAnnouncementInfo",
+        "GET /game/api/v1/games/ugc|H:getUGCGameList",
         "GET /game/api/v1/games/ugc/status|list",
-        "GET /game/api/v2/game/auth|obj",
-        "GET /game/api/v2/games/recommendation|list",
-        "GET /game/api/v2/games/recommendation/type|obj",
+        "GET /game/api/v2/game/auth|H:miniGameToken",
+        "GET /game/api/v2/games/recommendation|H:recommendation",
+        "GET /game/api/v2/games/recommendation/type|H:getGameByType",
         "GET /game/api/v2/party/auth|obj",
         "GET /geoinfo/api/v1/userGeoInfo|list",
         "GET /mailbox/api/v1/mail|list",
@@ -102,7 +102,7 @@ public final class RoutingTable {
         "GET /msg/api/v1/msg/group/chat/invite/count|obj",
         "GET /msg/api/v1/msg/group/chat/list|obj",
         "GET /msg/api/v1/msg/group/chat/request/list|obj",
-        "GET /pay/api/v1/sub/info/get|obj",
+        "GET /pay/api/v1/sub/info/get|H:getSubscribeInfo",
         "GET /ranking/api/v1/active/global/overall/rank|obj",
         "GET /ranking/api/v1/active/global/weekly/rank|obj",
         "GET /ranking/api/v1/active/region/overall/rank|obj",
@@ -123,12 +123,12 @@ public final class RoutingTable {
         "GET /shop/api/v1/new/shop/suit/list/info|list",
         "GET /shop/api/v1/new/shop/user/gift/suit/receive|bool",
         "GET /shop/api/v1/shop/users/vip|obj",
-        "GET /shop/api/v2/shop/game/props/new|list",
+        "GET /shop/api/v2/shop/game/props/new|H:getGameDetailShop",
         "GET /user/api/v1/app/auth-token|H:authToken",
         "GET /user/api/v1/user/id/card/status|str",
         "GET /user/api/v1/user/login/change/record|obj",
         "GET /user/api/v1/user/nickName/free|obj",
-        "GET /user/api/v1/user/player/info|obj",
+        "GET /user/api/v1/user/player/info|H:getVipInfo",
         "GET /user/api/v1/user/profile/join/switch|H:joinSwitch",
         "GET /user/api/v1/user/set-psd/param/check|num",
         "GET /user/api/v1/users/device/token|H:rongToken",
@@ -139,8 +139,8 @@ public final class RoutingTable {
         "GET /user/api/v1/videostars/config/get|obj",
         "GET /user/api/v1/videostars/getbycode|obj",
         "GET /user/api/v2/users/verify/user/security/settings|obj",
-        "GET /v1/game-map|obj",
-        "GET /v1/game-res|obj",
+        "GET /v1/game-map|H:miniGameMap",
+        "GET /v1/game-res|H:getResInfo",
         "GET /video/api/v1/app/video/detail/info|obj",
         "GET /video/api/v1/app/video/more/list|obj",
         "GET /video/api/v1/app/video/tag/list|obj",
@@ -161,7 +161,7 @@ public final class RoutingTable {
         "POST /datareport/api/v1/event/report|none",
         "POST /datareport/api/v1/funnel/event/report|none",
         "POST /friend/api/v1/friends|none",
-        "POST /game/api/v1/game/chat/room|obj",
+        "POST /game/api/v1/game/chat/room|H:getChatRoom",
         "POST /geoinfo/api/v1/userGeoInfo|none",
         "POST /msg/api/v1/msg/group/chat/add|obj",
         "POST /msg/api/v1/msg/group/chat/apply|none",
@@ -246,7 +246,7 @@ public final class RoutingTable {
         "PUT /user/api/v1/user/device/id|H:ackPut",
         "PUT /user/api/v1/user/info|H:changeInfo",
         "PUT /user/api/v1/user/login-out|H:logout",
-        "PUT /user/api/v1/users/daily/sign/ads|obj",
+        "PUT /user/api/v1/users/daily/sign/ads|H:getSignAdsReward",
         "PUT /user/api/v1/videostars/cashapply|obj",
         "PUT /user/api/v1/videostars/exchange|obj",
         "PUT /user/api/v2/user/nickName|H:changeNickName",
@@ -280,15 +280,15 @@ public final class RoutingTable {
         "GET /friend/api/v2/friends/{friendId}|obj",
         "GET /game/api/v1/game/{gameId}/turntable|list",
         "GET /game/api/v1/game/{gameId}/turntable/props|str",
-        "GET /game/api/v1/games/config/app/{gameId}|obj",
+        "GET /game/api/v1/games/config/app/{gameId}|H:getPartyCreateGameConfig",
         "GET /game/api/v1/games/team/member/{teamId}|list",
-        "GET /game/api/v1/games/update/list/{userId}|obj",
-        "GET /game/api/v1/games/update/tip/info/app/{gameId}|obj",
-        "GET /game/api/v1/games/warmup/{gameId}/languages/{language}|obj",
-        "GET /game/api/v1/games/{gameId}|obj",
-        "GET /game/api/v1/games/{gameId}/rank|obj",
-        "GET /game/api/v1/games/{gameId}/uses/rank|obj",
-        "GET /game/api/v2/games/{gameId}|obj",
+        "GET /game/api/v1/games/update/list/{userId}|H:getGameUpdateContentList",
+        "GET /game/api/v1/games/update/tip/info/app/{gameId}|H:getGameUpdateContent",
+        "GET /game/api/v1/games/warmup/{gameId}/languages/{language}|H:gamePreheat",
+        "GET /game/api/v1/games/{gameId}|H:miniGameDetail",
+        "GET /game/api/v1/games/{gameId}/rank|H:getGameRank",
+        "GET /game/api/v1/games/{gameId}/uses/rank|H:getGameMyRank",
+        "GET /game/api/v2/games/{gameId}|H:gameDetail",
         "GET /geoinfo/api/v1/user/game/career/data/{userId}|obj",
         "GET /shop/api/v1/new/shop/decorations/{typeId}|list",
         "GET /shop/api/v1/new/shop/suit/info/{suitId}|obj",
@@ -298,8 +298,8 @@ public final class RoutingTable {
         "GET /user/api/v1/clan/decoration/advertising/{userId}|obj",
         "GET /user/api/v1/data/frequently/game/{userId}|list",
         "GET /user/api/v1/users/dairy/tasks/{type}|obj",
-        "GET /user/api/v1/users/{userId}/daily/tasks/ads/config|obj",
-        "GET /user/api/v2/users/{userId}/daily/sign/in|obj",
+        "GET /user/api/v1/users/{userId}/daily/tasks/ads/config|H:getAdsRewardInfo",
+        "GET /user/api/v2/users/{userId}/daily/sign/in|H:dailySignIn",
         "GET /video/api/v1/app/video/list/{type}|obj",
         "POST /activity/api/{version}/collect/exchange/scrap/send|str",
         "POST /activity/api/{version}/collect/exchange/user/combine/card|obj",
@@ -318,25 +318,52 @@ public final class RoutingTable {
         "PUT /friend/api/v1/friends/{friendId}/agreement|none",
         "PUT /friend/api/v1/friends/{friendId}/rejection|none",
         "PUT /game/api/v1/game/{gameId}/turntable|num",
-        "PUT /game/api/v1/games/{gameId}/appreciation|num",
+        "PUT /game/api/v1/games/{gameId}/appreciation|H:appreciation",
         "PUT /shop/api/v1/shop/decorations/buy/{decorationId}|none",
         "PUT /shop/api/v2/pay/game/{gameId}|obj",
         "PUT /user/api/v1/clan/decoration/advertising/{userId}|obj",
         "PUT /user/api/v1/users/tasks/{type}|obj",
-        "PUT /user/api/v1/users/{userId}/daily/tasks/ads|obj",
-        "PUT /user/api/v2/users/{userId}/daily/sign/in|none",
+        "PUT /user/api/v1/users/{userId}/daily/tasks/ads|H:getAdsReward",
+        "PUT /user/api/v2/users/{userId}/daily/sign/in|H:clickSignIn",
     };
 
     private RoutingTable() {}
 
+    /** Match result: handler kind + path parameters captured from the template. */
+    public static final class Match {
+        public final String kind;
+        public final java.util.Map<String, String> params = new java.util.HashMap<>();
+        Match(String kind) { this.kind = kind; }
+    }
+
     /** Exact verb+template match; literals win because they sort first. Returns kind or null. */
     public static String lookup(String verb, String path) {
+        Match m = match(verb, path);
+        return m == null ? null : m.kind;
+    }
+
+    /** Full match incl. {placeholder} captures. Returns null when nothing matches. */
+    public static Match match(String verb, String path) {
         for (String entry : ROUTES) {
             int bar = entry.indexOf('|');
             String verbPath = entry.substring(0, bar);
             int sp = verbPath.indexOf(' ');
             if (!verbPath.substring(0, sp).equals(verb)) continue;
-            if (matches(verbPath.substring(sp + 1), path)) return entry.substring(bar + 1);
+            String tmpl = verbPath.substring(sp + 1);
+            if (!matches(tmpl, path)) continue;
+            Match m = new Match(entry.substring(bar + 1));
+            // capture {name} segments in template order
+            java.util.regex.Matcher nameRx =
+                    java.util.regex.Pattern.compile("\\{([^}]+)\\}").matcher(tmpl);
+            java.util.regex.Matcher valRx =
+                    java.util.regex.Pattern.compile(tmpl.replaceAll("\\{[^}]+\\}", "([^/]+)")).matcher(path);
+            if (valRx.find()) {
+                int gi = 1;
+                while (nameRx.find()) {
+                    m.params.put(nameRx.group(1), valRx.group(gi++));
+                }
+            }
+            return m;
         }
         return null;
     }

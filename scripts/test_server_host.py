@@ -162,6 +162,173 @@ def main():
         check("join/switch bool", js.get("code") == 1
               and isinstance(js.get("data"), bool), str(js)[:100])
 
+        print("== Phase 2: game catalog ==")
+        cond = call("GET", "/game/api/v1/game/revision/list/by/condition"
+                    "?sortType=online&filterTypeId=0&pageNo=1&pageSize=10&os=android&isFilter=1",
+                    headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        check("listByCondition code==1 TypePageData",
+              cond.get("code") == 1 and "pageInfo" in cond.get("data", {})
+              and "typeId" in cond.get("data", {}), str(cond)[:120])
+        page1 = cond.get("data", {}).get("pageInfo", {})
+        check("listByCondition page has games",
+              len(page1.get("data", [])) == 10 and page1.get("totalSize", 0) >= 40
+              and page1.get("totalPage", 0) >= 4, str(page1)[:150])
+        check("game model fields", all(k in page1["data"][0] for k in
+              ("gameId", "gameTitle", "typeId", "onlineNumber", "gameTypes",
+               "praiseNumber", "latestResVersions", "isUgcGame")), str(page1["data"][0])[:200])
+        cond2 = call("GET", "/game/api/v1/game/revision/list/by/condition"
+                     "?sortType=online&filterTypeId=0&pageNo=2&pageSize=10&os=android",
+                     headers={"language": "en"})
+        p2 = cond2.get("data", {}).get("pageInfo", {}).get("data", [])
+        check("paging distinct pages", p2 and p2[0]["gameId"] != page1["data"][0]["gameId"],
+              str(cond2)[:120])
+        online_vals = [g["onlineNumber"] for g in page1["data"]]
+        check("sortType=online desc", online_vals == sorted(online_vals, reverse=True),
+              str(online_vals[:6]))
+        cf = call("GET", "/game/api/v1/game/revision/list/by/condition"
+                  "?sortType=online&filterTypeId=101&pageNo=1&pageSize=10&os=android")
+        d_cf = cf.get("data", {})
+        check("filterTypeId=101 only that category",
+              d_cf.get("typeId") == 101 and all(g["typeId"] == 101 for g in d_cf.get("pageInfo", {}).get("data", []))
+              and len(d_cf.get("pageInfo", {}).get("data", [])) > 0, str(cf)[:150])
+
+        more = call("GET", "/game/api/v1/game/revision/list/more?pageNo=1&pageSize=5&isFilter=1&os=android")
+        check("listMore PageData", more.get("code") == 1
+              and len(more.get("data", {}).get("data", [])) == 5
+              and "pageInfo" not in more.get("data", {}), str(more)[:120])
+        rec = call("GET", "/game/api/v1/game/revision/list/recommend?isFilter=1&os=android")
+        check("guessYouLike list", rec.get("code") == 1
+              and isinstance(rec.get("data"), list) and len(rec["data"]) > 0, str(rec)[:100])
+        rec2 = call("GET", "/game/api/v2/games/recommendation", headers={"language": "en"})
+        check("recommendation v2 list", rec2.get("code") == 1 and len(rec2.get("data", [])) > 0,
+              str(rec2)[:100])
+        cat = call("GET", "/game/api/v1/games?pageNo=1&pageSize=10&orderType=complex&typeId=0&order=&isPublish=1",
+                   headers={"language": "en"})
+        check("category PageData", cat.get("code") == 1
+              and len(cat.get("data", {}).get("data", [])) == 10, str(cat)[:120])
+        ugc = call("GET", "/game/api/v1/games/ugc?language=en&pageSize=20&pageNo=1&os=android")
+        check("ugc list all ugc", ugc.get("code") == 1
+              and all(g["isUgcGame"] == 1 for g in ugc.get("data", {}).get("data", []))
+              and len(ugc.get("data", {}).get("data", [])) > 0, str(ugc)[:120])
+        byt = call("GET", "/game/api/v2/games/recommendation/type?type=PvP%20Arena&pageNo=1&pageSize=10&os=android")
+        check("getGameByType", byt.get("code") == 1
+              and len(byt.get("data", {}).get("data", [])) > 0, str(byt)[:120])
+        recent = call("GET", "/game/api/v1/games/playlist/recently?isFilter=1",
+                      headers={"Access-Token": tok1, "language": "en"})
+        check("recentlyPlayList fresh empty", recent.get("code") == 1 and recent.get("data") == [],
+              str(recent)[:100])
+
+        print("== Phase 2: game detail ==")
+        gid = page1["data"][0]["gameId"]
+        gd = call("GET", "/game/api/v2/games/%s?appVersion=4003" % gid,
+                  headers={"language": "en", "engineVersion": "1"})
+        check("gameDetail v2", gd.get("code") == 1 and gd.get("data", {}).get("gameId") == gid
+              and "gameDetail" in gd["data"], str(gd)[:150])
+        gd1 = call("GET", "/game/api/v1/games/%s" % gid, headers={"language": "en"})
+        check("miniGameDetail v1", gd1.get("code") == 1 and gd1["data"].get("gameId") == gid,
+              str(gd1)[:120])
+        pre = call("GET", "/game/api/v1/games/warmup/%s/languages/en" % gid)
+        check("gamePreheat shape", pre.get("code") == 1 and pre.get("data", {}).get("gameId") == gid
+              and pre["data"].get("isPublish") == 1
+              and "gameTitle" in pre["data"], str(pre)[:150])
+        gnf = call("GET", "/game/api/v2/games/99999999")
+        check("gameDetail unknown -> code 0", gnf.get("code") == 0, str(gnf)[:100])
+
+        print("== Phase 2: categories, ranks, shop ==")
+        cats = call("GET", "/game/api/v1/category/list/by/language", headers={"language": "en"})
+        check("category list", cats.get("code") == 1 and len(cats.get("data", [])) >= 6
+              and all("typeId" in c and "typeName" in c for c in cats["data"]), str(cats)[:150])
+        rank = call("GET", "/game/api/v1/games/%s/rank?type=complex&pageNo=1&pageSize=20" % gid)
+        rd = rank.get("data", {})
+        check("gameRank RankInfo", rank.get("code") == 1 and "pageInfo" in rd
+              and "remainTime" in rd and len(rd.get("pageInfo", {}).get("data", [])) > 0
+              and all("integral" in r and "rank" in r for r in rd["pageInfo"]["data"]), str(rank)[:200])
+        myrank = call("GET", "/game/api/v1/games/%s/uses/rank?type=complex" % gid,
+                      headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("gameMyRank", myrank.get("code") == 1
+              and myrank.get("data", {}).get("userId") == uid1, str(myrank)[:120])
+        shop = call("GET", "/shop/api/v2/shop/game/props/new?gameId=%s&engineVersion=1" % gid,
+                    headers={"userId": str(uid1), "Access-Token": tok1, "language": "en"})
+        check("gameDetailShop items", shop.get("code") == 1 and len(shop.get("data", [])) >= 3
+              and all("price" in p and "currency" in p for p in shop["data"]), str(shop)[:150])
+        ann = call("GET", "/game/api/v1/games/announcement/info", headers={"language": "en"})
+        stop = call("GET", "/game/api/v1/games/stop/announcement/info", headers={"language": "en"})
+        check("announcements hidden", ann.get("data", {}).get("isShow") is False
+              and stop.get("data", {}).get("isShow") is False, str(ann)[:100])
+        openp = call("GET", "/game/api/v1/games/all/open/party?appVersion=4003",
+                     headers={"language": "en"})
+        check("all open party", openp.get("code") == 1 and len(openp.get("data", [])) > 0
+              and all("gameId" in a for a in openp["data"]), str(openp)[:100])
+
+        print("== Phase 2: daily economy ==")
+        before = call("POST", "/user/api/v1/login", {"uid": "qa_user1", "password": "pw1", "imei": "dev1"})
+        golds0 = before.get("data", {}).get("golds", 0)
+        si = call("GET", "/user/api/v2/users/%d/daily/sign/in" % uid1,
+                  headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("dailySignIn map first..seventh", si.get("code") == 1
+              and set(si.get("data", {}).keys()) == {"first", "second", "third", "fourth",
+                                                     "fifth", "sixth", "seventh"}, str(si)[:150])
+        check("signin unclaimed status", si["data"]["first"]["status"] == 0
+              and si["data"]["first"]["quantity"] > 0, str(si["data"]["first"])[:100])
+        cs = call("PUT", "/user/api/v2/users/%d/daily/sign/in" % uid1,
+                  headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("clickSignIn ok", cs.get("code") == 1, str(cs)[:100])
+        after = call("POST", "/user/api/v1/login", {"uid": "qa_user1", "password": "pw1", "imei": "dev1"})
+        golds1 = after.get("data", {}).get("golds", 0)
+        check("sign-in credited wallet", golds1 == golds0 + 200, "golds %d -> %d" % (golds0, golds1))
+        si2 = call("GET", "/user/api/v2/users/%d/daily/sign/in" % uid1,
+                   headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("signin claimed status", si2["data"]["first"]["status"] == 1, str(si2["data"]["first"])[:100])
+        ad = call("PUT", "/user/api/v1/users/%d/daily/tasks/ads" % uid1,
+                  headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("ads task reward RechargeEntity", ad.get("code") == 1
+              and ad.get("data", {}).get("rewardQuantity") == 200
+              and ad.get("data", {}).get("golds") == golds1 + 200, str(ad)[:150])
+        sar = call("PUT", "/user/api/v1/users/daily/sign/ads", None,
+                   headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("sign ads reward", sar.get("code") == 1
+              and sar.get("data", {}).get("quantity") == 300, str(sar)[:120])
+        fri = call("GET", "/friend/api/v1/friends?pageNo=1&pageSize=10",
+                   headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("friendList empty PageData", fri.get("code") == 1
+              and fri.get("data", {}).get("data") == [] and fri["data"]["totalSize"] == 0,
+              str(fri)[:100])
+        frec = call("GET", "/friend/api/v1/friends/recommendation", headers={"language": "en"})
+        check("friendRecommendation non-empty", frec.get("code") == 1
+              and len(frec.get("data", [])) > 0
+              and all("userId" in f and "nickName" in f for f in frec["data"]), str(frec)[:150])
+        vip = call("GET", "/user/api/v1/user/player/info", headers={"Access-Token": tok1})
+        check("vip info", vip.get("code") == 1 and vip.get("data", {}).get("vip") == 0,
+              str(vip)[:100])
+        sub = call("GET", "/pay/api/v1/sub/info/get?appType=android")
+        check("sub info", sub.get("code") == 1 and "playerInfo" in sub.get("data", {})
+              and sub["data"].get("subInfo") == [], str(sub)[:120])
+        mail = call("GET", "/mailbox/api/v1/mail/new")
+        check("mail/new bool", mail.get("code") == 1 and mail.get("data") is False, str(mail)[:80])
+
+        print("== Phase 2: rooms, tokens, misc ==")
+        room = call("POST", "/game/api/v1/game/chat/room?roomName=qa-room", {})
+        room2 = call("POST", "/game/api/v1/game/chat/room?roomName=qa-room", {})
+        check("chatRoom stable id", room.get("code") == 1 and room.get("data", {}).get("roomId")
+              and room["data"]["roomId"] == room2.get("data", {}).get("roomId"), str(room)[:100])
+        app2 = call("PUT", "/game/api/v1/games/%s/appreciation" % gid)
+        check("appreciation int", app2.get("code") == 1
+              and isinstance(app2.get("data"), int) and app2["data"] > 0, str(app2)[:100])
+        tok = call("GET", "/game/api/v2/game/auth?typeId=1&targetId=%d&gameVersion=1" % uid1,
+                   headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("miniGameToken", tok.get("code") == 1 and tok.get("data", {}).get("token")
+              and tok["data"].get("timestamp", 0) > 0
+              and tok["data"].get("dispUrl") == "", str(tok)[:150])
+        rc = call("GET", "/game/api/v1/games/resource/version?ver=1&platform=android")
+        check("resCheck", rc.get("code") == 1 and rc.get("data", {}).get("update") is False,
+              str(rc)[:100])
+        upd = call("GET", "/game/api/v1/games/app-engine/upgrade?engineVersion=1&resVersion=1&gameType=x")
+        check("appEngine no upgrade", upd.get("code") == 1
+              and upd.get("data", {}).get("needUpgrade") is False, str(upd)[:100])
+        pc = call("GET", "/game/api/v1/games/config/app/%s" % gid)
+        check("partyCreateGameConfig", pc.get("code") == 1
+              and pc.get("data", {}).get("memberMax", 0) > 0, str(pc)[:100])
+
         print("== route-table sweep (all routes answer the envelope) ==")
         sys.path.insert(0, os.path.join(REPO, "scripts"))
         sweep_miss = []
@@ -200,6 +367,14 @@ def main():
         lg = call("POST", "/user/api/v1/login", {"uid": "qa_user1", "password": "pw1"})
         check("state persists across restart", lg.get("code") == 1
               and lg.get("data", {}).get("userId") == uid1, str(lg)[:150])
+        cond = call("GET", "/game/api/v1/game/revision/list/by/condition"
+                    "?sortType=online&filterTypeId=0&pageNo=1&pageSize=10&os=android")
+        check("catalog persists across restart", cond.get("code") == 1
+              and len(cond.get("data", {}).get("pageInfo", {}).get("data", [])) == 10,
+              str(cond)[:120])
+        si3 = call("GET", "/user/api/v2/users/%d/daily/sign/in" % uid1)
+        check("sign-in state persists", si3.get("code") == 1
+              and si3.get("data", {}).get("first", {}).get("status") == 1, str(si3)[:120])
     finally:
         proc2.terminate()
         try:

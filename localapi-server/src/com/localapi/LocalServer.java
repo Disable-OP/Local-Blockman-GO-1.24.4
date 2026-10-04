@@ -27,6 +27,8 @@ public final class LocalServer {
                 L.i("boot: starting local api on 127.0.0.1:" + PORT
                         + (attempt > 0 ? " (retry " + attempt + ")" : ""));
                 StateStore store = new StateStore(context.getApplicationContext().getFilesDir());
+                GameCatalog.ensure(store);   // generate catalog once, then it's plain state
+                GameCatalog.drift(store);    // evolve online counts across boots
                 LocalHttpd server = new LocalHttpd(PORT, store);
                 server.start(15000, true);
                 httpd = server;

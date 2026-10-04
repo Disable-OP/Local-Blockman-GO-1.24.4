@@ -309,3 +309,81 @@
 | POST | `/activity/api/v1/bgtube/sign` | `postSignUp` |
 | POST | `/activity/api/v1/bgtube/video/link` | `postVideoLink` |
 
+
+# Implementation status (embedded local API server)
+
+The embedded server (localapi-server/, NanoHTTPD on 127.0.0.1:18080) serves all
+321 routes. State-backed handlers return real, persistent, dynamically
+generated data; everything else answers a schema-true default so Gson models
+never crash (list endpoints return [], obj endpoints return {} — matching the
+HttpResponse envelope {code:1, message, data}).
+
+## State-backed handlers (Phase 1 + Phase 2)
+
+| Route | Handler | Behavior / state |
+|---|---|---|
+| POST /user/api/v1/login (+/app/login, v2) | login | password check, per-user token, wallet, isFirstLogin |
+| POST /user/api/v1/register | register | new account, unique-uid check, token |
+| POST /user/api/v1/user/register | userRegister | role-make: nickName/sex onto authed user |
+| POST /user/api/v1/visitor | visitor | stable per-imei visitor + Visitor{id, accessToken, nickName} |
+| POST /user/api/v1/app/user/tourist/login | tourist | stable per-device guest |
+| GET /user/api/v1/app/auth-token | authToken | fresh token, hasPassword, hasBinding |
+| POST /user/api/v1/app/renew | renew | same as auth-token |
+| PUT /user/api/v1/user/login-out | logout | drops token |
+| GET /user/api/v1/users/device/token | rongToken | HttpResponse<String> chat token |
+| PUT /user/api/v2/user/nickName | changeNickName | persists nickName |
+| PUT /user/api/v1/user/info + POST details/info | changeInfo | nickName/sex/details/birthday/picUrl |
+| GET /config/files/blockymods-check-version | checkVersion | no-update (newVersionCode 4003) |
+| GET /config/files/blockmods-config-v1 | appConfig | all external content off |
+| GET /game/api/v1/games | category | PageData<Game> — filter by typeId, sort by orderType/order |
+| GET /game/api/v1/game/revision/list/by/condition | gameListByCondition | TypePageData<Game> — sortType (online/new/appreciate/complex) + filterTypeId + paging |
+| GET /game/api/v1/game/revision/list/more | gameListMore | PageData<Game> |
+| GET /game/api/v1/game/revision/list/recommend | gameListGuessYouLike | List<Game> top-praised |
+| GET /game/api/v2/games/recommendation | recommendation | List<Game> top-online |
+| GET /game/api/v2/games/recommendation/type | getGameByType | PageData<Game> by category name/sortType |
+| GET /game/api/v1/games/ugc | getUGCGameList | PageData<Game> isUgcGame=1 |
+| GET /game/api/v1/games/playlist/recently | recentlyPlayList | per-user played history (state; empty until Phase 4 dispatch records plays) |
+| GET /game/api/v1/games/playlist/friends | friendPlayList | [] (no friends yet — real empty state) |
+| GET /game/api/v1/games/{gameId} + v2 | miniGameDetail / gameDetail | full Game model or code=0 "game not found" |
+| GET /game/api/v1/games/warmup/{gameId}/languages/{lang} | gamePreheat | GameWarmUpResponse from catalog |
+| GET /game/api/v1/category/list/by/language | getGameTypeList | 6 generated categories {typeId,typeName,sortType} |
+| GET /game/api/v1/games/announcement/info (+stop) | announcements | isShow=false |
+| GET /game/api/v1/games/all/open/party | getAllGameIdInfo | List<AllGameIdInfo> from isOpenParty=1 games |
+| GET /game/api/v1/games/{gameId}/rank | getGameRank | RankInfo{pageInfo: rank rows, remainTime} — persistent boards |
+| GET /game/api/v1/games/{gameId}/uses/rank | getGameMyRank | requesting user's CampaignRank |
+| GET /shop/api/v2/shop/game/props/new | getGameDetailShop | persistent per-game prop list (generated once) |
+| GET /game/api/v1/games/config/app/{gameId} | getPartyCreateGameConfig | member limits |
+| POST /game/api/v1/game/chat/room | getChatRoom | persistent roomId per roomName |
+| PUT /game/api/v1/games/{gameId}/appreciation | appreciation | increments praiseNumber, returns new total |
+| GET /game/api/v2/game/auth (+/flow/game/auth, /v1/game-map) | miniGameToken | dynamic token+timestamp; dispUrl="" until GameServer phase |
+| GET /v1/game-res | getResInfo | {durl:"", resVersion:1} |
+| GET /game/api/v1/games/resource/version | resCheck | {update:false} |
+| GET /game/api/v1/games/app-engine/upgrade | getUpgradeInfo | {needUpgrade:false} |
+| GET /game/api/v1/games/app-engine/check-update | getGameResource | [] (nothing to update) |
+| PUT /game/api/v1/games/engine | countUploadVersion | ack (no data) |
+| GET /user/api/v2/users/{userId}/daily/sign/in | dailySignIn | Map first..seventh DailySignInfo w/ claim status |
+| PUT /user/api/v2/users/{userId}/daily/sign/in | clickSignIn | claims today's slot, credits 200..3000 golds (7-day cycle) |
+| PUT /user/api/v1/users/{userId}/daily/tasks/ads | getAdsReward | +200 golds (cap 5/day), RechargeEntity |
+| PUT /user/api/v1/users/daily/sign/ads | getSignAdsReward | +300 golds (cap 3/day), AdsSignReward |
+| GET /user/api/v1/users/{userId}/daily/tasks/ads/config | getAdsRewardInfo | {currency:1, quantity:200} |
+| GET /friend/api/v1/friends (+requests, follow) | friend pages | valid empty PageData (fresh account) |
+| GET /friend/api/v1/friends/recommendation[/new] | friendRecommendation | real accounts + persistent citizens pool |
+| GET /user/api/v1/user/player/info | getVipInfo | BuyVipEntity {vip, gDiamonds} |
+| GET /pay/api/v1/sub/info/get | getSubscribeInfo | VipSubInfo {playerInfo, subInfo:[]} |
+
+## Generated catalog (dynamic, persisted in state.json)
+
+On first boot the server generates and PERSISTS: 6 categories, 42 games
+(generated names/attributes, ids 5001+, mix of UGC/party/shop flags), 36
+citizen players (rank boards + friend recommendations), per-game prop shops,
+per-game rank boards. onlineNumber drifts per boot hour. Nothing is hardcoded
+per-request; after generation the catalog is ordinary editable server state.
+Delete state.json to regenerate.
+
+## Known limitations / uncertainty (documented, not assumed)
+
+- DailySignInfo.status semantics (claimed vs unclaimed) are inferred; UI cosmetics only.
+- GameDetailShop.currency values (1=golds, 2=diamonds) inferred from usage sites.
+- gameId is a String in the client model — catalog ids are numeric strings.
+- Game join/dispatch (POST /v1/dispatch, Dispatch model) is Phase 4: needs the
+  game-service layer. Token endpoints currently return empty dispUrl.
