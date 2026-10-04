@@ -448,3 +448,16 @@ Delete state.json to regenerate.
 | GET /files/<id> (server extension) | file serving | returns stored upload bytes with the stored mime type (this route is our own; the client fetches it as a plain URL, not Retrofit) |
 | GET /config/files/name-sensitive-word-config | sensitiveWords | persisted local sensitive-word list; nickNameExist filters against it for real |
 
+
+## Phase 5b handlers (geoinfo + region ranking + party auth)
+
+| Route | Handler | Behavior |
+|---|---|---|
+| POST /geoinfo/api/v1/userGeoInfo?longitude=&latitude= | postUserGeoInfo | stores the user's real coordinates in user state (strict auth) |
+| GET /geoinfo/api/v1/userGeoInfo | userGeoList | UserMapInfo list: requester (if geo posted) + citizens with lazy persisted coordinates; x/y equirectangular projection, distance = km (haversine) from the requester |
+| GET /geoinfo/api/v1/user/game/career/data/{userId} | careerData | UserGameCareerTotalData with truthful zero counters (no engine sessions yet) + gameTimeMap keys from the real played history |
+| GET /ranking/api/v1/ranking/region/home/page/info?rankType= | regionRankHome | RankHomePageInfoResponse: top-3 podium from real wallets/activity/tribe-currency across users+citizens; remainingTime = ms to next Monday UTC |
+| GET /ranking/api/v1/ranking/user/info?rankType=&type=&isRegion= | userRankInfo | the requesting user's RankInfoResponse (rank + quantity from real state; types gold/gDiamond/clan/active) |
+| GET /game/api/v2/party/auth | partyAuth | PartyAuthInfo shape with partyService=127.0.0.1:18080 (host:port — the client split(":") it) + dynamic token/signature; the gRPC party transport stays offline (RongCloud-shim policy) |
+| GET /api/v1/parties/exists | partiesExists | "" (no party exists in the local world) |
+

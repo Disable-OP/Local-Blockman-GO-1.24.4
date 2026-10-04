@@ -325,3 +325,26 @@ rejection, suit shop/gift/owned/buy wallet math, upload round-trip incl.
 binary integrity, sensitive-name rejection). Coverage: 335 discovered /
 261 implemented (78%) / 74 default / 202 host-tested. CI Phase C now drives
 the dispatch bridge + suit gift on-device via adb-forward.
+
+### Phase 5b (this session): geoinfo + region ranking + party auth
+
+Client-first evidence (jadx): IGeoApi (UserMapInfo{distance, latitude,
+longitude, pic, userId, x, y}; postUserGeoInfo stores TencentLocation fix),
+IRankingApi region home (RankHomePageInfoResponse{topRankInfos:
+TopRankInfo{quantity/topName/topPic/type/userId}, remainingTime}) + user info
+(rankType "week"/"overall", types "gDiamond"/"active"/"clan"/gold),
+PartyAuthInfo{partyService host:port consumed with split(":") by the gRPC
+QuickIn/PartyList clients, partyQuerierService drives isPartyExist}.
+
+- POST/GET /geoinfo/api/v1/userGeoInfo: real per-user geo state; citizens get
+  lazily persisted coordinates; distance is a real haversine computation.
+- Career data returns truthful zero counters (no engine sessions exist);
+  gameTimeMap keys are the user's real played games.
+- Region/user rankings derive from real wallets, played-history length and
+  tribeCurrency across users + citizens; weekly variants divide by 7 and
+  remainingTime counts to the next Monday 00:00 UTC.
+- Party auth returns the PartyAuthInfo shape with loopback service addresses
+  so the host:port split never crashes; the gRPC party transport stays
+  offline per the RongCloud-shim decision (documented, not fabricated).
+
+Host rig 291/291 PASS. Coverage: 335/268/67/209 (80% implemented).

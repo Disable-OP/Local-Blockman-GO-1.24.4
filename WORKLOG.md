@@ -348,3 +348,17 @@
   dispatch returns engine gaddr, suit shop served, gift suit claimed into
   wardrobe; 56 unique LocalAPI endpoints served to the real client.
 - Releases to date now include v0.5.0-dispatch (CI-built + CI-tested).
+
+## Session 8 (cont. 2) — Phase 5b: geoinfo + region ranking + party auth (2026-10-04)
+
+- Client-first: IGeoApi UserMapInfo fields + TencentLocation poster;
+  IRankingApi RankHomePageInfoResponse{topRankInfos, remainingTime} +
+  RankInfoResponse (rankType week/overall, types gDiamond/active/clan/gold);
+  PartyAuthInfo.partyService is host:port split(":") by the gRPC clients.
+- 7 more handlers: postUserGeoInfo (real geo state, strict auth), userGeoList
+  (requester + lazy-persisted citizen coords, haversine distance, x/y
+  projection), careerData (truthful zeros + real played keys), regionRankHome
+  (top-3 from real wallets/activity/tribe-currency; reset countdown to next
+  Monday UTC), userRankInfo (real rank rows), partyAuth (loopback host:port,
+  dynamic token), partiesExists ("").
+- Host rig 291/291 PASS. Coverage 335/268/67/209 (80% implemented).

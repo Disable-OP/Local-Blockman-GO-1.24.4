@@ -53,6 +53,13 @@ HANDLERS = {
     "POST /user/api/v1/file": "uploadFile",
     "POST /user/api/{version}/directory/file": "uploadFile",
     "GET /config/files/name-sensitive-word-config": "sensitiveWords",
+    "POST /geoinfo/api/v1/userGeoInfo": "postUserGeoInfo",
+    "GET /geoinfo/api/v1/userGeoInfo": "userGeoList",
+    "GET /geoinfo/api/v1/user/game/career/data/{userId}": "careerData",
+    "GET /ranking/api/v1/ranking/region/home/page/info": "regionRankHome",
+    "GET /ranking/api/v1/ranking/user/info": "userRankInfo",
+    "GET /game/api/v2/party/auth": "partyAuth",
+    "GET /api/v1/parties/exists": "partiesExists",
 }
 
 ANN = re.compile(r'@(GET|POST|PUT|DELETE)\("([^"]+)"\)')

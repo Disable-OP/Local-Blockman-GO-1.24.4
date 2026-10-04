@@ -189,10 +189,14 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   2. Remaining /config/files defaults (banner/share-reward/campaign lists,
      game-detail-to-editor, indiegame introductions) — model shapes from
      jadx first (FireConfig consumers), keep flag-gated off.
-  3. geoinfo userGeoInfo + ranking region home/user info (models in
-     com/disabngo/blockynexus/web IGeoApi/IRankingApi callers).
+  3. geoinfo + region ranking + party auth: DONE in Phase 5b (same session).
   4. videostars (5, real-money) + /video (7): stay error-driven; only
      implement if a redroid run shows the client calling them.
   5. After that: dispatch-side groundwork for the Engine phase (map download
      URLs served locally from /files/) — still NO GameServer work.
 - Tag v0.5.0-dispatch ships this phase (build-release triggers on tags only).
+
+- Phase 5b shipped same session: geoinfo (real geo state + haversine
+  distances), region/user rankings from real wallets, party auth shape with
+  loopback host:port services. Host rig 291/291. Coverage 335/268/67/209
+  (80%). Tag v0.5.1-geo ships both Phase 5 waves.

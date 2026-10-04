@@ -275,6 +275,13 @@ final class Handlers {
         if ("suitGiftReceive".equals(name)) return suitGiftReceive(ctx, store);
         if ("uploadFile".equals(name)) return uploadFile(ctx, store);
         if ("sensitiveWords".equals(name)) return sensitiveWords(ctx, store);
+        if ("postUserGeoInfo".equals(name)) return postUserGeoInfo(ctx, store);
+        if ("userGeoList".equals(name)) return userGeoList(ctx, store);
+        if ("careerData".equals(name)) return careerData(ctx, store);
+        if ("regionRankHome".equals(name)) return regionRankHome(ctx, store);
+        if ("userRankInfo".equals(name)) return userRankInfo(ctx, store);
+        if ("partyAuth".equals(name)) return partyAuth(ctx, store);
+        if ("partiesExists".equals(name)) return partiesExists(ctx, store);
         L.e("unknown handler name: " + name);
         return envelope("none", null);
     }
@@ -877,6 +884,274 @@ final class Handlers {
         store.countAdReward(u, date);
         store.award(u, "golds", 100);
         return envelope("num", "100");
+    }
+
+    // ------------------------- Phase 5b: geo / region ranking / party auth
+
+    /** POST /geoinfo/api/v1/userGeoInfo?longitude=&latitude= — store real geo. */
+    private static String postUserGeoInfo(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return fail(NO_AUTH);
+        }
+        JSONObject geo = new JSONObject();
+        geo.put("longitude", parseDouble(ctx.query("longitude")));
+        geo.put("latitude", parseDouble(ctx.query("latitude")));
+        geo.put("updatedAt", System.currentTimeMillis());
+        store.userState(u).put("geo", geo);
+        store.save();
+        return envelope("none", null);
+    }
+
+    /**
+     * GET /geoinfo/api/v1/userGeoInfo — UserMapInfo list for the friend-match
+     * map: the requesting user (when they posted geo) + citizens with lazy
+     * persisted coordinates. x/y are an equirectangular projection, distance
+     * is km from the requester.
+     */
+    private static String userGeoList(Ctx ctx, StateStore store) {
+        JSONObject me = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONArray out = new JSONArray();
+        JSONObject myGeo = store.userState(me).optJSONObject("geo");
+        if (myGeo != null) {
+            JSONObject mine = mapInfo(me, myGeo, myGeo, me.optLong("userId"));
+            mine.put("distance", 0);
+            out.put(mine);
+        }
+        JSONArray citizens = GameCatalog.citizens(store);
+        for (int i = 0; i < citizens.length(); i++) {
+            JSONObject c = citizens.getJSONObject(i);
+            JSONObject geo = citizenGeo(store, c);
+            if (geo == null) continue;
+            JSONObject m = mapInfo(c, geo, myGeo, c.optLong("userId"));
+            m.put("distance", myGeo == null ? 0
+                    : haversineKm(myGeo.optDouble("latitude"),
+                                  myGeo.optDouble("longitude"),
+                                  geo.optDouble("latitude"),
+                                  geo.optDouble("longitude")));
+            out.put(m);
+        }
+        return envelope("list", out.toString());
+    }
+
+    /** Lazy per-citizen persisted coordinates (deterministic world spread). */
+    private static JSONObject citizenGeo(StateStore store, JSONObject citizen) {
+        if (citizen.has("latitude")) {
+            return new JSONObject()
+                    .put("latitude", citizen.optDouble("latitude"))
+                    .put("longitude", citizen.optDouble("longitude"));
+        }
+        long uid = citizen.optLong("userId");
+        double lat = -35 + (uid * 37 % 130);            // -35..95
+        double lon = -120 + (uid * 53 % 240);           // -120..120
+        citizen.put("latitude", lat);
+        citizen.put("longitude", lon);
+        store.save();
+        return new JSONObject().put("latitude", lat).put("longitude", lon);
+    }
+
+    private static JSONObject mapInfo(JSONObject person, JSONObject geo,
+                                      JSONObject origin, long userId) {
+        JSONObject m = new JSONObject();
+        m.put("userId", userId);
+        m.put("pic", person.optString("picUrl", person.optString("headPic", "")));
+        m.put("latitude", geo.optDouble("latitude"));
+        m.put("longitude", geo.optDouble("longitude"));
+        // equirectangular projection to a 0..200 map grid, origin at (0,0)
+        double refLat = origin == null ? 0 : origin.optDouble("latitude");
+        double refLon = origin == null ? 0 : origin.optDouble("longitude");
+        m.put("x", (int) Math.round((geo.optDouble("longitude") - refLon) * 1.2) + 100);
+        m.put("y", (int) Math.round((geo.optDouble("latitude") - refLat) * 1.2) + 100);
+        return m;
+    }
+
+    private static double haversineKm(double lat1, double lon1, double lat2, double lon2) {
+        double r = 6371.0;
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLon = Math.toRadians(lon2 - lon1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        return Math.round(2 * r * Math.asin(Math.sqrt(a)) * 10) / 10.0;
+    }
+
+    /** GET /geoinfo/api/v1/user/game/career/data/{userId} — career totals. */
+    private static String careerData(Ctx ctx, StateStore store) {
+        JSONObject p = store.findByUserId(parseLong(ctx.pathParam("userId"), 0));
+        if (p == null) {
+            return fail("user not found");
+        }
+        // no engine sessions exist in the local world yet — the counters are
+        // the truthful zeros; the map keys are the games actually recorded
+        JSONObject info = new JSONObject();
+        info.put("averageTime", 0);
+        info.put("completeRate", 0);
+        info.put("killCount", 0);
+        info.put("totalTime", 0);
+        info.put("victoryRate", 0);
+        JSONObject map = new JSONObject();
+        JSONArray played = store.recentGames(p, 30);
+        for (int i = 0; i < played.length(); i++) {
+            map.put(played.optString(i), 0L);
+        }
+        info.put("gameTimeMap", map);
+        JSONObject out = new JSONObject();
+        out.put("userGameCareerInfo", info);
+        out.put("userGameMonthInfo", new JSONObject(info.toString()));
+        return envelope("obj", out.toString());
+    }
+
+    /** Quantity for a rank type from REAL state (users) / deterministic (citizens). */
+    private static long rankQuantity(JSONObject person, boolean citizen, String type,
+                                     boolean weekly) {
+        long qty;
+        if ("gDiamond".equals(type)) {
+            qty = citizen ? (20_000 - (person.optLong("userId") % 12_000))
+                    : person.optLong("diamonds");
+        } else if ("clan".equals(type)) {
+            qty = citizen ? (person.optLong("userId") % 900)
+                    : person.optLong("tribeCurrency", 0);
+        } else if ("active".equals(type)) {
+            qty = citizen ? (person.optLong("userId") % 300)
+                    : person.opt("state") == null ? 0
+                    : person.optJSONObject("state").optJSONArray("playedGames") == null ? 0
+                    : person.optJSONObject("state").optJSONArray("playedGames").length();
+        } else { // "gold"
+            qty = citizen ? (45_000 - (person.optLong("userId") % 30_000))
+                    : person.optLong("golds");
+        }
+        if (weekly) qty = qty / 7 + 3;
+        return qty;
+    }
+
+    /** Ranked rows (desc) across real users + citizens for one rank type. */
+    private static JSONArray rankRowsByType(StateStore store, String type, boolean weekly) {
+        JSONArray rows = new JSONArray();
+        JSONObject users = store.root().optJSONObject("users");
+        JSONArray keys = users.names();
+        for (int i = 0; keys != null && i < keys.length(); i++) {
+            JSONObject u = users.optJSONObject(keys.optString(i));
+            if (u == null) continue;
+            JSONObject r = new JSONObject();
+            r.put("id", u.optLong("userId"));
+            r.put("name", u.optString("nickName"));
+            r.put("pic", u.optString("picUrl"));
+            r.put("quantity", rankQuantity(u, false, type, weekly));
+            rows.put(r);
+        }
+        JSONArray citizens = GameCatalog.citizens(store);
+        for (int i = 0; i < citizens.length(); i++) {
+            JSONObject c = citizens.getJSONObject(i);
+            JSONObject r = new JSONObject();
+            r.put("id", c.optLong("userId"));
+            r.put("name", c.optString("nickName"));
+            r.put("pic", c.optString("headPic"));
+            r.put("quantity", rankQuantity(c, true, type, weekly));
+            rows.put(r);
+        }
+        for (int i = 1; i < rows.length(); i++) {
+            JSONObject key = rows.getJSONObject(i);
+            int j = i - 1;
+            while (j >= 0 && rows.getJSONObject(j).optLong("quantity")
+                    < key.optLong("quantity")) {
+                rows.put(j + 1, rows.getJSONObject(j));
+                j--;
+            }
+            rows.put(j + 1, key);
+        }
+        for (int i = 0; i < rows.length(); i++) {
+            rows.getJSONObject(i).put("rank", i + 1);
+        }
+        return rows;
+    }
+
+    /** GET /ranking/api/v1/ranking/region/home/page/info?rankType= — top-3 podium. */
+    private static String regionRankHome(Ctx ctx, StateStore store) {
+        String rankType = ctx.query("rankType") == null ? "gold" : ctx.query("rankType");
+        boolean weekly = rankType.contains("week");
+        String type = rankType.replace("week", "").replace("overall", "");
+        if (type.isEmpty()) type = "gold";
+        JSONArray rows = rankRowsByType(store, type, weekly);
+        JSONArray tops = new JSONArray();
+        for (int i = 0; i < rows.length() && i < 3; i++) {
+            JSONObject r = rows.getJSONObject(i);
+            JSONObject t = new JSONObject();
+            t.put("userId", r.optLong("id"));
+            t.put("topName", r.optString("name"));
+            t.put("topPic", r.optString("pic"));
+            t.put("quantity", r.optLong("quantity"));
+            t.put("type", type);
+            tops.put(t);
+        }
+        JSONObject out = new JSONObject();
+        out.put("topRankInfos", tops);
+        out.put("remainingTime", msUntilNextMondayUtc());
+        return envelope("obj", out.toString());
+    }
+
+    /** GET /ranking/api/v1/ranking/user/info?rankType=&type=&isRegion= — my row. */
+    private static String userRankInfo(Ctx ctx, StateStore store) {
+        JSONObject me = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        String rankType = ctx.query("rankType") == null ? "overall" : ctx.query("rankType");
+        String type = ctx.query("type") == null ? "gold" : ctx.query("type");
+        boolean weekly = "week".equals(rankType);
+        JSONArray rows = rankRowsByType(store, type, weekly);
+        JSONObject mine = null;
+        for (int i = 0; i < rows.length(); i++) {
+            JSONObject r = rows.getJSONObject(i);
+            if (r.optLong("id") == me.optLong("userId")) {
+                mine = r;
+                break;
+            }
+        }
+        if (mine == null) {
+            mine = new JSONObject();
+            mine.put("id", me.optLong("userId"));
+            mine.put("name", me.optString("nickName"));
+            mine.put("pic", me.optString("picUrl"));
+            mine.put("quantity", rankQuantity(me, false, type, weekly));
+            mine.put("rank", rows.length() + 1);
+        }
+        mine.put("rankType", rankType);
+        return envelope("obj", mine.toString());
+    }
+
+    /** Milliseconds until the next Monday 00:00 UTC (weekly rank reset). */
+    private static long msUntilNextMondayUtc() {
+        java.util.Calendar c = java.util.Calendar.getInstance(
+                java.util.TimeZone.getTimeZone("UTC"));
+        long now = c.getTimeInMillis();
+        int daysUntilMonday = (java.util.Calendar.MONDAY - c.get(java.util.Calendar.DAY_OF_WEEK) + 7) % 7;
+        if (daysUntilMonday == 0) daysUntilMonday = 7;
+        c.add(java.util.Calendar.DAY_OF_MONTH, daysUntilMonday);
+        c.set(java.util.Calendar.HOUR_OF_DAY, 0);
+        c.set(java.util.Calendar.MINUTE, 0);
+        c.set(java.util.Calendar.SECOND, 0);
+        c.set(java.util.Calendar.MILLISECOND, 0);
+        return c.getTimeInMillis() - now;
+    }
+
+    /** GET /game/api/v2/party/auth — PartyAuthInfo (loopback service addresses). */
+    private static String partyAuth(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONObject out = new JSONObject();
+        out.put("dispUrl", LOCAL_BASE_URL);
+        // host:port — the client split(":") partyService for the gRPC client
+        out.put("partyService", "127.0.0.1:18080");
+        out.put("partyQuerierService", LOCAL_BASE_URL);
+        out.put("region", 0);
+        out.put("country", "");
+        out.put("engineType", "local");
+        out.put("token", "pa-" + u.optLong("userId") + "-"
+                + Long.toHexString(System.nanoTime()));
+        out.put("signature", Long.toHexString(Double.doubleToLongBits(Math.random())));
+        out.put("timestamp", System.currentTimeMillis());
+        return envelope("obj", out.toString());
+    }
+
+    /** GET /api/v1/parties/exists — no party exists on the local world. */
+    private static String partiesExists(Ctx ctx, StateStore store) {
+        return envelope("str", "\"\"");
     }
 
     // --------------------------------------------- Phase 2: daily + social
@@ -3528,6 +3803,14 @@ final class Handlers {
             return Long.parseLong(s.trim());
         } catch (Throwable t) {
             return def;
+        }
+    }
+
+    private static double parseDouble(String s) {
+        try {
+            return Double.parseDouble(s.trim());
+        } catch (Throwable t) {
+            return 0;
         }
     }
 

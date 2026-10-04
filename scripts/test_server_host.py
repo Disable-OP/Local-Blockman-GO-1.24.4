@@ -1277,6 +1277,51 @@ def main():
         check("record ads game credits", ra.get("code") == 1 and ra.get("data") == 100,
               str(ra)[:100])
 
+        # ------------------------------------------------ Phase 5b: geo/rank/party
+        print("== Phase 5b: geoinfo + region ranking + party auth ==")
+        pg = call("POST", "/geoinfo/api/v1/userGeoInfo?longitude=31.2&latitude=30.0",
+                  None, headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("post user geo", pg.get("code") == 1, str(pg)[:100])
+        gl = call("GET", "/geoinfo/api/v1/userGeoInfo",
+                  headers={"Access-Token": tok5, "userId": str(uid5), "language": "en"})
+        glist = gl.get("data", [])
+        me_rows = [m for m in glist if m.get("userId") == uid5]
+        check("geo list has me + citizens", gl.get("code") == 1
+              and len(me_rows) == 1 and len(glist) >= 20
+              and me_rows[0]["latitude"] == 30.0 and me_rows[0]["distance"] == 0,
+              str(gl)[:200])
+        check("geo entries project x/y", all("x" in m and "y" in m and "pic" in m
+              for m in glist), str(glist[0])[:120])
+        cd = call("GET", "/geoinfo/api/v1/user/game/career/data/%d" % uid5,
+                  headers={"language": "en"})
+        check("career data shape", cd.get("code") == 1
+              and "userGameCareerInfo" in cd.get("data", {})
+              and "gameTimeMap" in cd["data"]["userGameCareerInfo"], str(cd)[:150])
+        rh = call("GET", "/ranking/api/v1/ranking/region/home/page/info?rankType=overall")
+        tops = rh.get("data", {}).get("topRankInfos", [])
+        check("region rank home podium", rh.get("code") == 1 and len(tops) == 3
+              and rh["data"].get("remainingTime", 0) > 0
+              and tops[0].get("topName"), str(rh)[:200])
+        ri = call("GET", "/ranking/api/v1/ranking/user/info?rankType=overall&type=gDiamond&isRegion=false",
+                  headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("user rank info gDiamond", ri.get("code") == 1
+              and ri["data"].get("rank", 0) >= 1
+              and ri["data"].get("quantity") == ri["data"].get("quantity"), str(ri)[:150])
+        ri2 = call("GET", "/ranking/api/v1/ranking/user/info?rankType=week&type=clan&isRegion=true",
+                   headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("user rank info clan weekly", ri2.get("code") == 1
+              and ri2["data"].get("rankType") == "week", str(ri2)[:120])
+        pa = call("GET", "/game/api/v2/party/auth",
+                  headers={"Access-Token": tok1, "userId": str(uid1)})
+        pad = pa.get("data", {})
+        check("party auth loopback services", pa.get("code") == 1
+              and pad.get("partyService") == "127.0.0.1:18080"
+              and ":" in (pad.get("partyService") or "")
+              and pad.get("token", "").startswith("pa-"), str(pa)[:200])
+        pe = call("GET", "/api/v1/parties/exists")
+        check("parties exists empty", pe.get("code") == 1 and pe.get("data") == "",
+              str(pe)[:100])
+
         print("== route-table sweep (all routes answer the envelope) ==")
         sys.path.insert(0, os.path.join(REPO, "scripts"))
         sweep_miss = []
