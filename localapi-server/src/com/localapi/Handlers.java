@@ -104,6 +104,28 @@ final class Handlers {
         if ("friendAliasDelete".equals(name)) return friendAliasDelete(ctx, store);
         if ("friendAgree".equals(name)) return friendAgree(ctx, store);
         if ("friendReject".equals(name)) return friendReject(ctx, store);
+        // ---- Phase 4c: group chat management (real state) ----
+        if ("groupPrice".equals(name)) return envelope("obj", "{\"currency\":1,\"price\":0}");
+        if ("groupCreate".equals(name)) return groupCreate(ctx, store);
+        if ("groupList".equals(name)) return groupList(ctx, store);
+        if ("groupInfo".equals(name)) return groupInfo(ctx, store);
+        if ("groupInviteCount".equals(name)) return groupInviteCount(ctx, store);
+        if ("groupRequestList".equals(name)) return groupRequestList(ctx, store);
+        if ("groupInviteDirect".equals(name)) return groupInviteDirect(ctx, store);
+        if ("groupMailInvite".equals(name)) return groupInfoResp(ctx, store);
+        if ("groupBanMember".equals(name)) return groupBanMember(ctx, store);
+        if ("groupInvite".equals(name)) return groupInvite(ctx, store);
+        if ("groupApply".equals(name)) return groupApply(ctx, store);
+        if ("groupAck".equals(name)) return envelope("none", null);
+        if ("groupMuteAll".equals(name)) return groupMuteAll(ctx, store);
+        if ("groupAccept".equals(name)) return groupAccept(ctx, store);
+        if ("groupReject".equals(name)) return groupRejectReq(ctx, store);
+        if ("groupUnban".equals(name)) return groupUnban(ctx, store);
+        if ("groupQuit".equals(name)) return groupQuit(ctx, store);
+        if ("groupKick".equals(name)) return groupKick(ctx, store);
+        if ("groupSetManager".equals(name)) return groupSetManager(ctx, store);
+        if ("groupTransfer".equals(name)) return groupTransfer(ctx, store);
+        if ("groupModify".equals(name)) return groupModify(ctx, store);
         if ("getVipInfo".equals(name)) return getVipInfo(ctx, store);
         if ("getSubscribeInfo".equals(name)) return getSubscribeInfo(ctx, store);
         // ---- Phase 3: decoration / dress shop / scrap exchange ----
@@ -1744,6 +1766,248 @@ final class Handlers {
         String err = Friend.reject(store, u, parseLong(ctx.pathParam("friendId"), 0));
         if (err != null) return fail(err);
         return envelope("none", null);
+    }
+
+    // ------------------------------------------------- Phase 4c: group chat
+
+    private static JSONArray longArray(java.util.List<String> values) {
+        JSONArray arr = new JSONArray();
+        for (String v : values) {
+            long id = parseLong(v, 0);
+            if (id > 0) arr.put(id);
+        }
+        return arr;
+    }
+
+    private static String groupInfoResp(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject g = GroupChat.find(store, parseLong(ctx.query("groupId"), 0));
+        if (g == null) return fail("group not found");
+        return envelope("obj", GroupChat.groupJson(g).toString());
+    }
+
+    /** POST /msg/api/v2/msg/group/chat — GroupParam {cost, currency, memberIds, userId}. */
+    private static String groupCreate(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject form = body(ctx);
+        JSONObject g = GroupChat.create(store, u, form.optJSONArray("memberIds"),
+                form.optString("groupName"));
+        L.i("groupCreate: userId=" + u.optLong("userId") + " groupId=" + g.optLong("groupId"));
+        return envelope("obj", GroupChat.groupJson(g).toString());
+    }
+
+    /** GET /msg/api/v1/msg/group/chat/list — PageData&lt;GroupInfo&gt; of my groups. */
+    private static String groupList(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        int pageNo = (int) parseLong(ctx.query("pageNo"), 1);
+        int pageSize = (int) parseLong(ctx.query("pageSize"), 20);
+        JSONArray rows = new JSONArray();
+        JSONArray mine = GroupChat.mine(store, u.optLong("userId"));
+        for (int i = 0; i < mine.length(); i++) {
+            rows.put(GroupChat.groupJson(mine.optJSONObject(i)));
+        }
+        return envelope("obj", pageData(slice(rows, pageNo, pageSize), pageNo, pageSize, rows.length()).toString());
+    }
+
+    /** GET /msg/api/v1/msg/group/chat/info?groupId=. */
+    private static String groupInfo(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject g = GroupChat.find(store, parseLong(ctx.query("groupId"), 0));
+        if (g == null) return fail("group not found");
+        return envelope("obj", GroupChat.groupJson(g).toString());
+    }
+
+    /** GET /msg/api/v1/msg/group/chat/invite/count — GroupInviteCount. */
+    private static String groupInviteCount(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject g = GroupChat.find(store, parseLong(ctx.query("groupId"), 0));
+        if (g == null) return fail("group not found");
+        int used = 0;
+        JSONArray reqs = g.optJSONArray("joinRequests");
+        String today = Tribe.utcDate();
+        for (int i = 0; reqs != null && i < reqs.length(); i++) {
+            JSONObject r = reqs.optJSONObject(i);
+            if (r != null && r.optLong("userId") == u.optLong("userId")
+                    && Tribe.utcDateOf(r.optLong("at")).equals(today)) used++;
+        }
+        JSONObject out = new JSONObject();
+        out.put("dailyCount", used);
+        out.put("inviteCount", Math.max(0, GroupChat.DAILY_INVITE_LIMIT - used));
+        out.put("status", 1);
+        return envelope("obj", out.toString());
+    }
+
+    /** GET /msg/api/v1/msg/group/chat/request/list — PageData&lt;GroupRequest&gt;. */
+    private static String groupRequestList(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        int pageNo = (int) parseLong(ctx.query("pageNo"), 1);
+        int pageSize = (int) parseLong(ctx.query("pageSize"), 20);
+        JSONArray feed = GroupChat.requestFeed(store, u.optLong("userId"));
+        return envelope("obj", pageData(slice(feed, pageNo, pageSize), pageNo, pageSize, feed.length()).toString());
+    }
+
+    /** POST /msg/api/v1/msg/group/chat/add — GroupInviteParam direct add. */
+    private static String groupInviteDirect(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject form = body(ctx);
+        long gid = form.optLong("groupId");
+        JSONObject g = GroupChat.find(store, gid);
+        if (g == null) return fail("group not found");
+        if (!GroupChat.canManage(g, u.optLong("userId"))) return fail("no permission");
+        GroupChat.invite(store, u, gid, form.optJSONArray("memberIds"));
+        return envelope("obj", GroupChat.groupJson(g).toString());
+    }
+
+    /** POST /msg/api/v1/msg/group/chat/forbidden/member?groupId&memberId&minute=. */
+    private static String groupBanMember(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = GroupChat.banMember(store, u, parseLong(ctx.query("groupId"), 0),
+                parseLong(ctx.query("memberId"), 0), (int) parseLong(ctx.query("minute"), 5));
+        if (err != null) return fail(err);
+        JSONObject g = GroupChat.find(store, parseLong(ctx.query("groupId"), 0));
+        return envelope("obj", GroupChat.groupJson(g).toString());
+    }
+
+    /** POST /msg/api/v1/msg/group/chat/invite?groupId=&memberIds=1&memberIds=2. */
+    private static String groupInvite(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = GroupChat.invite(store, u, parseLong(ctx.query("groupId"), 0),
+                longArray(ctx.queryValues("memberIds")));
+        if (err != null) return fail(err);
+        return envelope("none", null);
+    }
+
+    /** POST /msg/api/v1/msg/group/chat/apply?groupId=&msg=. */
+    private static String groupApply(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = GroupChat.apply(store, u, parseLong(ctx.query("groupId"), 0),
+                ctx.query("msg"));
+        if (err != null) return fail(err);
+        return envelope("none", null);
+    }
+
+    /** PUT /msg/api/v1/msg/group/chat/forbidden — toggle mute-all. */
+    private static String groupMuteAll(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = GroupChat.toggleMuteAll(store, u, parseLong(ctx.query("groupId"), 0));
+        if (err != null) return fail(err);
+        JSONObject g = GroupChat.find(store, parseLong(ctx.query("groupId"), 0));
+        return envelope("obj", GroupChat.groupJson(g).toString());
+    }
+
+    /** PUT /msg/api/v1/msg/group/chat/agreement — JoinGroupRequest body. */
+    private static String groupAccept(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject form = body(ctx);
+        String err = GroupChat.acceptRequest(store, u, form.optLong("groupId"),
+                form.optLong("requestId"), form.optLong("userId"));
+        if (err != null) return fail(err);
+        JSONObject g = GroupChat.find(store, form.optLong("groupId"));
+        return envelope("obj", GroupChat.groupJson(g).toString());
+    }
+
+    /** PUT /msg/api/v1/msg/group/chat/reject. */
+    private static String groupRejectReq(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject form = body(ctx);
+        String err = GroupChat.rejectRequest(store, u, form.optLong("groupId"),
+                form.optLong("requestId"));
+        if (err != null) return fail(err);
+        return envelope("none", null);
+    }
+
+    /** PUT /msg/api/v1/msg/group/chat/remove/forbidden/member. */
+    private static String groupUnban(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = GroupChat.unbanMember(store, u, parseLong(ctx.query("groupId"), 0),
+                parseLong(ctx.query("memberId"), 0));
+        if (err != null) return fail(err);
+        JSONObject g = GroupChat.find(store, parseLong(ctx.query("groupId"), 0));
+        return envelope("obj", GroupChat.groupJson(g).toString());
+    }
+
+    /** PUT /msg/api/v1/msg/group/chat/quit — returns the caller's remaining groups. */
+    private static String groupQuit(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        String err = GroupChat.quit(store, u, parseLong(ctx.query("groupId"), 0));
+        if (err != null) return fail(err);
+        int pageNo = (int) parseLong(ctx.query("pageNo"), 1);
+        int pageSize = (int) parseLong(ctx.query("pageSize"), 20);
+        JSONArray rows = new JSONArray();
+        JSONArray mine = GroupChat.mine(store, u.optLong("userId"));
+        for (int i = 0; i < mine.length(); i++) {
+            rows.put(GroupChat.groupJson(mine.optJSONObject(i)));
+        }
+        return envelope("obj", pageData(slice(rows, pageNo, pageSize), pageNo, pageSize, rows.length()).toString());
+    }
+
+    /** PUT /msg/api/v1/msg/group/chat/kickOut — GroupRemoveParam body. */
+    private static String groupKick(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject form = body(ctx);
+        String err = GroupChat.kick(store, u, form.optLong("groupId"),
+                form.optJSONArray("memberIds"));
+        if (err != null) return fail(err);
+        JSONObject g = GroupChat.find(store, form.optLong("groupId"));
+        return envelope("obj", GroupChat.groupJson(g).toString());
+    }
+
+    /** PUT /msg/api/v1/msg/group/chat/set/manager — GroupAdminsParam body. */
+    private static String groupSetManager(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject form = body(ctx);
+        String err = GroupChat.setManagers(store, u, form.optLong("groupId"),
+                form.optJSONArray("memberIds"), form.optInt("operationType"));
+        if (err != null) return fail(err);
+        JSONObject g = GroupChat.find(store, form.optLong("groupId"));
+        return envelope("obj", GroupChat.groupJson(g).toString());
+    }
+
+    /** PUT /msg/api/v1/msg/group/chat/transfer — GroupTransferParam body. */
+    private static String groupTransfer(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject form = body(ctx);
+        String err = GroupChat.transfer(store, u, form.optLong("groupId"), form.optLong("userId"));
+        if (err != null) return fail(err);
+        JSONObject g = GroupChat.find(store, form.optLong("groupId"));
+        return envelope("obj", GroupChat.groupJson(g).toString());
+    }
+
+    /** PUT /msg/api/v1/msg/group/chat/modify — GroupInfoParam body. */
+    private static String groupModify(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return fail(NO_AUTH);
+        JSONObject form = body(ctx);
+        JSONObject g = GroupChat.find(store, form.optLong("groupId"));
+        if (g == null) return fail("group not found");
+        if (!GroupChat.canManage(g, u.optLong("userId"))) return fail("no permission");
+        if (form.has("groupName") && !form.optString("groupName").isEmpty()) {
+            g.put("groupName", form.optString("groupName"));
+        }
+        if (form.has("groupNotice")) g.put("groupNotice", form.optString("groupNotice"));
+        if (form.has("groupPic")) g.put("groupPic", form.optString("groupPic"));
+        if (form.has("noticePic")) g.put("noticePic", form.optJSONArray("noticePic"));
+        if (form.has("inviteStatus")) g.put("inviteStatus", form.optInt("inviteStatus"));
+        store.save();
+        return envelope("obj", GroupChat.groupJson(g).toString());
     }
 
     // ------------------------------------------------- Phase 4: tribe (clan)

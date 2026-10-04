@@ -244,3 +244,17 @@
 - Coverage: 335 discovered / 187 implemented / 148 default / 161
   host-tested. Remaining defaults: /user/api security block (50),
   /msg group chat (21), activity events (29, flag-gated), /video (7).
+
+## Session 6 (cont. 2) — Phase 4c: group chat management state-backed (2026-10-04)
+
+- v0.4.1-friends build-release GREEN (37182881709); redroid test started.
+- Group chat phase, client-first: IGroupChatApi (21 methods) + all 12
+  request/response models (GroupInfo ownerId STRING, identity 2/1/0,
+  GroupRequest type 1 join/2 invite, CreateGroupPrice price==0 free tier).
+- Implemented GroupChat.java + 21 handlers: create/modify/info/list,
+  apply -> accept/reject by requestId, invite (citizens direct-add, real
+  users get invitations), direct-add, ban N minutes (banUntil-derived
+  banStatus), unban, mute-all (forbiddenWordsStatus), set/remove managers
+  (owner only), kick, transfer, quit (owner quits -> transfer or dissolve
+  when last), invite-count daily policy, recall ack (transport=RongCloud).
+- Host rig: 220/220 PASS. Coverage: 335/208/127/177.

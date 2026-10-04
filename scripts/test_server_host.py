@@ -846,6 +846,103 @@ def main():
               and call("GET", "/friend/api/v1/friends?pageNo=1&pageSize=10",
                        headers=h2).get("data", {}).get("totalSize") == 0, str(fdel)[:120])
 
+        print("== Phase 4c: group chat management ==")
+        gp = call("GET", "/msg/api/v1/group/chat/price")
+        check("group price free tier", gp.get("code") == 1
+              and gp["data"].get("price") == 0, str(gp)[:80])
+        gc = call("POST", "/msg/api/v2/msg/group/chat",
+                  {"cost": 0, "currency": 1, "memberIds": [uid3], "userId": uid2,
+                   "groupName": "QA Group"}, headers=h2)
+        check("group create", gc.get("code") == 1 and gc["data"].get("groupId", 0) > 0
+              and gc["data"].get("ownerId") == str(uid2)
+              and gc["data"].get("forbiddenWordsStatus") == 0, str(gc)[:200])
+        gid = gc["data"]["groupId"]
+        gmembers = gc["data"].get("groupMembers", [])
+        check("group members (owner id2 + id3)", len(gmembers) == 2
+              and any(m["userId"] == uid2 and m["identity"] == 2 for m in gmembers)
+              and any(m["userId"] == uid3 and m["identity"] == 0 for m in gmembers),
+              str(gmembers)[:200])
+        gl = call("GET", "/msg/api/v1/msg/group/chat/list?pageNo=1&pageSize=10", headers=h3)
+        check("group list for member", gl.get("code") == 1 and gl["data"]["totalSize"] == 1
+              and gl["data"]["data"][0]["groupId"] == gid, str(gl)[:150])
+        gi = call("GET", "/msg/api/v1/msg/group/chat/info?groupId=%d" % gid, headers=h3)
+        check("group info", gi.get("code") == 1 and gi["data"]["groupId"] == gid
+              and gi["data"]["groupName"] == "QA Group", str(gi)[:150])
+        gic = call("GET", "/msg/api/v1/msg/group/chat/invite/count?groupId=%d" % gid, headers=h2)
+        check("group invite count", gic.get("code") == 1
+              and gic["data"]["inviteCount"] > 0, str(gic)[:100])
+        gmd = call("PUT", "/msg/api/v1/msg/group/chat/modify",
+                   {"groupId": gid, "groupNotice": "rules here", "inviteStatus": 0},
+                   headers=h2)
+        check("group modify by owner", gmd.get("code") == 1
+              and gmd["data"]["groupNotice"] == "rules here", str(gmd)[:150])
+        gmd2 = call("PUT", "/msg/api/v1/msg/group/chat/modify",
+                    {"groupId": gid, "groupName": "hijack"}, headers=h3)
+        check("member cannot modify", gmd2.get("code") == 0, str(gmd2)[:80])
+        # join request flow (inviteStatus 0 -> approval needed)
+        ga = call("POST", "/msg/api/v1/msg/group/chat/apply?groupId=%d&msg=hello" % gid,
+                  None, headers=h4)
+        check("group apply pending", ga.get("code") == 1, str(ga)[:80])
+        greq = call("GET", "/msg/api/v1/msg/group/chat/request/list?pageNo=1&pageSize=10",
+                    headers=h2)
+        greq_rows = [r for r in greq.get("data", {}).get("data", []) if r["type"] == 1]
+        check("owner sees join request", greq.get("code") == 1 and len(greq_rows) == 1
+              and greq_rows[0]["userId"] == uid4 and greq_rows[0]["requestId"] > 0
+              and greq_rows[0]["msg"] == "hello", str(greq)[:200])
+        gacc = call("PUT", "/msg/api/v1/msg/group/chat/agreement",
+                    {"groupId": gid, "requestId": greq_rows[0]["requestId"],
+                     "operateId": uid2, "userId": uid4, "type": 1}, headers=h2)
+        check("accept join request", gacc.get("code") == 1
+              and any(m["userId"] == uid4 for m in gacc["data"]["groupMembers"]),
+              str(gacc)[:200])
+        # ban flow
+        gban = call("POST", "/msg/api/v1/msg/group/chat/forbidden/member?groupId=%d&memberId=%d&minute=5"
+                    % (gid, uid4), None, headers=h2)
+        check("ban member", gban.get("code") == 1
+              and [m for m in gban["data"]["groupMembers"] if m["userId"] == uid4][0]["banStatus"] == 1,
+              str(gban)[:200])
+        gunban = call("PUT", "/msg/api/v1/msg/group/chat/remove/forbidden/member?groupId=%d&memberId=%d"
+                      % (gid, uid4), None, headers=h2)
+        check("unban member", gunban.get("code") == 1
+              and [m for m in gunban["data"]["groupMembers"] if m["userId"] == uid4][0]["banStatus"] == 0,
+              str(gunban)[:200])
+        # manager + kick + transfer
+        gsm = call("PUT", "/msg/api/v1/msg/group/chat/set/manager",
+                   {"groupId": gid, "inviterId": uid2, "memberIds": [uid3],
+                    "operationType": 1}, headers=h2)
+        check("set manager", gsm.get("code") == 1
+              and [m for m in gsm["data"]["groupMembers"] if m["userId"] == uid3][0]["identity"] == 1,
+              str(gsm)[:200])
+        gsm2 = call("PUT", "/msg/api/v1/msg/group/chat/set/manager",
+                    {"groupId": gid, "inviterId": uid3, "memberIds": [uid4],
+                     "operationType": 1}, headers=h3)
+        check("manager cannot set managers", gsm2.get("code") == 0, str(gsm2)[:80])
+        gkick = call("PUT", "/msg/api/v1/msg/group/chat/kickOut",
+                     {"groupId": gid, "inviterId": uid2, "memberIds": [uid4],
+                      "groupName": "QA Group"}, headers=h2)
+        check("kick member", gkick.get("code") == 1
+              and not any(m["userId"] == uid4 for m in gkick["data"]["groupMembers"]),
+              str(gkick)[:200])
+        gmut = call("PUT", "/msg/api/v1/msg/group/chat/forbidden?groupId=%d" % gid, None,
+                    headers=h2)
+        check("mute all toggled", gmut.get("code") == 1
+              and gmut["data"]["forbiddenWordsStatus"] == 1, str(gmut)[:150])
+        gtr = call("PUT", "/msg/api/v1/msg/group/chat/transfer",
+                   {"groupId": gid, "inviterId": uid2, "userId": uid3}, headers=h2)
+        check("transfer ownership", gtr.get("code") == 1 and gtr["data"]["ownerId"] == str(uid3),
+              str(gtr)[:150])
+        gquit = call("PUT", "/msg/api/v1/msg/group/chat/quit?groupId=%d&groupName=QA%%20Group" % gid,
+                     None, headers=h2)
+        check("quit group", gquit.get("code") == 1
+              and gquit["data"]["totalSize"] == 0, str(gquit)[:150])
+        gdel = call("PUT", "/msg/api/v1/msg/group/chat/quit?groupId=%d&groupName=QA%%20Group" % gid,
+                    None, headers=h3)
+        check("last member quit removes group", gdel.get("code") == 1
+              and call("GET", "/msg/api/v1/msg/group/chat/info?groupId=%d" % gid,
+                       headers=h3).get("code") == 0, str(gdel)[:150])
+        gnoauth = call("POST", "/msg/api/v2/msg/group/chat", {"groupName": "x"})
+        check("unauthenticated group create rejected", gnoauth.get("code") == 0, str(gnoauth)[:80])
+
         print("== route-table sweep (all routes answer the envelope) ==")
         sys.path.insert(0, os.path.join(REPO, "scripts"))
         sweep_miss = []

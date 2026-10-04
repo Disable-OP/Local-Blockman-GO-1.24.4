@@ -178,3 +178,30 @@ friendRequestsList upgraded from empty states). New domain module:
   on-device — host-rig-only issue, but it was masking real progress.)
 - Host rig: 199/199 PASS. Coverage: 335 discovered / 187 implemented /
   148 default / 161 host-tested.
+
+## Phase 4c — group chat management real state (session 6, DONE)
+
+All 21 /msg/api routes are now state-backed. New domain module:
+`localapi-server/src/com/localapi/GroupChat.java`.
+
+- Model shapes from the client: GroupInfo (ownerId is a STRING, identity
+  2=owner/1=manager/0=member, banStatus derived from banUntil), GroupParam,
+  CreateGroupPrice (price==0 is the client's free tier), GroupInviteCount,
+  GroupRequest (type 1 join / 2 invitation; status 0/2/3), GroupInviteParam,
+  JoinGroupRequest, GroupRemoveParam, GroupAdminsParam, GroupTransferParam,
+  GroupInfoParam, GroupOwnerRecall.
+- Management is fully real: create (free tier; initial members added),
+  modify (name/notice/pic/inviteStatus), apply → accept/reject by
+  requestId, invite (direct add for citizens, invitations for real users),
+  direct-add (GroupInviteParam), mail invite (ack), ban member N minutes
+  (banUntil-derived banStatus), unban, mute-all toggle
+  (forbiddenWordsStatus), set/remove managers (owner only), kick,
+  transfer ownership, quit (owner quitting transfers to the first
+  remaining member; last member quit deletes the group), invite-count
+  (daily limit policy), recall (ack — message transport is RongCloud).
+- Group lists are per-caller (groups you belong to); request feed merges
+  join requests for groups you manage + invitations addressed to you.
+- Host rig: 220/220 PASS (20 new group assertions incl. permission
+  negatives). Coverage: 335 discovered / 208 implemented / 127 default /
+  177 host-tested. Remaining default areas: /user/api security block (50),
+  activity events (29, flag-gated), /video (7), config/misc (~30).
