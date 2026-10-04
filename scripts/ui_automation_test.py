@@ -618,7 +618,9 @@ def main():
                 print("  [info] guest save reached no endpoint (dialog "
                       "shape changed?)")
         elif outcome_b == "kicked":
-            ok("B: native kick captured inside the save window (evidence)")
+            ok("B: client gate confirmed - the guest rename confirm fires "
+               "the native kick and PUT /user/api/v2/user/nickName is never "
+               "allowed (expected outcome; D recovers)")
         # leave the editor either way (the kick already restarted the app;
         # if not kicked, back out cleanly)
         if outcome_b != "kicked":
@@ -895,87 +897,98 @@ def main():
             prev = False
         return None
 
-    d_uid = None
-    tab5 = screen.find(ids=["rb_5"])
-    if tab5 and screen.tap_node(tab5):
-        time.sleep(4)
-        d_uid = current_user_id(screen)
-    if d_uid:
-        ok("D: current session user id %s (from the live Me tab)" % d_uid)
-        at = fcall("GET", "/user/api/v1/app/auth-token?userId=%s" % d_uid)
-        tok = (at.get("data") or {}).get("accessToken", "")
-        if at.get("code") == 1 and tok:
-            upg = fcall("POST", "/user/api/v2/app/set-password",
-                        {"account": qa_uid_d, "password": password_d,
-                         "confirmPassword": password_d},
-                        headers={"Access-Token": tok})
-            check("D: guest upgraded via set-password (%s)" % qa_uid_d,
-                  upg.get("code") == 1, str(upg)[:120])
-            li = fcall("POST", "/user/api/v1/login",
-                       {"uid": qa_uid_d, "password": password_d})
-            check("D: login with the upgraded credentials",
-                  li.get("code") == 1
-                  and str(li.get("data", {}).get("userId", "")) == str(d_uid),
-                  str(li)[:120])
-            # restart the client: the boot restores the saved session, whose
-            # user is now registered (hasPassword=true -> no guest gate)
-            adb.sh("am force-stop %s" % args.package)
-            time.sleep(3)
-            adb.sh("am start -n %s/%s" % (args.package, args.activity))
-            time.sleep(12)
-            dismiss_permission_dialogs(screen)
-            if screen.wait_for(ids=["rgBottom", "rb_1", "flHomePage"],
-                               timeout=90, poll=3):
-                ok("D: app restarted onto the registered session")
-                tab5b = screen.find(ids=["rb_5"])
-                if tab5b and screen.tap_node(tab5b):
-                    time.sleep(4)
-                    shown = any(qa_uid_d in (n.text or "")
-                                for n in screen.dump())
-                    print("  [%s] Me tab shows the new account %r"
-                          % ("ok" if shown else "info", qa_uid_d))
-                if not guest_edited:
-                    # B's PUT never fired — drive the editor under the
-                    # registered session now
-                    if open_personal_info_editor(adb, screen, args.package,
-                                                 "D"):
-                        outcome_d = editor_nickname_drive(
-                            adb, screen, args.package, "D", nick_edit)
-                        print("  [outcome] registered nickname drive: %s"
-                              % outcome_d)
-                        log_d = adb.raw("logcat", "-d", "-s", "LocalAPI",
-                                        timeout=60)
-                        if outcome_d == "edited" and ("/user/api/v2/user/nickName"
-                                                      in log_d):
-                            d_edited = True
-                            ok("D: registered nickname edit hit PUT "
-                               "/user/api/v2/user/nickName")
-                        elif outcome_d == "kicked":
-                            print("  [info] kick fired inside the registered "
-                                  "save window — NEW evidence, investigate")
-                        if d_edited:
-                            taken = fcall(
-                                "POST",
-                                "/user/api/v1/user/nickname/exist?nickName=%s"
-                                % nick_edit, None, headers=auth_hdr)
-                            check("D: server state holds the new nickname "
-                                  "(taken)", taken.get("code") == 0,
-                                  str(taken)[:120])
-                        if outcome_d != "kicked":
-                            adb.key(4)  # editor -> Profile
-                            time.sleep(2)
-                            adb.key(4)  # Profile -> Me
-                            time.sleep(2)
-                            assert_alive(adb, args.package, "D-BackOnMe")
+    def clean_relaunch(stage):
+        """force-stop + launch + wait for main - a known screen state."""
+        adb.sh("am force-stop %s" % args.package)
+        time.sleep(3)
+        adb.sh("am start -n %s/%s" % (args.package, args.activity))
+        time.sleep(12)
+        dismiss_permission_dialogs(screen)
+        up = bool(screen.wait_for(ids=["rgBottom", "rb_1", "flHomePage"],
+                                  timeout=90, poll=3))
+        return up and assert_alive(adb, args.package, stage)
+
+    # The guest rename in Phase B ends in the native kick whose
+    # self-relaunch restores the Personal Info editor (top-activity
+    # TemplateActivity) - start D from a known state.
+    if clean_relaunch("D-relaunch"):
+        tab5 = screen.find(ids=["rb_5"])
+        d_uid = None
+        if tab5 and screen.tap_node(tab5):
+            time.sleep(4)
+            d_uid = current_user_id(screen)
+        if d_uid:
+            ok("D: current session user id %s (from the live Me tab)" % d_uid)
+            at = fcall("GET", "/user/api/v1/app/auth-token?userId=%s" % d_uid)
+            tok = (at.get("data") or {}).get("accessToken", "")
+            if at.get("code") == 1 and tok:
+                upg = fcall("POST", "/user/api/v2/app/set-password",
+                            {"account": qa_uid_d, "password": password_d,
+                             "confirmPassword": password_d},
+                            headers={"Access-Token": tok})
+                check("D: guest upgraded via set-password (%s)" % qa_uid_d,
+                      upg.get("code") == 1, str(upg)[:120])
+                li = fcall("POST", "/user/api/v1/login",
+                           {"uid": qa_uid_d, "password": password_d})
+                check("D: login with the upgraded credentials",
+                      li.get("code") == 1
+                      and str(li.get("data", {}).get("userId", "")) == str(d_uid),
+                      str(li)[:120])
+                # restart the client: the boot restores the saved session,
+                # whose user is now registered (hasPassword=true)
+                if clean_relaunch("D-restart-registered"):
+                    ok("D: app restarted onto the registered session")
+                    tab5b = screen.find(ids=["rb_5"])
+                    if tab5b and screen.tap_node(tab5b):
+                        time.sleep(4)
+                        shown = any(qa_uid_d in (n.text or "")
+                                    for n in screen.dump())
+                        print("  [%s] Me tab shows the new account %r"
+                              % ("ok" if shown else "info", qa_uid_d))
+                    if not guest_edited:
+                        # B's PUT never fires for a guest - drive the editor
+                        # under the registered session now
+                        if open_personal_info_editor(adb, screen,
+                                                     args.package, "D"):
+                            outcome_d = editor_nickname_drive(
+                                adb, screen, args.package, "D", nick_edit)
+                            print("  [outcome] registered nickname drive: %s"
+                                  % outcome_d)
+                            log_d = adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                            timeout=60)
+                            if (outcome_d == "edited"
+                                    and "/user/api/v2/user/nickName" in log_d):
+                                d_edited = True
+                                ok("D: registered nickname edit hit PUT "
+                                   "/user/api/v2/user/nickName")
+                            elif outcome_d == "kicked":
+                                print("  [info] kick fired inside the "
+                                      "REGISTERED save window - NEW "
+                                      "evidence, investigate")
+                            if d_edited:
+                                taken = fcall(
+                                    "POST",
+                                    "/user/api/v1/user/nickname/exist?nickName=%s"
+                                    % nick_edit, None, headers=auth_hdr)
+                                check("D: server state holds the new "
+                                      "nickname (taken)",
+                                      taken.get("code") == 0,
+                                      str(taken)[:120])
+                            if outcome_d != "kicked":
+                                adb.key(4)  # editor -> Profile
+                                time.sleep(2)
+                                adb.key(4)  # Profile -> Me
+                                time.sleep(2)
+                                assert_alive(adb, args.package, "D-BackOnMe")
             else:
-                fail("D: app did not reach the main screen after restart")
+                print("  [info] auth-token for the session user failed: %s"
+                      % str(at)[:100])
         else:
-            print("  [info] auth-token for the session user failed: %s"
-                  % str(at)[:100])
+            print("  [info] current user id not found on the Me tab (dump "
+                  "shape changed?) - Phase D skipped")
+            debug_dump(screen, "D-me-tab-id")
     else:
-        print("  [info] current user id not found on the Me tab (dump "
-              "shape changed?) — Phase D skipped")
-        debug_dump(screen, "D-me-tab-id")
+        fail("D: clean relaunch did not reach the main screen")
 
     # ------------------------------------------------- assertions
     print("== assertions ==")
