@@ -284,3 +284,13 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 - Verify v0.5.7-videofix CI green (build + redroid incl. the Video probe).
 - Next: extend deep-drive further (mail-row detail, game-detail sub-screens:
   rank tab / comments), or per NEXT_SESSION_README priorities. NO GameServer.
+
+## Session 10 FINAL (v0.5.7 verified)
+
+- v0.5.7-videofix green end-to-end; video crash FIXED on-device (77 unique
+  endpoints served, zero crashes). Coverage 335/281/54/217 (84%); rig 324/324.
+- Deep drive now probes 6 Me-tab rows (Inbox/Top Up/Ranking/Store/Party/
+  Video) + a Home game card.
+- Next: verify nothing regressed; extend deep-drive (mail-row detail,
+  game-detail sub-screens); keep the error-driven loop going per the
+  Session 10 delta notes. NO GameServer work (standing instruction).

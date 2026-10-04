@@ -539,3 +539,22 @@
 - Host rig 324/324 PASS. Coverage 335/281 implemented (84%) / 54 default /
   217 host-tested. Deep drive now visits 6 Me-tab rows + home game card.
 - Tag v0.5.7-videofix ships this phase.
+
+## Session 10 FINAL — v0.5.7-videofix verified green (2026-10-04)
+
+- v0.5.7-videofix FULLY GREEN: build 37192051045 + redroid 37192184122;
+  release asset published. The Video probe no longer crashes the client
+  (crash buffer empty, zero FATAL) — the flat PageData shape is confirmed
+  on-device (97b real page vs the old 35b bare list).
+- 77 unique endpoints now served to the real client in one run (60 at
+  v0.5.4 -> 72 at v0.5.5 -> 77 with Store/Party/Video probes).
+- Final session coverage: 335 discovered / 281 implemented (84%) / 54
+  default / 217 host-tested; host rig 324/324.
+- Session releases: v0.5.5-chat, v0.5.7-videofix (v0.5.6-discover build
+  failed on a transient API blip; its script fix + probe expansion shipped
+  in v0.5.7).
+- Error-driven loop state: the deep-drive channel surfaces gaps every run;
+  all client-called routes are real handlers except the documented
+  deliberate set.
+- Next session: extend deep-drive (mail-row detail, game-detail sub-tabs,
+  comments), then continue per NEXT_SESSION_README. NO GameServer work.
