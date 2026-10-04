@@ -47,14 +47,14 @@ SCAN_DIRS = ("smali", "smali_classes2", "smali_classes3",
              "smali_classes4", "smali_classes5")
 SCAN_PKGS = ("com/sandboxol", "com/disabngo")
 
-# Proven killer (v0.5.12-killall evidence): MainActivity.onPause executes
-# Process.killProcess on its finishing path — the guest/login flow finishes
-# MainActivity and the hard exit SIGKILLs the app pair (~5m20s after launch,
-# consistently killing the CI run between phases). The kill is a real-server
-# session hygiene measure that has no meaning in the local world; suppress
-# the invocation while keeping the stack log (observability).
+# Proven killers (v0.5.12/v0.5.13 evidence): MainActivity hard-exits the
+# whole app pair via Process.killProcess from (a) onPause's finishing path
+# and (b) the synthetic a(Ljava/lang/Boolean;)V — the guest-kick dialog's
+# confirm handler. The guest/login flow finishes MainActivity and the hard
+# exit SIGKILLs everything ~5m20s after launch. Real-server session hygiene
+# has no meaning in the local world; ALL kill invocations inside
+# MainActivity are suppressed (stack logs stay everywhere).
 NEUTRALIZE_FILE_SUFFIX = "view/activity/main/MainActivity.smali"
-NEUTRALIZE_METHOD = "onPause"
 
 
 def find_methods_with_kill(text):
@@ -108,8 +108,7 @@ def main():
                     else:
                         skipped += 1
                     # proven-killer suppression (see NEUTRALIZE comment above)
-                    if (path.endswith(NEUTRALIZE_FILE_SUFFIX)
-                            and NEUTRALIZE_METHOD in sig):
+                    if path.endswith(NEUTRALIZE_FILE_SUFFIX):
                         # patch_method_at inserted lines inside the method, so
                         # the original body_end offset is stale — recompute
                         cur_end = text.find(".end method", start)
