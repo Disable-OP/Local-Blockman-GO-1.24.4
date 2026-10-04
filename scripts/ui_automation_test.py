@@ -373,6 +373,47 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
         if suit and screen.tap_node(suit):
             time.sleep(5)
             alive_or_recover("%s-dress-suit" % tag)
+        # Dressing grid item probe (wave 5l): tap the first grid item under
+        # the clothes chip to open the dress detail; if a wear/try button
+        # exists (text-based), tap it so PUT /decorations/using/new is
+        # client-asserted. Buying is deliberately NOT driven here (the
+        # wallet math is host-tested; a mis-tap could double-spend the
+        # visitor's balance). BACK always recovers.
+        chip_c = screen.find(ids=["rb_clothes"])
+        if chip_c and screen.tap_node(chip_c):
+            time.sleep(4)
+        item = None
+        for n in screen.dump():
+            if not n.center:
+                continue
+            y = n.center[1]
+            if y < 420 or y > 950:
+                continue
+            if n.cls.endswith("FrameLayout") or n.cls.endswith(
+                    "LinearLayout"):
+                item = n
+                break
+        if item and screen.tap_node(item):
+            time.sleep(6)
+            alive_or_recover("%s-dressitem" % tag)
+            for x in screen.dump():
+                if x.res or x.text or x.desc:
+                    print("  dressitem] %s | text=%r desc=%r" % (
+                        x.res.rsplit("/", 1)[-1] if x.res else "",
+                        x.text[:24], x.desc[:24]))
+            wear = screen.find(texts=["Wear", "Try", "Use", "Put on",
+                                      "Dress"],
+                               contains=["wear", "dress", "try"])
+            if wear and wear.center:
+                screen.tap_node(wear)
+                time.sleep(5)
+                alive_or_recover("%s-dresswear" % tag)
+            else:
+                print("  [skip] no wear/try button found on the detail")
+            adb.key(4)  # back to the grid
+            time.sleep(2)
+        else:
+            print("  [skip] no dressing-grid item candidate found")
     # FRIENDS/CLANS tab (rb_3, ids from the 5j dump): open the two search
     # rows ("Find Friends" / "Find Clans") — both lead to list/search
     # screens (friend search, clan search), no engine surface behind them.
@@ -391,6 +432,27 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
             if n and screen.tap_node(n):
                 time.sleep(5)
                 alive_or_recover("%s-%s" % (tag, stage))
+                if stage == "findclans":
+                    # wave 5l: drive the clan-search input (type a name,
+                    # IME enter) so the search endpoint is client-asserted
+                    edit = next((x for x in screen.dump()
+                                 if x.cls.endswith("EditText") and x.center),
+                                None)
+                    if edit:
+                        screen.tap_node(edit)
+                        time.sleep(1)
+                        adb.text("qa")
+                        time.sleep(1)
+                        adb.key(66)  # IME action / enter
+                        time.sleep(5)
+                        alive_or_recover("%s-clansearch" % tag)
+                    else:
+                        print("  [skip] no clan-search EditText found")
+                        for x in screen.dump():
+                            if x.res or x.text or x.desc:
+                                print("  clansrch] %s | text=%r desc=%r" % (
+                                    x.res.rsplit("/", 1)[-1] if x.res else "",
+                                    x.text[:24], x.desc[:24]))
                 adb.key(4)  # back to the tab
                 time.sleep(2)
             else:
