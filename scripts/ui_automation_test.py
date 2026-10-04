@@ -767,6 +767,69 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                             print("  [info] intro fill NOT verified")
                     else:
                         print("  [info] no second EditText (intro) found")
+                    # wave 5q v3: the Clan tag gate. v2 evidence (run
+                    # 37244155197): both fields verified, the submit
+                    # RelativeLayout (32,1096)-(688,1184) correctly tapped,
+                    # STILL no POST — the clickable ImageView (120x60)
+                    # right after the 'Clan tag' label is the remaining
+                    # required control. Open it, dump the picker, pick the
+                    # first option if one is clearly selectable.
+                    d = screen.dump()
+                    tag_label = next((x for x in d
+                                      if (x.text or "") == "Clan tag"
+                                      and x.center), None)
+                    tag_btn = None
+                    if tag_label:
+                        idx = d.index(tag_label)
+                        for x in d[idx + 1: idx + 4]:
+                            if x.clickable and x.center and \
+                                    not x.cls.endswith("EditText"):
+                                tag_btn = x
+                                break
+                    if tag_btn:
+                        print("  [info] opening the clan tag picker "
+                              "(%s bounds=%s)" % (
+                                  tag_btn.cls.rsplit(".", 1)[-1],
+                                  tag_btn.bounds))
+                        screen.tap_node(tag_btn)
+                        time.sleep(4)
+                        alive_or_recover("%s-clantag" % tag)
+                        pd = screen.dump()
+                        for x in pd:
+                            if x.res or x.text or x.desc:
+                                print("  clantag] %s | cls=%s text=%r "
+                                      "clickable=%s" % (
+                                          x.res.rsplit("/", 1)[-1]
+                                          if x.res else "",
+                                          x.cls.rsplit(".", 1)[-1]
+                                          if x.cls else "",
+                                          x.text[:24], x.clickable))
+                        # pick the first clearly selectable option (a
+                        # clickable node with real text, inside the picker
+                        # — not the title/back chrome)
+                        opt = next((x for x in pd
+                                    if x.clickable and x.center
+                                    and (x.text or "").strip()
+                                    and x.text not in ("Create a clan",)),
+                                   None)
+                        if opt:
+                            screen.tap_node(opt)
+                            time.sleep(3)
+                            alive_or_recover("%s-clantag-picked" % tag)
+                            ok("5q v3: tag picked: %r" % opt.text)
+                            for x in screen.dump():
+                                if x.res or x.text or x.desc:
+                                    print("  clantag2] %s | text=%r" % (
+                                        x.res.rsplit("/", 1)[-1]
+                                        if x.res else "", x.text[:28]))
+                        else:
+                            print("  [info] no selectable tag option in "
+                                  "the picker dump")
+                            adb.key(4)
+                            time.sleep(2)
+                    else:
+                        print("  [info] no clan tag control found after "
+                              "the label")
                     # evidence dump: clickable + bounds for every node
                     for x in screen.dump():
                         if x.res or x.text or x.desc or x.clickable:
