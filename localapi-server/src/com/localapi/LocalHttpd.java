@@ -40,7 +40,16 @@ public class LocalHttpd extends NanoHTTPD {
     public Response serve(final IHTTPSession session) {
         final String verb = session.getMethod().name();
         final String uri = session.getUri();
-        final String body = readBody(session);
+
+        // Uploaded files are served back at /files/<id> (the URL returned by
+        // the upload handlers). Plain GET, served before the Retrofit routing.
+        if ("GET".equals(verb) && uri != null && uri.startsWith("/files/")) {
+            return serveStoredFile(uri.substring("/files/".length()));
+        }
+
+        final byte[] rawBody = readBody(session);
+        final String body = new String(rawBody, java.nio.charset.StandardCharsets.UTF_8);
+        final byte[] fileBytes = extractMultipartFile(session, rawBody);
 
         final java.util.Map<String, String> pathParams = new java.util.HashMap<>();
         final String fUri = uri;
@@ -71,6 +80,10 @@ public class LocalHttpd extends NanoHTTPD {
                 return fBody;
             }
 
+            public byte[] fileBytes() {
+                return fileBytes;
+            }
+
             public String path() {
                 return fUri;
             }
@@ -87,20 +100,109 @@ public class LocalHttpd extends NanoHTTPD {
         return respond(json);
     }
 
+    /** GET /files/<id> — serve an uploaded file's bytes with its stored type. */
+    private Response serveStoredFile(String id) {
+        try {
+            org.json.JSONObject meta = store.fileMeta(id);
+            byte[] data = store.readFile(id);
+            if (meta == null || data == null) {
+                return respond("{\"code\":0,\"message\":\"file not found\"}");
+            }
+            String type = meta.optString("fileType", "");
+            String mime = type != null && type.contains("/") ? type
+                    : (type != null && !type.isEmpty() ? "image/" + type : "application/octet-stream");
+            InputStream in = new ByteArrayInputStream(data);
+            Response r = newFixedLengthResponse(Response.Status.OK, mime, in, data.length);
+            r.addHeader("Access-Control-Allow-Origin", "*");
+            L.i("FILE " + id + " " + data.length + "b " + mime);
+            return r;
+        } catch (Throwable t) {
+            L.e("file serve failed: " + t);
+            return respond("{\"code\":0,\"message\":\"file serve failed\"}");
+        }
+    }
+
+    /**
+     * Multipart file-part extractor for the @Multipart upload endpoints
+     * (POST /user/api/v1/file, /user/api/v1/{version}/directory/file).
+     * Returns the first file part's raw bytes, or null when the request is
+     * not multipart.
+     */
+    private static byte[] extractMultipartFile(IHTTPSession session, byte[] raw) {
+        try {
+            String ctype = session.getHeaders().get("content-type");
+            if (ctype == null || !ctype.toLowerCase(java.util.Locale.US)
+                    .contains("multipart/form-data")) {
+                return null;
+            }
+            String boundary = null;
+            for (String piece : ctype.split(";")) {
+                String p = piece.trim();
+                if (p.startsWith("boundary=")) {
+                    boundary = p.substring("boundary=".length());
+                    if (boundary.startsWith("\"") && boundary.endsWith("\"")
+                            && boundary.length() >= 2) {
+                        boundary = boundary.substring(1, boundary.length() - 1);
+                    }
+                }
+            }
+            if (boundary == null || boundary.isEmpty() || raw.length == 0) {
+                return null;
+            }
+            byte[] delim = ("--" + boundary).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            // first boundary position
+            int start = indexOf(raw, delim, 0);
+            if (start < 0) return null;
+            int partHead = start + delim.length;
+            // skip the trailing -- of the final boundary if present
+            if (partHead + 1 < raw.length && raw[partHead] == '-' && raw[partHead + 1] == '-') {
+                return null;
+            }
+            // headers end at CRLFCRLF; body runs to the next CRLF + boundary
+            int hdrEnd = indexOf(raw, "\r\n\r\n".getBytes(java.nio.charset.StandardCharsets.UTF_8), partHead);
+            if (hdrEnd < 0) return null;
+            int bodyStart = hdrEnd + 4;
+            int next = indexOf(raw, delim, bodyStart);
+            if (next < 0) return null;
+            int bodyEnd = next - 2; // strip the CRLF before the boundary
+            if (bodyEnd <= bodyStart) return null;
+            byte[] out = new byte[bodyEnd - bodyStart];
+            System.arraycopy(raw, bodyStart, out, 0, out.length);
+            return out;
+        } catch (Throwable t) {
+            L.e("multipart parse failed: " + t);
+            return null;
+        }
+    }
+
+    /** Byte-array indexOf (no dependencies). */
+    private static int indexOf(byte[] hay, byte[] needle, int from) {
+        if (needle.length == 0 || hay.length < needle.length) return -1;
+        outer:
+        for (int i = Math.max(0, from); i <= hay.length - needle.length; i++) {
+            for (int j = 0; j < needle.length; j++) {
+                if (hay[i + j] != needle[j]) continue outer;
+            }
+            return i;
+        }
+        return -1;
+    }
+
     /**
      * Raw body reader: drains exactly Content-Length bytes from the socket so
      * keep-alive connections stay in sync. NanoHTTPD 2.3.1's parseBody hides
-     * JSON bodies of PUT requests, so we read them ourselves.
+     * JSON bodies of PUT requests, so we read them ourselves. Returns the raw
+     * bytes (multipart uploads are binary — never re-encode from a String).
      */
-    private static String readBody(IHTTPSession session) {
+    private static byte[] readBody(IHTTPSession session) {
         try {
             String len = session.getHeaders().get("content-length");
             if (len == null) {
-                return "";
+                return new byte[0];
             }
             int n = Integer.parseInt(len.trim());
             if (n <= 0) {
-                return "";
+                return new byte[0];
             }
             byte[] buf = new byte[n];
             java.io.InputStream in = session.getInputStream();
@@ -112,10 +214,10 @@ public class LocalHttpd extends NanoHTTPD {
                 }
                 off += r;
             }
-            return new String(buf, 0, off, StandardCharsets.UTF_8);
+            return buf;
         } catch (Throwable t) {
             L.e("body read failed: " + t);
-            return "";
+            return new byte[0];
         }
     }
 

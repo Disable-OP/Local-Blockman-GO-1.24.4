@@ -13,6 +13,9 @@ final class Handlers {
     private static final String OK = "ok";
     private static final String FAIL = "failed";
 
+    /** This server's loopback base URL — the dispUrl/gaddr bridge target. */
+    static final String LOCAL_BASE_URL = "http://127.0.0.1:18080";
+
     private Handlers() {}
 
     interface Ctx {
@@ -24,6 +27,9 @@ final class Handlers {
         String header(String name);
 
         String body();
+
+        /** Extracted multipart file-part bytes (null when not a multipart upload). */
+        byte[] fileBytes();
 
         String pathParam(String name);
 
@@ -76,7 +82,7 @@ final class Handlers {
         if ("miniGameToken".equals(name)) return miniGameToken(ctx, store);
         if ("followGameAuth".equals(name)) return miniGameToken(ctx, store);
         if ("miniGameMap".equals(name)) return miniGameToken(ctx, store);
-        if ("getResInfo".equals(name)) return envelope("obj", "{\"durl\":\"\",\"resVersion\":1}");
+        if ("gameResInfo".equals(name)) return gameResInfo(ctx, store);
         if ("resCheck".equals(name)) return envelope("obj", "{\"md5\":\"\",\"update\":false,\"url\":\"\"}");
         if ("getUpgradeInfo".equals(name)) return envelope("obj", "{\"needUpgrade\":false,\"downloadUrl\":\"\",\"hash\":\"\",\"resVersion\":1}");
         if ("getGameResource".equals(name)) return envelope("list", "[]");
@@ -163,7 +169,7 @@ final class Handlers {
         if ("friendUsingList".equals(name)) return friendUsingList(ctx, store);
         if ("dressExpireList".equals(name)) return envelope("list", "[]");
         if ("dressOwnedByType".equals(name)) return dressOwnedByType(ctx, store);
-        if ("dressSuitList".equals(name)) return envelope("list", "[]");
+        if ("dressSuitList".equals(name)) return dressSuitList(ctx, store);
         if ("dressRecommend".equals(name)) return dressRecommend(ctx, store);
         if ("isUsingList".equals(name)) return isUsingList(ctx, store);
         if ("dressGuideConfig".equals(name)) return envelope("obj", "{\"dressShopGuideConfigMap\":{}}");
@@ -183,7 +189,7 @@ final class Handlers {
         if ("dressRecommendList".equals(name)) return dressRecommendList(ctx, store);
         if ("shopList".equals(name)) return shopList(ctx, store);
         if ("shopRecommendV2".equals(name)) return shopRecommendV2(ctx, store);
-        if ("giftSuitCanReceive".equals(name)) return envelope("bool", "false");
+        if ("giftSuitCanReceive".equals(name)) return giftSuitCanReceive(ctx, store);
         if ("scrapBackpack".equals(name)) return scrapBackpack(ctx, store);
         if ("scrapCombineNum".equals(name)) return envelope("num", "3");
         if ("scrapRequestTargets".equals(name)) return scrapRequestTargets(ctx, store);
@@ -257,6 +263,18 @@ final class Handlers {
         if ("payssionSignature".equals(name)) return payssionSignature(ctx, store);
         if ("vipProducts".equals(name)) return envelope("obj", "{\"expireDate\":\"\",\"vip\":0,\"products\":{}}");
         if ("thirdPayList".equals(name)) return envelope("obj", "{\"show\":false,\"payChannel\":[],\"currency\":\"\"}");
+        // ---- Phase 5: dispatch bridge (loopback gAddr API shape) + suits + upload ----
+        if ("dispatch".equals(name)) return dispatch(ctx, store, false);
+        if ("follow".equals(name)) return dispatch(ctx, store, true);
+        if ("gameResInfo".equals(name)) return gameResInfo(ctx, store);
+        if ("recordAdsGame".equals(name)) return recordAdsGame(ctx, store);
+        if ("shopSuitList".equals(name)) return shopSuitList(ctx, store);
+        if ("suitListByIds".equals(name)) return suitListByIds(ctx, store);
+        if ("suitDetail".equals(name)) return suitDetail(ctx, store);
+        if ("suitGiftInfo".equals(name)) return suitGiftInfo(ctx, store);
+        if ("suitGiftReceive".equals(name)) return suitGiftReceive(ctx, store);
+        if ("uploadFile".equals(name)) return uploadFile(ctx, store);
+        if ("sensitiveWords".equals(name)) return sensitiveWords(ctx, store);
         L.e("unknown handler name: " + name);
         return envelope("none", null);
     }
@@ -745,22 +763,120 @@ final class Handlers {
 
     /**
      * GET /game/api/v2/game/auth (+ /flow/game/auth, /v1/game-map) — mini-game
-     * session token. dispUrl is empty until the GameServer phase ships; the
-     * token/timestamp are real dynamic values.
+     * session token. dispUrl points at THIS server so the client's follow-up
+     * POST /v1/dispatch (and /v1/follow, /v1/game-res) lands on the loopback
+     * API. The token is issued into real state (root.miniTokens) and validated
+     * by the dispatch handler.
      */
     private static String miniGameToken(Ctx ctx, StateStore store) {
         JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
-        JSONObject t = new JSONObject();
-        t.put("token", "mg-" + u.optLong("userId") + "-"
-                + Long.toHexString(System.nanoTime()));
-        t.put("timestamp", System.currentTimeMillis());
-        t.put("signature", "");
-        t.put("dispUrl", "");
-        t.put("downloadUrl", "");
-        t.put("mapName", ctx.query("mapName") == null ? "" : ctx.query("mapName"));
-        t.put("region", 0);
-        t.put("country", "");
-        return envelope("obj", t.toString());
+        String mapName = ctx.query("mapName") == null ? "" : ctx.query("mapName");
+        String gameType = ctx.query("typeId") == null ? "" : ctx.query("typeId");
+        JSONObject t = store.issueMiniToken(u.optLong("userId"), gameType, mapName, 0);
+        JSONObject out = new JSONObject();
+        out.put("token", t.optString("token"));
+        out.put("timestamp", t.optLong("timestamp"));
+        out.put("signature", t.optString("signature"));
+        out.put("dispUrl", LOCAL_BASE_URL);
+        out.put("downloadUrl", "");
+        out.put("mapName", mapName);
+        out.put("region", 0);
+        out.put("country", "");
+        // requestId: {userId -> per-issuance hex} — echoed back in Dispatch.requestIds
+        JSONObject req = new JSONObject();
+        req.put(String.valueOf(u.optLong("userId")), t.optString("requestId"));
+        out.put("requestId", req);
+        return envelope("obj", out.toString());
+    }
+
+    /**
+     * POST /v1/dispatch + /v1/follow — the game-join bridge. The client builds
+     * a Retrofit against the token's dispUrl (this server) and calls this with
+     * x-shahe-uid / x-shahe-token headers. Returns the Dispatch model the
+     * engine consumes: gAddr MUST be "host:port" (the client split(":") it).
+     * The Engine 10068 GameServer itself is a later project phase; today the
+     * address is this server's loopback endpoint (the API shape is final).
+     */
+    private static String dispatch(Ctx ctx, StateStore store, boolean follow) {
+        String token = ctx.header("x-shahe-token");
+        String uidHdr = ctx.header("x-shahe-uid");
+        JSONObject mt = store.findMiniToken(token);
+        if (mt == null || uidHdr == null
+                || parseLong(uidHdr, -1) != mt.optLong("userId")) {
+            L.i("dispatch rejected: token=" + (token == null ? "null" : "present")
+                    + " uid=" + uidHdr);
+            return fail("invalid dispatch token");
+        }
+        JSONObject form = body(ctx);
+        long uid = mt.optLong("userId");
+        String gameType = mt.optString("gameType");
+        String mapName = mt.optString("mapName");
+        if (mapName.isEmpty()) mapName = form.optString("mapName", "");
+        // resolve the game for name/chat-room when the token carries a typeId
+        JSONObject game = GameCatalog.byId(store, gameType);
+        String name = game == null ? (follow ? "Followed Game" : "Local Game")
+                : game.optString("name");
+        String croomId = game == null
+                ? GameCatalog.chatRoom(store, "game-" + (gameType.isEmpty() ? "lobby" : gameType))
+                : GameCatalog.chatRoom(store, "game-" + gameType);
+
+        JSONObject out = new JSONObject();
+        out.put("code", 0);
+        out.put("gaddr", "127.0.0.1:18080");
+        out.put("dispUrl", LOCAL_BASE_URL);
+        out.put("croomid", croomId);
+        out.put("gameType", gameType);
+        out.put("mid", mapName.isEmpty()
+                ? String.valueOf(1000 + (Math.abs(gameType.hashCode()) % 9000))
+                : mapName);
+        out.put("mname", mapName);
+        out.put("downurl", "");
+        out.put("name", name);
+        out.put("region", mt.optInt("region"));
+        out.put("resVersion", (int) form.optLong("resVersion", 1));
+        out.put("signature", mt.optString("signature"));
+        out.put("timestamp", mt.optLong("timestamp"));
+        JSONObject reqIds = new JSONObject();
+        reqIds.put(String.valueOf(uid), mt.optString("requestId"));
+        out.put("requestIds", reqIds);
+        return envelope("obj", out.toString());
+    }
+
+    /** GET /v1/game-res — GameResInfo with the loopback CDN as the base source. */
+    private static String gameResInfo(Ctx ctx, StateStore store) {
+        String rv = ctx.query("resVersion");
+        JSONObject out = new JSONObject();
+        out.put("durl", LOCAL_BASE_URL);
+        out.put("resVersion", rv == null || rv.isEmpty() ? 1 : (int) parseLong(rv, 1));
+        JSONArray cdns = new JSONArray();
+        JSONObject local = new JSONObject();
+        local.put("base", true);
+        local.put("cdnId", "local");
+        local.put("cdnUrl", LOCAL_BASE_URL);
+        local.put("ratio", 1);
+        local.put("url", LOCAL_BASE_URL);
+        cdns.put(local);
+        out.put("cdns", cdns);
+        return envelope("obj", out.toString());
+    }
+
+    /**
+     * PUT /game/api/v1/game/record/ads — getAdsGameDouble: credit the local
+     * ad reward (capped with the shared daily ad counter) and return the
+     * amount credited as a number.
+     */
+    private static String recordAdsGame(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return fail(NO_AUTH);
+        }
+        String date = today();
+        if (store.adRewardCount(u, date) >= 5) {
+            return envelope("num", "0");
+        }
+        store.countAdReward(u, date);
+        store.award(u, "golds", 100);
+        return envelope("num", "100");
     }
 
     // --------------------------------------------- Phase 2: daily + social
@@ -938,6 +1054,146 @@ final class Handlers {
             other = store.findOrCreateByKey("ghost", true);
         }
         return envelope("list", DressShop.usingList(store, other).toString());
+    }
+
+    // ------------------------------------------ Phase 5: suits + upload + misc
+
+    /** GET /decoration/api/v1/new/decorations/users/{userId}/suit — owned suits. */
+    private static String dressSuitList(Ctx ctx, StateStore store) {
+        long userId = parseLong(ctx.pathParam("userId"), 0);
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        if (userId != 0 && userId != u.optLong("userId")) {
+            JSONObject other = store.findByUserId(userId);
+            u = other == null ? u : other;
+        }
+        Suits.ensureSuits(store);
+        JSONArray owned = Suits.ownedSuits(store, u);
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < owned.length(); i++) {
+            JSONObject s = Suits.byId(store, owned.optLong(i));
+            if (s != null) out.put(Suits.suitJson(store, u, s));
+        }
+        return envelope("list", out.toString());
+    }
+
+    /** GET /shop/api/v1/new/shop/user/gift/suit/receive — can claim the gift suit? */
+    private static String giftSuitCanReceive(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        return bool(!Suits.giftClaimed(store, u));
+    }
+
+    /** GET /shop/api/v1/new/shop/suit/decorations — the full suit shop list. */
+    private static String shopSuitList(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        Suits.ensureSuits(store);
+        JSONArray suits = store.root().optJSONArray("suits");
+        JSONArray out = new JSONArray();
+        for (int i = 0; suits != null && i < suits.length(); i++) {
+            JSONObject s = suits.optJSONObject(i);
+            if (s != null) out.put(Suits.suitJson(store, u, s));
+        }
+        return envelope("list", out.toString());
+    }
+
+    /** GET /shop/api/v1/new/shop/suit/list/info?suitIds=1&suitIds=2 — filtered list. */
+    private static String suitListByIds(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        Suits.ensureSuits(store);
+        java.util.List<String> ids = ctx.queryValues("suitIds");
+        JSONArray out = new JSONArray();
+        for (String id : ids) {
+            JSONObject s = Suits.byId(store, parseLong(id, 0));
+            if (s != null) out.put(Suits.suitJson(store, u, s));
+        }
+        return envelope("list", out.toString());
+    }
+
+    /** GET /shop/api/v1/new/shop/suit/info/{suitId} — one suit with components. */
+    private static String suitDetail(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        JSONObject s = Suits.byId(store, parseLong(ctx.pathParam("suitId"), 0));
+        if (s == null) {
+            return fail("suit not found");
+        }
+        return envelope("obj", Suits.suitJson(store, u, s).toString());
+    }
+
+    /** GET /shop/api/v1/new/shop/gift/suit/receive — the giftable suit info. */
+    private static String suitGiftInfo(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        if (Suits.giftClaimed(store, u)) {
+            return envelope("obj", "{}");
+        }
+        return envelope("obj", Suits.suitJson(store, u, Suits.giftSuit(store)).toString());
+    }
+
+    /** POST /shop/api/v1/new/shop/gift/suit/receive?suitId= — claim the gift suit. */
+    private static String suitGiftReceive(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return fail(NO_AUTH);
+        }
+        if (Suits.giftClaimed(store, u)) {
+            return fail("gift suit already claimed");
+        }
+        JSONObject gift = Suits.giftSuit(store);
+        Suits.markGiftClaimed(store, u);
+        Suits.markOwned(store, u, gift.optLong("suitId"));
+        // the suit's component dresses become owned too (mirrors suit buy)
+        JSONArray comps = gift.optJSONArray("dressIds");
+        for (int i = 0; comps != null && i < comps.length(); i++) {
+            DressShop.markOwned(store, u, comps.optLong(i));
+        }
+        JSONArray out = new JSONArray();
+        JSONArray dressIds = gift.optJSONArray("dressIds");
+        for (int i = 0; dressIds != null && i < dressIds.length(); i++) {
+            JSONObject d = DressShop.byId(store, dressIds.optLong(i));
+            if (d != null) out.put(DressShop.singleJson(store, u, d));
+        }
+        return envelope("list", out.toString());
+    }
+
+    /**
+     * POST /user/api/v1/file (+ /user/api/v1/{version}/directory/file) —
+     * @Multipart uploadIcon/uploadFile. Stores the part bytes in the local
+     * file store and returns the loopback URL as the response string.
+     */
+    private static String uploadFile(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        byte[] data = ctx.fileBytes();
+        if (data == null || data.length == 0) {
+            return fail("multipart file part missing");
+        }
+        String id = store.storeFile(data, ctx.query("fileName"), ctx.query("fileType"),
+                u.optLong("userId"));
+        if (id == null) {
+            return fail("file store failed");
+        }
+        return envelope("str", "\"" + LOCAL_BASE_URL + "/files/" + id + "\"");
+    }
+
+    /**
+     * GET /config/files/name-sensitive-word-config — the local sensitive-word
+     * list (persisted, editable); nickNameExist filters against it for real.
+     */
+    private static String sensitiveWords(Ctx ctx, StateStore store) {
+        JSONObject cfg = store.root().optJSONObject("config");
+        JSONArray words = cfg == null ? null : cfg.optJSONArray("sensitiveWords");
+        if (words == null) {
+            if (cfg == null) {
+                cfg = new JSONObject();
+                store.root().put("config", cfg);
+            }
+            words = new JSONArray();
+            String[] defaults = {"admin", "moderator", "official", "system",
+                    "support", "nexus", "blockman"};
+            for (String w : defaults) {
+                words.put(w);
+            }
+            cfg.put("sensitiveWords", words);
+            store.save();
+        }
+        return envelope("list", words.toString());
     }
 
     private static String dressOwnedByType(Ctx ctx, StateStore store) {
@@ -1119,6 +1375,14 @@ final class Handlers {
                 ids.put(items.optJSONObject(i).optLong("decorationId"));
             }
         }
+        // BuyRequest.buySuitList: [{suitId, day}] — real suit purchases
+        JSONArray suitItems = form.optJSONArray("buySuitList");
+        JSONArray suitIds = new JSONArray();
+        if (suitItems != null) {
+            for (int i = 0; i < suitItems.length(); i++) {
+                suitIds.put(suitItems.optJSONObject(i).optLong("suitId"));
+            }
+        }
         JSONArray ok = new JSONArray();
         long golds = 0, diamonds = 0;
         for (int i = 0; i < ids.length(); i++) {
@@ -1127,12 +1391,40 @@ final class Handlers {
             if (d.optInt("currency") == 2) diamonds += d.optLong("price");
             else golds += d.optLong("price");
         }
-        if (u.optLong("golds") >= golds && u.optLong("diamonds") >= diamonds) {
+        long suitGolds = 0, suitDiamonds = 0;
+        for (int i = 0; i < suitIds.length(); i++) {
+            JSONObject s = Suits.byId(store, suitIds.optLong(i));
+            if (s == null) continue;
+            if (s.optInt("currency") == 2) suitDiamonds += s.optLong("price");
+            else suitGolds += s.optLong("price");
+        }
+        boolean afford = u.optLong("golds") >= golds + suitGolds
+                && u.optLong("diamonds") >= diamonds + suitDiamonds;
+        if (afford) {
             for (int i = 0; i < ids.length(); i++) {
                 if (DressShop.buy(store, u, ids.optLong(i))) ok.put(ids.optLong(i));
             }
+            for (int i = 0; i < suitIds.length(); i++) {
+                if (Suits.buy(store, u, suitIds.optLong(i))) ok.put(suitIds.optLong(i));
+            }
         }
-        return envelope("obj", DressShop.buyResponse(ids, ok, golds, diamonds).toString());
+        JSONObject resp = DressShop.buyResponse(ids, ok, golds, diamonds);
+        // suitPurchaseStatus: {suitId -> bought?} — real per-suit result
+        JSONObject suitStatus = new JSONObject();
+        for (int i = 0; i < suitIds.length(); i++) {
+            boolean bought = false;
+            for (int j = 0; j < ok.length(); j++) {
+                if (ok.optLong(j) == suitIds.optLong(i)) {
+                    bought = true;
+                    break;
+                }
+            }
+            suitStatus.put(String.valueOf(suitIds.optLong(i)), bought);
+        }
+        resp.put("suitPurchaseStatus", suitStatus);
+        resp.put("goldsNeed", golds + suitGolds);
+        resp.put("diamondsNeed", diamonds + suitDiamonds);
+        return envelope("obj", resp.toString());
     }
 
     private static String dressDetails(Ctx ctx, StateStore store) {
@@ -1891,6 +2183,15 @@ final class Handlers {
         String nick = ctx.query("nickName");
         if (nick == null || nick.trim().isEmpty()) return fail("nickName required");
         String q = nick.trim().toLowerCase(java.util.Locale.US);
+        // sensitive-word filter from the persisted local config (name-sensitive-word-config)
+        JSONObject cfg = store.root().optJSONObject("config");
+        JSONArray words = cfg == null ? null : cfg.optJSONArray("sensitiveWords");
+        for (int i = 0; words != null && i < words.length(); i++) {
+            String w = words.optString(i).toLowerCase(java.util.Locale.US);
+            if (!w.isEmpty() && q.contains(w)) {
+                return fail("nickname contains a sensitive word");
+            }
+        }
         JSONObject users = store.root().optJSONObject("users");
         JSONArray names = users == null ? null : users.names();
         for (int i = 0; names != null && i < names.length(); i++) {

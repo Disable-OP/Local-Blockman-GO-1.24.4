@@ -282,6 +282,127 @@ public final class StateStore {
         return userState(user).optJSONArray("signIns");
     }
 
+    // ------------------------------------------------ mini-game dispatch tokens
+
+    /**
+     * Issue a mini-game dispatch token (the value the client sends back as
+     * x-shahe-token when it POSTs /v1/dispatch on the dispUrl host). Kept in
+     * root.miniTokens (latest 40) so dispatch can be validated for real.
+     */
+    public synchronized JSONObject issueMiniToken(long userId, String gameType,
+                                                  String mapName, int region) {
+        JSONObject mt = root.optJSONObject("miniTokens");
+        if (mt == null) {
+            mt = new JSONObject();
+            root.put("miniTokens", mt);
+        }
+        JSONObject t = new JSONObject();
+        t.put("userId", userId);
+        t.put("gameType", gameType == null ? "" : gameType);
+        t.put("mapName", mapName == null ? "" : mapName);
+        t.put("region", region);
+        t.put("requestId", Long.toHexString(System.nanoTime()));
+        t.put("signature", Long.toHexString(Double.doubleToLongBits(Math.random())));
+        t.put("timestamp", System.currentTimeMillis());
+        String key = "mg-" + userId + "-" + Long.toHexString(System.nanoTime());
+        mt.put(key, t);
+        // prune to the newest 40 tokens
+        JSONArray names = mt.names();
+        while (names != null && names.length() > 40) {
+            long oldest = Long.MAX_VALUE;
+            String oldestKey = null;
+            for (int i = 0; i < names.length(); i++) {
+                String k = names.optString(i);
+                if (k.equals(key)) continue; // never prune the token just issued
+                long ts = mt.optJSONObject(k) == null ? 0
+                        : mt.optJSONObject(k).optLong("timestamp");
+                if (ts < oldest) {
+                    oldest = ts;
+                    oldestKey = k;
+                }
+            }
+            if (oldestKey == null) break;
+            mt.remove(oldestKey);
+            names = mt.names();
+        }
+        save();
+        t.put("token", key);
+        return t;
+    }
+
+    /** Look up a previously issued mini-game dispatch token. */
+    public synchronized JSONObject findMiniToken(String token) {
+        if (token == null || token.isEmpty()) return null;
+        JSONObject mt = root.optJSONObject("miniTokens");
+        return mt == null ? null : mt.optJSONObject(token);
+    }
+
+    // ------------------------------------------------------------ file storage
+
+    /**
+     * Store an uploaded file under <filesDir>/localapi/files/<id> with its
+     * metadata in root.files. Returns the file id (the URL the handler hands
+     * back to the client is http://127.0.0.1:18080/files/<id>).
+     */
+    public synchronized String storeFile(byte[] data, String fileName, String fileType,
+                                         long uploaderId) {
+        if (data == null || data.length == 0) return null;
+        if (data.length > 4 * 1024 * 1024) return null; // 4 MB cap (avatars/banners)
+        JSONObject files = root.optJSONObject("files");
+        if (files == null) {
+            files = new JSONObject();
+            root.put("files", files);
+        }
+        String id = "f" + Long.toHexString(System.nanoTime())
+                + Long.toHexString(Double.doubleToLongBits(Math.random()));
+        File dir = new File(file.getParentFile(), "files");
+        //noinspection ResultOfMethodCallIgnored
+        dir.mkdirs();
+        try {
+            FileOutputStream out = new FileOutputStream(new File(dir, id));
+            out.write(data);
+            out.close();
+        } catch (Throwable t) {
+            L.e("file store failed: " + t);
+            return null;
+        }
+        JSONObject meta = new JSONObject();
+        meta.put("fileName", fileName == null ? "" : fileName);
+        meta.put("fileType", fileType == null ? "" : fileType);
+        meta.put("uploaderId", uploaderId);
+        meta.put("size", data.length);
+        meta.put("createdAt", System.currentTimeMillis());
+        files.put(id, meta);
+        save();
+        return id;
+    }
+
+    public synchronized JSONObject fileMeta(String id) {
+        JSONObject files = root.optJSONObject("files");
+        return files == null ? null : files.optJSONObject(id);
+    }
+
+    public synchronized byte[] readFile(String id) {
+        if (id == null || id.isEmpty() || id.contains("/")) return null;
+        try {
+            File f = new File(new File(file.getParentFile(), "files"), id);
+            if (!f.exists()) return null;
+            byte[] buf = new byte[(int) f.length()];
+            FileInputStream in = new FileInputStream(f);
+            int off = 0;
+            while (off < buf.length) {
+                int r = in.read(buf, off, buf.length - off);
+                if (r < 0) break;
+                off += r;
+            }
+            in.close();
+            return buf;
+        } catch (Throwable t) {
+            L.e("file read failed: " + t);
+            return null;
+        }
+    }
+
     public synchronized boolean hasSignedIn(JSONObject user, String date) {
         JSONArray dates = signIns(user);
         if (dates != null) {

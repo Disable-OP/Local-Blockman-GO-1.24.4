@@ -309,3 +309,34 @@
   v0.4.1-friends, v0.4.2-groups, v0.4.3-security, v0.4.4-errorfix — all
   CI-built and CI-tested.
 - Coverage: 335/250/85/190; host rig 259/259.
+
+## Session 8 — Phase 5: dispatch bridge API shape + decoration suits + file upload (2026-10-04)
+
+- Client-first analysis (jadx classes3): IBlockyGameApi dispatch/follow take
+  x-shahe-uid/x-shahe-token and are called on the MiniGameToken.dispUrl host
+  (empty dispUrl = client aborts 429 before joining). Dispatch consumers do
+  gAddr.split(":") (host:port REQUIRED or crash) and read requestIds/croomid.
+- miniGameToken upgraded: issues into root.miniTokens (pruned 40, requestId
+  per issuance) and returns dispUrl=http://127.0.0.1:18080 — dispatch lands
+  on the embedded server.
+- POST /v1/dispatch + /v1/follow: real token validation (unknown -> code=0),
+  full Dispatch model (gaddr 127.0.0.1:18080, persistent per-game croomid,
+  requestIds echo, resVersion/signature/timestamp). Engine 10068 GameServer
+  stays a later phase; the bridge contract is final, nothing faked.
+- /v1/game-res: GameResInfo with loopback CDN (base=true) + resVersion echo.
+- recordAdsGame: +100 golds (5/day shared cap), returns credited amount.
+- Suits.java: 6 persisted suits bundling real dress ids (~30% set discount);
+  per-user ownedSuits; one-time gift suit claim (marks suit + components
+  owned); buy through dressBuyV2.buySuitList with real wallet math +
+  suitPurchaseStatus; dressSuitList returns owned suits; giftSuitCanReceive
+  is real state now.
+- File upload: multipart parser in LocalHttpd (raw-byte safe) + file store
+  in StateStore (4 MB cap; bytes under localapi/files/, meta in root.files);
+  POST /user/api/v1/file + /user/api/{version}/directory/file return
+  loopback URLs; GET /files/<id> serves bytes back (own extension route).
+- name-sensitive-word-config now real persisted config; nickNameExist
+  filters against it.
+- Host rig 282/282 PASS (new: dispatch lifecycle + bad-token rejection,
+  suit shop/gift/owned/buy wallet math, upload binary round-trip, sensitive
+  names). Coverage 335/261/74/202 (78% implemented). CI Phase C drives the
+  dispatch bridge + suit gift on-device via adb-forward.

@@ -69,9 +69,12 @@ Retrofit + Gson expect JSON bodies; errors follow the app's `BaseResponse` shape
 - Phase 3.6/3.7: DONE (profile extras + complete IPayApi local wallet).
 - Phase 4 tribe/clan: DONE (session 6) — all 35 /clan/api routes
   state-backed (see the Phase 4 section below).
-- Phase 5 game runtime: dispatch/join (Dispatch model, MiniGameToken.dispUrl)
-  hands the client a game-server address — needs the Engine 10068 GameServer
-  phase; API surface (token/dispatch) already state-backed with real tokens.
+- Phase 5 game runtime API shape: DONE (this session) — token/dispatch
+  bridge fully state-backed (see the Phase 5 section below). The engine
+  connection target is the loopback API endpoint until the Engine 10068
+  GameServer phase; the contract itself is final and nothing is faked.
+- Decoration suits: DONE (this session) — see the Phase 5 section below.
+- File upload: DONE (this session) — multipart upload + local file serving.
 
 ## Phase 3 addendum (same session)
 
@@ -273,3 +276,52 @@ crash buffer) analyzed for the whole client session:
     real serverTime.
 - Host rig: 259/259 PASS. Coverage: 335 discovered / 250 implemented /
   85 default / 190 host-tested.
+
+### Phase 5 (this session): dispatch bridge API shape + suits + file upload
+
+Client-first evidence (jadx sources, classes3):
+- `IBlockyGameApi`: POST /v1/dispatch + POST /v1/follow take a body Map and
+  x-shahe-uid/x-shahe-token headers, return Dispatch; GET /v1/game-res
+  returns GameResInfo{cdns, durl, resVersion}.
+- The dispatch Retrofit is built against `miniGameToken.getDispUrl()` — i.e.
+  the SERVER decides where dispatch lands. Empty dispUrl made the client
+  abort with onServerError(429) before dispatch (GameApi line ~825).
+- Dispatch consumers (EchoesGLSurfaceView line ~902): gAddr.split(":") -> host
+  + port for the engine connect; requestIds.get(userId) as connect token;
+  chatRoomId feeds the in-game chat room join. The client overwrites
+  dispatch.dispUrl/signature/timestamp from the MiniGameToken afterwards.
+- Dispatch request body (onGetGameDispatch): clz/name/pioneer/targetId/
+  resVersion/ever/picUrl/packageName/appVer/country/lang/rid.
+
+Implementation:
+- miniGameToken now issues into root.miniTokens (token, userId, gameType,
+  mapName, region, requestId, signature, timestamp; pruned to 40) and returns
+  dispUrl = http://127.0.0.1:18080 — the client's follow-up dispatch hits
+  THIS server.
+- /v1/dispatch + /v1/follow validate the shahe token for real (unknown ->
+  code=0) and return the complete Dispatch model with
+  gaddr=127.0.0.1:18080 (host:port format, engine-ready) + persistent
+  per-game chat room (croomid) + requestIds echo. The Engine 10068 GameServer
+  remains a later phase (per project instruction); the bridge contract is
+  final and every value is dynamic.
+- /v1/game-res returns the loopback CDN as the base source.
+- recordAdsGame (PUT /game/api/v1/game/record/ads) credits 100 golds under
+  the shared 5/day ad cap and returns the credited amount.
+- Suits (Suits.java): 6 suits generated once + persisted (root.suits), each
+  bundling real DressShop dress ids with a ~30% set discount; per-user
+  ownedSuits + one-time gift claim (giftSuitClaimed); buy via
+  dressBuyV2.buySuitList with real wallet deduction; dressSuitList returns
+  the owned suits.
+- File upload: multipart parser in LocalHttpd (raw-byte safe; body strings
+  would corrupt binaries) + storeFile/readFile in StateStore (4 MB cap,
+  bytes under localapi/files/<id>, metadata in root.files); uploadFile
+  handler returns the loopback URL; GET /files/<id> serves the bytes back
+  with the stored mime type.
+- name-sensitive-word-config is now real persisted config; nickNameExist
+  rejects nicknames containing a listed word.
+
+Host rig 282/282 PASS (Phase 5: dispatch lifecycle incl. bad-token
+rejection, suit shop/gift/owned/buy wallet math, upload round-trip incl.
+binary integrity, sensitive-name rejection). Coverage: 335 discovered /
+261 implemented (78%) / 74 default / 202 host-tested. CI Phase C now drives
+the dispatch bridge + suit gift on-device via adb-forward.

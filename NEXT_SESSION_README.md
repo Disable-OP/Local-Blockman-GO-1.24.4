@@ -168,3 +168,31 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
      UNMAPPED/missed client calls (esp. file upload POST /user/api/v1/file).
   4. Then: Phase 5 groundwork (dispatch/loopback gAddr) ONLY as API shape,
      no GameServer work (per project instruction).
+
+## Session 8 delta (Phase 5: dispatch bridge + suits + upload)
+
+- Dispatch bridge DONE: miniGameToken dispUrl = http://127.0.0.1:18080
+  (token issued into root.miniTokens); POST /v1/dispatch + /v1/follow
+  validate the shahe token and return the full Dispatch model with
+  gaddr=127.0.0.1:18080 (host:port — client split(":") it). /v1/game-res
+  returns the loopback CDN. NOTE: actually CONNECTING the engine needs the
+  Engine 10068 GameServer phase (deferred per project instruction).
+- Suits DONE (Suits.java): shop/detail/list/gift/owned + buy via
+  dressBuyV2.buySuitList (real wallet math). Gift suit = one-time per user.
+- File upload DONE: multipart parser + local file store + GET /files/<id>
+  serving (own extension route, not from the Retrofit map).
+- nickNameExist now filters against the persisted sensitive-word config.
+- Host rig 282/282. Coverage 335/261/74/202 (78%).
+- Next highest-value gaps (priority order):
+  1. Verify the v0.5.0 CI run (build-release + redroid with the new Phase C
+     dispatch/suit assertions); fix anything red.
+  2. Remaining /config/files defaults (banner/share-reward/campaign lists,
+     game-detail-to-editor, indiegame introductions) — model shapes from
+     jadx first (FireConfig consumers), keep flag-gated off.
+  3. geoinfo userGeoInfo + ranking region home/user info (models in
+     com/disabngo/blockynexus/web IGeoApi/IRankingApi callers).
+  4. videostars (5, real-money) + /video (7): stay error-driven; only
+     implement if a redroid run shows the client calling them.
+  5. After that: dispatch-side groundwork for the Engine phase (map download
+     URLs served locally from /files/) — still NO GameServer work.
+- Tag v0.5.0-dispatch ships this phase (build-release triggers on tags only).

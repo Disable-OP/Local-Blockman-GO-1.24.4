@@ -40,6 +40,19 @@ HANDLERS = {
     "PUT /user/api/v1/user/device/id": "ackPut",
     "POST /user/api/v1/user/mac/id": "ackPost",
     "POST /user/api/v1/user/language": "ackPost",
+    # --- Phase 5: dispatch bridge + suits + upload + misc ---
+    "POST /v1/dispatch": "dispatch",
+    "POST /v1/follow": "follow",
+    "GET /v1/game-res": "gameResInfo",
+    "PUT /game/api/v1/game/record/ads": "recordAdsGame",
+    "GET /shop/api/v1/new/shop/suit/decorations": "shopSuitList",
+    "GET /shop/api/v1/new/shop/suit/list/info": "suitListByIds",
+    "GET /shop/api/v1/new/shop/suit/info/{suitId}": "suitDetail",
+    "GET /shop/api/v1/new/shop/gift/suit/receive": "suitGiftInfo",
+    "POST /shop/api/v1/new/shop/gift/suit/receive": "suitGiftReceive",
+    "POST /user/api/v1/file": "uploadFile",
+    "POST /user/api/{version}/directory/file": "uploadFile",
+    "GET /config/files/name-sensitive-word-config": "sensitiveWords",
 }
 
 ANN = re.compile(r'@(GET|POST|PUT|DELETE)\("([^"]+)"\)')

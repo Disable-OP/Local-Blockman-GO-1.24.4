@@ -567,6 +567,32 @@ def main():
                % g1.get("data", {}).get("groupId", 0), None, headers=auth_hdr)
     check("C: group quit", g3.get("code") == 1, str(g3)[:100])
 
+    # Phase 5 surface: dispatch bridge (token -> loopback dispatch) + suit gift
+    p1 = fcall("GET", "/game/api/v2/game/auth?typeId=%s&targetId=%d&gameVersion=1"
+               % (first_game, qa_uid_num), headers=auth_hdr)
+    mg = p1.get("data", {})
+    check("C: dispatch token with loopback dispUrl", p1.get("code") == 1
+          and mg.get("dispUrl") == "http://127.0.0.1:18080"
+          and mg.get("token", "").startswith("mg-"), str(p1)[:150])
+    p2 = fcall("POST", "/v1/dispatch",
+               {"clz": 0, "name": "qa", "pioneer": True, "targetId": qa_uid_num,
+                "resVersion": 1, "ever": 1, "picUrl": "", "packageName": "ci",
+                "appVer": "1.24.4", "country": "us", "lang": "en", "rid": 0},
+               headers={"x-shahe-uid": str(qa_uid_num), "x-shahe-token": mg.get("token", "")})
+    check("C: dispatch returns engine gaddr", p2.get("code") == 1
+          and p2.get("data", {}).get("gaddr") == "127.0.0.1:18080"
+          and ":" in (p2.get("data", {}).get("gaddr") or "")
+          and p2.get("data", {}).get("croomid"), str(p2)[:200])
+    p3 = fcall("GET", "/shop/api/v1/new/shop/suit/decorations?os=android&engineVersion=1",
+               headers={"language": "en"})
+    check("C: suit shop served", p3.get("code") == 1 and len(p3.get("data", [])) >= 6,
+          str(p3)[:120])
+    p4 = fcall("GET", "/shop/api/v1/new/shop/user/gift/suit/receive", headers=auth_hdr)
+    p5 = fcall("POST", "/shop/api/v1/new/shop/gift/suit/receive?suitId=%d"
+               % ((p3.get("data") or [{}])[0].get("suitId", 600001)), {}, headers=auth_hdr)
+    check("C: gift suit claimed into wardrobe", p4.get("data") is True
+          and p5.get("code") == 1 and len(p5.get("data", [])) >= 3, str(p5)[:150])
+
     # ------------------------------------------------- assertions
     print("== assertions ==")
     paths = localapi_paths(adb)

@@ -42,6 +42,27 @@ def call(method, path, body=None, headers=None):
         return {"__http_error": e.code}
 
 
+def call_raw(method, path, data, headers=None):
+    """Raw-bytes request (multipart uploads); response parsed as JSON."""
+    req = urllib.request.Request(BASE + path, method=method, data=data)
+    for k, v in (headers or {}).items():
+        req.add_header(k, v)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        return {"__http_error": e.code}
+
+
+def raw_get(url):
+    """Fetch raw bytes from the server (file downloads)."""
+    try:
+        with urllib.request.urlopen(url, timeout=10) as r:
+            return r.read()
+    except urllib.error.HTTPError:
+        return b""
+
+
 def check(name, cond, detail=""):
     if cond:
         passed.append(name)
@@ -324,7 +345,7 @@ def main():
                    headers={"Access-Token": tok1, "userId": str(uid1)})
         check("miniGameToken", tok.get("code") == 1 and tok.get("data", {}).get("token")
               and tok["data"].get("timestamp", 0) > 0
-              and tok["data"].get("dispUrl") == "", str(tok)[:150])
+              and tok["data"].get("dispUrl") == "http://127.0.0.1:18080", str(tok)[:150])
         rc = call("GET", "/game/api/v1/games/resource/version?ver=1&platform=android")
         check("resCheck", rc.get("code") == 1 and rc.get("data", {}).get("update") is False,
               str(rc)[:100])
@@ -1116,6 +1137,145 @@ def main():
         check("activity title empty + serverTime", at.get("code") == 1
               and at["data"].get("activityTitleList") == []
               and at["data"].get("serverTime", 0) > 0, str(at)[:150])
+
+        # ------------------------------------------------ Phase 5: dispatch bridge
+        print("== Phase 5: dispatch bridge (token -> dispatch -> game-res) ==")
+        mtok = call("GET", "/game/api/v2/game/auth?typeId=%s&targetId=%d&gameVersion=1"
+                    % (gid, uid1), headers={"Access-Token": tok1, "userId": str(uid1)})
+        mg = mtok.get("data", {})
+        check("dispatch token issued", mtok.get("code") == 1
+              and mg.get("token", "").startswith("mg-")
+              and mg.get("requestId", {}).get(str(uid1)), str(mtok)[:150])
+        dp = call("POST", "/v1/dispatch",
+                  {"clz": 0, "name": "Player", "pioneer": True, "targetId": uid1,
+                   "resVersion": 3, "ever": 1, "picUrl": "", "packageName": "com.test",
+                   "appVer": "1.24.4", "country": "us", "lang": "en", "rid": 0},
+                  headers={"x-shahe-uid": str(uid1), "x-shahe-token": mg.get("token", "")})
+        dd = dp.get("data", {})
+        check("dispatch returns engine shape", dp.get("code") == 1
+              and dd.get("gaddr") == "127.0.0.1:18080"
+              and ":" in (dd.get("gaddr") or "")
+              and dd.get("dispUrl") == "http://127.0.0.1:18080"
+              and dd.get("croomid"), str(dp)[:250])
+        check("dispatch game + requestIds", dd.get("name")
+              and dd.get("requestIds", {}).get(str(uid1)) == mg.get("requestId", {}).get(str(uid1))
+              and dd.get("resVersion") == 3, str(dd)[:250])
+        dp2 = call("POST", "/v1/dispatch", {"resVersion": 1},
+                   headers={"x-shahe-uid": str(uid1), "x-shahe-token": "mg-bogus"})
+        check("dispatch rejects bad token", dp2.get("code") == 0, str(dp2)[:100])
+        fl = call("POST", "/v1/follow",
+                  {"targetId": uid1, "resVersion": 1, "ever": 1, "rid": 0},
+                  headers={"x-shahe-uid": str(uid1), "x-shahe-token": mg.get("token", "")})
+        check("follow returns dispatch too", fl.get("code") == 1
+              and fl.get("data", {}).get("gaddr") == "127.0.0.1:18080", str(fl)[:150])
+        gr = call("GET", "/v1/game-res?gameType=1&engineVersion=1&resVersion=7")
+        gd = gr.get("data", {})
+        check("game-res local cdn", gr.get("code") == 1
+              and gd.get("resVersion") == 7
+              and gd.get("cdns") and gd["cdns"][0]["base"] is True
+              and gd["cdns"][0]["url"] == "http://127.0.0.1:18080", str(gr)[:200])
+
+        # ------------------------------------------------ Phase 5: suits
+        print("== Phase 5: decoration suits (shop/gift/owned) ==")
+        suits = call("GET", "/shop/api/v1/new/shop/suit/decorations?os=android&engineVersion=1",
+                     headers={"language": "en"})
+        check("suit shop list", suits.get("code") == 1 and len(suits.get("data", [])) == 6
+              and suits["data"][0].get("suitId") and "decorationInfoList" in suits["data"][0]
+              and "shopDecorationInfos" in suits["data"][0], str(suits)[:200])
+        suit0 = suits["data"][0]
+        suit1 = suits["data"][1]
+        sd = call("GET", "/shop/api/v1/new/shop/suit/info/%d" % suit0["suitId"],
+                  headers={"language": "en"})
+        check("suit detail components", sd.get("code") == 1
+              and len(sd["data"].get("decorationInfoList", [])) >= 3
+              and sd["data"]["price"] > 0, str(sd)[:200])
+        sby = call("GET", "/shop/api/v1/new/shop/suit/list/info?suitIds=%d&suitIds=%d"
+                   % (suit0["suitId"], suit1["suitId"]), headers={"language": "en"})
+        check("suit list by ids", sby.get("code") == 1 and len(sby.get("data", [])) == 2,
+              str(sby)[:150])
+        owned0 = call("GET", "/decoration/api/v1/new/decorations/users/%d/suit" % uid1,
+                      headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("no owned suits at start", owned0.get("code") == 1 and owned0.get("data") == [],
+              str(owned0)[:120])
+        gift = call("GET", "/shop/api/v1/new/shop/user/gift/suit/receive",
+                    headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        check("gift suit available", gift.get("code") == 1 and gift.get("data") is True,
+              str(gift)[:100])
+        gi = call("GET", "/shop/api/v1/new/shop/gift/suit/receive",
+                  headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        check("gift suit info", gi.get("code") == 1
+              and gi["data"].get("suitId") == suit0["suitId"], str(gi)[:150])
+        w_pre = call("GET", "/pay/api/v1/wealth/user",
+                     headers={"Access-Token": tok1, "userId": str(uid1)}).get("data", {})
+        claim = call("POST", "/shop/api/v1/new/shop/gift/suit/receive?suitId=%d"
+                     % suit0["suitId"], {},
+                     headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        check("gift suit claim -> dresses", claim.get("code") == 1
+              and len(claim.get("data", [])) >= 3, str(claim)[:200])
+        gift2 = call("GET", "/shop/api/v1/new/shop/user/gift/suit/receive",
+                     headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("gift suit now unavailable", gift2.get("code") == 1 and gift2.get("data") is False,
+              str(gift2)[:100])
+        owned1 = call("GET", "/decoration/api/v1/new/decorations/users/%d/suit" % uid1,
+                      headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("owned suit list has gift suit", owned1.get("code") == 1
+              and len(owned1.get("data", [])) == 1
+              and owned1["data"][0]["suitId"] == suit0["suitId"], str(owned1)[:200])
+        # buy suit1 with real wallet deduction
+        w_pre2 = call("GET", "/pay/api/v1/wealth/user",
+                      headers={"Access-Token": tok1, "userId": str(uid1)}).get("data", {})
+        buysuit = call("POST", "/shop/api/v1/new/shop/decorations/buy",
+                       {"buySuitList": [{"suitId": suit1["suitId"], "day": 0}]},
+                       headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        w_post = call("GET", "/pay/api/v1/wealth/user",
+                      headers={"Access-Token": tok1, "userId": str(uid1)}).get("data", {})
+        exp_price = suit1["price"]
+        exp_kind = "diamonds" if suit1["currency"] == 2 else "golds"
+        check("buy suit deducts wallet", buysuit.get("code") == 1
+              and buysuit["data"]["suitPurchaseStatus"].get(str(suit1["suitId"])) is True
+              and w_post.get(exp_kind, 0) == w_pre2.get(exp_kind, 0) - exp_price,
+              "%s | w %s -> %s" % (str(buysuit)[:200], w_pre2, w_post))
+        owned2 = call("GET", "/decoration/api/v1/new/decorations/users/%d/suit" % uid1,
+                      headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("two owned suits after buy", owned2.get("code") == 1
+              and len(owned2.get("data", [])) == 2, str(owned2)[:200])
+
+        # ------------------------------------------------ Phase 5: file upload
+        print("== Phase 5: file upload (multipart) + sensitive words ==")
+        png = bytes(range(256)) * 4  # 1 KiB binary blob (not valid PNG; bytes survive)
+        up = call_raw("POST", "/user/api/v1/file?fileName=avatar.png&fileType=png",
+                      b"--XBOUND\r\nContent-Disposition: form-data; name=\"file\";"
+                      b" filename=\"avatar.png\"\r\nContent-Type: image/png\r\n\r\n"
+                      + png + b"\r\n--XBOUND--\r\n",
+                      {"Content-Type": "multipart/form-data; boundary=XBOUND",
+                       "Access-Token": tok1, "userId": str(uid1)})
+        furl = (up.get("data") or "") if up.get("code") == 1 else ""
+        check("upload returns local url", furl.startswith("http://127.0.0.1:18080/files/"),
+              str(up)[:150])
+        # the stored URL is the device-contract (port 18080); the host rig runs
+        # on a random port, so rewrite it for the round-trip fetch
+        got = raw_get(furl.replace(":18080/", ":%d/" % PORT)) if furl else b""
+        check("uploaded file round-trips", got == png, "got %d bytes" % len(got))
+        dup = call_raw("POST", "/user/api/v2/directory/file?fileName=x.bin&directory=mods",
+                       b"--XBOUND\r\nContent-Disposition: form-data; name=\"file\";"
+                       b" filename=\"x.bin\"\r\n\r\nhello-binary\r\n--XBOUND--\r\n",
+                       {"Content-Type": "multipart/form-data; boundary=XBOUND",
+                        "Access-Token": tok1, "userId": str(uid1)})
+        check("directory file upload", dup.get("code") == 1
+              and str(dup.get("data", "")).startswith("http://127.0.0.1:18080/files/"),
+              str(dup)[:150])
+        sw = call("GET", "/config/files/name-sensitive-word-config")
+        check("sensitive words list", sw.get("code") == 1 and "admin" in sw.get("data", []),
+              str(sw)[:150])
+        nbad = call("POST", "/user/api/v1/user/nickname/exist?nickName=theOFFICIALone", None)
+        ngood = call("POST", "/user/api/v1/user/nickname/exist?nickName=qa_free_name_%d"
+                     % random.randint(1000, 9999), None)
+        check("sensitive nickname rejected", nbad.get("code") == 0
+              and ngood.get("code") == 1, "%s %s" % (str(nbad)[:80], str(ngood)[:80]))
+        ra = call("PUT", "/game/api/v1/game/record/ads", None,
+                  headers={"Access-Token": tok5, "userId": str(uid5), "language": "en"})
+        check("record ads game credits", ra.get("code") == 1 and ra.get("data") == 100,
+              str(ra)[:100])
 
         print("== route-table sweep (all routes answer the envelope) ==")
         sys.path.insert(0, os.path.join(REPO, "scripts"))

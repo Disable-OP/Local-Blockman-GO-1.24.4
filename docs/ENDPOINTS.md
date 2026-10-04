@@ -355,8 +355,8 @@ HttpResponse envelope {code:1, message, data}).
 | GET /game/api/v1/games/config/app/{gameId} | getPartyCreateGameConfig | member limits |
 | POST /game/api/v1/game/chat/room | getChatRoom | persistent roomId per roomName |
 | PUT /game/api/v1/games/{gameId}/appreciation | appreciation | increments praiseNumber, returns new total |
-| GET /game/api/v2/game/auth (+/flow/game/auth, /v1/game-map) | miniGameToken | dynamic token+timestamp; dispUrl="" until GameServer phase |
-| GET /v1/game-res | getResInfo | {durl:"", resVersion:1} |
+| GET /game/api/v2/game/auth (+/flow/game/auth, /v1/game-map) | miniGameToken | dynamic token issued into root.miniTokens; dispUrl=http://127.0.0.1:18080 (this server); requestId {uid:hex} |
+| GET /v1/game-res | gameResInfo | GameResInfo with the loopback CDN as base source + query resVersion echo |
 | GET /game/api/v1/games/resource/version | resCheck | {update:false} |
 | GET /game/api/v1/games/app-engine/upgrade | getUpgradeInfo | {needUpgrade:false} |
 | GET /game/api/v1/games/app-engine/check-update | getGameResource | [] (nothing to update) |
@@ -385,8 +385,11 @@ Delete state.json to regenerate.
 - DailySignInfo.status semantics (claimed vs unclaimed) are inferred; UI cosmetics only.
 - GameDetailShop.currency values (1=golds, 2=diamonds) inferred from usage sites.
 - gameId is a String in the client model — catalog ids are numeric strings.
-- Game join/dispatch (POST /v1/dispatch, Dispatch model) is Phase 4: needs the
-  game-service layer. Token endpoints currently return empty dispUrl.
+- Game join/dispatch (POST /v1/dispatch, Dispatch model) returns the final API
+  shape with gaddr=127.0.0.1:18080 (host:port — the client split(":") it). The
+  Engine 10068 GameServer itself is a later project phase; today the engine
+  would connect to the loopback API endpoint. Nothing about the contract is
+  faked: tokens are issued/validated against real state (root.miniTokens).
 
 ## Phase 3 handlers (this session, decoration + dress shop + scrap)
 
@@ -409,7 +412,7 @@ Delete state.json to regenerate.
 | GET /shop/api/v1/shop/decorations/recommends/{decorationId} | dressRecommendList | same-type suggestions |
 | GET /shop/api/{version}/shop/decorations/{typeId} + v1/new/... | shopList | same generated catalog |
 | GET /shop/api/v1/new/shop/recommend/decorations | shopRecommendV2 | ShopRecommendDecorationInfo rows |
-| GET /shop/api/v1/new/shop/user/gift/suit/receive | giftSuitCanReceive | false (no gifts) |
+| GET /shop/api/v1/new/shop/user/gift/suit/receive | giftSuitCanReceive | true until the one-time gift suit is claimed (per-user state) |
 | GET /config/files/dress-guide-config | dressGuideConfig | empty map |
 | GET /decoration/api/v1/decoration/versions + new/.../check/resource | res checks | no update |
 | GET /activity/api/{version}/collect/exchange/user/scrap | scrapBackpack | 6 scrap types generated per user, amounts persist |
@@ -423,3 +426,25 @@ Delete state.json to regenerate.
 | GET /activity/api/v1/collect/exchange/description | scrapRule | rules text |
 | POST /activity/api/{version}/collect/exchange/scrap/send | scrapSend | consumes 1 scrap, returns uuid |
 | GET .../scrap/ask + scrap/receive + treasurebox + vip/convert + reward/value + card/combine | simple state | acks/constants |
+
+## Phase 5 handlers (dispatch bridge + suits + file upload)
+
+| Route | Handler | Behavior |
+|---|---|---|
+| POST /v1/dispatch | dispatch | validates x-shahe-uid/x-shahe-token against root.miniTokens; returns the full Dispatch model (gaddr host:port, croomid persistent chat room, mid/mname, requestIds, resVersion echo, signature/timestamp from the token) |
+| POST /v1/follow | follow | same Dispatch shape for followed games |
+| GET /v1/game-res | gameResInfo | GameResInfo{cdns:[local base cdn], durl, resVersion} |
+| PUT /game/api/v1/game/record/ads | recordAdsGame | credits 100 golds (shared 5/day ad cap), returns the amount |
+| GET /shop/api/v1/new/shop/suit/decorations | shopSuitList | 6 persisted suits (root.suits) bundling real dress ids, SuitDressInfo shape |
+| GET /shop/api/v1/new/shop/suit/list/info?suitIds= | suitListByIds | filtered suit list |
+| GET /shop/api/v1/new/shop/suit/info/{suitId} | suitDetail | one suit with component SingleDressInfo lists |
+| GET /shop/api/v1/new/shop/gift/suit/receive | suitGiftInfo | the giftable suit (or {} once claimed) |
+| POST /shop/api/v1/new/shop/gift/suit/receive?suitId= | suitGiftReceive | one-time claim: marks suit + component dresses owned, returns the dresses |
+| GET /shop/api/v1/new/shop/user/gift/suit/receive | giftSuitCanReceive | real per-user gift state |
+| GET /decoration/api/v1/new/decorations/users/{userId}/suit | dressSuitList | owned suits (real wardrobe state) |
+| POST /shop/api/v1/new/shop/decorations/buy | dressBuyV2 (extended) | handles BuyRequest.buySuitList: wallet math + suitPurchaseStatus + component dresses owned |
+| POST /user/api/v1/file | uploadFile | @Multipart uploadIcon: parses the file part, stores bytes under localapi/files/<id>, returns http://127.0.0.1:18080/files/<id> |
+| POST /user/api/{version}/directory/file | uploadFile | same for IBlockyUserApi.uploadFile |
+| GET /files/<id> (server extension) | file serving | returns stored upload bytes with the stored mime type (this route is our own; the client fetches it as a plain URL, not Retrofit) |
+| GET /config/files/name-sensitive-word-config | sensitiveWords | persisted local sensitive-word list; nickNameExist filters against it for real |
+
