@@ -529,3 +529,25 @@ Deep-drive discovery: the redroid UI automation now visits the Inbox / Top Up
 / Ranking rows of the Me tab and taps a Home game card (labels verified from
 the on-device uiautomator dump), printing which endpoint paths the newly
 visited screens add. A crash on any driven screen fails CI (real finding).
+
+## Phase 5g handlers (video feed — on-device crash fix)
+
+The v0.5.6 deep drive probed the Video row and the client CRASHED on-device:
+`BaseVideoInfoDbHelper` NPE (null List iterator) — the video screen caches
+`pageData.getData()` into greendao, and a bare `data:[]` parses into a
+PageData whose list is null. Client-first fix, exact shapes from
+IVideoApi + PageData (flat: data/pageNo/pageSize/totalPage/totalSize):
+
+| Route | Handler | Behavior |
+|---|---|---|
+| GET /video/api/v1/app/video/list/{type} | videoPageList | real flat PageData with data:[] (empty list, totalPage 0 — pager stops) |
+| GET /video/api/v1/app/video/more/list | videoPageList | same PageData shape |
+| GET /video/api/v1/app/video/tag/list | videoTagList | {} (no video tags locally) |
+| GET /video/api/v1/app/video/detail/info | videoDetailInfo | data absent (no videos exist) |
+| POST /video/api/v1/app/video/praise/{videoId} | videoFeedback | 0 (honest ack, no videos) |
+| POST /video/api/v1/app/video/dislike/{videoId} | videoFeedback | 0 |
+| POST /video/api/v1/app/video/report/play/amount | videoPlayAck | 0 |
+
+Deliberate: no videos are fabricated locally (no video content exists to
+serve); the fix is purely the response SHAPE so the screen shows its empty
+state instead of crashing.

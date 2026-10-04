@@ -67,12 +67,17 @@ class Adb:
 
     def sh(self, cmd, timeout=30):
         r = subprocess.run(["adb", "-s", self.serial, "shell", cmd],
-                           capture_output=True, text=True, timeout=timeout)
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=timeout)
         return r.stdout.strip()
 
     def raw(self, *args, timeout=60):
+        # logcat buffers can contain non-UTF-8 bytes (any screen may write
+        # binary through a log line); decode-tolerant or the crash scan dies
+        # on UnicodeDecodeError instead of reporting real findings.
         r = subprocess.run(["adb", "-s", self.serial] + list(args),
-                           capture_output=True, text=True, timeout=timeout)
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=timeout)
         return r.stdout.strip()
 
     def tap(self, x, y):
@@ -489,7 +494,8 @@ def main():
     # device's loopback). This is the same local API the app itself uses.
     print("== PHASE C: account creation via the embedded local API (adb forward) ==")
     fwd = subprocess.run(["adb", "-s", args.serial, "forward", "tcp:0", "tcp:18080"],
-                         capture_output=True, text=True, timeout=30)
+                         capture_output=True, text=True, encoding="utf-8",
+                         errors="replace", timeout=30)
     fport = fwd.stdout.strip()
     if not fport.isdigit():
         fail("C: adb forward failed: %s %s" % (fwd.stdout, fwd.stderr))

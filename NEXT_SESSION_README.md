@@ -272,3 +272,15 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 - Diagnostics artifact: /home/z/my-project/work/diag-v055 (sandbox copy).
 - Next: extend deep-drive (mail row detail, Store, Party/clan screens);
   error-driven loop continues. Everything else per Session 10 delta above.
+
+## Session 10 delta 2 (Phase 5g: video crash fix — error-driven WIN)
+
+- The deep drive proved its worth: probing the Video row crashed the client
+  (BaseVideoInfoDbHelper NPE — /video lists must be flat PageData with
+  data:[] INSIDE, not a bare list). All 7 /video routes now real handlers.
+  Host rig 324/324; coverage 335/281/54/217 (84%).
+- CI hardening: toolchain fetch retries with backoff; adb log reads are
+  decode-tolerant (non-UTF-8 logcat bytes used to kill the crash scan).
+- Verify v0.5.7-videofix CI green (build + redroid incl. the Video probe).
+- Next: extend deep-drive further (mail-row detail, game-detail sub-screens:
+  rank tab / comments), or per NEXT_SESSION_README priorities. NO GameServer.

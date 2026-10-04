@@ -12,15 +12,34 @@ mkdir -p "$OUT_DIR" "$TOOLS"
 
 # --- toolchain (downloaded once) ---
 AUTH=(); [ -n "${GH_TOKEN:-}" ] && AUTH=(-H "Authorization: Bearer $GH_TOKEN")
+
+# fetch_tool_jar <repo> <dest> — resolve the latest release jar URL and
+# download it. Transient GitHub API hiccups (rate-limit/5xx payloads without
+# 'assets') previously killed whole release builds; retry with backoff.
+fetch_tool_jar() {
+  local repo="$1" dest="$2" tries=0 url
+  if [ -s "$dest" ]; then return 0; fi
+  while :; do
+    url=$(curl -s "${AUTH[@]}" "https://api.github.com/repos/$repo/releases/latest" \
+      | python3 -c "import sys,json;d=json.load(sys.stdin);print([a['browser_download_url'] for a in d.get('assets',[]) if a['name'].endswith('.jar')][0]) if d.get('assets') else sys.exit(3)" ) \
+      && break
+    tries=$((tries + 1))
+    if [ "$tries" -ge 5 ]; then
+      echo "FATAL: could not resolve latest-release jar for $repo after $tries attempts" >&2
+      return 1
+    fi
+    echo "toolchain resolve attempt $tries for $repo failed; retrying in $((tries * 15))s" >&2
+    sleep $((tries * 15))
+  done
+  echo "downloading $dest"
+  curl -sL --retry 3 -o "$dest" "$url"
+}
+
 if [ ! -f "$TOOLS/apktool.jar" ]; then
-  APKTOOL_URL=$(curl -s "${AUTH[@]}" "https://api.github.com/repos/iBotPeaches/Apktool/releases/latest" \
-    | python3 -c "import sys,json;print([a['browser_download_url'] for a in json.load(sys.stdin)['assets'] if a['name'].endswith('.jar')][0])")
-  curl -sL -o "$TOOLS/apktool.jar" "$APKTOOL_URL"
+  fetch_tool_jar iBotPeaches/Apktool "$TOOLS/apktool.jar"
 fi
 if [ ! -f "$TOOLS/uber-apk-signer.jar" ]; then
-  UAS_URL=$(curl -s "${AUTH[@]}" "https://api.github.com/repos/patrickfav/uber-apk-signer/releases/latest" \
-    | python3 -c "import sys,json;print([a['browser_download_url'] for a in json.load(sys.stdin)['assets'] if a['name'].endswith('.jar')][0])")
-  curl -sL -o "$TOOLS/uber-apk-signer.jar" "$UAS_URL"
+  fetch_tool_jar patrickfav/uber-apk-signer "$TOOLS/uber-apk-signer.jar"
 fi
 
 # --- decompile ---

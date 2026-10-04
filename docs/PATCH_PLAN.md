@@ -422,3 +422,17 @@ grant — display config and server behavior can no longer disagree. Host rig
   adds — the discovery channel for the next error-driven pass.
 - Coverage: 335 discovered / 274 implemented (82%) / 61 default / 215
   host-tested.
+
+### Phase 5g (this session): video feed crash fix
+
+- Deep-drive probe of the Video row caught a real client crash
+  (BaseVideoInfoDbHelper NPE on null List) — the /video list endpoints must
+  answer a real flat PageData (data:[] inside), not a bare list. All 7
+  /video routes are now real handlers serving honest empty local states.
+- Host rig 324/324 (new: video PageData shape, more/list shape, tag map).
+- CI infra: build_signed_apk.sh toolchain fetch hardened with retry/backoff
+  (a transient GitHub API blip failed the v0.5.6 build with KeyError:assets).
+- UI automation harness: adb log reads decode-tolerant (non-UTF-8 bytes in
+  logcat killed the crash scan with UnicodeDecodeError before it could
+  report; the app itself was fine).
+- Coverage: 335/281 implemented (84%) / 54 default / 218 host-tested.

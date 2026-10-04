@@ -370,6 +370,21 @@ def main():
               and room3["data"]["roomId"] != qa_room_id, str(room3)[:100])
         del2 = call("DELETE", "/game/api/v1/game/chat/room?roomId=local-room-99999")
         check("chatRoom delete idempotent (unknown id ok)", del2.get("code") == 1, str(del2)[:80])
+        # video feed: the client caches pageData.getData() into greendao — a
+        # null list crashed BaseVideoInfoDbHelper on-device (v0.5.6). The page
+        # must be a REAL flat PageData with an empty (not absent) data list.
+        vp = call("GET", "/video/api/v1/app/video/list/top?pageNo=1&pageSize=20",
+                  headers={"language": "en"})
+        check("video list returns flat PageData", vp.get("code") == 1
+              and isinstance(vp.get("data"), dict)
+              and isinstance(vp["data"].get("data"), list)
+              and vp["data"].get("totalPage") == 0, str(vp)[:140])
+        vn = call("GET", "/video/api/v1/app/video/more/list?pageNo=1&pageSize=20&authorId=1&videoId=1",
+                  headers={"language": "en"})
+        check("video more/list same PageData shape", vn.get("code") == 1
+              and isinstance(vn.get("data", {}).get("data"), list), str(vn)[:100])
+        vt = call("GET", "/video/api/v1/app/video/tag/list", headers={"language": "en"})
+        check("video tag list map", vt.get("code") == 1 and vt.get("data") == {}, str(vt)[:80])
         app2 = call("PUT", "/game/api/v1/games/%s/appreciation" % gid)
         check("appreciation int", app2.get("code") == 1
               and isinstance(app2.get("data"), int) and app2["data"] > 0, str(app2)[:100])

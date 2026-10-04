@@ -81,6 +81,11 @@ final class Handlers {
         if ("getPartyCreateGameConfig".equals(name)) return getPartyCreateGameConfig(ctx, store);
         if ("getChatRoom".equals(name)) return getChatRoom(ctx, store);
         if ("deleteChatRoom".equals(name)) return deleteChatRoom(ctx, store);
+        if ("videoPageList".equals(name)) return videoPageList(ctx, store);
+        if ("videoTagList".equals(name)) return videoTagList(ctx, store);
+        if ("videoDetailInfo".equals(name)) return videoDetailInfo(ctx, store);
+        if ("videoFeedback".equals(name)) return videoFeedback(ctx, store);
+        if ("videoPlayAck".equals(name)) return videoPlayAck(ctx, store);
         if ("appreciation".equals(name)) return appreciation(ctx, store);
         if ("miniGameToken".equals(name)) return miniGameToken(ctx, store);
         if ("followGameAuth".equals(name)) return miniGameToken(ctx, store);
@@ -783,6 +788,45 @@ final class Handlers {
         }
         GameCatalog.removeChatRoom(store, roomId);
         return envelope("none", null);
+    }
+
+    // --------------------------------------------------- Phase 5g: video feed
+    // Client crash fix: the video screen caches the fetched page into the
+    // greendao DB (BaseVideoInfoDbHelper b(List)) — a bare data:[] parses into
+    // a PageData whose data list is null and the iterator NPEs (seen on-device
+    // in the v0.5.6 deep drive). The list endpoints therefore answer with a
+    // REAL flat PageData whose data list is an empty array. No videos exist in
+    // the local world; totalPage 0 keeps the pager from loading more.
+
+    /** GET /video/api/v1/app/video/list/{type} + /app/video/more/list — flat PageData<VideoInfo>. */
+    private static String videoPageList(Ctx ctx, StateStore store) {
+        JSONObject page = new JSONObject();
+        page.put("data", new org.json.JSONArray());
+        page.put("pageNo", (int) parseLong(ctx.query("pageNo"), 1));
+        page.put("pageSize", (int) parseLong(ctx.query("pageSize"), 20));
+        page.put("totalPage", 0);
+        page.put("totalSize", 0);
+        return envelope("obj", page.toString());
+    }
+
+    /** GET /video/api/v1/app/video/tag/list — Map<String,String> of tag -> label (none locally). */
+    private static String videoTagList(Ctx ctx, StateStore store) {
+        return envelope("obj", new JSONObject().toString());
+    }
+
+    /** GET /video/api/v1/app/video/detail/info?videoId= — no videos exist; data is absent. */
+    private static String videoDetailInfo(Ctx ctx, StateStore store) {
+        return envelope("obj", null);
+    }
+
+    /** POST /video/api/v1/app/video/{praise,dislike}/{videoId} — honest zero ack (no videos). */
+    private static String videoFeedback(Ctx ctx, StateStore store) {
+        return envelope("num", "0");
+    }
+
+    /** POST /video/api/v1/app/video/report/play/amount — telemetry ack. */
+    private static String videoPlayAck(Ctx ctx, StateStore store) {
+        return envelope("num", "0");
     }
 
     /** PUT /game/api/v1/games/{gameId}/appreciation — increments praise, returns new total. */

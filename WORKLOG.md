@@ -513,3 +513,29 @@
 - Next session: the deep-drive channel is live — extend it (mail row open,
   store screen, clan screen via Party row) or implement honest /video shapes
   if a future run taps Video. NO GameServer work (standing instruction).
+
+## Session 10 (cont.) — Phase 5g: video feed crash fix + CI hardening (2026-10-04)
+
+- v0.5.6-discover wave: extended the deep drive with Store / Party / Video
+  probes. The build hit a transient GitHub API blip (KeyError 'assets' on the
+  toolchain resolve) — build_signed_apk.sh now retries with backoff.
+- The in-flight redroid run exercised the extended deep drive against the
+  v0.5.5 APK: Store and Party rows healthy (shop recommend + party auth +
+  all-open/parties served), but the VIDEO row caught a REAL client crash —
+  FATAL EXCEPTION: DbHelper-Thread, BaseVideoInfoDbHelper NPE (null List
+  iterator), PID changed 2210 -> 3806 on-device.
+- Client-first root cause: IVideoApi.getVideoByTag expects
+  HttpResponse<PageData<VideoInfo>> (FLAT PageData: data/pageNo/pageSize/
+  totalPage/totalSize); VideoRecommendPageListModel.onSuccess caches
+  pageData.getData() into greendao — a bare data:[] parses to a PageData
+  whose list is null -> iterator() NPE. The harness ALSO died at the crash
+  scan (adb logcat contains non-UTF-8 bytes -> UnicodeDecodeError in the
+  strict decoder) — both fixed.
+- Phase 5g implemented: ALL 7 /video routes real (videoPageList serving a
+  real flat PageData with data:[] + totalPage 0, videoTagList {},
+  videoDetailInfo data-absent, videoFeedback/videoPlayAck 0). No videos are
+  fabricated — the fix is the response SHAPE so the screen shows its empty
+  state instead of crashing.
+- Host rig 324/324 PASS. Coverage 335/281 implemented (84%) / 54 default /
+  217 host-tested. Deep drive now visits 6 Me-tab rows + home game card.
+- Tag v0.5.7-videofix ships this phase.
