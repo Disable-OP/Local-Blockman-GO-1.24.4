@@ -627,12 +627,13 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
             return None
         for label, stage, typed in (("Find Friends", "findfriends", "alex"),
                                     ("Find Clans", "findclans", "pixel")):
-            # wave 5o: run 37236799029 proved the "Find Friends" TEXT tap
-            # never navigates (the dump under stage findfriends still shows
-            # the tab3 list) — the real friend-search entry is the
-            # btnSearchFriend id. Clans: the text tap DID navigate (the
-            # text node sits inside rlSearchClan). Prefer the id, fall
-            # back to the text label.
+            # wave 5o RESULT (run 37238214502): even the btnSearchFriend
+            # ID tap does not navigate — the Find Friends section is the
+            # client's "Coming soon" placeholder (no search surface in
+            # this build; friends/info/{nickName} stays host-tested with
+            # no UI caller). The probe stays as an honest recorder: tap,
+            # dump, report. Clans: rlSearchClan navigates to the real
+            # Find Clans screen (search client-asserted in wave 5n).
             n = screen.find(ids=(["btnSearchFriend"]
                                  if stage == "findfriends" else
                                  ["rlSearchClan"]))
@@ -680,6 +681,34 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
             else:
                 print("  [skip] no search input found on the %s screen"
                       % stage)
+            if stage == "findclans":
+                # wave 5p: CREATE A CLAN discovery probe (the button sits
+                # on the Find Clans screen). Discovery only this wave:
+                # open the form, dump its widgets, BACK out. UI-driven
+                # clan creation is the follow-up once the form shape is
+                # on record (Phase C owns the API-level lifecycle).
+                create = screen.find(texts=["CREATE A CLAN"])
+                if create and screen.tap_node(create):
+                    time.sleep(5)
+                    alive_or_recover("%s-clancreate" % tag)
+                    for x in screen.dump():
+                        if x.res or x.text or x.desc:
+                            print("  clancreate] %s | cls=%s text=%r "
+                                  "desc=%r" % (
+                                      x.res.rsplit("/", 1)[-1]
+                                      if x.res else "",
+                                      x.cls.rsplit(".", 1)[-1]
+                                      if x.cls else "",
+                                      x.text[:28], x.desc[:24]))
+                    adb.key(4)
+                    time.sleep(2)
+                    alive_or_recover("%s-clancreate-back" % tag)
+                    # BACK may have closed the Find Clans screen itself if
+                    # the create button was a placeholder — re-ground on a
+                    # bottom-nav screen before continuing
+                    if not screen.find(ids=["rb_3"]):
+                        adb.key(4)
+                        time.sleep(2)
             adb.key(4)  # back to the tab
             time.sleep(2)
         alive_or_recover("%s-tab3-done" % tag)
