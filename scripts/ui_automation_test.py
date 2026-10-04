@@ -10,14 +10,13 @@ Three deterministic phases, driven purely over adb + uiautomator dumps:
       Info editor / game detail + rank/comment sub-tabs).
       Asserts tourist/auth-token traffic in logcat.
 
-  Phase B — GUEST PROFILE-EDIT GATE PROBE (evidence):
-      Me tab -> profile header -> ibMore -> Personal Info editor -> tap the
-      Nickname row and attempt a save as the GUEST. v0.5.18b evidence: the
-      client blocks guest profile edits WITHOUT any API call and natively
-      kicks itself (process dies + self-relaunches with a TemplateActivity
-      on top). This phase captures that gate as evidence (pid change) and
-      feeds the killer nothing further.
-      NOTE: deliberately does NOT tap the account row (ll_account) — same
+  Phase B — PROFILE EDIT through the Personal Info editor:
+      Me tab -> profile header -> ibMore -> tap the Nickname row, type a
+      fresh nickname, confirm TWICE (ChangeNameFragment -> the
+      ChangeNicknameDialog whose confirm fires PUT /user/api/v2/user/
+      nickName). A pid change inside the save window is recorded as
+      native-kick evidence but is not expected.
+      NOTE: deliberately does NOT tap the account row (ll_account) —
       native-killer family; account creation is owned by Phase C.
 
   Phase C — ACCOUNT CREATION via the embedded server (adb forward):
@@ -26,13 +25,16 @@ Three deterministic phases, driven purely over adb + uiautomator dumps:
       surfaces over the same forward. Asserts POST /user/api/v1/register and
       the whole Phase C/D/E assertion set.
 
-  Phase D — REGISTERED SESSION: UI login + real profile edit:
-      am start the real LoginActivity, sign in as the Phase C account
-      through the UI, then re-drive the Personal Info editor: the nickname
-      save must hit PUT /user/api/v2/user/nickName and the server state
-      must hold the new nickname (nickname/exist flips to taken through
-      the forward). 10s keep-alive, register-always and real-client-only
-      rules all hold.
+  Phase D — REGISTERED SESSION: upgrade + restart:
+      read the session user id from the live Me tab, issue its token via
+      GET /user/api/v1/app/auth-token, upgrade the account through POST
+      /user/api/v2/app/set-password (the client's own guest-upgrade
+      endpoint), verify by logging in with the new credentials, restart
+      the app (the boot restores the saved session, now registered), and
+      check the Me tab shows the new account. If Phase B's PUT never
+      fired, the editor drive re-runs here under the registered session.
+      (am-start of LoginActivity/RegisterActivity is DENIED for these
+      non-exported activities — evidence v0.5.18c/d.)
 
   Final — crash scan (FATAL EXCEPTION / ANR) + process alive everywhere.
 
@@ -467,13 +469,13 @@ def main():
         return has_pw and (gated or any("assword" in (n.text or "") for n in nodes))
 
     # 1) Me tab -> profile header -> ibMore -> "Personal Info" editor
-    # EVIDENCE (v0.5.18b diagnostics): a GUEST saving a nickname is
-    # client-side blocked — NO API call is made and the app NATIVELY kicks
-    # itself (process dies, immediately self-relaunches with a
-    # TemplateActivity on top). So Phase B is a GATE PROBE: drive the save,
-    # detect the kick by pid change, record the evidence, and never feed the
-    # killer further. The REGISTERED-session edit lives in Phase D.
-    print("== PHASE B: guest profile-edit gate probe (evidence) ==")
+    # jadx decode (ChangeNameViewModel): the rename needs TWO confirms —
+    # the editor row dialog, then the ChangeNicknameDialog (shown after
+    # GET /user/api/v1/user/nickName/free) whose confirm fires PUT
+    # /user/api/v2/user/nickName. Phase B drives the full rename as the
+    # GUEST; a pid change inside the save window is recorded as native-kick
+    # evidence (the roaming killer — Session 11) but is not expected.
+    print("== PHASE B: profile edit through the Personal Info editor ==")
     nickname = "qa%05d" % (int(time.time()) % 100000)
     guest_edited = False
 
@@ -561,7 +563,10 @@ def main():
         return assert_alive(adb, package, "%s-PersonalInfo" % tag)
 
     def editor_nickname_drive(adb, screen, package, tag, new_nick):
-        """Open the Nickname row, fill, save. Returns one of:
+        """Open the Nickname row, fill, save through BOTH confirms.
+        jadx decode (ChangeNameViewModel): row confirm -> ChangeNicknameDialog
+        (shown after GET /user/api/v1/user/nickName/free) -> its confirm is
+        what fires PUT /user/api/v2/user/nickName. Returns one of:
         edited | gated | kicked | nodialog | norow | unknown"""
         pid_before = adb.pid(package)
         if not tap_label(screen, "Nickname"):
@@ -577,11 +582,14 @@ def main():
             time.sleep(2)
             return "nodialog"
         editor_confirm(screen)
+        time.sleep(3)
+        # second confirm: the ChangeNicknameDialog (free/cost notice)
+        editor_confirm(screen)
         time.sleep(6)
         pid_after = adb.pid(package)
         if (pid_before and pid_after and pid_before != pid_after):
-            print("  [evidence] process self-relaunched %s -> %s (guest-kick)"
-                  % (pid_before, pid_after))
+            print("  [evidence] process self-relaunched %s -> %s (native "
+                  "kick fired inside the save window)" % (pid_before, pid_after))
             return "kicked"
         if guest_tip_detected(screen):
             adb.key(4)
@@ -594,19 +602,23 @@ def main():
         outcome_b = editor_nickname_drive(adb, screen, args.package, "B",
                                           nickname)
         print("  [outcome] guest nickname drive: %s" % outcome_b)
-        if outcome_b == "edited":
-            log = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
-            if ("/user/api/v2/user/nickName" in log
-                    or "/user/api/v1/user/details/info" in log
-                    or "/user/api/v1/user/nickname/exist" in log):
-                guest_edited = True
-                ok("B: guest nickname edit %r hit the local server" % nickname)
+        log = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+        if "/user/api/v2/user/nickName" in log:
+            guest_edited = True
+            ok("B: nickname edit %r hit PUT /user/api/v2/user/nickName"
+               % nickname)
+            shown = any(nickname in (n.text or "") for n in screen.dump())
+            print("  [%s] editor shows %r after save"
+                  % ("ok" if shown else "info", nickname))
+        elif outcome_b == "edited":
+            if "/user/api/v1/user/nickName/free" in log:
+                print("  [info] free-check fired but no PUT — the second "
+                      "confirm (ChangeNicknameDialog) was not tapped?")
             else:
-                print("  [info] guest save reached no endpoint (dialog shape "
-                      "changed?)")
+                print("  [info] guest save reached no endpoint (dialog "
+                      "shape changed?)")
         elif outcome_b == "kicked":
-            ok("B: guest-gate kick CAPTURED (client blocks guest profile "
-               "edits; the registered-session edit runs in Phase D)")
+            ok("B: native kick captured inside the save window (evidence)")
         # leave the editor either way (the kick already restarted the app;
         # if not kicked, back out cleanly)
         if outcome_b != "kicked":
@@ -621,8 +633,8 @@ def main():
     if guest_edited:
         ok("B: guest profile-edit path reached the server")
     else:
-        print("  [info] guest profile edit not possible by design (gate "
-              "evidence above); Phase D edits under a registered session")
+        print("  [info] guest nickname PUT not observed; Phase D upgrades "
+              "the session to registered and re-drives if needed")
 
     # ------------------------------------------------- Phase C: deterministic
     # account creation THROUGH the embedded server (adb port forward to the
@@ -846,160 +858,124 @@ def main():
         check("C: mail/new false after claim", m3.get("code") == 1
               and m3.get("data") is False, str(m3)[:100])
 
-    # ------------------------------------------------- Phase D: UI register
-    # through the REAL RegisterActivity + registered-session profile edit.
-    # Evidence trail: (a) am-start of LoginActivity redirects to the main
-    # screen when a session exists (v0.5.18c run); (b) guests are blocked
-    # from profile edits (Phase B kick capture). The REAL register UI is
-    # com.sandbox.login.view.fragment.register.RegisterActivity (in the
-    # manifest, shell-startable, no session redirect):
-    #   step 1  (login_register_step_1): account + password + confirm
-    #           (3 TextInputEditText) + protocol CheckBox + submit
-    #           TextView; account rules: ^(?!\d+$)[a-zA-Z0-9_]{6,16}$
-    #   step 2  (login_fragment_make_role): nickname + gender -> the app
-    #           fires POST /user/api/v1/user/register (H:userRegister) and
-    #           switches the session to the fresh account
-    # Then the Personal Info editor runs under a REGISTERED session: the
-    # save must hit PUT /user/api/v2/user/nickName and the server state is
-    # verified through the forward (nickname/exist flips to taken).
-    print("== PHASE D: UI register via RegisterActivity + registered profile edit ==")
+    # ------------------------------------------------- Phase D: registered
+    # session: upgrade the app's CURRENT guest through the real server, then
+    # restart the client and verify the registered session end-to-end.
+    # Evidence trail: (a) am-start of LoginActivity/RegisterActivity is
+    # DENIED for the non-exported activities (the dump showed the previous
+    # screen, not the target) — v0.5.18c/d runs; (b) the nickname rename
+    # needs TWO confirms (ChangeNameFragment -> ChangeNicknameDialog), both
+    # now driven in Phase B; (c) the real guest->registered upgrade is
+    # POST /user/api/v2/app/set-password (the exact endpoint the client's
+    # own upgrade flow calls), and GET /user/api/v1/app/auth-token?userId=
+    # issues that user's token. No hardcoded ids: the current user id is
+    # read from the live Me-tab dump (ID row).
+    print("== PHASE D: registered-session upgrade + restart ==")
     qa_uid_d = "uiqa%05d" % (int(time.time()) % 100000)
     password_d = "LocalQA%05d" % (int(time.time()) % 100000)
-    nick_make = "qaM%05d" % (int(time.time()) % 100000)
     nick_edit = "qaD%05d" % (int(time.time()) % 100000)
-    regs_before_d = adb.raw("logcat", "-d", "-s", "LocalAPI",
-                            timeout=60).count("REQ POST /user/api/v1/user/register")
-    d_registered = False
     d_edited = False
 
-    def type_and_hide(node, value):
-        screen.tap_node(node)
-        time.sleep(0.5)
-        adb.key(123)  # MOVE_END
-        for _ in range(40):
-            adb.key(67)  # DEL
-        adb.text(value)
-        time.sleep(0.5)
-        adb.key(111)  # hide keyboard
-        time.sleep(1)
+    def current_user_id(screen):
+        """Extract the current user id from the Me tab (ID row)."""
+        nodes = screen.dump()
+        for n in nodes:
+            t = (n.text or "").replace("\n", " ")
+            m = re.search(r"ID:\s*(\d+)", t)
+            if m:
+                return m.group(1)
+        prev = False
+        for n in nodes:
+            t = (n.text or "").strip()
+            if t in ("ID:", "ID"):
+                prev = True
+                continue
+            if prev and t.isdigit():
+                return t
+            prev = False
+        return None
 
-    def tap_submit(screen):
-        """The register screens submit via TextViews/Buttons — text first,
-        then known ids, then any clickable Button."""
-        for label in ("Next", "NEXT", "Register", "REGISTER", "Sign up",
-                      "Confirm", "OK", "Done", "Create"):
-            n = screen.find(texts=[label])
-            if n and n.center:
-                screen.tap_node(n)
-                return True
-        n = screen.find(ids=["btn_sign", "btnSign", "btn_next", "btnSure",
-                             "btn_ok", "btn_save"])
-        if n and n.center:
-            screen.tap_node(n)
-            return True
-        n = next((x for x in screen.dump()
-                  if x.cls.endswith("Button") and x.clickable and x.center),
-                 None)
-        if n:
-            screen.tap_node(n)
-            return True
-        return False
-
-    adb.sh("am start -n %s/com.sandbox.login.view.fragment.register.RegisterActivity"
-           % args.package)
-    time.sleep(6)
-    dismiss_permission_dialogs(screen)
-    if assert_alive(adb, args.package, "D-RegisterScreen"):
-        edits = [n for n in screen.dump()
-                 if n.cls.endswith("EditText") and n.center]
-        if len(edits) >= 2:
-            # step 1: account, password, confirm-password
-            for node, val in zip(edits[:3],
-                                 [qa_uid_d, password_d, password_d]):
-                type_and_hide(node, val)
-            for cb in [n for n in screen.dump()
-                       if n.cls.endswith("CheckBox") and not n.checked
-                       and n.center]:
-                screen.tap_node(cb)
-                time.sleep(1)
-            tap_submit(screen)
-            time.sleep(6)
-            # step 2: MakeRole — nickname (+ gender pick) then submit
-            edits2 = [n for n in screen.dump()
-                      if n.cls.endswith("EditText") and n.center]
-            if edits2:
-                type_and_hide(edits2[0], nick_make)
-                if len(edits2) >= 2:
-                    type_and_hide(edits2[1], password_d)
-                gen = next((x for x in screen.dump()
-                            if (x.text or "").lower() in ("male", "female")
-                            and x.center), None)
-                if gen:
-                    screen.tap_node(gen)
-                    time.sleep(1)
-                tap_submit(screen)
-                time.sleep(8)
-            main_d = screen.wait_for(ids=["rgBottom", "rb_1", "flHomePage"],
-                                     timeout=60, poll=3)
-            regs_after_d = adb.raw(
-                "logcat", "-d", "-s", "LocalAPI",
-                timeout=60).count("REQ POST /user/api/v1/user/register")
-            if regs_after_d > regs_before_d:
-                d_registered = True
-                ok("D: UI REGISTER fired POST /user/api/v1/user/register "
-                   "(%d -> %d)%s" % (regs_before_d, regs_after_d,
-                                     "; main screen up" if main_d else
-                                     " (main screen not confirmed)"))
+    d_uid = None
+    tab5 = screen.find(ids=["rb_5"])
+    if tab5 and screen.tap_node(tab5):
+        time.sleep(4)
+        d_uid = current_user_id(screen)
+    if d_uid:
+        ok("D: current session user id %s (from the live Me tab)" % d_uid)
+        at = fcall("GET", "/user/api/v1/app/auth-token?userId=%s" % d_uid)
+        tok = (at.get("data") or {}).get("accessToken", "")
+        if at.get("code") == 1 and tok:
+            upg = fcall("POST", "/user/api/v2/app/set-password",
+                        {"account": qa_uid_d, "password": password_d,
+                         "confirmPassword": password_d},
+                        headers={"Access-Token": tok})
+            check("D: guest upgraded via set-password (%s)" % qa_uid_d,
+                  upg.get("code") == 1, str(upg)[:120])
+            li = fcall("POST", "/user/api/v1/login",
+                       {"uid": qa_uid_d, "password": password_d})
+            check("D: login with the upgraded credentials",
+                  li.get("code") == 1
+                  and str(li.get("data", {}).get("userId", "")) == str(d_uid),
+                  str(li)[:120])
+            # restart the client: the boot restores the saved session, whose
+            # user is now registered (hasPassword=true -> no guest gate)
+            adb.sh("am force-stop %s" % args.package)
+            time.sleep(3)
+            adb.sh("am start -n %s/%s" % (args.package, args.activity))
+            time.sleep(12)
+            dismiss_permission_dialogs(screen)
+            if screen.wait_for(ids=["rgBottom", "rb_1", "flHomePage"],
+                               timeout=90, poll=3):
+                ok("D: app restarted onto the registered session")
+                tab5b = screen.find(ids=["rb_5"])
+                if tab5b and screen.tap_node(tab5b):
+                    time.sleep(4)
+                    shown = any(qa_uid_d in (n.text or "")
+                                for n in screen.dump())
+                    print("  [%s] Me tab shows the new account %r"
+                          % ("ok" if shown else "info", qa_uid_d))
+                if not guest_edited:
+                    # B's PUT never fired — drive the editor under the
+                    # registered session now
+                    if open_personal_info_editor(adb, screen, args.package,
+                                                 "D"):
+                        outcome_d = editor_nickname_drive(
+                            adb, screen, args.package, "D", nick_edit)
+                        print("  [outcome] registered nickname drive: %s"
+                              % outcome_d)
+                        log_d = adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                        timeout=60)
+                        if outcome_d == "edited" and ("/user/api/v2/user/nickName"
+                                                      in log_d):
+                            d_edited = True
+                            ok("D: registered nickname edit hit PUT "
+                               "/user/api/v2/user/nickName")
+                        elif outcome_d == "kicked":
+                            print("  [info] kick fired inside the registered "
+                                  "save window — NEW evidence, investigate")
+                        if d_edited:
+                            taken = fcall(
+                                "POST",
+                                "/user/api/v1/user/nickname/exist?nickName=%s"
+                                % nick_edit, None, headers=auth_hdr)
+                            check("D: server state holds the new nickname "
+                                  "(taken)", taken.get("code") == 0,
+                                  str(taken)[:120])
+                        if outcome_d != "kicked":
+                            adb.key(4)  # editor -> Profile
+                            time.sleep(2)
+                            adb.key(4)  # Profile -> Me
+                            time.sleep(2)
+                            assert_alive(adb, args.package, "D-BackOnMe")
             else:
-                print("  [info] UI register did not complete (no "
-                      "/user/register call, count %d -> %d)"
-                      % (regs_before_d, regs_after_d))
-                debug_dump(screen, "D-register-stuck")
+                fail("D: app did not reach the main screen after restart")
         else:
-            print("  [info] RegisterActivity did not show the expected "
-                  "fields (%d EditTexts)" % len(edits))
-            debug_dump(screen, "D-register-screen")
+            print("  [info] auth-token for the session user failed: %s"
+                  % str(at)[:100])
     else:
-        print("  [info] app died at D-RegisterScreen")
-
-    if d_registered:
-        if open_personal_info_editor(adb, screen, args.package, "D"):
-            outcome_d = editor_nickname_drive(adb, screen, args.package, "D",
-                                              nick_edit)
-            print("  [outcome] registered nickname drive: %s" % outcome_d)
-            log_d = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
-            if outcome_d == "edited":
-                if "/user/api/v2/user/nickName" in log_d:
-                    d_edited = True
-                    ok("D: registered nickname edit hit PUT "
-                       "/user/api/v2/user/nickName")
-                else:
-                    print("  [info] no nickName PUT observed (outcome=%s)"
-                          % outcome_d)
-            elif outcome_d == "kicked":
-                print("  [info] REGISTERED session also kicked — NEW "
-                      "evidence, investigate the next artifact")
-            if d_edited:
-                # server-state proof: the fresh nickname must now be TAKEN
-                taken = fcall("POST",
-                              "/user/api/v1/user/nickname/exist?nickName=%s"
-                              % nick_edit, None, headers=auth_hdr)
-                check("D: server state holds the new nickname (taken)",
-                      taken.get("code") == 0, str(taken)[:120])
-                shown = any(nick_edit in (n.text or "")
-                            for n in screen.dump())
-                print("  [%s] editor row shows %r after save"
-                      % ("ok" if shown else "info", nick_edit))
-            adb.key(4)  # back to Profile
-            time.sleep(2)
-            adb.key(4)  # back to Me
-            time.sleep(2)
-            assert_alive(adb, args.package, "D-BackOnMe")
-        else:
-            print("  [skip] D: Personal Info editor not reached")
-    else:
-        print("  [info] D: UI register not completed (non-fatal; the flow "
-              "is new — evidence guides the next wave)")
+        print("  [info] current user id not found on the Me tab (dump "
+              "shape changed?) — Phase D skipped")
+        debug_dump(screen, "D-me-tab-id")
 
     # ------------------------------------------------- assertions
     print("== assertions ==")

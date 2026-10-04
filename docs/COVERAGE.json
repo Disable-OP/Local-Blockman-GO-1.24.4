@@ -5,7 +5,7 @@
   "implemented": 281,
   "default": 54,
   "host_tested": 217,
-  "client_asserted": 108
+  "client_asserted": 109
  },
  "endpoints": [
   {
@@ -1078,7 +1078,7 @@
    "status": "implemented",
    "handler": "nickNameFree",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -1590,7 +1590,7 @@
    "status": "implemented",
    "handler": "changeInfo",
    "host_tested": false,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "POST",
@@ -1758,7 +1758,7 @@
    "status": "implemented",
    "handler": "setPassword",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",

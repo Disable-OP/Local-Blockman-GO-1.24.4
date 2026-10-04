@@ -526,3 +526,27 @@ then drive the Personal Info editor under the registered session (PUT
 /user/api/v2/user/nickName) and prove server state through the forward
 (nickname/exist flips to taken). This revives the UI-register requirement
 through the real client UI without ever touching the lethal guest paths.
+
+### Phase 5i addendum 2 (same session): rename flow fully decoded; Phase D reworked again
+
+Two more dispatched runs produced the decisive evidence:
+- The guest nickname rename is NOT gated: the flow is ChangeNameFragment ->
+  GET /user/api/v1/user/nickName/free (H:nickNameFree answers
+  {currencyType:1, free:true, quantity:0}) -> ChangeNicknameDialog -> its
+  confirm fires PUT /user/api/v2/user/nickName. The earlier "gate" was an
+  untapped SECOND confirm; the one-off kick in v0.5.18b was the roaming
+  native killer, not a gate.
+- am-start of LoginActivity AND RegisterActivity is denied (non-exported;
+  the post-launch dump showed the previous screen). In-app UI login is not
+  reachable without the lethal ll_account/Tip path — so the registered
+  session is produced differently.
+
+New Phase D: read the session user id from the live Me tab (ID row), issue
+that user's token via GET /user/api/v1/app/auth-token (real handler),
+upgrade the account via POST /user/api/v2/app/set-password (the client's
+own guest-upgrade endpoint; H:setPassword sets account+password+hasPassword),
+verify by logging in with the new credentials through /user/api/v1/login,
+force-stop + relaunch (boot restores the saved session, now registered),
+assert the Me tab shows the new account name, and — only if Phase B's PUT
+never fired — re-drive the editor under the registered session with the
+nickname/exist taken-check as the server-state proof.
