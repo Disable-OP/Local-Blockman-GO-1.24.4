@@ -81,3 +81,17 @@ Retrofit + Gson expect JSON bodies; errors follow the app's `BaseResponse` shape
   build-release runs failed on this and release APKs were built manually);
   workflows now pin checkout to local-api (main has diverged with archive
   uploads and carries an older UI test that hard-fails Phase B).
+
+## Phase 3.5 (same session)
+
+- World rankings: all 12 /ranking/api/v1/{board}/rank endpoints return real
+  PageData boards derived from actual user wallets + citizens pool.
+- Mailbox: list/operation return real empty states; mail/new=false.
+- Tribe: no-clan states (detail -> code 0 "not in a clan", id -> "0").
+- docs/COVERAGE.json: machine-readable coverage (scripts/gen_coverage.py;
+  regenerate after route changes). Snapshot: 321 discovered / 122
+  implemented / 199 default / 121 host-tested.
+- Dormant areas kept as schema-true defaults ON PURPOSE (gated by appConfig
+  flags isShowActivity/isShowCampaign/isShowAds=false): worldCup, halloween,
+  slot machine, bgtube, lucky turntable, activity tasks. Revisit if the client
+  is observed calling them (error-driven development).

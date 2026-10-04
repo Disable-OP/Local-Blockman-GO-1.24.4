@@ -112,3 +112,13 @@
      redroid run on main.
 - Tag v0.3.0-phase2 (Phase 2 code) built + signed fine in CI but died at the
   rename step; deleting it and shipping v0.3.0-phase3 with all fixes.
+
+## Session 5 (cont. 2) — Phase 3.5 + coverage report; CI build finally naming correctly (2026-10-04)
+
+- Phase 3.5: 12 ranking boards derived from real wallets + citizens; mailbox
+  real empty states; tribe no-clan states. 99/99 host tests.
+- docs/COVERAGE.json + scripts/gen_coverage.py (321/122/199/121).
+- build-release exit-2 root cause refined: uber-apk-signer renames the APK to
+  "patched-aligned-debugSigned.apk" — no "-unsigned-" in the name, so the
+  original glob could never match. Glob widened + verified against the real
+  output name locally; shipped as tag v0.3.1-phase3.
