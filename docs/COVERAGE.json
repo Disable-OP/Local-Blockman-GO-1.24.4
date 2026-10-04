@@ -5,7 +5,7 @@
   "implemented": 281,
   "default": 54,
   "host_tested": 217,
-  "client_asserted": 109
+  "client_asserted": 108
  },
  "endpoints": [
   {
@@ -2046,7 +2046,7 @@
    "status": "implemented",
    "handler": "changeInfo",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "PUT",
