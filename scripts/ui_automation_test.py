@@ -545,6 +545,28 @@ def main():
     check("C: dissolve clan cleans membership", t8.get("code") == 1
           and t8b.get("data") == "0", str(t8b)[:100])
 
+    # Phase 4b/4c surface: friend relationship + group chat management
+    f1 = fcall("GET", "/friend/api/v1/friends/info/Alex?pageNo=1&pageSize=10",
+               headers=auth_hdr)
+    check("C: friend search (citizens)", f1.get("code") == 1
+          and f1.get("data", {}).get("totalSize", 0) >= 1, str(f1)[:120])
+    f2 = fcall("GET", "/friend/api/v2/friends/status", headers=auth_hdr)
+    check("C: friend status (counts + server time)", f2.get("code") == 1
+          and f2.get("data", {}).get("currentTime", 0) > 0, str(f2)[:120])
+    g1 = fcall("POST", "/msg/api/v2/msg/group/chat",
+               {"cost": 0, "currency": 1, "memberIds": [], "userId": qa_uid_num,
+                "groupName": "CIGroup%d" % (int(time.time()) % 100000)},
+               headers=auth_hdr)
+    check("C: group chat create", g1.get("code") == 1
+          and g1.get("data", {}).get("groupId", 0) > 0, str(g1)[:120])
+    g2 = fcall("GET", "/msg/api/v1/msg/group/chat/list?pageNo=1&pageSize=10",
+               headers=auth_hdr)
+    check("C: group list has the new group", g2.get("code") == 1
+          and g2.get("data", {}).get("totalSize", 0) >= 1, str(g2)[:120])
+    g3 = fcall("PUT", "/msg/api/v1/msg/group/chat/quit?groupId=%s"
+               % g1.get("data", {}).get("groupId", 0), None, headers=auth_hdr)
+    check("C: group quit", g3.get("code") == 1, str(g3)[:100])
+
     # ------------------------------------------------- assertions
     print("== assertions ==")
     paths = localapi_paths(adb)
