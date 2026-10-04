@@ -340,3 +340,11 @@
   suit shop/gift/owned/buy wallet math, upload binary round-trip, sensitive
   names). Coverage 335/261/74/202 (78% implemented). CI Phase C drives the
   dispatch bridge + suit gift on-device via adb-forward.
+
+## Session 8 (cont.) — v0.5.0-dispatch CI FULLY GREEN (2026-10-04)
+
+- build-release 37185936643 GREEN + test-redroid 37186013333 GREEN.
+- On-device assertions confirmed: dispatch token with loopback dispUrl,
+  dispatch returns engine gaddr, suit shop served, gift suit claimed into
+  wardrobe; 56 unique LocalAPI endpoints served to the real client.
+- Releases to date now include v0.5.0-dispatch (CI-built + CI-tested).
