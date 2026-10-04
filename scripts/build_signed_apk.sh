@@ -55,6 +55,9 @@ python3 "$REPO/scripts/patch_urls.py"
 echo "== patch_bootstrap.py (LocalServer hook) =="
 python3 "$REPO/scripts/patch_bootstrap.py" "$BUILD/apktool_out/smali/com/disabngo/blockynexus/App.smali"
 
+echo "== patch_killlog.py (kill-site stack logs) =="
+python3 "$REPO/scripts/patch_killlog.py"
+
 # --- embedded server dex ---
 echo "== build_server_dex.sh =="
 bash "$REPO/scripts/build_server_dex.sh"
