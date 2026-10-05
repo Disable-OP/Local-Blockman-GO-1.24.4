@@ -221,18 +221,43 @@ final class Tribe {
         return null;
     }
 
-    /** Chief sets a member's identity: type 10 = elder, 0 = member. */
+    /**
+     * PUT /clan/api/v1/clan/tribe/member — set a member's role.
+     * CLIENT type codes (jadx TribeHasItemViewModel J + strings:
+     * tribe_select_elder / tribe_select_member / tribe_move_chief):
+     *   1 = Set as Elder (role 10)
+     *   2 = Set as Member (role 0)
+     *   3 = Hand over Chief (target becomes chief 20; the old chief
+     *       steps down to a plain member 0 and chiefId follows)
+     */
     public static String setIdentity(StateStore store, JSONObject user, long otherId, int type) {
         JSONObject clan = clanOf(store, user);
         if (clan == null) return "not in a clan";
         if (roleOf(clan, user.optLong("userId")) != 20) return "only the chief can set roles";
         JSONObject target = memberOf(clan, otherId);
         if (target == null) return "not a member";
-        if (target.optInt("role") == 20) return "cannot change the chief";
-        if (type != 0 && type != 10) return "bad role type";
-        target.put("role", type);
-        store.save();
-        return null;
+        long callerId = user.optLong("userId");
+        if (type == 3) {
+            if (target.optInt("role") == 20 || otherId == callerId) return "cannot change the chief";
+            target.put("role", 20);
+            JSONObject oldChief = memberOf(clan, callerId);
+            if (oldChief != null) oldChief.put("role", 0);
+            clan.put("chiefId", otherId);
+            store.save();
+            return null;
+        }
+        if (target.optInt("role") == 20 || otherId == callerId) return "cannot change the chief";
+        if (type == 1) {
+            target.put("role", 10);
+            store.save();
+            return null;
+        }
+        if (type == 2) {
+            target.put("role", 0);
+            store.save();
+            return null;
+        }
+        return "bad role type";
     }
 
     // ------------------------------------------------------------ joining

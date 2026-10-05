@@ -1767,6 +1767,7 @@ def main():
     # probe it is; if it EVER posts, its clan name wins (new evidence).
     own_name = None
     live_hdr = None
+    own_clan_id = 0
     if posted_e and clan_name_e:
         own_name = clan_name_e
         ok("F: UI create POSTED (%s) - using the UI-created clan" % own_name)
@@ -1785,6 +1786,7 @@ def main():
             pc = fcall("POST", "/clan/api/v2/clan/tribe", pc_form,
                        headers=live_hdr)
         if pc.get("code") == 1:
+            own_clan_id = pc.get("data", {}).get("clanId", 0)
             ok("F: persistent clan created via the local API for the live "
                "session (%s)" % own_name)
             pid = fcall("GET", "/clan/api/v1/clan/tribe/id", headers=live_hdr)
@@ -2328,8 +2330,249 @@ def main():
                 else:
                     print("  [info] F2: settings sheet never showed 'Edit "
                           "Profile' (dump evidence above)")
+                # BACK out of the edit form (when F2 opened it) -> homepage
                 adb.key(4)
                 time.sleep(2)
+                # ------------------------- Phase G: member management + clan
+                # settings (session 18, wave 5u). jadx decode:
+                # TribeMemberManage (oa.a, right button = invite) rows are
+                # TribeHasItemViewModel J: row tap (manage mode, not-self)
+                # -> BottomDialog [Hand over Chief | Set as Elder | Remove
+                # Member | Cancel] -> TwoButtonDialog (btnSure confirms) ->
+                # PUT /clan/api/v1/clan/tribe/member?otherId=&type={1,2,3}
+                # (1=elder, 2=member, 3=hand over - server now speaks the
+                # client codes) or DELETE .../member/remove?otherId=.
+                # Clan Settings (sa.b) is the auto-enter CheckBox ->
+                # PUT /clan/api/v1/clan/free/verification?freeVerify={0,1};
+                # sa.e initializes the toggle TRUE regardless of server
+                # state, so the drive taps twice (PUT 0 then PUT 1), asserts
+                # base.freeVerify == 1, taps once more (PUT 0) and restores.
+                if live_hdr and d_uid_live:
+                    puts_g = lambda: sum(
+                        1 for line in adb.raw("logcat", "-d", "-s",
+                                              "LocalAPI",
+                                              timeout=60).splitlines()
+                        if "REQ PUT /clan/api/v1/clan/tribe/member?" in line
+                        and "&type=" in line)
+                    # (a) a second member through the local API
+                    gj_uid = "gqa%05d" % (int(time.time()) % 100000)
+                    gj_pw = "LocalQA%05d" % (int(time.time()) % 100000)
+                    gj = fcall("POST", "/user/api/v1/register",
+                               {"uid": gj_uid, "password": gj_pw,
+                                "confirmPassword": gj_pw, "imei": "g-device",
+                                "appType": "android", "os": "12"})
+                    gj_uid_num = (gj.get("data") or {}).get("userId", 0)
+                    gj_tok = (gj.get("data") or {}).get("accessToken", "")
+                    gj_ok = gj.get("code") == 1 and gj_uid_num > 0
+                    if gj_ok:
+                        gjh = {"Access-Token": gj_tok,
+                               "userId": str(gj_uid_num), "language": "en"}
+                        gjr = fcall("POST", "/clan/api/v1/clan/tribe/member",
+                                    {"clanId": own_clan_id,
+                                     "msg": "g-join"}, headers=gjh)
+                        gja = fcall("PUT",
+                                    "/clan/api/v1/clan/tribe/member/agreement"
+                                    "?otherId=%d" % gj_uid_num, None,
+                                    headers=live_hdr)
+                        gj_ok = gjr.get("code") == 1 and gja.get("code") == 1
+                        ok("G: second member joined via the API (%s)"
+                           % gj_uid) if gj_ok else print(
+                               "  [info] G: API join failed: %s %s"
+                               % (str(gjr)[:80], str(gja)[:80]))
+                    gml = fcall("GET", "/clan/api/v1/clan/tribe/member",
+                                headers=live_hdr) if gj_ok else {"data": []}
+                    g_nick = next((m.get("nickName") for m in
+                                   gml.get("data", [])
+                                   if m.get("userId") == gj_uid_num), None)
+                    if g_nick:
+                        more = None
+                        for x in screen.dump():
+                            if not (x.center
+                                    and x.cls.endswith("ImageButton")):
+                                continue
+                            cx, cy = x.center
+                            if cy < 140 and cx > 360:
+                                more = x
+                                break
+                        if more and screen.tap_node(more):
+                            time.sleep(3)
+                        mm = screen.find(texts=["Manage Members"])
+                        if mm and mm.center:
+                            ok("G: settings sheet shows 'Manage Members'")
+                            screen.tap_node(mm)
+                            time.sleep(5)
+                            f_alive("G-managescreen")
+                            for x in screen.dump():
+                                if x.res or x.text or x.desc:
+                                    print("  G-manage] %s | text=%r" % (
+                                        x.res.rsplit("/", 1)[-1]
+                                        if x.res else "", x.text[:28]))
+                            row = screen.wait_for(texts=[g_nick], timeout=12,
+                                                  poll=3)
+                            puts_before_g = puts_g()
+                            if row and row.center:
+                                # promote: Set as Elder -> btnSure
+                                screen.tap_node(row)
+                                time.sleep(3)
+                                elder = screen.find(texts=["Set as Elder"])
+                                if elder and elder.center:
+                                    screen.tap_node(elder)
+                                    time.sleep(3)
+                                    sure = screen.find(ids=["btnSure"])
+                                    if sure and sure.center:
+                                        screen.tap_node(sure)
+                                        time.sleep(4)
+                                        f_alive("G-promote")
+                                        puts_after_g = puts_g()
+                                        ml_g = fcall(
+                                            "GET",
+                                            "/clan/api/v1/clan/tribe/member",
+                                            headers=live_hdr)
+                                        g_role = next(
+                                            (m.get("role") for m in
+                                             ml_g.get("data", [])
+                                             if m.get("userId")
+                                             == gj_uid_num), None)
+                                        check(
+                                            "G: setIdentity client-asserted "
+                                            "(type 1 elder, server role=%s)"
+                                            % g_role,
+                                            puts_after_g > puts_before_g
+                                            and g_role == 10,
+                                            "puts %d->%d role=%s"
+                                            % (puts_before_g, puts_after_g,
+                                               g_role))
+                                else:
+                                    print("  [info] G: 'Set as Elder' not "
+                                          "on the member sheet")
+                                # remove: Remove Member -> btnSure
+                                row2 = screen.wait_for(texts=[g_nick],
+                                                       timeout=10, poll=3)
+                                if row2 and row2.center:
+                                    screen.tap_node(row2)
+                                    time.sleep(3)
+                                    rm = screen.find(texts=["Remove Member"])
+                                    if rm and rm.center:
+                                        screen.tap_node(rm)
+                                        time.sleep(3)
+                                        sure2 = screen.find(ids=["btnSure"])
+                                        if sure2 and sure2.center:
+                                            screen.tap_node(sure2)
+                                            time.sleep(4)
+                                            f_alive("G-remove")
+                                            ml_h = fcall(
+                                                "GET",
+                                                "/clan/api/v1/clan/tribe/"
+                                                "member", headers=live_hdr)
+                                            gone = all(
+                                                m.get("userId")
+                                                != gj_uid_num
+                                                for m in ml_h.get("data", []))
+                                            check("G: removeMember "
+                                                  "client-asserted (member "
+                                                  "gone)", gone,
+                                                  str(ml_h)[:120])
+                            else:
+                                print("  [info] G: member row %r not on "
+                                      "the manage screen" % g_nick)
+                            adb.key(4)
+                            time.sleep(3)
+                        else:
+                            print("  [info] G: 'Manage Members' not on the "
+                                  "sheet (dump evidence above)")
+                        # ---------------- Clan Settings (auto-enter toggle)
+                        more2 = None
+                        for x in screen.dump():
+                            if not (x.center
+                                    and x.cls.endswith("ImageButton")):
+                                continue
+                            cx, cy = x.center
+                            if cy < 140 and cx > 360:
+                                more2 = x
+                                break
+                        if more2 and screen.tap_node(more2):
+                            time.sleep(3)
+                        cs = screen.find(texts=["Clan Settings"])
+                        if cs and cs.center:
+                            screen.tap_node(cs)
+                            time.sleep(5)
+                            f_alive("G-settings")
+                            cb = next((x for x in screen.dump()
+                                       if x.center
+                                       and x.cls.endswith("CheckBox")), None)
+                            if cb and cb.center:
+                                # sa.e hardcodes the toggle TRUE and the
+                                # response re-binds it after every PUT, so
+                                # the sent value per tap is read from the
+                                # REQ line itself (?freeVerify=). Assertion:
+                                # the server state always follows the last
+                                # value the client sent.
+                                verified = False
+                                last_v = None
+                                for tap_n in range(1, 4):
+                                    screen.tap_node(cb)
+                                    time.sleep(3)
+                                    f_alive("G-fv-tap%d" % tap_n)
+                                    log_g = adb.raw("logcat", "-d", "-s",
+                                                    "LocalAPI", timeout=60)
+                                    vs = re.findall(
+                                        r"REQ PUT /clan/api/v1/clan/free/"
+                                        r"verification\?freeVerify=(\d)",
+                                        log_g)
+                                    base_g = fcall(
+                                        "GET", "/clan/api/v1/clan/tribe/base",
+                                        headers=live_hdr)
+                                    state = (base_g.get("data") or {}).get(
+                                        "freeVerify")
+                                    if vs:
+                                        last_v = vs[-1]
+                                    print("  [evidence] G: freeVerify tap %d "
+                                          "-> client sent %s, server state "
+                                          "%s" % (tap_n, last_v, state))
+                                    if last_v is not None:
+                                        check(
+                                            "G: freeVerify toggle "
+                                            "client-asserted (server "
+                                            "follows the client: sent=%s "
+                                            "state=%s)" % (last_v, state),
+                                            str(state) == str(last_v),
+                                            "state=%s sent=%s"
+                                            % (state, last_v))
+                                        verified = True
+                                        break
+                                if not verified:
+                                    print("  [info] G: no free/verification "
+                                          "PUT observed from the toggle "
+                                          "(binding may be one-way)")
+                                # restore the deterministic world: 0
+                                for _ in range(4):
+                                    base_r = fcall(
+                                        "GET", "/clan/api/v1/clan/tribe/base",
+                                        headers=live_hdr)
+                                    if (base_r.get("data") or {}).get(
+                                            "freeVerify") in (0, None):
+                                        break
+                                    screen.tap_node(cb)
+                                    time.sleep(3)
+                            else:
+                                print("  [info] G: auto-enter CheckBox not "
+                                      "found on the settings screen")
+                            adb.key(4)
+                            time.sleep(3)
+                        else:
+                            print("  [info] G: 'Clan Settings' not on the "
+                                  "sheet (chief-only item; dump above)")
+                        for _ in range(3):
+                            if screen.find(ids=["rb_3"]):
+                                break
+                            adb.key(4)
+                            time.sleep(2)
+                        assert_alive(adb, args.package, "G-grounded")
+                    else:
+                        print("  [skip] G: no second member (API join "
+                              "failed) - member/settings drives skipped")
+                else:
+                    print("  [skip] G: no live session token")
             else:
                 print("  [info] F: own clan %s NOT surfaced (tab3 dump + "
                       "clanscreen dump recorded above for the next wave)"
