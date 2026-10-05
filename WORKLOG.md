@@ -1206,3 +1206,20 @@
 - Wave 5q v6 in flight (c99fa3f): tap_node_high() — a bounds-derived tap
   at 25% height inside the node (never raw coordinates), used for the
   submit; plus an immediate logcat toast scan around the submit tap.
+
+## Session 14 (cont. 11) — wave 5q v6 RESULT + wave 5r refactor (runs 37249593616 PASS)
+
+- Run 37249593616 PASS on c99fa3f: the high tap (25% inside the submit
+  bar, above the nav bar) ALSO produced no POST/toast/dialog. The nav-bar
+  trap is fixed but not the whole story. Diagnostics note: the submit
+  window rotated out of the artifact buffers — the job log is the
+  evidence of record.
+- DECISIVE NEXT TEST designed (wave 5r, d204b39): the form drive is
+  extracted to module-level ui_create_clan() and run TWICE per run —
+  once as the VISITOR (deep drive) and once as the REGISTERED account
+  (new Phase E, after Phase D's upgrade+restart). A POST in exactly one
+  session names the visitor silence as a client-side GUEST GATE; silence
+  in both points to a form-level gate (headPic? deeper validation?).
+  The refactor also dedents ~240 lines of nested form code into one
+  reusable, honest-reporting function (returns posted=True/False; never
+  fails the run; BACK-safe exits).
