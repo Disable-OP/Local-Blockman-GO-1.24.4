@@ -804,22 +804,35 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                                           x.cls.rsplit(".", 1)[-1]
                                           if x.cls else "",
                                           x.text[:24], x.clickable))
-                        # v4 (run 37245519359): the "picker" is an Add Tag
-                        # DIALOG — et_msg EditText + CANCEL/CONFIRM buttons
-                        # (ids on record). Type a short tag and confirm;
-                        # the tag is client-validated free text.
+                        # v5 (run 37246989599 evidence): 'QA' was IME-
+                        # autocorrected to 'Qatar' AND the CONFIRM tap was
+                        # swallowed (keyboard up, dialog still open after).
+                        # Fix: type a digit-bearing tag (no autocorrect),
+                        # drop the keyboard with one BACK (first BACK in a
+                        # dialog closes the IME, not the dialog), verify
+                        # the field text, then CONFIRM unobstructed.
                         msg = screen.find(ids=["et_msg"])
                         if msg and msg.center:
                             screen.tap_node(msg)
                             time.sleep(1)
-                            adb.text("QA")
+                            adb.text("QA1")
                             time.sleep(1)
+                            adb.key(4)  # keyboard down, dialog stays
+                            time.sleep(2)
+                            cur = screen.find(ids=["et_msg"])
+                            ok("5q v5: tag field now %r"
+                               % ((cur.text if cur else "<gone>"),))
                         conf = screen.find(ids=["btn_confirm"])
                         if conf and conf.center:
                             screen.tap_node(conf)
                             time.sleep(3)
                             alive_or_recover("%s-clantag-confirm" % tag)
-                            ok("5q v4: tag 'QA' typed + CONFIRM tapped")
+                            gone = screen.find(ids=["tv_title"])
+                            if gone and (gone.text or "") == "Add Tag":
+                                print("  [info] tag dialog still open "
+                                      "after CONFIRM (tag rejected?)")
+                            else:
+                                ok("5q v5: tag dialog closed - tag set")
                             for x in screen.dump():
                                 if x.res or x.text or x.desc:
                                     print("  clantag2] %s | text=%r" % (
