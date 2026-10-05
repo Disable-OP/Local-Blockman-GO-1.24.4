@@ -1538,6 +1538,8 @@ def main():
     nick_edit = "qaD%05d" % (int(time.time()) % 100000)
     d_edited = False
     d_intro = None
+    d_tok = None   # live session token (auth-token response) - Phase F uses it
+    d_uid_live = None  # live session user id - Phase F uses it
 
     def current_user_id(screen):
         """Extract the current user id from the Me tab (ID row)."""
@@ -1579,6 +1581,8 @@ def main():
             at = fcall("GET", "/user/api/v1/app/auth-token?userId=%s" % d_uid)
             tok = (at.get("data") or {}).get("accessToken", "")
             if at.get("code") == 1 and tok:
+                d_tok = tok
+                d_uid_live = d_uid
                 upg = fcall("POST", "/user/api/v2/app/set-password",
                             {"account": qa_uid_d, "password": password_d,
                              "confirmPassword": password_d},
@@ -1744,7 +1748,49 @@ def main():
     # first: node dumps + endpoint evidence; the hard requirement is only
     # that the app stays alive.
     print("== PHASE F: registered-session OWN-CLAN surfaces ==")
+    # Session 17: the UI create is ICON-GATED (jadx, PATCH_PLAN Phase 7a -
+    # TribeCreateModel requires the gallery+crop icon; the submit never
+    # POSTs for ANY session state). So the own clan now comes from the API
+    # (the same local server the app itself talks to), created for the LIVE
+    # registered session via its Phase-D auth-token. Per-run unique name so
+    # the UI search is exact. The UI create (Phase E) stays as the honest
+    # probe it is; if it EVER posts, its clan name wins (new evidence).
+    own_name = None
+    live_hdr = None
     if posted_e and clan_name_e:
+        own_name = clan_name_e
+        ok("F: UI create POSTED (%s) - using the UI-created clan" % own_name)
+    elif d_tok and d_uid_live:
+        own_name = "PersClan%d" % (int(time.time()) % 100000)
+        live_hdr = {"Access-Token": d_tok, "userId": str(d_uid_live),
+                    "language": "en"}
+        pc_form = {"name": own_name, "details": "persistent-owner",
+                   "headPic": "", "tags": [], "currency": 2}
+        pc = fcall("POST", "/clan/api/v2/clan/tribe", pc_form, headers=live_hdr)
+        if pc.get("code") != 1:
+            # the client's own fallback: golds short -> the 60-diamond path
+            print("  [info] F: golds-path create failed (%s) - trying the "
+                  "diamonds path" % str(pc)[:100])
+            pc_form["currency"] = 1
+            pc = fcall("POST", "/clan/api/v2/clan/tribe", pc_form,
+                       headers=live_hdr)
+        if pc.get("code") == 1:
+            ok("F: persistent clan created via the local API for the live "
+               "session (%s)" % own_name)
+            pid = fcall("GET", "/clan/api/v1/clan/tribe/id", headers=live_hdr)
+            check("F: server confirms ownership (tribe/id != 0)",
+                  pid.get("code") == 1 and str(pid.get("data")) not in ("0", ""),
+                  str(pid)[:100])
+        else:
+            print("  [info] F: persistent clan create failed: %s"
+                  % str(pc)[:120])
+            own_name = None
+    if own_name:
+        # Boot the client WITH the clan: the restart re-fetches tribe/id at
+        # boot, so the client-side TribeCenter carries the clan before the
+        # drive (the Session 15 design premise - now actually true).
+        if clean_relaunch("F-restart-owner"):
+            ok("F: app restarted holding the persistent clan (%s)" % own_name)
         f_before = set(localapi_paths(adb))
 
         def f_alive(stage):
@@ -1789,9 +1835,9 @@ def main():
                         print("  %s] %s | text=%r" % (
                             stage, x.res.rsplit("/", 1)[-1] if x.res
                             else "", x.text[:28]))
-                own = screen.find(texts=[clan_name_e])
+                own = screen.find(texts=[own_name])
                 if own and own.center:
-                    ok("F: own clan %s reachable via %s" % (clan_name_e,
+                    ok("F: own clan %s reachable via %s" % (own_name,
                                                             entry))
                     break
                 # not here. BACK only if we actually LEFT the main screen
@@ -1820,7 +1866,7 @@ def main():
                             print("  F-clanscreen] %s | text=%r" % (
                                 x.res.rsplit("/", 1)[-1] if x.res else "",
                                 x.text[:28]))
-                    own = screen.find(texts=[clan_name_e])
+                    own = screen.find(texts=[own_name])
                     if not own:
                         # 5s v2 evidence (run 37255687401 + localapi.txt):
                         # tribeRecommendation returns ALL tribes — the own
@@ -1841,7 +1887,7 @@ def main():
                                               x.res.rsplit("/", 1)[-1]
                                               if x.res else "",
                                               x.text[:28]))
-                        own = screen.find(texts=[clan_name_e])
+                        own = screen.find(texts=[own_name])
                     if not own:
                         # exact-name search. 5s v3 decode (jadx
                         # activity_tribe_search.xml): the input IS a real
@@ -1868,7 +1914,7 @@ def main():
                         if edit:
                             screen.tap_node(edit)
                             time.sleep(1)
-                            adb.text(clan_name_e)
+                            adb.text(own_name)
                             time.sleep(1)
                             typed = None
                             for x in screen.dump():
@@ -1876,8 +1922,8 @@ def main():
                                     typed = x.text or ""
                                     break
                             ok("F: tvTitle now holds %r (wanted %r)"
-                               % (typed, clan_name_e))
-                            if typed != clan_name_e:
+                               % (typed, own_name))
+                            if typed != own_name:
                                 # retype once: clear (select-all+del is
                                 # unreliable over adb) — retype appends on
                                 # some IMEs, so BACK-space the difference
@@ -1886,7 +1932,7 @@ def main():
                                     for _ in range(len(typed) + 2):
                                         adb.key(67)
                                         time.sleep(0.1)
-                                adb.text(clan_name_e)
+                                adb.text(own_name)
                                 time.sleep(1)
                                 for x in screen.dump():
                                     if x.cls.endswith("EditText") \
@@ -1933,22 +1979,22 @@ def main():
                                     print("  F-results] %s | text=%r" % (
                                         x.res.rsplit("/", 1)[-1]
                                         if x.res else "", x.text[:28]))
-                            own = screen.find(texts=[clan_name_e])
+                            own = screen.find(texts=[own_name])
                             if not own:
                                 # one honest re-look: the results may need
                                 # another beat to render after the IME closes
                                 time.sleep(4)
-                                own = screen.find(texts=[clan_name_e])
+                                own = screen.find(texts=[own_name])
                         else:
                             print("  [evidence] F: no search-input node in "
                                   "3 dumps - cannot exact-name search")
                     elif own and not own.center:
                         print("  [evidence] F: own-clan node present but "
                               "bounds-less (dump race) - retapping dump")
-                        own = screen.wait_for(texts=[clan_name_e],
+                        own = screen.wait_for(texts=[own_name],
                                               timeout=15, poll=3)
             if own and own.center:
-                ok("F: own clan %s surfaced on the clan screens" % clan_name_e)
+                ok("F: own clan %s surfaced on the clan screens" % own_name)
                 screen.tap_node(own)
                 time.sleep(6)
                 f_alive("F-clanhome")
@@ -1964,12 +2010,189 @@ def main():
                 else:
                     print("  [info] F: no NEW /clan/ endpoints from the "
                           "own-clan drive (homepage may be cached state)")
+                # ------------------------------------------------- F2: the
+                # clan-UPDATE form. Client chain (jadx, classes2, session
+                # 17 decompile): TribeHasFragment (fragment_tribe_has - the
+                # top-RIGHT id-less ImageButton, ic_more, tag binding_2 =
+                # command o) -> TribeHasViewModel H() BottomDialog (items:
+                # Clan Settings [chief], Edit Profile, Manage Members,
+                # Cancel) -> "Edit Profile" opens the CREATE template in
+                # EDIT mode (bundle is.create=false; name/details/ico.url
+                # pre-filled). Submit = the "Modify" Button (binding_7 =
+                # command o = i() -> TribeApi.clanUpdate; no icon, no
+                # golds gate). Update validation REQUIRES 1..4 tags and a
+                # non-empty introduction - our clan ships tags=[] so the
+                # drive adds one through the same Add Tag dialog as the
+                # create flow. A one-time TribeSettingGuideDialog may cover
+                # the homepage: its top-right label tap opens the SAME
+                # sheet (and consumes the guide).
+
+                def put_tribe_count():
+                    log = adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                  timeout=60)
+                    return sum(1 for line in log.splitlines()
+                               if "REQ PUT /clan/api/v1/clan/tribe" in line
+                               and "/clan/api/v1/clan/tribe/member"
+                               not in line)
+
+                puts_before = put_tribe_count()
+                guide = next((x for x in screen.dump()
+                              if "join clan" in (x.text or "") and x.center),
+                             None)
+                if guide:
+                    print("  [evidence] F2: one-time TribeSettingGuideDialog "
+                          "is up - its top-right label tap opens the "
+                          "settings sheet")
+                    screen.tap_node(guide)
+                    time.sleep(3)
+                sheet = screen.find(texts=["Edit Profile"])
+                if not sheet:
+                    more = None
+                    for x in screen.dump():
+                        if not (x.center and x.cls.endswith("ImageButton")):
+                            continue
+                        cx, cy = x.center
+                        if cy < 140 and cx > 360:
+                            more = x
+                            break
+                    if more and screen.tap_node(more):
+                        print("  [evidence] F2: ic_more (top-right id-less "
+                              "ImageButton) tapped")
+                        time.sleep(3)
+                    else:
+                        print("  [info] F2: no top-right ImageButton found "
+                              "- cannot open the settings sheet")
+                    sheet = screen.find(texts=["Edit Profile"])
+                if sheet and sheet.center:
+                    ok("F2: settings sheet shows 'Edit Profile'")
+                    screen.tap_node(sheet)
+                    time.sleep(5)
+                    f_alive("F2-editform")
+                    title = screen.find(ids=["tv_title"])
+                    ok("F2: edit form title=%r (want 'Edit Clan')"
+                       % (title.text if title else None))
+                    name_in = screen.find(ids=["etTribeName"])
+                    new_name = "EditClan%05d" % (int(time.time()) % 100000)
+                    typed = None
+                    if name_in and name_in.center:
+                        screen.tap_node(name_in)
+                        time.sleep(1)
+                        for _ in range(len(own_name) + 4):
+                            adb.key(67)  # DEL the pre-filled name
+                        time.sleep(0.5)
+                        adb.text(new_name)
+                        time.sleep(1)
+                        adb.key(4)  # close the IME
+                        time.sleep(1)
+                        for x in screen.dump():
+                            if x.cls.endswith("EditText") and x.center \
+                                    and x.res.rsplit("/", 1)[-1] == \
+                                    "etTribeName":
+                                typed = x.text or ""
+                                break
+                        ok("F2: name field now %r (wanted %r)"
+                           % (typed, new_name))
+                        if typed != new_name:
+                            for _ in range(len((typed or "")) + 4):
+                                adb.key(67)
+                            adb.text(new_name)
+                            time.sleep(1)
+                            adb.key(4)
+                            time.sleep(1)
+                            for x in screen.dump():
+                                if x.cls.endswith("EditText") and x.center \
+                                        and x.res.rsplit("/", 1)[-1] == \
+                                        "etTribeName":
+                                    typed = x.text or ""
+                                    break
+                            ok("F2: name field after retype %r" % typed)
+                    else:
+                        print("  [info] F2: etTribeName not found on the "
+                              "edit form")
+                    # tags: required by the update validation - add one if
+                    # the form has none (the create flow's proven pattern)
+                    d_form = screen.dump()
+                    tag_label = next((x for x in d_form
+                                      if (x.text or "") == "Clan tag"
+                                      and x.center), None)
+                    if tag_label:
+                        idx = d_form.index(tag_label)
+                        tag_btn = next((x for x in d_form[idx + 1: idx + 4]
+                                        if x.clickable and x.center
+                                        and not x.cls.endswith("EditText")),
+                                       None)
+                        if tag_btn:
+                            screen.tap_node(tag_btn)
+                            time.sleep(4)
+                            if f_alive("F2-clantag"):
+                                msg = screen.find(ids=["et_msg"])
+                                if msg and msg.center:
+                                    screen.tap_node(msg)
+                                    time.sleep(1)
+                                    adb.text("QA2")
+                                    time.sleep(1)
+                                    adb.key(4)
+                                    time.sleep(1)
+                                conf = screen.find(ids=["btn_confirm"])
+                                if conf and conf.center:
+                                    screen.tap_node(conf)
+                                    time.sleep(3)
+                                    still = screen.find(ids=["tv_title"])
+                                    if still and (still.text or "") == \
+                                            "Add Tag":
+                                        print("  [info] F2: tag dialog "
+                                              "still open (tag rejected?)")
+                                        adb.key(4)  # dismiss the stuck dialog
+                                        time.sleep(2)
+                                    else:
+                                        ok("F2: tag added (dialog closed)")
+                    else:
+                        print("  [info] F2: 'Clan tag' label not found - "
+                              "tags may already exist")
+                    modify = next((x for x in screen.dump()
+                                   if (x.text or "") == "Modify"
+                                   and x.center), None)
+                    if modify:
+                        screen.tap_node(modify)
+                        time.sleep(4)
+                        f_alive("F2-edit-submit")
+                        puts_after = put_tribe_count()
+                        print("  [evidence] F2: PUT count %d -> %d"
+                              % (puts_before, puts_after))
+                        if live_hdr:
+                            base2 = fcall("GET",
+                                          "/clan/api/v1/clan/tribe/base",
+                                          headers=live_hdr)
+                            srv_name = (base2.get("data") or {}).get("name")
+                            check("F2: clan-UPDATE client-asserted through "
+                                  "the real UI (PUT fired, server name=%r)"
+                                  % srv_name,
+                                  puts_after > puts_before
+                                  and srv_name == new_name,
+                                  "puts %d->%d server=%r typed=%r"
+                                  % (puts_before, puts_after, srv_name,
+                                     typed))
+                        else:
+                            check("F2: clan-UPDATE PUT fired",
+                                  puts_after > puts_before,
+                                  "puts %d->%d" % (puts_before, puts_after))
+                    else:
+                        print("  [info] F2: 'Modify' button not found - "
+                              "form dump:")
+                        for x in screen.dump():
+                            if x.res or x.text:
+                                print("  F2-form] %s | text=%r" % (
+                                    x.res.rsplit("/", 1)[-1] if x.res
+                                    else "", x.text[:28]))
+                else:
+                    print("  [info] F2: settings sheet never showed 'Edit "
+                          "Profile' (dump evidence above)")
                 adb.key(4)
                 time.sleep(2)
             else:
                 print("  [info] F: own clan %s NOT surfaced (tab3 dump + "
                       "clanscreen dump recorded above for the next wave)"
-                      % clan_name_e)
+                      % own_name)
             # ground: leave the drive somewhere with the bottom nav
             for _ in range(4):
                 if screen.find(ids=["rb_3"]):
@@ -1980,7 +2203,8 @@ def main():
         else:
             print("  [skip] F: rb_3 not found after Phase E")
     else:
-        print("  [info] Phase F skipped - no registered clan from Phase E")
+        print("  [info] Phase F skipped - no own clan (no session token from "
+              "Phase D, API create failed, or rb_3 unavailable)")
 
     # ------------------------------------------------- assertions
     print("== assertions ==")

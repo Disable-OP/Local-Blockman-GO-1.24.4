@@ -629,6 +629,55 @@ def main():
                             ).get("data", {}).get("accessToken", "")})
         check("duplicate name rejected (7002)", dup.get("code") == 7002, str(dup)[:80])
 
+        print("== Phase 4: clan update (the UI edit-form drive's contract) ==")
+        up = call("PUT", "/clan/api/v1/clan/tribe",
+                  {"clanId": clan_id, "details": "updated details", "headPic": "",
+                   "name": "QA Clan X", "tags": ["qa", "qa2"]}, headers=h1)
+        check("chief updates name+details+tags", up.get("code") == 1
+              and up.get("data", {}).get("name") == "QA Clan X"
+              and up["data"].get("details") == "updated details"
+              and up["data"].get("tags") == ["qa", "qa2"], str(up)[:180])
+        base_up = call("GET", "/clan/api/v1/clan/tribe/base", headers=h1)
+        check("update persisted in base", base_up.get("code") == 1
+              and base_up["data"].get("name") == "QA Clan X", str(base_up)[:120])
+        ry = call("POST", "/user/api/v1/register",
+                  {"uid": "qa_userY", "password": "pwY", "imei": "devY"})
+        hy = {"Access-Token": ry["data"]["accessToken"], "userId": str(ry["data"]["userId"]),
+              "language": "en"}
+        cry = call("POST", "/clan/api/v2/clan/tribe",
+                   {"name": "QA Clan Y", "details": "other clan", "headPic": "",
+                    "tags": ["y"], "currency": 2}, headers=hy)
+        check("second clan exists (for the update-dup test)", cry.get("code") == 1,
+              str(cry)[:100])
+        up_dup = call("PUT", "/clan/api/v1/clan/tribe",
+                      {"clanId": clan_id, "details": "updated details", "headPic": "",
+                       "name": "QA Clan Y", "tags": ["qa"]}, headers=h1)
+        check("update onto another clan's name rejected (7002)",
+              up_dup.get("code") == 7002, str(up_dup)[:80])
+        # note: a chief-of-own-clan PUT updates THEIR OWN clan by design
+        # (the handler resolves the caller's clan; the elder 7003 case is
+        # covered by the guards phase below). Clean the helper clan up so
+        # the persistence phase's recommendation count stays exact.
+        rn = call("POST", "/user/api/v1/register",
+                  {"uid": "qa_userN", "password": "pwN", "imei": "devN"})
+        hn = {"Access-Token": rn["data"]["accessToken"], "userId": str(rn["data"]["userId"]),
+              "language": "en"}
+        up_nonmember = call("PUT", "/clan/api/v1/clan/tribe",
+                            {"clanId": 0, "details": "x", "headPic": "",
+                             "name": "QA Clan W", "tags": ["qa"]}, headers=hn)
+        check("non-member clan update rejected (7006)", up_nonmember.get("code") == 7006,
+              str(up_nonmember)[:80])
+        up_restore = call("PUT", "/clan/api/v1/clan/tribe",
+                          {"clanId": clan_id, "details": "testing clan", "headPic": "",
+                           "name": "QA Clan", "tags": ["qa"]}, headers=h1)
+        check("rename back to the original name (later phases depend on it)",
+              up_restore.get("code") == 1
+              and up_restore["data"].get("name") == "QA Clan", str(up_restore)[:120])
+        dz = call("DELETE", "/clan/api/v1/clan/tribe?clanId=%d" % cry["data"]["clanId"],
+                  headers=hy)
+        check("update-dup helper clan dissolved (count hygiene)", dz.get("code") == 1,
+              str(dz)[:80])
+
         print("== Phase 4: bulletin ==")
         r2 = call("POST", "/user/api/v1/register",
                   {"uid": "qa_user2", "password": "pw2", "imei": "dev2"})

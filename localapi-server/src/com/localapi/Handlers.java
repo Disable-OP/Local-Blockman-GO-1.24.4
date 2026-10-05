@@ -3389,7 +3389,7 @@ final class Handlers {
         JSONObject u = requireUser(ctx, store);
         if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject clan = Tribe.clanOf(store, u);
-        if (clan == null) return fail("not in a clan");
+        if (clan == null) return failTribe("not in a clan");
         if (Tribe.roleOf(clan, u.optLong("userId")) != 20) return failTribe("only the chief can update");
         JSONObject form = body(ctx);
         String name = form.optString("name", clan.optString("name"));
@@ -3397,7 +3397,13 @@ final class Handlers {
             if (isSensitiveNick(store, name)) {
                 return failCode(ErrorCodes.ILLEGAL_CHARACTER, "clan name contains a sensitive word");
             }
-            clan.put("name", name.trim().replace("\n", " "));
+            String cleaned = name.trim().replace("\n", " ");
+            // the client's edit form has NO uniqueness gate — the server
+            // owns the rule (client TribeOnError maps 7002 tribe_name_exist)
+            if (Tribe.nameTaken(store, cleaned, clan.optLong("clanId"))) {
+                return failTribe("clan name taken");
+            }
+            clan.put("name", cleaned);
         }
         if (form.has("details")) clan.put("details", form.optString("details"));
         if (form.has("headPic")) clan.put("headPic", form.optString("headPic"));

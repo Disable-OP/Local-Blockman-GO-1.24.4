@@ -85,6 +85,19 @@ final class Tribe {
 
     // ------------------------------------------------------------ lifecycle
 
+    /** True when some OTHER clan already holds this name (case-insensitive). */
+    public static boolean nameTaken(StateStore store, String name, long excludeClanId) {
+        JSONArray ids = clans(store).names();
+        if (ids != null) {
+            for (int i = 0; i < ids.length(); i++) {
+                JSONObject c = clans(store).optJSONObject(ids.optString(i));
+                if (c != null && c.optLong("clanId") != excludeClanId
+                        && name.equalsIgnoreCase(c.optString("name"))) return true;
+            }
+        }
+        return false;
+    }
+
     /** Create a clan; pays the creation fee from the caller's wallet. Returns error string or null. */
     public static String create(StateStore store, JSONObject user, String name, String details,
                                 String headPic, JSONArray tags, int currency) {
@@ -92,14 +105,7 @@ final class Tribe {
         if (user.optLong("clanId") > 0) return "already in a clan";
         if (name == null || name.trim().isEmpty()) return "clan name required";
         name = name.trim().replace("\n", " ");
-        // uniqueness across clans
-        JSONArray ids = clans(store).names();
-        if (ids != null) {
-            for (int i = 0; i < ids.length(); i++) {
-                JSONObject c = clans(store).optJSONObject(ids.optString(i));
-                if (c != null && name.equalsIgnoreCase(c.optString("name"))) return "clan name taken";
-            }
-        }
+        if (nameTaken(store, name, 0)) return "clan name taken";
         long fee = (currency == 1) ? CREATE_FEE_DIAMONDS : CREATE_FEE_GOLDS;
         String wallet = (currency == 1) ? "diamonds" : "golds";
         if (user.optLong(wallet) < fee) return "not enough " + wallet + " to create a clan";
