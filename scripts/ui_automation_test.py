@@ -1842,6 +1842,16 @@ def main():
                                 print("  F-clanhome-direct] %s | text=%r" % (
                                     x.res.rsplit("/", 1)[-1] if x.res
                                     else "", x.text[:28]))
+                        # 5t v3 (run 37338438610): entering the clan
+                        # homepage opens a "Notice Board" dialog first
+                        # (the clan bulletin — empty for API-created
+                        # clans); its btnSure 'CLOSE' reveals the page.
+                        if screen.find(texts=["Notice Board"]):
+                            close = screen.find(ids=["btnSure"])
+                            if close and close.center:
+                                screen.tap_node(close)
+                                time.sleep(3)
+                                ok("F: Notice Board dialog closed")
                         own = screen.find(texts=[own_name])
                         if own:
                             ok("F: clan homepage reached directly via "
