@@ -258,6 +258,175 @@ def relaunch_and_wait(adb, screen, package, activity, tag):
     return False
 
 
+def ui_create_clan(adb, screen, package, tag):
+    """Full CREATE A CLAN form drive through the real UI (waves 5p/5q ->
+    5r). The caller picks the session: deep_drive passes the visitor,
+    Phase E passes the registered account - a POST in one and not the
+    other names the gate. Form facts on record (5p v3, 5q v2/v5/v6):
+    etTribeName + an id-less intro EditText + the Add Tag dialog
+    (et_msg / btn_confirm) + a submit RelativeLayout whose CENTER sits
+    under the 48px system nav bar (tap high inside the bounds).
+    Returns True when POST /clan/api/v2/clan/tribe was observed."""
+    def alive(stage):
+        pid = adb.pid(package)
+        if pid:
+            ok("alive at %s (pid %s)" % (stage, pid))
+            return True
+        print("  [evidence] process died at %s (native-kill family)"
+              % stage)
+        return False
+
+    def back():
+        adb.key(4)
+        time.sleep(2)
+
+    def fill(node, value):
+        for _ in range(2):
+            screen.tap_node(node)
+            time.sleep(1)
+            adb.text(value)
+            time.sleep(1)
+            back()
+            for x in screen.dump():
+                if x.cls.endswith("EditText") and x.center \
+                        and (x.text or "") == value:
+                    return True
+        return False
+
+    tab3n = screen.find(ids=["rb_3"])
+    if not (tab3n and screen.tap_node(tab3n)):
+        print("  [skip] %s: rb_3 not on screen" % tag)
+        return False
+    time.sleep(4)
+    clanrow = screen.find(ids=["rlSearchClan"])
+    if not (clanrow and screen.tap_node(clanrow)):
+        print("  [skip] %s: rlSearchClan not on the tab3 list" % tag)
+        return False
+    time.sleep(5)
+    if not alive("%s-clanscreen" % tag):
+        return False
+    # the fresh recommendation state carries the CREATE A CLAN banner
+    create = screen.find(texts=["CREATE A CLAN"])
+    if not (create and create.center):
+        print("  [skip] %s: CREATE A CLAN banner not found" % tag)
+        back()
+        return False
+    screen.tap_node(create)
+    time.sleep(5)
+    if not alive("%s-clancreate" % tag):
+        return False
+    uname = "UIClan%05d" % (int(time.time()) % 100000)
+    name_in = screen.find(ids=["etTribeName"])
+    if not (name_in and name_in.center):
+        print("  [skip] %s: etTribeName not found on the form" % tag)
+        back()
+        return False
+    if fill(name_in, uname):
+        ok("%s: name field verified: %r" % (tag, uname))
+    else:
+        print("  [info] %s: name fill NOT verified" % tag)
+    intro = next((x for x in screen.dump()
+                  if x.cls.endswith("EditText") and x.center
+                  and x.res.rsplit("/", 1)[-1] != "etTribeName"), None)
+    if intro:
+        if fill(intro, "Local QA clan"):
+            ok("%s: intro field verified" % tag)
+        else:
+            print("  [info] %s: intro fill NOT verified" % tag)
+    else:
+        print("  [info] %s: no second EditText (intro) found" % tag)
+    # Add Tag dialog: a digit tag defeats IME autocorrect; the first
+    # BACK closes the keyboard, not the dialog; CONFIRM unobstructed (v5)
+    d = screen.dump()
+    tag_label = next((x for x in d if (x.text or "") == "Clan tag"
+                      and x.center), None)
+    if tag_label:
+        idx = d.index(tag_label)
+        tag_btn = next((x for x in d[idx + 1: idx + 4]
+                        if x.clickable and x.center
+                        and not x.cls.endswith("EditText")), None)
+        if tag_btn:
+            screen.tap_node(tag_btn)
+            time.sleep(4)
+            if alive("%s-clantag" % tag):
+                msg = screen.find(ids=["et_msg"])
+                if msg and msg.center:
+                    screen.tap_node(msg)
+                    time.sleep(1)
+                    adb.text("QA1")
+                    time.sleep(1)
+                    back()
+                    cur = screen.find(ids=["et_msg"])
+                    ok("%s: tag field now %r"
+                       % (tag, cur.text if cur else "<gone>"))
+                conf = screen.find(ids=["btn_confirm"])
+                if conf and conf.center:
+                    screen.tap_node(conf)
+                    time.sleep(3)
+                    if alive("%s-clantag-confirm" % tag):
+                        still = screen.find(ids=["tv_title"])
+                        if still and (still.text or "") == "Add Tag":
+                            print("  [info] %s: tag dialog still open "
+                                  "(tag rejected?)" % tag)
+                        else:
+                            ok("%s: tag dialog closed - tag set" % tag)
+                else:
+                    print("  [info] %s: no btn_confirm; BACKing out" % tag)
+                    back()
+    # submit: the clickable node covering the 'Create a clan' text below
+    # the title bar, tapped HIGH inside its bounds (v6 nav-bar fix)
+    subs_text = [x for x in screen.dump()
+                 if (x.text or "") == "Create a clan" and x.center
+                 and x.center[1] > 400]
+    target = None
+    if subs_text:
+        st = subs_text[-1]
+        sc = st.center
+        cands = [x for x in screen.dump()
+                 if x.clickable and x.bounds
+                 and x.bounds[0] <= sc[0] <= x.bounds[2]
+                 and x.bounds[1] <= sc[1] <= x.bounds[3]]
+        target = cands[-1] if cands else None
+    posted = False
+    if target:
+        print("  [info] %s: submitting via %s bounds=%s (high tap)"
+              % (tag, target.res.rsplit("/", 1)[-1] if target.res
+                 else target.cls, target.bounds))
+        screen.tap_node_high(target)
+        time.sleep(2)
+        tlog = adb.raw("logcat", "-d", "-t", "300", timeout=60)
+        toasts = [ln.split(": ", 1)[-1] for ln in tlog.splitlines()
+                  if "toast" in ln.lower() and "LocalAPI" not in ln][:4]
+        if toasts:
+            print("  [info] %s: toast lines around submit: %s"
+                  % (tag, toasts))
+        for rid in ["btnSure", "btn_ok", "btnOk", "btn_confirm"]:
+            c = screen.find(ids=[rid])
+            if c and c.center:
+                screen.tap_node(c)
+                break
+        time.sleep(5)
+        if alive("%s-submit" % tag):
+            clog = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+            posted = "POST /clan/api/v2/clan/tribe" in clog
+            if posted:
+                ok("%s: UI clan creation hit POST /clan/api/v2/clan/"
+                   "tribe (name=%s)" % (tag, uname))
+            else:
+                print("  [info] %s: no clan-create POST observed" % tag)
+            for x in screen.dump():
+                if x.res or x.text or x.desc:
+                    print("  %s-dump] %s | text=%r" % (
+                        tag, x.res.rsplit("/", 1)[-1] if x.res else "",
+                        x.text[:28]))
+    else:
+        print("  [skip] %s: no clickable submit candidate" % tag)
+    back()
+    if screen.find(texts=["CREATE A CLAN"]):
+        back()  # Find Clans -> tab3 (the caller grounds from here)
+    return posted
+
+
 def deep_drive(adb, screen, package, activity, tag, paths_before):
     """Deeper UI driving: visit labeled Me-tab rows (Inbox / Top Up /
     Ranking), the game-category tab (rb_2, with a safe row probe),
@@ -704,245 +873,17 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                 adb.key(4)
                 time.sleep(2)
                 alive_or_recover("%s-tab3-reentered" % tag)
-        # wave 5p v2: CREATE A CLAN discovery probe on a FRESH Find Clans
-        # entry. 5p v1 evidence (run 37239560885): the create banner
-        # belongs to the recommendation state — after a search drive the
-        # list shows results only, so the probe needs its own re-entry.
-        # Discovery only this wave: open the form, dump its widgets, BACK
-        # out. UI-driven clan creation is the follow-up once the form
-        # shape is on record (Phase C owns the API-level lifecycle).
-        clanrow = screen.find(ids=["rlSearchClan"])
-        if clanrow and screen.tap_node(clanrow):
-            time.sleep(5)
-            alive_or_recover("%s-clanscreen2" % tag)
-            create = screen.find(texts=["CREATE A CLAN"])
-            if create and screen.tap_node(create):
-                time.sleep(5)
-                alive_or_recover("%s-clancreate" % tag)
-                for x in screen.dump():
-                    if x.res or x.text or x.desc:
-                        print("  clancreate] %s | cls=%s text=%r desc=%r"
-                              % (x.res.rsplit("/", 1)[-1] if x.res else "",
-                                 x.cls.rsplit(".", 1)[-1] if x.cls else "",
-                                 x.text[:28], x.desc[:24]))
-                # wave 5q v2: UI-driven clan creation, evidence-first.
-                # v1 (run 37243022871): the name field filled fine, but the
-                # intro stayed empty (0/300) and the submit tap on the
-                # 'Create a clan' TEXT node fired no POST — the real
-                # button is probably a clickable PARENT (same pattern as
-                # the Me-tab rows). Dump clickable+bounds, verify both
-                # fills, then tap the clickable node covering the submit
-                # text (lowest on screen).
-                uname = "UIClan%05d" % (int(time.time()) % 100000)
-                name_in = screen.find(ids=["etTribeName"])
-                if not (name_in and name_in.center):
-                    print("  [skip] etTribeName not found on the form")
-                else:
-                    def fill_and_verify(node, value, want_sub):
-                        for _ in range(2):
-                            screen.tap_node(node)
-                            time.sleep(1)
-                            adb.text(value)
-                            time.sleep(1)
-                            adb.key(4)  # dismiss the keyboard
-                            time.sleep(2)
-                            d = screen.dump()
-                            hit = next((x for x in d if x.center and (
-                                (x.res.rsplit("/", 1)[-1]
-                                 == (node.res.rsplit("/", 1)[-1])
-                                 and node.res)
-                                or (not node.res
-                                    and x.cls.endswith("EditText")
-                                    and want_sub in (x.text or "").lower()))),
-                                       None)
-                            if hit and want_sub in (hit.text or "").lower():
-                                return hit
-                        return None
-                    filled_name = fill_and_verify(name_in, uname, uname.lower())
-                    if filled_name:
-                        ok("5q v2: name field verified: %r" % filled_name.text)
-                    else:
-                        print("  [info] name field fill NOT verified "
-                              "(continuing with evidence dump)")
-                    # intro EditText: the one WITHOUT the etTribeName id
-                    intro = next((x for x in screen.dump()
-                                  if x.cls.endswith("EditText") and x.center
-                                  and x.res.rsplit("/", 1)[-1]
-                                  != "etTribeName"), None)
-                    if intro:
-                        filled_intro = fill_and_verify(intro,
-                                                       "Local QA clan",
-                                                       "local qa clan")
-                        if filled_intro:
-                            ok("5q v2: intro field verified: %r"
-                               % filled_intro.text)
-                        else:
-                            print("  [info] intro fill NOT verified")
-                    else:
-                        print("  [info] no second EditText (intro) found")
-                    # wave 5q v3: the Clan tag gate. v2 evidence (run
-                    # 37244155197): both fields verified, the submit
-                    # RelativeLayout (32,1096)-(688,1184) correctly tapped,
-                    # STILL no POST — the clickable ImageView (120x60)
-                    # right after the 'Clan tag' label is the remaining
-                    # required control. Open it, dump the picker, pick the
-                    # first option if one is clearly selectable.
-                    d = screen.dump()
-                    tag_label = next((x for x in d
-                                      if (x.text or "") == "Clan tag"
-                                      and x.center), None)
-                    tag_btn = None
-                    if tag_label:
-                        idx = d.index(tag_label)
-                        for x in d[idx + 1: idx + 4]:
-                            if x.clickable and x.center and \
-                                    not x.cls.endswith("EditText"):
-                                tag_btn = x
-                                break
-                    if tag_btn:
-                        print("  [info] opening the clan tag picker "
-                              "(%s bounds=%s)" % (
-                                  tag_btn.cls.rsplit(".", 1)[-1],
-                                  tag_btn.bounds))
-                        screen.tap_node(tag_btn)
-                        time.sleep(4)
-                        alive_or_recover("%s-clantag" % tag)
-                        pd = screen.dump()
-                        for x in pd:
-                            if x.res or x.text or x.desc:
-                                print("  clantag] %s | cls=%s text=%r "
-                                      "clickable=%s" % (
-                                          x.res.rsplit("/", 1)[-1]
-                                          if x.res else "",
-                                          x.cls.rsplit(".", 1)[-1]
-                                          if x.cls else "",
-                                          x.text[:24], x.clickable))
-                        # v5 (run 37246989599 evidence): 'QA' was IME-
-                        # autocorrected to 'Qatar' AND the CONFIRM tap was
-                        # swallowed (keyboard up, dialog still open after).
-                        # Fix: type a digit-bearing tag (no autocorrect),
-                        # drop the keyboard with one BACK (first BACK in a
-                        # dialog closes the IME, not the dialog), verify
-                        # the field text, then CONFIRM unobstructed.
-                        msg = screen.find(ids=["et_msg"])
-                        if msg and msg.center:
-                            screen.tap_node(msg)
-                            time.sleep(1)
-                            adb.text("QA1")
-                            time.sleep(1)
-                            adb.key(4)  # keyboard down, dialog stays
-                            time.sleep(2)
-                            cur = screen.find(ids=["et_msg"])
-                            ok("5q v5: tag field now %r"
-                               % ((cur.text if cur else "<gone>"),))
-                        conf = screen.find(ids=["btn_confirm"])
-                        if conf and conf.center:
-                            screen.tap_node(conf)
-                            time.sleep(3)
-                            alive_or_recover("%s-clantag-confirm" % tag)
-                            gone = screen.find(ids=["tv_title"])
-                            if gone and (gone.text or "") == "Add Tag":
-                                print("  [info] tag dialog still open "
-                                      "after CONFIRM (tag rejected?)")
-                            else:
-                                ok("5q v5: tag dialog closed - tag set")
-                            for x in screen.dump():
-                                if x.res or x.text or x.desc:
-                                    print("  clantag2] %s | text=%r" % (
-                                        x.res.rsplit("/", 1)[-1]
-                                        if x.res else "", x.text[:28]))
-                        else:
-                            print("  [info] no btn_confirm in the dialog; "
-                                  "BACKing out")
-                            adb.key(4)
-                            time.sleep(2)
-                    else:
-                        print("  [info] no clan tag control found after "
-                              "the label")
-                    # evidence dump: clickable + bounds for every node
-                    for x in screen.dump():
-                        if x.res or x.text or x.desc or x.clickable:
-                            b = "%dx%d" % ((x.bounds[2] - x.bounds[0]),
-                                           (x.bounds[3] - x.bounds[1])) \
-                                if x.bounds else "?"
-                            print("  clancreate] %s | cls=%s text=%r "
-                                  "clickable=%s bounds=%s" % (
-                                      x.res.rsplit("/", 1)[-1]
-                                      if x.res else "",
-                                      x.cls.rsplit(".", 1)[-1]
-                                      if x.cls else "",
-                                      x.text[:24], x.clickable, b))
-                    # submit candidates: clickable nodes whose bounds cover
-                    # a 'Create a clan' text node, excluding the title bar
-                    subs_text = [x for x in screen.dump()
-                                 if (x.text or "") == "Create a clan"
-                                 and x.center and x.center[1] > 400]
-                    target = None
-                    if subs_text:
-                        st = subs_text[-1]
-                        sc = st.center
-                        cands = [x for x in screen.dump()
-                                 if x.clickable and x.bounds
-                                 and x.bounds[0] <= sc[0] <= x.bounds[2]
-                                 and x.bounds[1] <= sc[1] <= x.bounds[3]]
-                        target = cands[-1] if cands else (st if st.clickable
-                                                          else None)
-                    if target:
-                        print("  [info] submitting via %s clickable=%s "
-                              "bounds=%s" % (
-                                  target.res.rsplit("/", 1)[-1]
-                                  if target.res else target.cls,
-                                  target.clickable, target.bounds))
-                        before_create = set(localapi_paths(adb))
-                        # v6: the bar's center is under the system nav
-                        # bar (48px, 1136-1184) - tap high inside it
-                        screen.tap_node_high(target)
-                        time.sleep(2)
-                        # immediate evidence: toasts are gone in seconds
-                        tlog = adb.raw("logcat", "-d", "-t", "300",
-                                       timeout=60)
-                        toasts = [ln.split(": ", 1)[-1]
-                                  for ln in tlog.splitlines()
-                                  if "toast" in ln.lower()
-                                  and "LocalAPI" not in ln][:4]
-                        if toasts:
-                            print("  [info] toast lines around submit: %s"
-                                  % toasts)
-                        for rid in ["btnSure", "btn_ok", "btnOk",
-                                    "btn_confirm"]:
-                            c = screen.find(ids=[rid])
-                            if c and c.center:
-                                screen.tap_node(c)
-                                break
-                        time.sleep(5)
-                        alive_or_recover("%s-clancreate-submit" % tag)
-                        clog = adb.raw("logcat", "-d", "-s", "LocalAPI",
-                                       timeout=60)
-                        if "POST /clan/api/v2/clan/tribe" in clog:
-                            ok("5q v2: UI clan creation hit POST /clan/"
-                               "api/v2/clan/tribe (name=%s)" % uname)
-                        else:
-                            print("  [info] no clan-create POST observed "
-                                  "(required field gate (tag?) or submit "
-                                  "shape changed?)")
-                        for x in screen.dump():
-                            if x.res or x.text or x.desc:
-                                print("  clancreate2] %s | text=%r" % (
-                                    x.res.rsplit("/", 1)[-1]
-                                    if x.res else "", x.text[:28]))
-                    else:
-                        print("  [skip] no clickable submit candidate "
-                              "covering the 'Create a clan' text")
-                adb.key(4)
-                time.sleep(2)
-                alive_or_recover("%s-clancreate-back" % tag)
-                # a form that auto-focused its input swallows the first
-                # BACK into the keyboard — check the Find Clans marker
-                if not screen.find(contains=["enter clan"]):
-                    adb.key(4)
-                    time.sleep(2)
-            adb.key(4)  # Find Clans -> tab3 (or tab3 -> Home if the tap
-            time.sleep(2)  # was a placeholder; the grounding loop heals)
+        # wave 5r: the create-form drive is ui_create_clan() now - run
+        # it for the VISITOR session here; Phase E repeats it registered
+        # so one run names the gate (5q v1..v6 evidence: every widget
+        # verified, submit tapped correctly, still no POST as a guest).
+        posted_visitor = ui_create_clan(adb, screen, package,
+                                        "%s-clanui" % tag)
+        if posted_visitor:
+            ok("5r: VISITOR session created a clan through the UI")
+        else:
+            print("  [info] visitor create POST not observed (guest-gate "
+                  "hypothesis unresolved)")
         alive_or_recover("%s-tab3-done" % tag)
         # grounding loop: never continue to tab4/gamecard from a screen
         # without the bottom nav (Find Clans/form/IME stranding)
@@ -1755,6 +1696,26 @@ def main():
             debug_dump(screen, "D-me-tab-id")
     else:
         fail("D: clean relaunch did not reach the main screen")
+
+    # ------------------------------------------------- Phase E: registered clan create
+    # 5q v1..v6 evidence: the create form is fully drivable but the
+    # VISITOR submit never POSTs. Phase D makes the registered session
+    # reproducible - repeat the identical drive here; a POST now names
+    # the visitor silence as a client-side GUEST GATE.
+    print("== PHASE E: registered-session UI clan creation ==")
+    posted_e = ui_create_clan(adb, screen, args.package, "E-clanui")
+    if posted_e:
+        ok("5r: REGISTERED session created a clan through the UI - "
+           "the visitor silence is a client-side GUEST GATE")
+    else:
+        print("  [info] registered create POST not observed (form-level "
+              "gate - headPic? deeper validation?)")
+    for _ in range(3):
+        if screen.find(ids=["rb_3"]):
+            break
+        adb.key(4)
+        time.sleep(2)
+    assert_alive(adb, args.package, "E-grounded")
 
     # ------------------------------------------------- assertions
     print("== assertions ==")
