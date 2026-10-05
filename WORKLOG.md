@@ -1257,3 +1257,23 @@
   form control (gallery intent - heavy; only if a run shows the client
   requiring it); (3) error-driven pass over the newest diagnostics;
   (4) NO GameServer work.
+
+## Session 15 (cont. 1) — wave 5s: Phase F own-clan surfaces drive implemented
+
+- State on resume: CI 8x green (latest 37251554975 PASS, 64 endpoints,
+  zero FATAL); error-driven API loop converged (all called routes real
+  handlers); server surface unchanged this session.
+- Error-driven pass over the newest run's job log: all phases A-E green,
+  guest gate + registered clan create proven, nothing new to implement
+  server-side.
+- Wave 5s implemented (Session 14 FINAL's top candidate): Phase F drives
+  the registered-session OWN-CLAN surfaces through the real UI —
+  tab3-as-owner dump, clan screen re-entry (rlSearchClan), exact-name
+  search through the hint-text picker (5n pattern + IME-aware BACK),
+  own-clan row tap, homepage dump + new /clan/ endpoint report.
+  ui_create_clan returns (posted, uname) now; discovery-first, honest
+  recorders, app-alive is the only hard requirement.
+- Docs updated (PATCH_PLAN wave 5s section, NEXT_SESSION_README Session
+  15 delta). No dex change, no tag — the wave rides the local-api
+  checkout pin; test-redroid dispatched manually.
+- In flight: dispatched run to verify Phase F's first pass.

@@ -266,7 +266,9 @@ def ui_create_clan(adb, screen, package, tag):
     etTribeName + an id-less intro EditText + the Add Tag dialog
     (et_msg / btn_confirm) + a submit RelativeLayout whose CENTER sits
     under the 48px system nav bar (tap high inside the bounds).
-    Returns True when POST /clan/api/v2/clan/tribe was observed."""
+    Returns (posted, uname): posted is True when POST
+    /clan/api/v2/clan/tribe was observed, uname is the created clan name
+    (Phase F reuses it to find the OWN clan on the clan screens)."""
     def alive(stage):
         pid = adb.pid(package)
         if pid:
@@ -424,7 +426,7 @@ def ui_create_clan(adb, screen, package, tag):
     back()
     if screen.find(texts=["CREATE A CLAN"]):
         back()  # Find Clans -> tab3 (the caller grounds from here)
-    return posted
+    return posted, uname
 
 
 def deep_drive(adb, screen, package, activity, tag, paths_before):
@@ -877,8 +879,8 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
         # it for the VISITOR session here; Phase E repeats it registered
         # so one run names the gate (5q v1..v6 evidence: every widget
         # verified, submit tapped correctly, still no POST as a guest).
-        posted_visitor = ui_create_clan(adb, screen, package,
-                                        "%s-clanui" % tag)
+        posted_visitor, _vis_clan = ui_create_clan(adb, screen, package,
+                                                   "%s-clanui" % tag)
         if posted_visitor:
             ok("5r: VISITOR session created a clan through the UI")
         else:
@@ -1703,7 +1705,8 @@ def main():
     # reproducible - repeat the identical drive here; a POST now names
     # the visitor silence as a client-side GUEST GATE.
     print("== PHASE E: registered-session UI clan creation ==")
-    posted_e = ui_create_clan(adb, screen, args.package, "E-clanui")
+    posted_e, clan_name_e = ui_create_clan(adb, screen, args.package,
+                                           "E-clanui")
     if posted_e:
         ok("5r: REGISTERED session created a clan through the UI - "
            "the visitor silence is a client-side GUEST GATE")
@@ -1716,6 +1719,115 @@ def main():
         adb.key(4)
         time.sleep(2)
     assert_alive(adb, args.package, "E-grounded")
+
+    # ------------------------------------------------- Phase F: own-clan surfaces
+    # Session 15 (wave 5s): Phase E's created clan persists (Phase C
+    # dissolved its own API-level clan BEFORE Phase E, so the session now
+    # OWNS a clan). Drive the OWNER-state clan surfaces through the real
+    # UI: re-enter the clan screen, find the created clan (dump-derived;
+    # the search input is a hint-text picker - wave 5n), open its
+    # homepage, and record what the client fetches for an owner
+    # (base/member/currency/bulletin are all real handlers). Discovery
+    # first: node dumps + endpoint evidence; the hard requirement is only
+    # that the app stays alive.
+    print("== PHASE F: registered-session OWN-CLAN surfaces ==")
+    if posted_e and clan_name_e:
+        f_before = set(localapi_paths(adb))
+
+        def f_alive(stage):
+            if adb.pid(args.package):
+                ok("alive at %s (pid %s)" % (stage, adb.pid(args.package)))
+                return True
+            print("  [evidence] process died at %s - relaunching "
+                  "(native-kill family)" % stage)
+            return relaunch_and_wait(adb, screen, args.package, args.activity,
+                                     stage)
+
+        # tab3 as a CLAN OWNER: dump it (evidence - does the owner state
+        # change the tab3 layout? does the clan name appear here already?)
+        tab3f = screen.find(ids=["rb_3"])
+        if tab3f and screen.tap_node(tab3f):
+            time.sleep(4)
+            for x in screen.dump():
+                if x.res or x.text or x.desc:
+                    print("  F-tab3] %s | text=%r desc=%r" % (
+                        x.res.rsplit("/", 1)[-1] if x.res else "",
+                        x.text[:28], x.desc[:24]))
+            f_alive("F-tab3")
+            own = screen.find(texts=[clan_name_e])
+            if not own:
+                # re-enter the clan screen (rlSearchClan - established id)
+                clanrow = screen.find(ids=["rlSearchClan"])
+                if not (clanrow and screen.tap_node(clanrow)):
+                    clanrow = screen.find(texts=["Find Clans"])
+                    clanrow = (clanrow and screen.tap_node(clanrow)
+                               and clanrow) or None
+                if clanrow:
+                    time.sleep(5)
+                    f_alive("F-clanscreen")
+                    for x in screen.dump():
+                        if x.res or x.text or x.desc:
+                            print("  F-clanscreen] %s | text=%r" % (
+                                x.res.rsplit("/", 1)[-1] if x.res else "",
+                                x.text[:28]))
+                    own = screen.find(texts=[clan_name_e])
+                    if not own:
+                        # search for the exact created name (5n: the input
+                        # is a hint-text picker, no EditText exists)
+                        edit = next((x for x in screen.dump()
+                                     if x.center
+                                     and (x.cls.endswith("EditText")
+                                          or (x.text or "")
+                                          .startswith("Enter clan"))), None)
+                        if edit:
+                            screen.tap_node(edit)
+                            time.sleep(1)
+                            adb.text(clan_name_e)
+                            time.sleep(1)
+                            adb.key(66)  # IME action
+                            time.sleep(5)
+                            f_alive("F-clanscreen-search")
+                            # 5n/5p evidence: the first BACK after a search
+                            # only closes the IME — dismiss it so the result
+                            # row's center is not covered by the keyboard
+                            adb.key(4)
+                            time.sleep(2)
+                            f_alive("F-clanscreen-imeclosed")
+                            own = screen.find(texts=[clan_name_e])
+            if own and own.center:
+                ok("F: own clan %s surfaced on the clan screens" % clan_name_e)
+                screen.tap_node(own)
+                time.sleep(6)
+                f_alive("F-clanhome")
+                for x in screen.dump():
+                    if x.res or x.text or x.desc:
+                        print("  F-clanhome] %s | text=%r desc=%r" % (
+                            x.res.rsplit("/", 1)[-1] if x.res else "",
+                            x.text[:28], x.desc[:24]))
+                f_new = sorted(set(localapi_paths(adb)) - f_before)
+                f_clan = [p for p in f_new if "/clan/" in p]
+                if f_clan:
+                    ok("F: own-clan surfaces hit %s" % f_clan)
+                else:
+                    print("  [info] F: no NEW /clan/ endpoints from the "
+                          "own-clan drive (homepage may be cached state)")
+                adb.key(4)
+                time.sleep(2)
+            else:
+                print("  [info] F: own clan %s NOT surfaced (tab3 dump + "
+                      "clanscreen dump recorded above for the next wave)"
+                      % clan_name_e)
+            # ground: leave the drive somewhere with the bottom nav
+            for _ in range(4):
+                if screen.find(ids=["rb_3"]):
+                    break
+                adb.key(4)
+                time.sleep(2)
+            assert_alive(adb, args.package, "F-grounded")
+        else:
+            print("  [skip] F: rb_3 not found after Phase E")
+    else:
+        print("  [info] Phase F skipped - no registered clan from Phase E")
 
     # ------------------------------------------------- assertions
     print("== assertions ==")

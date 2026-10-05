@@ -582,3 +582,20 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   persists); (2) error-driven pass over the newest diagnostics;
   (3) GL-shop buy assertion stays blocked (documented stop); (4) NO
   GameServer work.
+
+## Session 15 delta (wave 5s — read first)
+
+- Phase F ADDED (registered OWN-CLAN surfaces): after Phase E's UI clan
+  create (which persists — Phase C dissolves its own clan earlier), Phase
+  F re-enters the clan screens as an OWNER, searches the EXACT created
+  clan name (hint-text picker + IME-aware BACK), taps the own-clan row,
+  dumps the homepage ("F-clanhome]") and reports every NEW /clan/
+  endpoint. ui_create_clan now returns (posted, uname).
+- Expected owner fetches (all real handlers): tribe/base, tribe/member,
+  tribe/currency, tribe/bulletin. If the own clan is NOT surfaced, the
+  F-tab3]/F-clanscreen] dumps name the real entry for the next wave.
+- Next candidates: (1) verify the first Phase F run; decode the
+  own-clan homepage widgets from the F-clanhome] dump; (2) then assert
+  deeper owner surfaces (bulletin edit / donate / member rows) through
+  the UI with tap targets from the dump; (3) error-driven pass over the
+  newest diagnostics; (4) NO GameServer work.

@@ -622,3 +622,32 @@ whole registered-session editor surface verified end-to-end:
   rb_3/rb_4 get discovery-only dumps ("tab3]/tab4]" lines).
 - Server surface unchanged (no dex change, no tag): this wave is pure
   automation + observability, riding the local-api checkout pin.
+
+### Session 15 (wave 5s): Phase F — registered OWN-CLAN surfaces through the UI
+
+Session 14 FINAL proved the guest gate (visitor create submit is silently
+swallowed; the registered session POSTs /clan/api/v2/clan/tribe). The
+Phase E clan persists (Phase C dissolves its own API-level clan BEFORE
+Phase E), so the registered session OWNS a clan at that point in the run.
+
+Wave 5s adds Phase F after Phase E, driving the OWNER-state clan surfaces
+through the real UI:
+- `ui_create_clan` now returns (posted, uname) so Phase F knows the
+  created clan name.
+- Phase F re-enters tab3 as a clan owner, dumps the tab3 layout
+  ("F-tab3]" evidence — does the owner state change the tab?), then
+  re-enters the clan screen (rlSearchClan), dumps it ("F-clanscreen]"),
+  searches for the EXACT created name through the hint-text input picker
+  (wave 5n pattern; one IME-aware BACK after key(66) — 5n/5p evidence:
+  the first BACK only closes the keyboard), and taps the own-clan row.
+- The screen that opens is dumped ("F-clanhome]") and every NEW /clan/
+  endpoint is reported. Discovery-first: node dumps + endpoint evidence
+  are the deliverable; the hard requirement is only that the app stays
+  alive. Expected client fetches for an owner (all real handlers):
+  GET /clan/api/v1/clan/tribe/base, /tribe/member, /tribe/currency,
+  /tribe/bulletin.
+- If the own clan is NOT surfaced, the dumps name the real entry for the
+  next wave (honest recorder — no forced taps).
+
+Server surface unchanged (no dex change, no tag): this wave is pure
+automation, riding the local-api checkout pin.
