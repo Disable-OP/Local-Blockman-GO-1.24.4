@@ -542,3 +542,43 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   endpoint assertion); (2) tab3 leftovers ivTribe / ivClanMsg0 are
   undiscovered entries (clan info / clan messages) — drive only after a
   dump shows what they open; (3) NO GameServer work.
+
+## Session 14 FINAL (read first — guest gate proven, UI clan creation works)
+
+- 15 pushes this session (5bebd13..06fdd98); 10 consecutive green
+  test-redroid runs; latest: 37251554975 (64 endpoints, zero FATAL).
+- HEADLINE: clan creation is CLIENT-SIDE GUEST-GATED. Proof in ONE run
+  (37251554975): the extracted ui_create_clan() drove the identical form
+  in both sessions — VISITOR: every field verified (name/intro/tag
+  'QA1'), submit tapped correctly, NO POST, no dialog, no toast;
+  REGISTERED (new Phase E after Phase D's upgrade): same drive fired
+  POST /clan/api/v2/clan/tribe and created UIClan64789. The server was
+  never the gap. The create is now CLIENT-ASSERTED through the real UI.
+- New automation assets (all dump-derived, no coordinates):
+  * search_input() — hint-text input picker ("Enter clan..." prefix);
+    the clan-search input is a Button-class node, no EditText exists.
+  * Find Friends section = client 'Coming soon' PLACEHOLDER (both the
+    text tap AND the btnSearchFriend id tap never navigate) — honest
+    recorder stays; friends/info/{nickName} has NO UI caller.
+  * IME-aware BACKs + a bounded bottom-nav grounding loop after the
+    tab3 section (the first BACK after a search only closes the
+    keyboard — it used to strand the whole deep-drive tail).
+  * fill_and_verify: type, dismiss keyboard, verify the node text.
+  * Add Tag dialog: free text (et_msg + btn_confirm); use a DIGIT tag
+    ('QA1') — 'QA' was IME-autocorrected to 'Qatar'; BACK once before
+    CONFIRM or the keyboard swallows it.
+  * tap_node_high(): bottom-docked controls' centers sit UNDER the 48px
+    system nav bar (submit bar (32,1096)-(688,1184) centers at y=1140,
+    the nav bar owns 1136-1184) — tap at 25% height inside the bounds.
+  * Phase E: registered-session clan create (rides Phase D's upgrade).
+- FACTS a new session must know: the deep drive runs the create drive as
+  the visitor (expected silent); Phase E repeats it registered (expected
+  POST). UPLOAD PROFILE (headPic) is the ONE undriven form control
+  (gallery intent — heavy, only if evidence demands). The clan the
+  registered session creates is REAL state (UIClan<uniq> per run).
+- Next candidates: (1) registered-session clan surfaces through the UI
+  (tribe base/bulletin/members/donate now that the account OWNS a
+  clan — Phase C's dissolve happens before Phase E, so the clan
+  persists); (2) error-driven pass over the newest diagnostics;
+  (3) GL-shop buy assertion stays blocked (documented stop); (4) NO
+  GameServer work.
