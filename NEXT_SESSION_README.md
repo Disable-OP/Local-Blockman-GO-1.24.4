@@ -629,3 +629,15 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   the only path to a UI clan create — weigh before attempting; (4) scrap
   codes (10104-10113) remain unmapped (UI rarely drives it); (5) NO
   GameServer work.
+
+## Session 16 FINAL (read first — v0.6.0 verified)
+
+- v0.6.0-errorcodes is SHIPPED AND VERIFIED: build-release 37316956420
+  green, test-redroid 37317182834 green (69 endpoints, 0 UNMAPPED, 0
+  FATAL). Every domain error the client can surface now carries its
+  client-verified code; requireUser failures return 7 everywhere.
+- The clan-create icon gate is CONFIRMED both by decompilation and by the
+  bounded on-device evidence (grew=False typed=False in both sessions).
+  Any future UI-create work must solve the icon first (gallery+crop
+  drive) or use the update form (no icon needed) with a persistent clan.
+- Host rig 354/354. Cron "webDevReview" active for continuation.

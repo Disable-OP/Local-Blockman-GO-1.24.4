@@ -1336,3 +1336,23 @@
   owner (no icon needed) after giving Phase C a persistent clan; (3) scrap
   domain codes (10104-10113) when the scrap UI gets driven; (4) NO
   GameServer work.
+
+## Session 16 FINAL — v0.6.0-errorcodes verified green on-device
+
+- Chain: tag v0.6.0-errorcodes -> build-release 37316956420 GREEN (APK in
+  Releases) -> test-redroid 37317182834 GREEN (69 unique endpoints, zero
+  UNMAPPED, zero FATAL, alive at end).
+- The bounded posted-detection proved itself in production: BOTH sessions
+  now report "no clan-create POST observed (grew=False typed=False)" —
+  the honest record consistent with the decompiled icon gate. The Session
+  14 false positive cannot recur.
+- Pushes this session: 1479931 (Phase 7 core), d35b070 (game codes),
+  565c271 (scrap codes), 430e9ef (worklog), + docs commit. Host rig
+  354/354. Cron continuation task "webDevReview" (3600s, priority 15)
+  created and verified.
+- Next session candidates: (1) error-driven pass over the v0.6.0
+  diagnostics (fresh artifact, 69 endpoints — already scanned clean here);
+  (2) drive the clan-UPDATE form as a persistent-clan owner (no icon
+  needed) to client-assert PUT /clan/api/v1/clan/tribe; (3) Bind-domain
+  codes (102-119) for the account-security screens when driven; (4) NO
+  GameServer work.
