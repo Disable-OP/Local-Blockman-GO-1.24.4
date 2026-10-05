@@ -1165,3 +1165,15 @@
   required-field check). Wave 5q v3 in flight (fc1fbd5): open the tag
   picker (clickable node after the 'Clan tag' label), dump it, pick the
   first clearly selectable option, verify, then submit again.
+
+## Session 14 (cont. 8) — wave 5q v3 RESULT: Add Tag dialog decoded (run 37245519359 PASS)
+
+- Run 37245519359 PASS on fc1fbd5: the tag control opened an "Add Tag"
+  DIALOG — tv_title 'Add Tag', et_msg (EditText, hint 'Add Tag'),
+  btn_cancel 'CANCEL', btn_confirm 'CONFIRM'. The tag is FREE TEXT the
+  user types, not a preset list. v3's generic "first selectable option"
+  tap landed on et_msg itself (focused, no text) and the dialog stayed
+  open — honest miss, all ids now on record. Zero FATAL.
+- Wave 5q v4 in flight (011a138): tap et_msg, type 'QA', tap btn_confirm
+  (both ids from the v3 dump), verify the form shows the tag, then tap
+  the submit RelativeLayout and assert POST /clan/api/v2/clan/tribe.
