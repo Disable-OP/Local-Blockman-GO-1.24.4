@@ -2348,12 +2348,16 @@ def main():
                 # state, so the drive taps twice (PUT 0 then PUT 1), asserts
                 # base.freeVerify == 1, taps once more (PUT 0) and restores.
                 if live_hdr and d_uid_live:
+                    # NOTE: the server REQ log prints the PATH ONLY
+                    # (NanoHTTPD getUri(), no query) - count by verb+path
+                    # and exclude the sibling routes.
                     puts_g = lambda: sum(
                         1 for line in adb.raw("logcat", "-d", "-s",
                                               "LocalAPI",
                                               timeout=60).splitlines()
-                        if "REQ PUT /clan/api/v1/clan/tribe/member?" in line
-                        and "&type=" in line)
+                        if "REQ PUT /clan/api/v1/clan/tribe/member" in line
+                        and "/member/agreement" not in line
+                        and "/member/remove" not in line)
                     fv_req_count = lambda: sum(
                         1 for line in adb.raw("logcat", "-d", "-s",
                                               "LocalAPI",
