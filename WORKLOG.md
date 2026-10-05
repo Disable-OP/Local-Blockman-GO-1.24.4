@@ -1177,3 +1177,16 @@
 - Wave 5q v4 in flight (011a138): tap et_msg, type 'QA', tap btn_confirm
   (both ids from the v3 dump), verify the form shows the tag, then tap
   the submit RelativeLayout and assert POST /clan/api/v2/clan/tribe.
+
+## Session 14 (cont. 9) — wave 5q v4 RESULT: two tap-level traps named (run 37246989599 PASS)
+
+- Run 37246989599 PASS on 011a138: the tag typed 'QA' but the field ended
+  up 'Qatar' (IME AUTOCORRECT rewrote the 2-letter token), and the CONFIRM
+  tap was swallowed (keyboard up; the dialog was still open in every
+  following dump). The submit stage correctly reported no candidate (the
+  dialog covered the form). Exit BACKs + grounding loop worked; tab4 +
+  gamecard ran; zero FATAL.
+- Wave 5q v5 in flight (e8ba0a8): type 'QA1' (digit defeats autocorrect),
+  BACK once (first BACK in a dialog closes the IME, not the dialog),
+  VERIFY the et_msg text, tap btn_confirm unobstructed, verify the dialog
+  closed (tv_title gone), then submit and assert the POST.
