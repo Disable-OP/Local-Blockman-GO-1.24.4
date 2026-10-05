@@ -301,31 +301,31 @@ def ui_create_clan(adb, screen, package, tag):
     tab3n = screen.find(ids=["rb_3"])
     if not (tab3n and screen.tap_node(tab3n)):
         print("  [skip] %s: rb_3 not on screen" % tag)
-        return False
+        return False, None
     time.sleep(4)
     clanrow = screen.find(ids=["rlSearchClan"])
     if not (clanrow and screen.tap_node(clanrow)):
         print("  [skip] %s: rlSearchClan not on the tab3 list" % tag)
-        return False
+        return False, None
     time.sleep(5)
     if not alive("%s-clanscreen" % tag):
-        return False
+        return False, None
     # the fresh recommendation state carries the CREATE A CLAN banner
     create = screen.find(texts=["CREATE A CLAN"])
     if not (create and create.center):
         print("  [skip] %s: CREATE A CLAN banner not found" % tag)
         back()
-        return False
+        return False, None
     screen.tap_node(create)
     time.sleep(5)
     if not alive("%s-clancreate" % tag):
-        return False
+        return False, None
     uname = "UIClan%05d" % (int(time.time()) % 100000)
     name_in = screen.find(ids=["etTribeName"])
     if not (name_in and name_in.center):
         print("  [skip] %s: etTribeName not found on the form" % tag)
         back()
-        return False
+        return False, None
     if fill(name_in, uname):
         ok("%s: name field verified: %r" % (tag, uname))
     else:
