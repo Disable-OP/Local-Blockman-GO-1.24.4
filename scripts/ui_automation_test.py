@@ -2354,6 +2354,12 @@ def main():
                                               timeout=60).splitlines()
                         if "REQ PUT /clan/api/v1/clan/tribe/member?" in line
                         and "&type=" in line)
+                    fv_req_count = lambda: sum(
+                        1 for line in adb.raw("logcat", "-d", "-s",
+                                              "LocalAPI",
+                                              timeout=60).splitlines()
+                        if "REQ PUT /clan/api/v1/clan/free/"
+                        "verification" in line)
                     # (a) a second member through the local API
                     gj_uid = "gqa%05d" % (int(time.time()) % 100000)
                     gj_pw = "LocalQA%05d" % (int(time.time()) % 100000)
@@ -2411,8 +2417,14 @@ def main():
                                                   poll=3)
                             puts_before_g = puts_g()
                             if row and row.center:
-                                # promote: Set as Elder -> btnSure
-                                screen.tap_node(row)
+                                # promote: Set as Elder -> btnSure.
+                                # 5u run evidence: the manage screen hint is
+                                # 'Long press to edit member' - the sheet is
+                                # the LONG-CLICK command, not a tap.
+                                l, t, r, b = row.bounds
+                                adb.sh("input swipe %d %d %d %d 1000"
+                                       % ((l + r) // 2, (t + b) // 2,
+                                          (l + r) // 2, (t + b) // 2))
                                 time.sleep(3)
                                 elder = screen.find(texts=["Set as Elder"])
                                 if elder and elder.center:
@@ -2449,7 +2461,10 @@ def main():
                                 row2 = screen.wait_for(texts=[g_nick],
                                                        timeout=10, poll=3)
                                 if row2 and row2.center:
-                                    screen.tap_node(row2)
+                                    l2, t2, r2, b2 = row2.bounds
+                                    adb.sh("input swipe %d %d %d %d 1000"
+                                           % ((l2 + r2) // 2, (t2 + b2) // 2,
+                                              (l2 + r2) // 2, (t2 + b2) // 2))
                                     time.sleep(3)
                                     rm = screen.find(texts=["Remove Member"])
                                     if rm and rm.center:
@@ -2507,43 +2522,36 @@ def main():
                                 # REQ line itself (?freeVerify=). Assertion:
                                 # the server state always follows the last
                                 # value the client sent.
-                                verified = False
-                                last_v = None
+                                # 5u run decode: the client PUTs the value
+                                # as a FORM body (NanoHTTPD merges it into
+                                # getParameters - the URI carries no query),
+                                # and the state follows each tap. Assert the
+                                # state sequence CHANGED (the server followed
+                                # the client's toggling) with bounded PUTs.
+                                fv0 = fv_req_count()
+                                states = []
                                 for tap_n in range(1, 4):
                                     screen.tap_node(cb)
                                     time.sleep(3)
                                     f_alive("G-fv-tap%d" % tap_n)
-                                    log_g = adb.raw("logcat", "-d", "-s",
-                                                    "LocalAPI", timeout=60)
-                                    vs = re.findall(
-                                        r"REQ PUT /clan/api/v1/clan/free/"
-                                        r"verification\?freeVerify=(\d)",
-                                        log_g)
                                     base_g = fcall(
                                         "GET", "/clan/api/v1/clan/tribe/base",
                                         headers=live_hdr)
                                     state = (base_g.get("data") or {}).get(
                                         "freeVerify")
-                                    if vs:
-                                        last_v = vs[-1]
+                                    states.append(state)
                                     print("  [evidence] G: freeVerify tap %d "
-                                          "-> client sent %s, server state "
-                                          "%s" % (tap_n, last_v, state))
-                                    if last_v is not None:
-                                        check(
-                                            "G: freeVerify toggle "
-                                            "client-asserted (server "
-                                            "follows the client: sent=%s "
-                                            "state=%s)" % (last_v, state),
-                                            str(state) == str(last_v),
-                                            "state=%s sent=%s"
-                                            % (state, last_v))
-                                        verified = True
-                                        break
-                                if not verified:
-                                    print("  [info] G: no free/verification "
-                                          "PUT observed from the toggle "
-                                          "(binding may be one-way)")
+                                          "-> server state %s"
+                                          % (tap_n, state))
+                                fv2 = fv_req_count()
+                                check(
+                                    "G: freeVerify toggle client-asserted "
+                                    "(server followed the taps: %s, PUTs "
+                                    "%d->%d)" % (states, fv0, fv2),
+                                    fv2 >= fv0 + 2 and len(set(states)) >= 2
+                                    and states[-1] in (0, 1),
+                                    "states=%s puts %d->%d"
+                                    % (states, fv0, fv2))
                                 # restore the deterministic world: 0
                                 for _ in range(4):
                                     base_r = fcall(
