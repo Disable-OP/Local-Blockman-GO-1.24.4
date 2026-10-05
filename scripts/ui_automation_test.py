@@ -143,8 +143,11 @@ class Screen:
     def dump(self):
         for _ in range(3):
             try:
-                self.adb.sh("uiautomator dump /sdcard/localqa_ui.xml", timeout=25)
-                xml = self.adb.sh("cat /sdcard/localqa_ui.xml", timeout=25)
+                # 12s cap (was 25): a wedged uiautomator never recovers by
+                # waiting longer, and 3x25s per find made post-relaunch
+                # runs crawl into the step timeout (run 37329484729)
+                self.adb.sh("uiautomator dump /sdcard/localqa_ui.xml", timeout=12)
+                xml = self.adb.sh("cat /sdcard/localqa_ui.xml", timeout=12)
                 if "<hierarchy" in xml:
                     return [Node(e) for e in ET.fromstring(xml).iter("node")]
             except Exception:
@@ -1003,6 +1006,13 @@ def localapi_paths(adb):
 
 
 def main():
+    # Line-buffered stdout: the CI step timeout kills the process and
+    # block-buffered output loses the tail — exactly what hid the stall
+    # evidence in run 37329484729. Every print now reaches the log live.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except Exception:
+        pass
     ap = argparse.ArgumentParser()
     ap.add_argument("--serial", default="localhost:5555")
     ap.add_argument("--package", default="com.disabngo.blockynexus")
