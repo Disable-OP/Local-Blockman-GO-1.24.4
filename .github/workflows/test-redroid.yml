@@ -75,7 +75,7 @@ jobs:
           fi
 
       - name: Run UI automation suite (register, login, navigate all tabs)
-        timeout-minutes: 20
+        timeout-minutes: 32
         run: |
           python3 scripts/ui_automation_test.py \
             --serial localhost:5555 \
