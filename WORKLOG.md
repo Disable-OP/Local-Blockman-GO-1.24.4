@@ -1190,3 +1190,19 @@
   BACK once (first BACK in a dialog closes the IME, not the dialog),
   VERIFY the et_msg text, tap btn_confirm unobstructed, verify the dialog
   closed (tv_title gone), then submit and assert the POST.
+
+## Session 14 (cont. 10) — wave 5q v5 RESULT: tag set, submit STILL silent — nav-bar tap trap named (run 37248149868 PASS)
+
+- Run 37248149868 PASS on e8ba0a8: the tag flow WORKED end to end — tag
+  field verified 'QA1', dialog closed, the form now shows the tag chip
+  (llLabel / tv_label 'QA1' / iv_cancel). All fields verified filled.
+  Submit tapped via the correct RelativeLayout parent — STILL no POST,
+  form unchanged, NO dialog in the dump. Zero FATAL.
+- ROOT CAUSE NAMED (v6): navigationBarBackground owns the bottom 48px
+  (y 1136-1184). The submit bar spans (32,1096)-(688,1184) — its CENTER
+  (y=1140) is UNDER the system nav bar, so `input tap 360 1140` was
+  consumed by the system and never reached the button. All other tappable
+  nodes sit higher, which is why every prior tap worked.
+- Wave 5q v6 in flight (c99fa3f): tap_node_high() — a bounds-derived tap
+  at 25% height inside the node (never raw coordinates), used for the
+  submit; plus an immediate logcat toast scan around the submit tap.
