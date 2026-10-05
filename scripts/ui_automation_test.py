@@ -182,6 +182,19 @@ class Screen:
             return True
         return False
 
+    def tap_node_high(self, node):
+        """Tap at 25% height inside the node's bounds. The center of
+        bottom-docked controls sits UNDER the 48px system nav bar
+        (5q v5 evidence: the create-clan submit bar (32,1096)-(688,1184)
+        centers at y=1140, the nav bar owns 1136-1184 - the tap was
+        consumed by the system). Bounds-derived, never raw coordinates."""
+        b = node.bounds
+        if not b:
+            return self.tap_node(node)
+        l, t, r, bt = b
+        self.adb.tap((l + r) // 2, t + max(8, (bt - t) // 4))
+        return True
+
 
 def dismiss_permission_dialogs(screen, rounds=8):
     for _ in range(rounds):
@@ -881,8 +894,20 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                                   if target.res else target.cls,
                                   target.clickable, target.bounds))
                         before_create = set(localapi_paths(adb))
-                        screen.tap_node(target)
-                        time.sleep(3)
+                        # v6: the bar's center is under the system nav
+                        # bar (48px, 1136-1184) - tap high inside it
+                        screen.tap_node_high(target)
+                        time.sleep(2)
+                        # immediate evidence: toasts are gone in seconds
+                        tlog = adb.raw("logcat", "-d", "-t", "300",
+                                       timeout=60)
+                        toasts = [ln.split(": ", 1)[-1]
+                                  for ln in tlog.splitlines()
+                                  if "toast" in ln.lower()
+                                  and "LocalAPI" not in ln][:4]
+                        if toasts:
+                            print("  [info] toast lines around submit: %s"
+                                  % toasts)
                         for rid in ["btnSure", "btn_ok", "btnOk",
                                     "btn_confirm"]:
                             c = screen.find(ids=[rid])
