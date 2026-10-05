@@ -1830,6 +1830,7 @@ def main():
             # ivTribe/ivClanMsg0 ids and the list-search path stay as the
             # fallback for non-owner layouts.
             own = None
+            sheet_pre = False
             if screen.find(ids=["tvClanName"]):
                 ok("F: owner dashboard on tab3 (tvClanName=%s)" % own_name)
                 enter = screen.find(ids=["rlEnterClan"]) \
@@ -1854,6 +1855,7 @@ def main():
                         # H()+Ta(true).show()), until a homepage marker or
                         # the budget ends.
                         settle_deadline = time.time() + 100
+                        guide_polls = 0
                         while time.time() < settle_deadline:
                             d_settle = screen.dump()
                             texts_now = [(x.text or "") for x in d_settle]
@@ -1865,17 +1867,38 @@ def main():
                                 if close:
                                     screen.tap_node(close)
                                     ok("F: Notice Board dialog closed")
+                                guide_polls = 0
                                 time.sleep(3)
                                 continue
                             if any("Authentication-free mode" in t
                                    for t in texts_now):
-                                # the guide clears by itself; tapping its
-                                # label RE-SHOWS it (f() shows Ta again)
+                                # the guide self-clears ~20s on the FIRST
+                                # show (run 37344788918) but a re-shown one
+                                # stayed 100s+ (runs 37348093722 /
+                                # 37351059115). After ~25s of persistent
+                                # guide: tap its label — the I()-shown
+                                # variant's a() opens the settings sheet AND
+                                # dismisses the guide (no re-show loop; the
+                                # re-show only follows the f() path).
+                                guide_polls += 1
+                                if guide_polls >= 5:
+                                    label = next(
+                                        (x for x in d_settle
+                                         if "Authentication-free mode"
+                                         in (x.text or "") and x.center), None)
+                                    if label and screen.tap_node(label):
+                                        sheet_pre = True
+                                        ok("F: guide label tapped - settings "
+                                           "sheet should be open")
+                                    break
                                 time.sleep(5)
                                 continue
                             break
-                        own = screen.wait_for(texts=[own_name], timeout=14,
-                                              poll=3)
+                        if sheet_pre:
+                            own = None  # the sheet window hides the homepage
+                        else:
+                            own = screen.wait_for(texts=[own_name],
+                                                  timeout=14, poll=3)
                         if not own:
                             # 5t v4: the name text may not render where the
                             # post-close dump expects; the top-right id-less
@@ -2075,10 +2098,15 @@ def main():
                               "bounds-less (dump race) - retapping dump")
                         own = screen.wait_for(texts=[own_name],
                                               timeout=15, poll=3)
-            if own and own.center:
-                ok("F: own clan %s surfaced on the clan screens" % own_name)
-                screen.tap_node(own)
-                time.sleep(6)
+            if (own and own.center) or sheet_pre:
+                if own and own.center:
+                    ok("F: own clan %s surfaced on the clan screens" % own_name)
+                    screen.tap_node(own)
+                    time.sleep(6)
+                else:
+                    ok("F: settings sheet pre-opened through the guide "
+                       "label (homepage never fully settled)")
+                    time.sleep(2)
                 f_alive("F-clanhome")
                 for x in screen.dump():
                     if x.res or x.text or x.desc:
