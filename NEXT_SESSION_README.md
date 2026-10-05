@@ -641,3 +641,39 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   Any future UI-create work must solve the icon first (gallery+crop
   drive) or use the update form (no icon needed) with a persistent clan.
 - Host rig 354/354. Cron "webDevReview" active for continuation.
+
+## Session 17 delta (read first — wave 5t: the clan-UPDATE form is drivable)
+
+- The error-driven pass over v0.6.0's diagnostics was re-verified clean
+  (run 37317182834 job log: 69 endpoints, 0 UNMAPPED, 0 FATAL; Phase F
+  correctly skipped — the icon gate means no registered clan ever existed).
+- Wave 5t EXECUTED Session 16's top candidate: Phase F now creates the
+  own clan via the local API for the LIVE registered session (Phase-D
+  auth-token, golds path with the client's diamonds fallback), restarts
+  the client holding it, and drives the owner surfaces for real.
+- NEW Phase F2 client-asserts PUT /clan/api/v1/clan/tribe through the
+  real UI. The full decompiled chain is in PATCH_PLAN "Phase F2"
+  (classes2 TribeHasViewModel/la + resources): ic_more (id-less
+  ImageButton top-right) -> BottomDialog "Edit Profile" -> the create
+  template in EDIT mode (pre-filled, NO icon, NO golds gate) -> Add Tag
+  (update REQUIRES 1..4 tags — our clan ships tags=[]) -> rename ->
+  "Modify" Button (binding_7 = command o = i() = clanUpdate).
+- SERVER FIX from the decode: clanUpdate now enforces name uniqueness
+  (7002) like create, and non-member PUT returns 7006 (was generic 0).
+  Tribe.nameTaken shared by create+update (update excludes own clan).
+- Host rig 361/361. classes6.dex rebuilt (214728 bytes).
+- FACTS a new session must know:
+  * The edit submit is the "Modify" Button — NOT the "Create a clan" row
+    (that is binding_8 = the create submit; a stray tap 7001s harmlessly).
+  * The one-time TribeSettingGuideDialog swallows BACK; its top-right
+    "...join clan" label tap opens the settings sheet AND consumes it.
+  * The homepage settings entry has NO resource id (binding_2 tag only);
+    the finder is ImageButton + top-right quadrant (cy<140, cx>360).
+  * The update validation order (jadx): login -> name -> tags 1..4 ->
+    details; details come pre-filled from the bundle.
+- Next candidates: (1) verify the wave-5t redroid run and error-drive its
+  diagnostics; (2) if F2 green, the update path is client-asserted —
+  remaining clan owner surfaces are Manage Members (oa.a) and Clan
+  Settings (sa.b, the authentication-free toggle) drives; (3) Bind-domain
+  codes (102-119) when the account-security screens get driven; (4) NO
+  GameServer work (standing instruction).

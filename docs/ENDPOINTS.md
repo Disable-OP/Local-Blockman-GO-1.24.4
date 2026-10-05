@@ -603,3 +603,13 @@ evidence table + the decompiled gate analysis live in PATCH_PLAN.md
 "Phase 7"; constants in localapi-server ErrorCodes.java. Unknown/legacy
 messages still fall back to code 0 (client shows the generic server-error
 toast) — documented-deliberate.
+
+### Phase F2 addition (Session 17)
+
+PUT /clan/api/v1/clan/tribe (clanUpdate) now carries the same domain
+rules as create: renaming onto an existing clan name returns 7002
+(tribe_name_exist — the client's edit form has no uniqueness gate, the
+server owns the rule; evidence chain in PATCH_PLAN "Phase F2"), a
+non-member PUT returns 7006 (tribe_not_joined), chief-only stays 7003.
+The route itself was already a real handler; the on-device UI drive
+(Phase F2) client-asserts it end-to-end.

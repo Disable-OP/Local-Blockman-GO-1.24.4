@@ -756,3 +756,68 @@ Evidence: dedicated client string tribe_no_enough_24_hour.
 Host rig: 349/349 (was 337) — the 12 new Phase 7 assertions live in the
 "== Phase 7: client-verified error codes ==" block; every prior code-0
 error assertion was upgraded to its client-verified code.
+
+## Phase F2 (Session 17): the clan-UPDATE form driven through the real UI
+
+Session 16's top candidate executed: give the registered session a
+PERSISTENT clan via the API, then drive the owner surfaces. This makes
+Phase F's premise true for the first time (the UI create is icon-gated,
+Phase 7a — it never posts, so the "own clan" never existed before).
+
+### The client evidence chain (jadx classes2 + apktool resources)
+
+- `TribeHasFragment` (layout `fragment_tribe_has`, binding Kf): the
+  own-clan homepage. Its settings entry is the top-RIGHT toolbar
+  ImageButton — NO android:id, `android:src=@mipmap/ic_more`, data-binding
+  tag `binding_2` -> TribeHasViewModel command `o` -> `H()` opens a
+  BottomDialog.
+- `H()` items (strings resolved from resources.arsc): Clan Settings
+  (2131823614, chief-only) | **Edit Profile** (2131823533 = `tribe_data_edit`)
+  | Manage Members (2131823568) | Cancel (2131821064). "Edit Profile" ->
+  `b(dialog)`: starts the CREATE template (`e.b.la.h` = TribeCreateFragment)
+  with `tribe.is.create=false` + bundle pre-fill (ico.url / name /
+  introduction / labels) — title 2131823544 = "Edit Clan".
+- `TribeCreateViewModel.i()` (event "clan_more_edit_data_click") is the
+  EDIT submit: `l.a(tags, name(e), details(f), icoUrl(d), clanId)` ->
+  validation -> (no NEW icon picked) -> **`TribeApi.clanUpdate`** directly.
+  The 8000-golds gate and the icon requirement are BOTH create-path only —
+  the edit form needs neither.
+- Validation on the edit path: name non-empty (tribe_name_empty), details
+  non-empty (tribe_introduction_empty), **1..4 tags required** — our
+  persistent clan ships tags=[], so the drive adds one through the same
+  Add Tag dialog as the create flow (et_msg / btn_confirm, digit tag).
+- Submit control: the "Modify" Button (`tribe_create_modify`, binding_7 =
+  command `o` = `i()`) — NOT the "Create a clan" row (binding_8 = `h()`,
+  the create submit; a stray tap there 7001s harmlessly).
+- One-time `TribeSettingGuideDialog` (Ta): shown on the first owner
+  homepage open per install (SharedUtils is_tribe_setting_guide, fresh
+  every redroid run). BACK is swallowed while it is up; its top-right
+  label ("...join clan") tap opens the SAME settings sheet and dismisses.
+
+### The server contract fix the decode exposed
+
+`PUT /clan/api/v1/clan/tribe` (clanUpdate) had NO uniqueness gate — the
+client's edit form has none either, so the server owns the rule:
+renaming onto another clan's name now returns **7002** (tribe_name_exist),
+matching create. Non-member PUT now returns **7006** (was generic 0).
+`Tribe.nameTaken(store, name, excludeClanId)` is shared by create and
+update (update excludes the caller's own clan). Chief-only stays 7003
+(the handler resolves the CALLER's clan; the body clanId is advisory).
+
+### The drive (scripts/ui_automation_test.py, Phase F/F2)
+
+1. Phase F setup: API-create `PersClan<uniq>` for the live session
+   (Phase-D auth-token; golds path, diamonds fallback), assert tribe/id
+   != 0, restart the client so the boot re-fetches the clan.
+2. Owner drive (existing wave-5s body, now with a real clan): tab3 dump,
+   ivTribe/ivClanMsg0 entries, clan screen, exact-name search, row tap,
+   homepage dump + NEW /clan/ endpoint report.
+3. F2: guide-overlay detection -> ic_more -> "Edit Profile" -> title check
+   ("Edit Clan") -> clear+retype etTribeName (EditClan<uniq>, verified,
+   retype fallback) -> Add Tag "QA2" -> bounded PUT detection (snapshot
+   REQ PUT count before, require growth, member-route excluded) ->
+   server read-back `GET /clan/api/v1/clan/tribe/base` name == typed name.
+
+Host rig 361/361 (8 new assertions: chief update+persist, 7002, 7006,
+rename-restore, cleanup). No dex-shape change; classes6.dex rebuilt
+(214728 bytes) — ship by tag if the on-device run is green.

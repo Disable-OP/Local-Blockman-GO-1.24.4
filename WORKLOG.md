@@ -1356,3 +1356,44 @@
   needed) to client-assert PUT /clan/api/v1/clan/tribe; (3) Bind-domain
   codes (102-119) for the account-security screens when driven; (4) NO
   GameServer work.
+
+## Session 17 — wave 5t: persistent registered clan + the clan-UPDATE form driven through the real UI
+
+- Fresh sandbox rebuilt: repo cloned to /home/z/blockman-local-api, base
+  APK re-pulled from the v0.1.0-pipeline release asset (230MB), jadx
+  1.5.6 + apktool 2.10.0 re-fetched, classes2.dex decompiled
+  (4,946 classes, 12 benign errors), resources decoded for the string
+  ids. Note for future sessions: background processes do NOT survive
+  between tool calls in this sandbox — run long downloads in the
+  foreground.
+- Error-driven pass over v0.6.0 (run 37317182834 job log, pulled via the
+  API): clean — 69 unique endpoints, 0 UNMAPPED, 0 FATAL, all phases
+  green, Phase F correctly skipped (icon gate). Confirmed Session 16's
+  candidate order; executed the top one.
+- CLIENT DECODE (the wave's evidence): the own-clan homepage settings
+  entry is an ID-LESS ImageButton (ic_more, binding_2 -> command o);
+  H() BottomDialog items are Clan Settings (chief) / Edit Profile /
+  Manage Members / Cancel; "Edit Profile" reuses the CREATE template
+  with is.create=false + bundle pre-fill; the edit submit is the
+  "Modify" Button (binding_7 -> i() -> TribeApi.clanUpdate) with NO icon
+  and NO golds gate; update validation REQUIRES 1..4 tags + details;
+  TribeSettingGuideDialog is a one-time BACK-swallowing overlay whose
+  label tap opens the same sheet.
+- SERVER WORK: clanUpdate enforces clan-name uniqueness now (7002, the
+  client's edit form has no such gate — the server owns the rule) and
+  non-member PUT returns 7006 (was generic 0). Tribe.nameTaken shared by
+  create/update. classes6.dex rebuilt (214728 bytes).
+- AUTOMATION: Phase F API-creates PersClan<uniq> for the live session
+  (auth-token from Phase D), restarts the client holding it, drives the
+  owner surfaces (ivTribe entry, clan-screen exact search, row tap,
+  homepage); NEW Phase F2 drives guide/more -> Edit Profile -> rename
+  (EditClan<uniq>, verified fill + retype) -> Add Tag QA2 -> Modify,
+  with bounded PUT detection + tribe/base read-back assertion.
+- HOST RIG 361/361 (8 new update-contract assertions; one initially
+  wrong premise — a chief-of-own-clan PUT updates their own clan by
+  design — replaced by a cleanup dissolve to keep the persistence
+  phase's exact recommendation count).
+- Pushed 9b4ec36 to local-api; test-redroid dispatched on local-api.
+- Next: verify the run; if green consider tagging (dex changed); drive
+  Manage Members / Clan Settings surfaces; Bind-domain codes stay
+  pending until the account-security screens are driven. NO GameServer.
