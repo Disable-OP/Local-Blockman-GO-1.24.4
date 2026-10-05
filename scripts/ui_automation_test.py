@@ -1857,6 +1857,7 @@ def main():
                         # the budget ends.
                         settle_deadline = time.time() + 100
                         guide_polls = 0
+                        label_tapped = False
                         while time.time() < settle_deadline:
                             d_settle = screen.dump()
                             texts_now = [(x.text or "") for x in d_settle]
@@ -1873,35 +1874,44 @@ def main():
                                 continue
                             if any("Authentication-free mode" in t
                                    for t in texts_now):
-                                # 5t v8 decode (runs 37348093722 /
-                                # 37351059115 / 37354556790): the guide does
-                                # NOT self-dismiss — the Notice Board simply
-                                # stacks ABOVE it (v4 misread); closing the
-                                # NB REVEALS the guide again. Tapping the
-                                # label (a()) opens the sheet but ALSO
-                                # re-shows a fresh guide forever. The clean
-                                # exit is the guide's BOTTOM 'Clan Settings'
-                                # bar (b()): it dismisses the guide + sheet
-                                # and opens the sa.b template; one BACK then
-                                # lands on a CLEAN homepage (ic_more opens
-                                # the sheet with NO guide — command o calls
-                                # l() -> H() only).
+                                # 5t v9 decode: the I()-shown guide (a=false)
+                                # has ONLY the top-right label - its a() opens
+                                # the sheet AND f()-shows the a=true guide,
+                                # which (hypothesis from the Ta.a variant +
+                                # the binding) carries the bottom 'Clan
+                                # Settings' bar whose b() dismisses guide +
+                                # sheet and opens sa.b. Dance: label first,
+                                # then the bar, then BACK from sa.b.
                                 guide_polls += 1
-                                if guide_polls >= 4:
-                                    bar = next(
-                                        (x for x in d_settle
-                                         if (x.text or "") == "Clan Settings"
-                                         and x.center), None)
-                                    if bar and screen.tap_node(bar):
-                                        guide_left = True
-                                        ok("F: guide left via its 'Clan "
-                                           "Settings' bar (b()) - BACKing "
-                                           "from sa.b")
-                                    else:
-                                        print("  [evidence] F: guide's Clan "
-                                              "Settings bar not found")
+                                if guide_polls > 14:
+                                    print("  [evidence] F: guide dance gave "
+                                          "up after %d polls" % guide_polls)
                                     break
-                                time.sleep(5)
+                                if not label_tapped:
+                                    label = next(
+                                        (x for x in d_settle
+                                         if "Authentication-free mode"
+                                         in (x.text or "") and x.center), None)
+                                    if label and screen.tap_node(label):
+                                        label_tapped = True
+                                        ok("F: guide label tapped (sheet + "
+                                           "a=true guide expected)")
+                                    time.sleep(4)
+                                    continue
+                                bar = next(
+                                    (x for x in d_settle
+                                     if (x.text or "") == "Clan Settings"
+                                     and x.center), None)
+                                if bar and screen.tap_node(bar):
+                                    guide_left = True
+                                    ok("F: guide left via its 'Clan "
+                                       "Settings' bar (b()) - BACKing "
+                                       "from sa.b")
+                                    break
+                                print("  [evidence] F: no 'Clan Settings' "
+                                      "bar on the a=true guide (poll %d)"
+                                      % guide_polls)
+                                time.sleep(4)
                                 continue
                             break
                         if guide_left:
