@@ -1397,3 +1397,24 @@
 - Next: verify the run; if green consider tagging (dex changed); drive
   Manage Members / Clan Settings surfaces; Bind-domain codes stay
   pending until the account-security screens are driven. NO GameServer.
+
+## Session 17 cont. 1 — run 37329484729 triage (step timeout, not a server bug)
+
+- The wave-5t dispatch FAILED at the 20-minute step timeout. Timeline:
+  native-kill death at A-dress-character (absorbed, recovery worked),
+  the drive continued green through findclans/clanui, then the output
+  went silent for 10.7 min — block-buffered stdout lost the tail when
+  the timeout killed the process, so the stall point is not directly
+  visible (last flush: the A-clanui form dump).
+- Root-cause reads: (a) 3x25s per wedged uiautomator find is a crawl
+  amplifier after a relaunch (81s per find worst case; the deep drive
+  does dozens of finds); (b) the 20-minute cap had no headroom for a
+  death-recovery cycle PLUS the new Phase F restart + F2 form drive.
+- Fixes: Screen.dump attempts capped at 12s each (81s -> 42s worst case
+  per find; a wedged dump never recovers by waiting longer), main()
+  reconfigures stdout to line buffering (timeout kills now keep the
+  tail), automation step timeout 20 -> 32 minutes.
+- NOTE (workflow copy rule): workflow_run triggers execute MAIN's copy
+  of test-redroid.yml; this session only dispatches on local-api. Sync
+  the timeout change to main BEFORE the next tag-triggered run.
+- Pushed e1f1aca; re-dispatched run 37334056988.
