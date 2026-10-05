@@ -1418,3 +1418,41 @@
   of test-redroid.yml; this session only dispatches on local-api. Sync
   the timeout change to main BEFORE the next tag-triggered run.
 - Pushed e1f1aca; re-dispatched run 37334056988.
+
+## Session 17 cont. 2 — the guide saga (runs 37335622091..37361712499) and the smali decision
+
+- 5t v1 (run 37335622091 PASS): the persistent-clan premise WORKED — the
+  owner tab3 IS the clan dashboard (tvClanName carries the clan name,
+  Chief/1-22/rl_donate widgets, rlEnterClan 'Enter Clan'). Owner surfaces
+  (tribe base/member/currency/bulletin) fired through the real client.
+- 5t v2 (37338438610 PASS): rlEnterClan opens the homepage but the empty
+  bulletin renders as a 'Notice Board' dialog (btnSure CLOSE) on top.
+- 5t v3 (37342075770 PASS): CLOSE works, but the name-text find missed
+  post-close (no evidence dump existed yet).
+- 5t v4 (37344788918 PASS): the one-time TribeSettingGuideDialog is up at
+  entry and appears to 'self-clear' — actually the Notice Board merely
+  REPLACED it as the active window (uiautomator shows one window).
+- 5t v5 (37348093722 PASS): settle loop closes the NB, then the guide
+  RE-appears and outlasts a 40s budget.
+- 5t v6 (37351059115 PASS): 100s budget — the re-shown guide persists
+  100s+; it does NOT self-dismiss once revealed.
+- 5t v7 (37354556790 PASS): label-tap escape — the tap opens the settings
+  sheet but f() RE-SHOWS a fresh guide forever (a() -> messenger -> f() ->
+  H()+Ta(true).show()); the F2 sheet never becomes visible.
+- 5t v8 (37358087903 PASS): bottom 'Clan Settings' bar exit — the bar does
+  not exist in EITHER variant's dump (Ta.a does not toggle it).
+- 5t v9 (37361712499 PASS): two-tap dance (label -> bar) — the a=true
+  guide has no bar either. Hypothesis chain exhausted; honest evidence
+  recorded at every step; CI green throughout (F2 checks only fire when
+  the form is actually reached).
+- DECISION (the project's own precedent — patch_killlog.py): the guide is
+  pure UX (one analytics event + a SharedUtils one-shot flag) with NO
+  server contract and NO dismissal path a test driver can use. New
+  scripts/patch_tribeguide.py stubs Ta.show() (return-void) in the build
+  pipeline; idempotent, non-fatal, validated against the real baksmali'd
+  Ta.smali (org.smali 2.5.2). I()'s flag bookkeeping and the H() settings
+  sheet remain untouched. Wired into build_signed_apk.sh.
+- Also synced the automation step timeout (20->32) to MAIN's workflow copy
+  (a7a2496) — workflow_run executes main's file for tag-triggered runs.
+- Tagged v0.6.1-guidefix: build-release rebuilds the APK with the patch,
+  then test-redroid verifies Phase F/F2 end-to-end on the patched client.
