@@ -1823,16 +1823,32 @@ def main():
                         x.res.rsplit("/", 1)[-1] if x.res else "",
                         x.text[:28], x.desc[:24]))
             f_alive("F-tab3")
-            # 5s v4: the tab3 dump (reliable - main screen, no GL carousel)
-            # exposes two UNDISCOVERED entries (Session 14 named them):
-            # ivTribe (clan info?) and ivClanMsg0 (clan messages?). For a
-            # clan OWNER, ivTribe may open the own-clan homepage directly
-            # - driving it avoids the flaky clan-screen dumps entirely
-            # (5s v3: every uiautomator dump after the first missed on the
-            # rotating bannerViewPager).
+            # 5t v2 (run 37335622091 F-tab3 dump): for a clan OWNER tab3 IS
+            # the clan dashboard — tvClanName carries the clan name,
+            # rl_donate/Chief/'1/22' widgets render, and rlEnterClan
+            # ('Enter Clan') opens the clan homepage DIRECTLY. The old
+            # ivTribe/ivClanMsg0 ids and the list-search path stay as the
+            # fallback for non-owner layouts.
             own = None
-            for entry, stage in (("ivTribe", "F-tribeentry"),
-                                 ("ivClanMsg0", "F-clanmsg")):
+            if screen.find(ids=["tvClanName"]):
+                ok("F: owner dashboard on tab3 (tvClanName=%s)" % own_name)
+                enter = screen.find(ids=["rlEnterClan"]) \
+                    or screen.find(texts=["Enter Clan"])
+                if enter and screen.tap_node(enter):
+                    time.sleep(6)
+                    if f_alive("F-clanhome-direct"):
+                        for x in screen.dump():
+                            if x.res or x.text or x.desc:
+                                print("  F-clanhome-direct] %s | text=%r" % (
+                                    x.res.rsplit("/", 1)[-1] if x.res
+                                    else "", x.text[:28]))
+                        own = screen.find(texts=[own_name])
+                        if own:
+                            ok("F: clan homepage reached directly via "
+                               "rlEnterClan")
+            for entry, stage in (tuple() if own else
+                                 (("ivTribe", "F-tribeentry"),
+                                  ("ivClanMsg0", "F-clanmsg"))):
                 node = screen.find(ids=[entry])
                 if not (node and screen.tap_node(node)):
                     print("  [skip] F: %s not found on tab3" % entry)
