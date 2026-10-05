@@ -1223,3 +1223,37 @@
   The refactor also dedents ~240 lines of nested form code into one
   reusable, honest-reporting function (returns posted=True/False; never
   fails the run; BACK-safe exits).
+
+## Session 14 FINAL — wave 5r RESULT: GUEST GATE proven, UI clan creation client-asserted (run 37251554975 PASS)
+
+- Run 37251554975 PASS on d204b39: 64 unique endpoints, zero FATAL, PASS.
+- THE PROOF (one run, both sessions, identical drive):
+  * VISITOR (A-clanui): name 'UIClan64274' verified, intro verified, tag
+    'QA1' set (dialog closed), high-tap on the SAME submit RelativeLayout
+    (32,1096,688,1184) -> "[info] A-clanui: no clan-create POST observed".
+  * REGISTERED (E-clanui): name 'UIClan64789' verified, tag 'QA1', intro
+    verified, same tap -> "[ok] E-clanui: UI clan creation hit POST
+    /clan/api/v2/clan/tribe (name=UIClan64789)".
+- CONCLUSION: clan creation is CLIENT-SIDE GUEST-GATED — the visitor's
+  submit is silently swallowed (no request, no dialog, no toast). The
+  server was never the gap; it created the clan immediately for the
+  registered session. POST /clan/api/v2/clan/tribe is now CLIENT-ASSERTED
+  through the real UI (previously only Phase C's API-level drive).
+- Automation assets landed this session: search_input() hint-text picker
+  (5n), btnSearchFriend/rlSearchClan id entries + Find Friends confirmed
+  client 'Coming soon' placeholder (5o), IME-aware BACKs + bottom-nav
+  grounding loop (5p v3), fill_and_verify pattern, Add Tag dialog decode
+  (5q v3/v4/v5), tap_node_high() for bottom-docked controls under the
+  48px system nav bar (5q v6), ui_create_clan() two-session gate probe
+  (5r) + Phase E.
+- Session state: 13 pushes (5bebd13..acc30cb + docs), 10 consecutive green
+  test-redroid runs (37236799029..37251554975), zero server-code changes
+  needed — every gap the drives surfaced was client-side behavior, and
+  the server surface stays fully converged (all called routes real
+  handlers).
+- Next candidates: (1) drive the clan-info/members surfaces now that the
+  registered session can own a clan (tribe base/bulletin/members through
+  the real UI); (2) UPLOAD PROFILE (headPic) remains the one undriven
+  form control (gallery intent - heavy; only if a run shows the client
+  requiring it); (3) error-driven pass over the newest diagnostics;
+  (4) NO GameServer work.
