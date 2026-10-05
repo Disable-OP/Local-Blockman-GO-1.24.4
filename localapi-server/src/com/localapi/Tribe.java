@@ -28,8 +28,13 @@ final class Tribe {
 
     private Tribe() {}
 
-    public static final long CREATE_FEE_GOLDS = 20000L;
-    public static final long CREATE_FEE_DIAMONDS = 200L;
+    // Client-visible pricing (Phase 7): TribeCreateViewModel gates the golds
+    // path at golds >= 8000 (n.java h()), and when golds are short the
+    // TribeCreateDialog says "Inadequate coins, cost 60 ... to create a clan?"
+    // (tribe_sure_pay_60_diamond). The server must not charge more than the
+    // client promises.
+    public static final long CREATE_FEE_GOLDS = 8000L;
+    public static final long CREATE_FEE_DIAMONDS = 60L;
     public static final int MAX_MEMBERS_BASE = 20;
 
     // ------------------------------------------------------------ store plumbing
@@ -152,6 +157,7 @@ final class Tribe {
                 JSONObject u = store.findByUserId(m.optLong("userId"));
                 if (u != null) {
                     u.put("clanId", 0);
+                    u.put("clanQuitAt", System.currentTimeMillis());
                 }
             }
         }
@@ -177,6 +183,7 @@ final class Tribe {
         }
         clan.put("members", next);
         user.put("clanId", 0);
+        user.put("clanQuitAt", System.currentTimeMillis());
         store.save();
         return null;
     }
@@ -200,7 +207,10 @@ final class Tribe {
         }
         clan.put("members", next);
         JSONObject u = store.findByUserId(otherId);
-        if (u != null) u.put("clanId", 0);
+        if (u != null) {
+            u.put("clanId", 0);
+            u.put("clanQuitAt", System.currentTimeMillis());
+        }
         store.save();
         return null;
     }
@@ -221,9 +231,22 @@ final class Tribe {
 
     // ------------------------------------------------------------ joining
 
+    /**
+     * Client-verified 24h rejoin cooldown (TribeOnError 7014 -> toast
+     * "You can join after 24 hours"). Returns ms still left, or null when
+     * the user may join.
+     */
+    static Long joinCooldownLeft(JSONObject user) {
+        long quitAt = user.optLong("clanQuitAt");
+        if (quitAt <= 0) return null;
+        long left = quitAt + 24L * 60L * 60L * 1000L - System.currentTimeMillis();
+        return left > 0 ? Long.valueOf(left) : null;
+    }
+
     /** Request to join a clan (or auto-join when the clan is free-verify). */
     public static String requestJoin(StateStore store, JSONObject user, long clanId, String msg) {
         if (user.optLong("clanId") > 0) return "already in a clan";
+        if (joinCooldownLeft(user) != null) return "you can join a clan again after 24 hours";
         JSONObject clan = find(store, clanId);
         if (clan == null) return "clan not found";
         if (members(clan).length() >= maxMembers(clan)) return "clan is full";
@@ -269,6 +292,11 @@ final class Tribe {
             return "user already in a clan";
         }
         if (members(clan).length() >= maxMembers(clan)) return "clan is full";
+        if (joinCooldownLeft(candidate) != null) {
+            hit.put("status", 3);
+            store.save();
+            return "you can join a clan again after 24 hours";
+        }
         hit.put("status", 2);
         String err = join(store, clan, candidate);
         if (err != null) return err;
@@ -330,6 +358,7 @@ final class Tribe {
     /** Invitee accepts an invitation by message id. */
     public static String agreeInvitation(StateStore store, JSONObject user, long inviteId) {
         if (user.optLong("clanId") > 0) return "already in a clan";
+        if (joinCooldownLeft(user) != null) return "you can join a clan again after 24 hours";
         JSONObject clan = findInvitationClan(store, inviteId, user.optLong("userId"));
         if (clan == null) return "invitation not found";
         if (members(clan).length() >= maxMembers(clan)) return "clan is full";

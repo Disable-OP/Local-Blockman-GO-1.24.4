@@ -599,3 +599,33 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   deeper owner surfaces (bulletin edit / donate / member rows) through
   the UI with tap targets from the dump; (3) error-driven pass over the
   newest diagnostics; (4) NO GameServer work.
+
+## Session 16 delta (read first — Phase 7 + a false-positive corrected)
+
+- CORRECTION: Session 14's "guest gate proven / registered session posts"
+  headline was FALSE. The E-clanui POST assertion matched Phase C's
+  earlier API-level create in an unbounded logcat grep. No UI create ever
+  posted (registered included); the recommendation payloads around Phase E
+  are byte-identical, and the fresh-boot tribe/id "0" was CORRECT. Details
+  in WORKLOG Session 16 + PATCH_PLAN "Phase 7".
+- THE REAL create gate (jadx evidence): the form requires the clan ICON
+  (gallery+crop onActivityResult is the only setter) — null icon = toast +
+  return with NO request; golds>=8000 else the 60-diamond dialog. The
+  automation's posted-detection is now bounded (pre-snapshot + count
+  growth + typed name), so future "posted" evidence is trustworthy.
+- Phase 7 shipped: every domain error now carries the client-verified code
+  (see PATCH_PLAN "Phase 7" table; ErrorCodes.java; ARCHITECTURE section 9).
+  requireUser failures return 7; register-dup 101; login-unknown 102;
+  sensitive names 7020; sign-in double claim 7012; the full tribe map
+  (7001-7014 family); friend 3001-3004; group 8102-8104. Create fees
+  corrected to the client-visible 8000 golds / 60 diamonds. NEW: 24h rejoin
+  cooldown (7014) via user.clanQuitAt.
+- Host rig 349/349. classes6.dex rebuilt — the next tag ships it; the
+  automation fix rides the local-api checkout pin.
+- Next candidates: (1) dispatch test-redroid, verify the run, error-driven
+  pass over its diagnostics; (2) consider a persistent Phase C clan so the
+  registered session can drive the clan-UPDATE form (no icon needed ->
+  client-asserted PUT /clan/api/v1/clan/tribe); (3) gallery+crop drive is
+  the only path to a UI clan create — weigh before attempting; (4) scrap
+  codes (10104-10113) remain unmapped (UI rarely drives it); (5) NO
+  GameServer work.

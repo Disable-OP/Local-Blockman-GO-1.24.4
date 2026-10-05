@@ -394,6 +394,13 @@ def ui_create_clan(adb, screen, package, tag):
         print("  [info] %s: submitting via %s bounds=%s (high tap)"
               % (tag, target.res.rsplit("/", 1)[-1] if target.res
                  else target.cls, target.bounds))
+        # Evidence-bounded posted detection (v4 lesson): a plain full-buffer
+        # grep is CONTAMINATED by Phase C's API-level create of the same
+        # route (run 37259412423 'E-clanui' ok was Phase C's line, not a UI
+        # POST — no clan existed server-side and both recommendation dumps
+        # were byte-identical). Snapshot BEFORE the tap and require the
+        # match count to GROW, plus the typed-name signature.
+        prelog = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
         screen.tap_node_high(target)
         time.sleep(2)
         tlog = adb.raw("logcat", "-d", "-t", "300", timeout=60)
@@ -410,12 +417,18 @@ def ui_create_clan(adb, screen, package, tag):
         time.sleep(5)
         if alive("%s-submit" % tag):
             clog = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
-            posted = "POST /clan/api/v2/clan/tribe" in clog
+            grew = (clog.count("POST /clan/api/v2/clan/tribe")
+                    > prelog.count("POST /clan/api/v2/clan/tribe"))
+            typed = ("REQ POST /clan/api/v2/clan/tribe" in clog
+                     and uname in clog)
+            posted = grew or typed
             if posted:
                 ok("%s: UI clan creation hit POST /clan/api/v2/clan/"
-                   "tribe (name=%s)" % (tag, uname))
+                   "tribe (name=%s, grew=%s, typed=%s)"
+                   % (tag, uname, grew, typed))
             else:
-                print("  [info] %s: no clan-create POST observed" % tag)
+                print("  [info] %s: no clan-create POST observed"
+                      " (bounded evidence: grew=False typed=False)" % tag)
             for x in screen.dump():
                 if x.res or x.text or x.desc:
                     print("  %s-dump] %s | text=%r" % (

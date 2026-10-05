@@ -106,3 +106,21 @@ boot config (checkVersion, appConfig) → auth (tourist/visitor/login) → auth-
 → discover: revision/list/by/condition (TypePageData, local DB cache + network refresh)
 → game detail: v2/games/{id} + warmup + prop shop + rank
 → join: dispatch/token (Phase 4)
+
+## 9. Response contract (Phase 7 — client-verified error codes)
+
+Every handler answers `{"code":N,"message":"...","data":...}`. The client's
+dispatcher (BaseSubscriber.onNext -> OnResponseAdapter) is exact:
+
+- `code == 1` -> `onSuccess(data)`
+- `code 4 / 5 / 429 / 504` -> `onServerError(code)` (server-level toasts)
+- HTTP 401 -> forced re-login message (TOKEN_REPEAT_LOGIN)
+- **any other code** -> `onError(code, message)` -> the DOMAIN error mapper
+  (TribeOnError / UserOnError / FriendOnError / GroupOnError / GameOnError /
+  ScrapOnError / ...) translates the code into the proper client toast;
+  unknown codes fall back to a generic ServerOnError toast.
+
+The mapper tables were decompiled from the 1.24.4 APK (classes3.dex) and the
+toast texts resolved from resources.arsc. The server emits these codes via
+`Handlers.failTribe/failFriend/failGroup` + `failCode` (constants in
+`ErrorCodes.java`); the authoritative table lives in PATCH_PLAN.md "Phase 7".

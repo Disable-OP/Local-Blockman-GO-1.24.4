@@ -1277,3 +1277,55 @@
   15 delta). No dex change, no tag — the wave rides the local-api
   checkout pin; test-redroid dispatched manually.
 - In flight: dispatched run to verify Phase F's first pass.
+
+## Session 16 — Phase 7: client-verified error codes + the false-positive correction
+
+- State on resume: CI 9x green (latest 37259412423 PASS, wave 5s v4). Fresh
+  sandbox (no jadx/apktool/decompile artifacts) — rebuilt the toolchain:
+  base APK pulled from the v0.1.0-pipeline release asset, jadx 1.5.6, apktool
+  2.10.0 (resources only); classes3/classes2 decompiled for this wave.
+- ERROR-DRIVEN PASS OVER RUN 37259412423 REFUTED THE SESSION 14 HEADLINE:
+  the "E-clanui: UI clan creation hit POST /clan/api/v2/clan/tribe" ok was
+  PHASE C's API-level create line still in the unbounded logcat buffer — the
+  registered UI create NEVER posted either (no REQ in the window; both
+  recommendation responses byte-identical 1658b; no clan existed, so the
+  fresh-boot tribe/id "0" was correct server behavior all along).
+- THE REAL GATE (jadx, classes2 dex com/disabngo/blockynexus/e/b/la):
+  TribeCreateViewModel gates on golds>=8000 (else a 60-diamond dialog), and
+  TribeCreateModel REQUIRES the clan icon (g()/h() set only by the
+  gallery+crop onActivityResult) — null icon = toast + return, NO request.
+  The "one undriven form control" WAS the gate. With an icon the chain is
+  uploadIcon -> clanRequest (headPic = the upload response URL).
+- Automation fix: ui_create_clan posted-detection now snapshots the LocalAPI
+  log BEFORE the submit and requires count-GROWTH + the typed name (grew/
+  typed printed; immune to Phase C pollution and rotation).
+- Phase 7 (the API work of this session): decompiled ALL OnError mappers
+  (Tribe/User/Friend/Group/Game/Scrap/Bind/Ranking/Video/Campaign) and
+  decoded their toast strings from resources.arsc. The dispatcher contract
+  is exact: code!=1 -> onError(code,msg) -> domain mapper; unknown codes =
+  generic toast. Server now emits client-verified codes:
+  * 7 for every requireUser failure (74 sites)
+  * user: 101 register-dup, 102 login-unknown, 7012 sign-in double claim
+    (was silent-success), 7020 sensitive renames (changeNickName + changeInfo)
+  * tribe: 5006/5007 wallet, 7001 joined, 7002 name taken, 7003 not-chief,
+    7004 not-elder, 7005 full, 7006 not-joined, 7008 shop level, 7011
+    donation caps, 7012 task reward double-claim, 7020 sensitive clan names
+  * friend: 3001/3002/3003 (alias-only via a "(alias)" error suffix)/3004
+  * group chat: 8102/8103/8104
+  * NEW REAL RULE: 24h rejoin cooldown (7014) — exit/kick/dissolve stamp
+    clanQuitAt; requestJoin/agreeJoin/agreeInvitation enforce it
+- Client-visible pricing fix: create fees 20000 golds/200 diamonds ->
+  8000/60 (client gates golds at 8000; the dialog says "cost 60").
+- Host rig 349/349 (baseline re-verified 337 first). New "== Phase 7"
+  block asserts 7020/3001/3003/7002/7014 + the upgraded codes; the sweep
+  now accepts any integer business code for H: handlers.
+- Docs: ARCHITECTURE.md section 9 (dispatch contract), PATCH_PLAN.md
+  "Phase 7" (authoritative table + false-positive record), ENDPOINTS.md
+  error-code contract. No dex behavior change beyond the server logic —
+  classes6.dex rebuilt (214000 bytes), CI will ship it on the next tag.
+- Next candidates: (1) dispatch + verify the redroid run (automation fix
+  + Phase 7 in the dex); (2) the icon gate stands: either drive the
+  gallery+crop in Redroid (fragile) or drive the clan-UPDATE form as an
+  owner (no icon needed) after giving Phase C a persistent clan; (3) scrap
+  domain codes (10104-10113) when the scrap UI gets driven; (4) NO
+  GameServer work.

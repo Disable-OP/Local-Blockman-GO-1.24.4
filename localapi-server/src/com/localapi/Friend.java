@@ -209,7 +209,10 @@ final class Friend {
 
     /** POST/DELETE alias. */
     public static String setAlias(StateStore store, JSONObject user, long otherId, String alias) {
-        if (!isFriend(store, user, otherId)) return "not friends";
+        // "(alias)" suffix lets Handlers.failFriend map this to FriendOnError
+        // 3003 "Can not modify alias for stranger" — remove() failures keep
+        // the generic path (no client-specific code exists for them).
+        if (!isFriend(store, user, otherId)) return "not friends (alias)";
         JSONObject aliases = st(store, user).optJSONObject("aliases");
         if (aliases == null) {
             aliases = new JSONObject();

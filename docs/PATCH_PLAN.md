@@ -651,3 +651,101 @@ through the real UI:
 
 Server surface unchanged (no dex change, no tag): this wave is pure
 automation, riding the local-api checkout pin.
+
+## Phase 7 — client-verified error codes + evidence-quality fixes (Session 16)
+
+### 7a. The Session 14 "guest gate" conclusion was a FALSE POSITIVE
+
+Run 37259412423 (wave 5s v4) re-analysis, from the diagnostics artifact:
+
+- The UI clan-create POST line ("REQ POST /clan/api/v2/clan/tribe") is
+  ABSENT from the server traffic in the 03:43-03:45 window where Phase E
+  submitted; both recommendation responses around it are byte-identical
+  (1658b) — no clan was created server-side, registered or not.
+- The E-clanui "[ok] UI clan creation hit POST ..." matched PHASE C's
+  API-level create of the same route still sitting in the unbounded
+  `logcat -d -s LocalAPI` buffer (Phase C ran ~5 min earlier).
+- Therefore GET /clan/api/v1/clan/tribe/id returning "0" after the app
+  restart was CORRECT — the own clan never existed.
+
+THE REAL GATE (decompiled, classes2.dex com/disabngo/blockynexus/e/b/la):
+
+- TribeCreateViewModel (n.java h()): name sensitive-word check -> no
+  spaces/newlines -> if golds >= 8000 use the golds path (currency 2),
+  else a TribeCreateDialog ("Inadequate coins, cost 60 to create a
+  clan?", tribe_sure_pay_60_diamond) switches to the diamonds path.
+- TribeCreateModel (l.java a(List,String,String,int)): validation, then
+  the CREATE form REQUIRES the clan icon: `g()/h()` are ONLY set by the
+  gallery+crop onActivityResult (TribeCreateFragment). Null icon ->
+  toast tribe_icon_empty ("Clan Profile Photo cannot be empty") and
+  RETURN — no network call. This is the silence, for ANY session state.
+- When an icon exists the chain is uploadIcon (POST /user/api/v1/file)
+  FIRST, then clanRequest in the upload callback; headPic = the upload
+  response string (our absolute loopback /files/<id> URL — correct).
+- Automation fix (ui_create_clan): posted-detection now snapshots the
+  LocalAPI log BEFORE the submit tap and requires the match count to
+  GROW + the typed clan name to appear (grew/typed printed honestly).
+
+### 7b. Error codes (the authoritative table)
+
+Evidence: OnError mappers decompiled from classes3.dex + toast strings
+decoded from resources.arsc via apktool. Dispatch contract in
+ARCHITECTURE.md section 9. Server mapping: ErrorCodes.java +
+Handlers.failTribe/failFriend/failGroup.
+
+ALL DOMAINS (requireUser failures):
+- 7 = not_login / visitor_must_login ("Please log in" / "It only
+  supports signed-in users")
+
+USER (UserOnError):
+- 101 base_account_exists (register dup) | 102 account_not_exist (login
+  by unknown uid) | 7012 sign_in_has_get (daily sign-in double claim,
+  was silent-success before) | 7020 has_illegal_character (rename /
+  changeInfo nickName against the local sensitive-word config)
+
+TRIBE (TribeOnError):
+- 5006 tribe_not_enough_diamond ("Insufficient Bcubes") | 5007
+  gold_not_enough ("Coin not enough") | 7001 tribe_joined ("Already
+  joined") | 7002 tribe_name_exist | 7003 tribe_not_chief | 7004
+  tribe_not_elder (elder-gated "no permission" family) | 7005
+  tribe_full | 7006 tribe_not_joined ("not in a clan") | 7008
+  tribe_low_level (clan shop level gate) | 7011
+  tribe_exceed_max_diamond_or_gold (daily donation caps — the caps
+  themselves predate this phase: 20000 golds / 2000 diamonds / 10/day,
+  client-visible via donationInfo) | 7012 tribe_task_get_reward
+  ("Reward has been claimed") | 7014 tribe_no_enough_24_hour ("You can
+  join after 24 hours") | 7020 has_illegal_character (clan create/
+  update name)
+
+FRIEND (FriendOnError):
+- 3001 is_friend_already | 3002 exceed_max_friend_number | 3003
+  no_friend (alias on a stranger — setAlias errors get a "(alias)"
+  suffix so only the alias path maps here) | 3004 not_valid_user
+
+GROUP CHAT (GroupOnError):
+- 8102 group_no_exist_tip | 8103 new_group_error_8103 ("No permissions
+  now", incl. owner-only gates) | 8104 new_group_error_8014 ("The
+  player is not in the group chat")
+
+Deliberately NOT emitted (client-verified but no server-enforced rule):
+7005-vs-elder-cap 7010, task refresh limits 7016/7017, join level 7008
+emission (our clans carry no level requirement), donation-count cap is
+enforced (10/day) and maps to 7011.
+
+### 7c. Client-visible create pricing correction
+
+Tribe.create fees were 20000 golds / 200 diamonds; the client visibly
+promises 8000 golds (the golds-path threshold in TribeCreateViewModel)
+and 60 diamonds (TribeCreateDialog text). Server now charges
+CREATE_FEE_GOLDS=8000 / CREATE_FEE_DIAMONDS=60 — never more than the
+client told the user.
+
+### 7d. 24h rejoin cooldown (new real state rule)
+
+exit/kick/dissolve now stamp `clanQuitAt` on the affected users;
+requestJoin / agreeJoin / agreeInvitation reject with 7014 within 24h.
+Evidence: dedicated client string tribe_no_enough_24_hour.
+
+Host rig: 349/349 (was 337) — the 12 new Phase 7 assertions live in the
+"== Phase 7: client-verified error codes ==" block; every prior code-0
+error assertion was upgraded to its client-verified code.

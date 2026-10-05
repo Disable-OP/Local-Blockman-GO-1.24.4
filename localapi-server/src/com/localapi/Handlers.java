@@ -332,7 +332,7 @@ final class Handlers {
                 u = store.findByAccount(uid);
             }
             if (u == null) {
-                return fail("account not found, please register");
+                return failCode(ErrorCodes.ACCOUNT_NOT_EXIST, "account not found, please register");
             }
             String saved = u.optString("password");
             if (saved != null && !saved.isEmpty() && !saved.equals(password)) {
@@ -369,7 +369,7 @@ final class Handlers {
         }
         JSONObject u = store.createAccount(uid, password, uid);
         if (u == null) {
-            return fail("username already exists");
+            return failCode(ErrorCodes.ACCOUNT_EXISTS, "username already exists");
         }
         Mail.ensureWelcomeMail(store, u);
         store.issueToken(u);
@@ -485,6 +485,10 @@ final class Handlers {
             nick = form.optString("newName", form.optString("nickName"));
         }
         if (nick != null && !nick.isEmpty()) {
+            if (isSensitiveNick(store, nick)) {
+                // UserOnError 7020 has_illegal_character
+                return failCode(ErrorCodes.ILLEGAL_CHARACTER, "nickname contains a sensitive word");
+            }
             u.put("nickName", nick);
             store.save();
             L.i("changeNickName: userId=" + u.optLong("userId") + " -> " + nick);
@@ -496,7 +500,13 @@ final class Handlers {
     private static String changeInfo(Ctx ctx, StateStore store) {
         JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
         JSONObject form = body(ctx);
-        if (form.has("nickName")) u.put("nickName", form.optString("nickName"));
+        if (form.has("nickName")) {
+            String nick = form.optString("nickName");
+            if (isSensitiveNick(store, nick)) {
+                return failCode(ErrorCodes.ILLEGAL_CHARACTER, "nickname contains a sensitive word");
+            }
+            u.put("nickName", nick);
+        }
         if (form.has("sex")) u.put("sex", form.optInt("sex"));
         if (form.has("details")) u.put("details", form.optString("details"));
         if (form.has("birthday")) u.put("birthday", form.optString("birthday"));
@@ -960,7 +970,7 @@ final class Handlers {
     private static String recordAdsGame(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) {
-            return fail(NO_AUTH);
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         }
         String date = today();
         if (store.adRewardCount(u, date) >= 5) {
@@ -977,7 +987,7 @@ final class Handlers {
     private static String postUserGeoInfo(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) {
-            return fail(NO_AUTH);
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         }
         JSONObject geo = new JSONObject();
         geo.put("longitude", parseDouble(ctx.query("longitude")));
@@ -1115,7 +1125,7 @@ final class Handlers {
     private static String mailList(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) {
-            return fail(NO_AUTH);
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         }
         return envelope("list", Mail.list(store, u).toString());
     }
@@ -1124,7 +1134,7 @@ final class Handlers {
     private static String hasNewEmail(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) {
-            return fail(NO_AUTH);
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         }
         return envelope("bool", String.valueOf(Mail.hasNew(store, u)));
     }
@@ -1136,7 +1146,7 @@ final class Handlers {
     private static String mailOp(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) {
-            return fail(NO_AUTH);
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         }
         int status = (int) parseLong(ctx.query("status"), 2);
         JSONArray ids = new JSONArray();
@@ -1158,7 +1168,7 @@ final class Handlers {
     private static String mailAttachment(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) {
-            return fail(NO_AUTH);
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         }
         long mailId = parseLong(ctx.query("mailId"), 0L);
         if (mailId <= 0) {
@@ -1190,7 +1200,7 @@ final class Handlers {
     private static String buyGameProp(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) {
-            return fail(NO_AUTH);
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         }
         String gameId = ctx.query("gameId");
         long propsId = parseLong(ctx.query("propsId"), 0L);
@@ -1414,17 +1424,19 @@ final class Handlers {
     private static String clickSignIn(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) {
-            return fail(NO_AUTH);
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         }
         String date = today();
-        if (!store.hasSignedIn(u, date)) {
-            int[] rewards = {200, 400, 600, 800, 1000, 1500, 3000};
-            int claimed = store.signIns(u) == null ? 0 : store.signIns(u).length();
-            long reward = rewards[claimed % 7];
-            store.markSignedIn(u, date);
-            store.award(u, "golds", reward);
-            L.i("sign-in: userId=" + u.optLong("userId") + " +" + reward + " golds");
+        if (store.hasSignedIn(u, date)) {
+            // UserOnError 7012 sign_in_has_get — "Claimed"
+            return failCode(ErrorCodes.SIGN_IN_CLAIMED, "already claimed today");
         }
+        int[] rewards = {200, 400, 600, 800, 1000, 1500, 3000};
+        int claimed = store.signIns(u) == null ? 0 : store.signIns(u).length();
+        long reward = rewards[claimed % 7];
+        store.markSignedIn(u, date);
+        store.award(u, "golds", reward);
+        L.i("sign-in: userId=" + u.optLong("userId") + " +" + reward + " golds");
         return envelope("none", null);
     }
 
@@ -1432,7 +1444,7 @@ final class Handlers {
     private static String getAdsReward(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) {
-            return fail(NO_AUTH);
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         }
         String date = today();
         if (store.adRewardCount(u, date) < 5) {
@@ -1455,7 +1467,7 @@ final class Handlers {
     private static String getSignAdsReward(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) {
-            return fail(NO_AUTH);
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         }
         String date = today();
         int count = store.adRewardCount(u, date);
@@ -1635,7 +1647,7 @@ final class Handlers {
     private static String suitGiftReceive(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) {
-            return fail(NO_AUTH);
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         }
         if (Suits.giftClaimed(store, u)) {
             return fail("gift suit already claimed");
@@ -1799,7 +1811,7 @@ final class Handlers {
     private static String useDecoration(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) {
-            return fail(NO_AUTH);
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         }
         long id = parseLong(ctx.pathParam("decorationId"), 0);
         if (!DressShop.owned(store, u, id)) {
@@ -1815,7 +1827,7 @@ final class Handlers {
     private static String useSuitDecoration(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) {
-            return fail(NO_AUTH);
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         }
         JSONArray ids = csvIds(ctx.query("ids"));
         for (int i = 0; i < ids.length(); i++) {
@@ -1835,7 +1847,7 @@ final class Handlers {
     private static String dressBuyOne(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) {
-            return fail(NO_AUTH);
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         }
         long id = parseLong(ctx.pathParam("decorationId"), 0);
         if (!DressShop.buy(store, u, id)) {
@@ -1847,7 +1859,7 @@ final class Handlers {
     private static String dressBuyMany(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) {
-            return fail(NO_AUTH);
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         }
         JSONArray ids = csvIds(ctx.query("decorationId"));
         JSONArray ok = new JSONArray();
@@ -1869,7 +1881,7 @@ final class Handlers {
     private static String dressBuyV2(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) {
-            return fail(NO_AUTH);
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         }
         JSONObject form = body(ctx);
         JSONArray items = form.optJSONArray("buyDecorationList");
@@ -2103,7 +2115,7 @@ final class Handlers {
     private static String scrapCombineCard(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) {
-            return fail(NO_AUTH);
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         }
         String cardId = ctx.query("cardId");
         int amount = (int) parseLong(ctx.query("amount"), 1);
@@ -2115,7 +2127,7 @@ final class Handlers {
     private static String scrapSend(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) {
-            return fail(NO_AUTH);
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         }
         String scrapId = ctx.query("scrapId");
         if (ScrapBag.scrapNum(store, u, scrapId) < 1) {
@@ -2327,7 +2339,7 @@ final class Handlers {
     private static String recharge(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) {
-            return fail(NO_AUTH);
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         }
         JSONObject form = body(ctx);
         String sku = form.optString("sku");
@@ -2354,7 +2366,7 @@ final class Handlers {
     private static String rechargeVip(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) {
-            return fail(NO_AUTH);
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         }
         JSONObject form = body(ctx);
         String sku = form.optString("sku");
@@ -2418,7 +2430,7 @@ final class Handlers {
     /** GET /friend/api/v1/friends — PageData&lt;Friend&gt; of the caller's real friends. */
     private static String friendList(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         int pageNo = (int) parseLong(ctx.query("pageNo"), 1);
         int pageSize = (int) parseLong(ctx.query("pageSize"), 20);
         JSONArray rows = new JSONArray();
@@ -2433,7 +2445,7 @@ final class Handlers {
     /** GET /friend/api/v1/friends/requests — PageData&lt;FriendRequests&gt; (pending incoming). */
     private static String friendRequestsList(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         int pageNo = (int) parseLong(ctx.query("pageNo"), 1);
         int pageSize = (int) parseLong(ctx.query("pageSize"), 20);
         JSONArray rows = new JSONArray();
@@ -2519,7 +2531,7 @@ final class Handlers {
     /** GET /friend/api/v2/friends/status — FriendStatus {cur/max, currentTime, per-friend StatusBean list}. */
     private static String friendStatus(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONArray ids = Friend.friends(store, u);
         JSONObject out = new JSONObject();
         out.put("curFriendCount", ids.length());
@@ -2555,65 +2567,65 @@ final class Handlers {
     /** POST /friend/api/v1/friends — FriendRequestAdd {friendId, msg}. */
     private static String friendAdd(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject form = body(ctx);
         String err = Friend.add(store, u, form.optLong("friendId"), form.optString("msg"));
-        if (err != null) return fail(err);
+        if (err != null) return failFriend(err);
         return envelope("none", null);
     }
 
     /** DELETE /friend/api/v1/friends?friendId= — unfriend (both sides). */
     private static String friendDelete(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = Friend.remove(store, u, parseLong(ctx.query("friendId"), 0));
-        if (err != null) return fail(err);
+        if (err != null) return failFriend(err);
         return envelope("none", null);
     }
 
     /** DELETE /friend/api/v1/friends/black?friendId= — add to blacklist (verified call-site semantics). */
     private static String friendBlacklist(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = Friend.blacklist(store, u, parseLong(ctx.query("friendId"), 0));
-        if (err != null) return fail(err);
+        if (err != null) return failFriend(err);
         return envelope("none", null);
     }
 
     /** POST /friend/api/v1/friends/{friendId}/alias?alias= — set a personal alias. */
     private static String friendAliasSet(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = Friend.setAlias(store, u, parseLong(ctx.pathParam("friendId"), 0),
                 ctx.query("alias"));
-        if (err != null) return fail(err);
+        if (err != null) return failFriend(err);
         return envelope("none", null);
     }
 
     /** DELETE /friend/api/v1/friends/{friendId}/alias — remove the alias. */
     private static String friendAliasDelete(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = Friend.setAlias(store, u, parseLong(ctx.pathParam("friendId"), 0), "");
-        if (err != null) return fail(err);
+        if (err != null) return failFriend(err);
         return envelope("none", null);
     }
 
     /** PUT /friend/api/v1/friends/{friendId}/agreement — accept a friend request. */
     private static String friendAgree(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = Friend.accept(store, u, parseLong(ctx.pathParam("friendId"), 0));
-        if (err != null) return fail(err);
+        if (err != null) return failFriend(err);
         return envelope("none", null);
     }
 
     /** PUT /friend/api/v1/friends/{friendId}/rejection — reject a friend request. */
     private static String friendReject(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = Friend.reject(store, u, parseLong(ctx.pathParam("friendId"), 0));
-        if (err != null) return fail(err);
+        if (err != null) return failFriend(err);
         return envelope("none", null);
     }
 
@@ -2631,7 +2643,7 @@ final class Handlers {
         if (u == null && form.optString("account") != null && !form.optString("account").isEmpty()) {
             u = store.findByKey(form.optString("account"));
         }
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String pw = form.optString("password");
         if (pw.isEmpty()) return fail("password required");
         if (form.optString("confirmPassword") != null
@@ -2653,7 +2665,7 @@ final class Handlers {
     /** POST /user/api/v1/user/password/modify (+v2) — ChangePasswordForm. */
     private static String passwordModify(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject form = body(ctx);
         String oldPw = form.optString("oldPassword");
         String newPw = form.optString("newPassword");
@@ -2676,7 +2688,7 @@ final class Handlers {
     /** POST /user/api/v1/user/password/check — UserVerifyInfo {right}. */
     private static String passwordCheck(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String pw = body(ctx).optString("password");
         boolean right = pw != null && !pw.isEmpty() && pw.equals(u.optString("password"));
         return envelope("obj", "{\"authCode\":\"\",\"count\":0,\"right\":" + right + "}");
@@ -2717,7 +2729,7 @@ final class Handlers {
     /** POST /user/api/v1/user/account/modify — rename the login account key. */
     private static String accountModify(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String account = body(ctx).optString("account");
         if (account == null || account.trim().isEmpty()) return fail("account required");
         account = account.trim();
@@ -2739,7 +2751,7 @@ final class Handlers {
     /** POST /user/api/v1/user/bind/phone — PhoneBindForm (local policy: any code). */
     private static String bindPhone(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject form = body(ctx);
         String phone = form.optString("phone");
         if (phone == null || phone.trim().isEmpty()) return fail("phone required");
@@ -2751,7 +2763,7 @@ final class Handlers {
     /** POST /user/api/v1/user/unbind/phone. */
     private static String unbindPhone(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         u.put("telephone", "");
         store.save();
         return envelope("none", null);
@@ -2760,7 +2772,7 @@ final class Handlers {
     /** POST /user/api/v1/users/bind/email (+/{version}) — EmailBindForm. */
     private static String bindEmail(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject form = body(ctx);
         String email = form.optString("email");
         if (email == null || !email.contains("@")) return fail("valid email required");
@@ -2772,7 +2784,7 @@ final class Handlers {
     /** DELETE /user/api/v1/users/{userId}/emails (+v2) — unbind email. */
     private static String unbindEmail(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         u.put("email", "");
         store.save();
         return envelope("none", null);
@@ -2781,7 +2793,7 @@ final class Handlers {
     /** GET /user/api/v1/users/security/bind/email — masked bound email or "". */
     private static String tipsEmail(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String email = u.optString("email");
         if (email == null || !email.contains("@")) return envelope("str", "\"\"");
         int at = email.indexOf('@');
@@ -2793,7 +2805,7 @@ final class Handlers {
     /** GET /user/api/v1/users/secret/question — List&lt;SecretQuestionInfo&gt;. */
     private static String questionGet(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONArray q = store.userState(u).optJSONArray("secretQuestions");
         return envelope("list", (q == null ? new JSONArray() : q).toString());
     }
@@ -2801,7 +2813,7 @@ final class Handlers {
     /** POST /user/api/v1/users/secret/question — save answers; issue an authCode. */
     private static String questionAuth(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONArray list = body(ctx).optJSONArray("list");
         if (list == null) {
             JSONArray alt = body(ctx).names() == null ? null : body(ctx).optJSONArray("");
@@ -2825,7 +2837,7 @@ final class Handlers {
     /** POST /user/api/{version}/users/secret/question/setting?authCode= — set with code check. */
     private static String questionSetting(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String authCode = ctx.query("authCode");
         if (authCode == null || !authCode.equals(store.userState(u).optString("securityAuthCode"))) {
             return fail("invalid authCode");
@@ -2847,7 +2859,7 @@ final class Handlers {
         long userId = parseLong(ctx.query("userId"), 0);
         JSONObject u = userId > 0 ? store.findByUserId(userId) : null;
         if (u == null) u = store.findByToken(ctx.header("access-token"));
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String authCode = ctx.query("authCode");
         if (authCode == null || !authCode.equals(store.userState(u).optString("securityAuthCode"))) {
             return fail("invalid authCode");
@@ -2863,7 +2875,7 @@ final class Handlers {
     /** POST /user/api/v1/users/unbind/user/security — clear security questions. */
     private static String unbindSecurity(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         store.userState(u).remove("secretQuestions");
         store.userState(u).remove("securityAuthCode");
         store.save();
@@ -2873,7 +2885,7 @@ final class Handlers {
     /** GET /user/api/v1/user/login/change/record — AccountRecordResult. */
     private static String loginRecord(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONArray recs = store.userState(u).optJSONArray("loginRecords");
         if (recs != null && recs.length() > 0) {
             JSONObject last = recs.optJSONObject(recs.length() - 1);
@@ -2932,7 +2944,7 @@ final class Handlers {
     /** PUT /user/api/v1/users/tasks/{type} — claim sign-in day reward; returns wallet. */
     private static String claimTask(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         int day = (int) parseLong(ctx.pathParam("type"), 1);
         String date = today();
         if (!store.hasSignedIn(u, date)) {
@@ -2953,7 +2965,7 @@ final class Handlers {
     /** POST /user/api/v1/users/sharing/reward?type= — +200 golds once per day. */
     private static String shareReward(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject st = store.userState(u);
         JSONObject share = st.optJSONObject("shareReward");
         String date = today();
@@ -2986,7 +2998,7 @@ final class Handlers {
     /** POST /user/api/v1/users/prefect/info/reward/{userId} — BuyGameResponse. */
     private static String prefectReward(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         if (!prefectDone(store, u)) return fail("profile not complete or reward claimed");
         store.userState(u).put("prefectClaimed", true);
         store.award(u, "golds", 500);
@@ -3003,7 +3015,7 @@ final class Handlers {
     /** GET /user/api/v2/users/verify/user/security/settings — UserVerifySettingsInfo (client calls at boot). */
     private static String securitySettings(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String email = u.optString("email");
         JSONArray questions = store.userState(u).optJSONArray("secretQuestions");
         JSONArray ids = new JSONArray();
@@ -3054,7 +3066,7 @@ final class Handlers {
 
     private static String groupInfoResp(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject g = GroupChat.find(store, parseLong(ctx.query("groupId"), 0));
         if (g == null) return fail("group not found");
         return envelope("obj", GroupChat.groupJson(g).toString());
@@ -3063,7 +3075,7 @@ final class Handlers {
     /** POST /msg/api/v2/msg/group/chat — GroupParam {cost, currency, memberIds, userId}. */
     private static String groupCreate(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject form = body(ctx);
         JSONObject g = GroupChat.create(store, u, form.optJSONArray("memberIds"),
                 form.optString("groupName"));
@@ -3074,7 +3086,7 @@ final class Handlers {
     /** GET /msg/api/v1/msg/group/chat/list — PageData&lt;GroupInfo&gt; of my groups. */
     private static String groupList(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         int pageNo = (int) parseLong(ctx.query("pageNo"), 1);
         int pageSize = (int) parseLong(ctx.query("pageSize"), 20);
         JSONArray rows = new JSONArray();
@@ -3088,7 +3100,7 @@ final class Handlers {
     /** GET /msg/api/v1/msg/group/chat/info?groupId=. */
     private static String groupInfo(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject g = GroupChat.find(store, parseLong(ctx.query("groupId"), 0));
         if (g == null) return fail("group not found");
         return envelope("obj", GroupChat.groupJson(g).toString());
@@ -3097,7 +3109,7 @@ final class Handlers {
     /** GET /msg/api/v1/msg/group/chat/invite/count — GroupInviteCount. */
     private static String groupInviteCount(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject g = GroupChat.find(store, parseLong(ctx.query("groupId"), 0));
         if (g == null) return fail("group not found");
         int used = 0;
@@ -3118,7 +3130,7 @@ final class Handlers {
     /** GET /msg/api/v1/msg/group/chat/request/list — PageData&lt;GroupRequest&gt;. */
     private static String groupRequestList(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         int pageNo = (int) parseLong(ctx.query("pageNo"), 1);
         int pageSize = (int) parseLong(ctx.query("pageSize"), 20);
         JSONArray feed = GroupChat.requestFeed(store, u.optLong("userId"));
@@ -3128,7 +3140,7 @@ final class Handlers {
     /** POST /msg/api/v1/msg/group/chat/add — GroupInviteParam direct add. */
     private static String groupInviteDirect(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject form = body(ctx);
         long gid = form.optLong("groupId");
         JSONObject g = GroupChat.find(store, gid);
@@ -3141,10 +3153,10 @@ final class Handlers {
     /** POST /msg/api/v1/msg/group/chat/forbidden/member?groupId&memberId&minute=. */
     private static String groupBanMember(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = GroupChat.banMember(store, u, parseLong(ctx.query("groupId"), 0),
                 parseLong(ctx.query("memberId"), 0), (int) parseLong(ctx.query("minute"), 5));
-        if (err != null) return fail(err);
+        if (err != null) return failGroup(err);
         JSONObject g = GroupChat.find(store, parseLong(ctx.query("groupId"), 0));
         return envelope("obj", GroupChat.groupJson(g).toString());
     }
@@ -3152,29 +3164,29 @@ final class Handlers {
     /** POST /msg/api/v1/msg/group/chat/invite?groupId=&memberIds=1&memberIds=2. */
     private static String groupInvite(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = GroupChat.invite(store, u, parseLong(ctx.query("groupId"), 0),
                 longArray(ctx.queryValues("memberIds")));
-        if (err != null) return fail(err);
+        if (err != null) return failGroup(err);
         return envelope("none", null);
     }
 
     /** POST /msg/api/v1/msg/group/chat/apply?groupId=&msg=. */
     private static String groupApply(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = GroupChat.apply(store, u, parseLong(ctx.query("groupId"), 0),
                 ctx.query("msg"));
-        if (err != null) return fail(err);
+        if (err != null) return failGroup(err);
         return envelope("none", null);
     }
 
     /** PUT /msg/api/v1/msg/group/chat/forbidden — toggle mute-all. */
     private static String groupMuteAll(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = GroupChat.toggleMuteAll(store, u, parseLong(ctx.query("groupId"), 0));
-        if (err != null) return fail(err);
+        if (err != null) return failGroup(err);
         JSONObject g = GroupChat.find(store, parseLong(ctx.query("groupId"), 0));
         return envelope("obj", GroupChat.groupJson(g).toString());
     }
@@ -3182,11 +3194,11 @@ final class Handlers {
     /** PUT /msg/api/v1/msg/group/chat/agreement — JoinGroupRequest body. */
     private static String groupAccept(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject form = body(ctx);
         String err = GroupChat.acceptRequest(store, u, form.optLong("groupId"),
                 form.optLong("requestId"), form.optLong("userId"));
-        if (err != null) return fail(err);
+        if (err != null) return failGroup(err);
         JSONObject g = GroupChat.find(store, form.optLong("groupId"));
         return envelope("obj", GroupChat.groupJson(g).toString());
     }
@@ -3194,21 +3206,21 @@ final class Handlers {
     /** PUT /msg/api/v1/msg/group/chat/reject. */
     private static String groupRejectReq(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject form = body(ctx);
         String err = GroupChat.rejectRequest(store, u, form.optLong("groupId"),
                 form.optLong("requestId"));
-        if (err != null) return fail(err);
+        if (err != null) return failGroup(err);
         return envelope("none", null);
     }
 
     /** PUT /msg/api/v1/msg/group/chat/remove/forbidden/member. */
     private static String groupUnban(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = GroupChat.unbanMember(store, u, parseLong(ctx.query("groupId"), 0),
                 parseLong(ctx.query("memberId"), 0));
-        if (err != null) return fail(err);
+        if (err != null) return failGroup(err);
         JSONObject g = GroupChat.find(store, parseLong(ctx.query("groupId"), 0));
         return envelope("obj", GroupChat.groupJson(g).toString());
     }
@@ -3216,9 +3228,9 @@ final class Handlers {
     /** PUT /msg/api/v1/msg/group/chat/quit — returns the caller's remaining groups. */
     private static String groupQuit(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = GroupChat.quit(store, u, parseLong(ctx.query("groupId"), 0));
-        if (err != null) return fail(err);
+        if (err != null) return failGroup(err);
         int pageNo = (int) parseLong(ctx.query("pageNo"), 1);
         int pageSize = (int) parseLong(ctx.query("pageSize"), 20);
         JSONArray rows = new JSONArray();
@@ -3232,11 +3244,11 @@ final class Handlers {
     /** PUT /msg/api/v1/msg/group/chat/kickOut — GroupRemoveParam body. */
     private static String groupKick(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject form = body(ctx);
         String err = GroupChat.kick(store, u, form.optLong("groupId"),
                 form.optJSONArray("memberIds"));
-        if (err != null) return fail(err);
+        if (err != null) return failGroup(err);
         JSONObject g = GroupChat.find(store, form.optLong("groupId"));
         return envelope("obj", GroupChat.groupJson(g).toString());
     }
@@ -3244,11 +3256,11 @@ final class Handlers {
     /** PUT /msg/api/v1/msg/group/chat/set/manager — GroupAdminsParam body. */
     private static String groupSetManager(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject form = body(ctx);
         String err = GroupChat.setManagers(store, u, form.optLong("groupId"),
                 form.optJSONArray("memberIds"), form.optInt("operationType"));
-        if (err != null) return fail(err);
+        if (err != null) return failGroup(err);
         JSONObject g = GroupChat.find(store, form.optLong("groupId"));
         return envelope("obj", GroupChat.groupJson(g).toString());
     }
@@ -3256,10 +3268,10 @@ final class Handlers {
     /** PUT /msg/api/v1/msg/group/chat/transfer — GroupTransferParam body. */
     private static String groupTransfer(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject form = body(ctx);
         String err = GroupChat.transfer(store, u, form.optLong("groupId"), form.optLong("userId"));
-        if (err != null) return fail(err);
+        if (err != null) return failGroup(err);
         JSONObject g = GroupChat.find(store, form.optLong("groupId"));
         return envelope("obj", GroupChat.groupJson(g).toString());
     }
@@ -3267,7 +3279,7 @@ final class Handlers {
     /** PUT /msg/api/v1/msg/group/chat/modify — GroupInfoParam body. */
     private static String groupModify(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject form = body(ctx);
         JSONObject g = GroupChat.find(store, form.optLong("groupId"));
         if (g == null) return fail("group not found");
@@ -3307,29 +3319,33 @@ final class Handlers {
     /** GET /clan/api/v1/clan/tribe/base — the caller's clan detail. */
     private static String tribeBaseInfo(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject clan = Tribe.clanOf(store, u);
-        if (clan == null) return fail("not in a clan");
+        if (clan == null) return failTribe("not in a clan");
         return envelope("obj", tribeDetailJson(clan).toString());
     }
 
     /** GET /clan/api/v1/clan/tribe/member — List&lt;TribeMember&gt; of the caller's clan. */
     private static String tribeMemberList(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject clan = Tribe.clanOf(store, u);
-        if (clan == null) return fail("not in a clan");
+        if (clan == null) return failTribe("not in a clan");
         return envelope("list", tribeMembersJson(clan).toString());
     }
 
     /** POST /clan/api/v2/clan/tribe — create (TribeClanRequest body; currency 1=diamonds fee, else golds). */
     private static String clanCreate(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject form = body(ctx);
+        if (isSensitiveNick(store, form.optString("name"))) {
+            // TribeOnError 7020 has_illegal_character
+            return failCode(ErrorCodes.ILLEGAL_CHARACTER, "clan name contains a sensitive word");
+        }
         String err = Tribe.create(store, u, form.optString("name"), form.optString("details"),
                 form.optString("headPic"), form.optJSONArray("tags"), form.optInt("currency", 2));
-        if (err != null) return fail(err);
+        if (err != null) return failTribe(err);
         JSONObject clan = Tribe.clanOf(store, u);
         L.i("clanCreate: userId=" + u.optLong("userId") + " clanId=" + clan.optLong("clanId")
                 + " name=" + clan.optString("name"));
@@ -3339,13 +3355,16 @@ final class Handlers {
     /** PUT /clan/api/v1/clan/tribe — update name/details/headPic/tags (chief). */
     private static String clanUpdate(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject clan = Tribe.clanOf(store, u);
         if (clan == null) return fail("not in a clan");
-        if (Tribe.roleOf(clan, u.optLong("userId")) != 20) return fail("only the chief can update");
+        if (Tribe.roleOf(clan, u.optLong("userId")) != 20) return failTribe("only the chief can update");
         JSONObject form = body(ctx);
         String name = form.optString("name", clan.optString("name"));
         if (name != null && !name.trim().isEmpty()) {
+            if (isSensitiveNick(store, name)) {
+                return failCode(ErrorCodes.ILLEGAL_CHARACTER, "clan name contains a sensitive word");
+            }
             clan.put("name", name.trim().replace("\n", " "));
         }
         if (form.has("details")) clan.put("details", form.optString("details"));
@@ -3358,9 +3377,9 @@ final class Handlers {
     /** DELETE /clan/api/v1/clan/tribe?clanId= — dissolve (chief). */
     private static String clanDissolve(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = Tribe.dissolve(store, u);
-        if (err != null) return fail(err);
+        if (err != null) return failTribe(err);
         L.i("clanDissolve: userId=" + u.optLong("userId"));
         return envelope("none", null);
     }
@@ -3368,71 +3387,71 @@ final class Handlers {
     /** DELETE /clan/api/v1/clan/tribe/member?clanId= — leave the clan. */
     private static String clanExit(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = Tribe.exit(store, u);
-        if (err != null) return fail(err);
+        if (err != null) return failTribe(err);
         return envelope("none", null);
     }
 
     /** DELETE /clan/api/v1/clan/tribe/member/remove?otherId= — kick (chief/elder). */
     private static String clanKick(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = Tribe.kick(store, u, parseLong(ctx.query("otherId"), 0));
-        if (err != null) return fail(err);
+        if (err != null) return failTribe(err);
         return envelope("none", null);
     }
 
     /** POST /clan/api/v1/clan/tribe/member — RequestJoinTribe {clanId, msg}. */
     private static String clanJoin(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject form = body(ctx);
         String err = Tribe.requestJoin(store, u, form.optLong("clanId"), form.optString("msg"));
-        if (err != null) return fail(err);
+        if (err != null) return failTribe(err);
         return envelope("none", null);
     }
 
     /** PUT /clan/api/v1/clan/tribe/member/agreement?otherId= — accept a join request. */
     private static String clanAgreeJoin(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = Tribe.agreeJoin(store, u, parseLong(ctx.query("otherId"), 0));
-        if (err != null) return fail(err);
+        if (err != null) return failTribe(err);
         return envelope("none", null);
     }
 
     /** PUT /clan/api/v1/clan/tribe/member/rejection?otherId= — reject a join request. */
     private static String clanRejectJoin(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = Tribe.rejectJoin(store, u, parseLong(ctx.query("otherId"), 0));
-        if (err != null) return fail(err);
+        if (err != null) return failTribe(err);
         return envelope("none", null);
     }
 
     /** PUT /clan/api/v1/clan/tribe/member/agreement/invitation?id= — invitee accepts. */
     private static String clanAgreeInvite(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = Tribe.agreeInvitation(store, u, parseLong(ctx.query("id"), 0));
-        if (err != null) return fail(err);
+        if (err != null) return failTribe(err);
         return envelope("none", null);
     }
 
     /** PUT /clan/api/v1/clan/tribe/member/rejection/invitation?id= — invitee rejects. */
     private static String clanRejectInvite(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = Tribe.rejectInvitation(store, u, parseLong(ctx.query("id"), 0));
-        if (err != null) return fail(err);
+        if (err != null) return failTribe(err);
         return envelope("none", null);
     }
 
     /** POST /clan/api/v1/clan/tribe/member/invite?friendIds=1&amp;friendIds=2&amp;msg= — invite. */
     private static String clanInvite(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         java.util.List<String> vals = ctx.queryValues("friendIds");
         JSONArray ids = new JSONArray();
         for (String v : vals) {
@@ -3440,17 +3459,17 @@ final class Handlers {
             if (id > 0) ids.put(id);
         }
         String err = Tribe.invite(store, u, ids, ctx.query("msg"));
-        if (err != null) return fail(err);
+        if (err != null) return failTribe(err);
         return envelope("none", null);
     }
 
     /** PUT /clan/api/v1/clan/tribe/member?otherId=&amp;type= — set identity (chief). */
     private static String clanSetIdentity(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = Tribe.setIdentity(store, u, parseLong(ctx.query("otherId"), 0),
                 (int) parseLong(ctx.query("type"), 0));
-        if (err != null) return fail(err);
+        if (err != null) return failTribe(err);
         return envelope("none", null);
     }
 
@@ -3461,7 +3480,7 @@ final class Handlers {
      */
     private static String tribeMessageList(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONArray out = new JSONArray();
         long uid = u.optLong("userId");
         JSONObject clan = Tribe.clanOf(store, u);
@@ -3516,7 +3535,7 @@ final class Handlers {
     /** GET /clan/api/v1/clan/tribe/bulletin — TribeNoticeGet {content, updateTime}. */
     private static String tribeBulletinGet(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject clan = Tribe.clanOf(store, u);
         if (clan == null) return fail("not in a clan");
         JSONObject b = clan.optJSONObject("bulletin");
@@ -3529,28 +3548,27 @@ final class Handlers {
     /** POST /clan/api/v1/clan/tribe/bulletin — TribeNoticePost {content} (chief/elder). */
     private static String tribeBulletinPost(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String err = Tribe.setBulletin(store, u, body(ctx).optString("content"));
-        if (err != null) return fail(err);
+        if (err != null) return failTribe(err);
         return envelope("none", null);
     }
 
     /** GET /clan/api/v1/clan/tribe/donation — TribeDonationInfo (today's counters). */
     private static String tribeDonationInfo(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         return envelope("obj", Tribe.donationInfo(store, u).toString());
     }
 
     /** POST /clan/api/v3/clan/tribe/donation?currency=&amp;quantity= — real wallet deduction. */
     private static String tribeDonate(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         int currency = (int) parseLong(ctx.query("currency"), 2);
         int quantity = (int) parseLong(ctx.query("quantity"), 0);
         String err = Tribe.donate(store, u, currency, quantity);
-        if (err != null) return err.startsWith("not enough") || err.contains("limit")
-                ? failCode(5006, err) : fail(err);
+        if (err != null) return failTribe(err);
         long exp = currency == 1 ? quantity * 10L : quantity;
         long got = Math.max(1, exp / 10);
         JSONObject out = new JSONObject();
@@ -3567,7 +3585,7 @@ final class Handlers {
     /** GET /clan/api/v2/clan/tribe/donation/history — PageData&lt;TribeDonationHistory&gt;. */
     private static String tribeDonationHistory(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         int pageNo = (int) parseLong(ctx.query("pageNo"), 1);
         int pageSize = (int) parseLong(ctx.query("pageSize"), 20);
         JSONArray hist = Tribe.donationHistory(store, u);
@@ -3591,7 +3609,7 @@ final class Handlers {
     /** GET /clan/api/v1/clan/tribe/currency — HttpResponse&lt;Long&gt; personal tribe currency. */
     private static String tribeCurrency(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         return envelope("num", String.valueOf(Tribe.tribeCurrency(u)));
     }
 
@@ -3614,9 +3632,9 @@ final class Handlers {
     /** GET /clan/api/v1/clan/user/rank?type= — the caller's clan's TribeRank row. */
     private static String tribeUserRank(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject clan = Tribe.clanOf(store, u);
-        if (clan == null) return fail("not in a clan");
+        if (clan == null) return failTribe("not in a clan");
         JSONArray sorted = clansByExperience(store);
         for (int i = 0; i < sorted.length(); i++) {
             if (sorted.optJSONObject(i) == clan) {
@@ -3660,7 +3678,7 @@ final class Handlers {
     /** GET /clan/api/v2/clan/tasks?type=1|2 and /clan/api/v2/clan/personal/tasks — TribeTask. */
     private static String tribeTasks(Ctx ctx, StateStore store, int type) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         if (Tribe.clanOf(store, u) == null) return fail("not in a clan");
         int t = (int) parseLong(ctx.query("type"), type);
         return envelope("obj", Tribe.tasks(store, u, t).toString());
@@ -3669,11 +3687,11 @@ final class Handlers {
     /** PUT /clan/api/v1/clan/tasks/accept (claim=false) and PUT /clan/api/v1/clan/tasks (claim=true). */
     private static String tribeTaskAction(Ctx ctx, StateStore store, boolean claim) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         long id = parseLong(ctx.query("id"), 0);
         int type = (int) parseLong(ctx.query("type"), 1);
         String err = Tribe.taskAction(store, u, id, type, claim);
-        if (err != null) return fail(err);
+        if (err != null) return failTribe(err);
         if (claim) {
             L.i("tribeTaskReward: userId=" + u.optLong("userId") + " task=" + id);
         }
@@ -3717,12 +3735,12 @@ final class Handlers {
     /** PUT /clan/api/v1/clan/decorations/purchase?decorationId=A&amp;decorationId=B — pay tribe currency. */
     private static String tribeShopBuy(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         java.util.List<String> vals = ctx.queryValues("decorationId");
         long[] ids = new long[vals.size()];
         for (int i = 0; i < vals.size(); i++) ids[i] = parseLong(vals.get(i), 0);
         String err = Tribe.buyDecorations(store, u, ids);
-        if (err != null) return fail(err);
+        if (err != null) return failTribe(err);
         L.i("tribeShopBuy: userId=" + u.optLong("userId") + " items=" + vals.size());
         return envelope("none", null);
     }
@@ -3730,10 +3748,10 @@ final class Handlers {
     /** PUT /clan/api/v1/clan/free/verification?freeVerify= — chief toggles auto-join; returns ClanResponse. */
     private static String clanFreeVerify(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
-        if (u == null) return fail(NO_AUTH);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         int freeVerify = (int) parseLong(ctx.query("freeVerify"), 0);
         String err = Tribe.setFreeVerify(store, u, freeVerify);
-        if (err != null) return fail(err);
+        if (err != null) return failTribe(err);
         JSONObject clan = Tribe.clanOf(store, u);
         return envelope("obj", clanResponseJson(clan, Tribe.roleOf(clan, u.optLong("userId"))).toString());
     }
@@ -3880,6 +3898,60 @@ final class Handlers {
     /** Failure with an explicit numeric code (the client maps code→onError(code)). */
     private static String failCode(int code, String message) {
         return "{\"code\":" + code + ",\"message\":\"" + message + "\"}";
+    }
+
+    /** True when the given name hits the local sensitive-word config. */
+    private static boolean isSensitiveNick(StateStore store, String nick) {
+        if (nick == null || nick.trim().isEmpty()) return false;
+        String q = nick.trim().toLowerCase(java.util.Locale.US);
+        JSONObject cfg = store.root().optJSONObject("config");
+        JSONArray words = cfg == null ? null : cfg.optJSONArray("sensitiveWords");
+        for (int i = 0; words != null && i < words.length(); i++) {
+            String w = words.optString(i).toLowerCase(java.util.Locale.US);
+            if (!w.isEmpty() && q.contains(w)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Phase 7 domain error mappers: translate a domain class's error string
+     * into the client-verified code (ErrorCodes; evidence in
+     * docs/PATCH_PLAN.md "Phase 7"). Unknown messages keep the generic code 0
+     * (the client falls back to ServerOnError's generic toast — safe, just
+     * less specific).
+     */
+    private static String failTribe(String err) {
+        if (err == null) return fail("unknown error");
+        if (err.contains("not in a clan")) return failCode(ErrorCodes.TRIBE_NOT_JOINED, err);
+        if (err.contains("already in a clan")) return failCode(ErrorCodes.TRIBE_JOINED, err);
+        if (err.contains("clan name taken")) return failCode(ErrorCodes.TRIBE_NAME_EXIST, err);
+        if (err.contains("only the chief")) return failCode(ErrorCodes.TRIBE_NOT_CHIEF, err);
+        if (err.contains("no permission")) return failCode(ErrorCodes.TRIBE_NOT_ELDER, err);
+        if (err.contains("clan is full")) return failCode(ErrorCodes.TRIBE_FULL, err);
+        if (err.contains("not enough golds")) return failCode(ErrorCodes.GOLD_NOT_ENOUGH, err);
+        if (err.contains("not enough diamonds")) return failCode(ErrorCodes.TRIBE_NOT_ENOUGH_DIAMOND, err);
+        if (err.contains("daily donation")) return failCode(ErrorCodes.TRIBE_DONATION_CAP, err);
+        if (err.contains("reward already claimed")) return failCode(ErrorCodes.TRIBE_REWARD_CLAIMED, err);
+        if (err.contains("after 24 hours")) return failCode(ErrorCodes.TRIBE_JOIN_COOLDOWN, err);
+        if (err.contains("clan level too low")) return failCode(ErrorCodes.TRIBE_LOW_LEVEL, err);
+        return fail(err);
+    }
+
+    private static String failFriend(String err) {
+        if (err == null) return fail("unknown error");
+        if (err.contains("already friends")) return failCode(ErrorCodes.FRIEND_ALREADY, err);
+        if (err.contains("friend list is full")) return failCode(ErrorCodes.FRIEND_LIST_FULL, err);
+        if (err.contains("not friends (alias)")) return failCode(ErrorCodes.FRIEND_ALIAS_STRANGER, err);
+        if (err.contains("user not found")) return failCode(ErrorCodes.FRIEND_NOT_VALID_USER, err);
+        return fail(err);
+    }
+
+    private static String failGroup(String err) {
+        if (err == null) return fail("unknown error");
+        if (err.contains("group not found")) return failCode(ErrorCodes.GROUP_NO_EXIST, err);
+        if (err.contains("no permission") || err.contains("only the owner")) return failCode(ErrorCodes.GROUP_NO_PERMISSION, err);
+        if (err.contains("not a member")) return failCode(ErrorCodes.GROUP_NOT_MEMBER, err);
+        return fail(err);
     }
 
     // ------------------------------------------------- Phase 2 helpers

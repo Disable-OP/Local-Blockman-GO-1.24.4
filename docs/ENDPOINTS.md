@@ -591,3 +591,15 @@ Two real server bugs were exposed by the real client and fixed this wave
 1. changeNickName read `nickName=` while the client sends `newName=`.
 2. login could not resolve guests upgraded via set-password (findByAccount
    added).
+
+# Error-code contract (Phase 7 — client-verified)
+
+The embedded server no longer returns a bare `code:0` for domain errors.
+Every requireUser failure returns code 7; user/tribe/friend/group error
+paths return the exact codes the 1.24.4 client's OnError mappers translate
+into toasts (101/102/7012/7020 user; 5006/5007/7001-7006/7008/7011/7012/
+7014/7020 tribe; 3001-3004 friend; 8102/8103/8104 group chat). The full
+evidence table + the decompiled gate analysis live in PATCH_PLAN.md
+"Phase 7"; constants in localapi-server ErrorCodes.java. Unknown/legacy
+messages still fall back to code 0 (client shows the generic server-error
+toast) — documented-deliberate.

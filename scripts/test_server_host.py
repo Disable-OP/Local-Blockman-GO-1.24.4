@@ -129,7 +129,7 @@ def main():
         check("register has accessToken+wallet", bool(tok1)
               and r["data"].get("golds", 0) > 0, str(r)[:150])
         r2 = call("POST", "/user/api/v1/register", {"uid": "qa_user1", "password": "x"})
-        check("register dup rejected", r2.get("code") == 0, str(r2)[:100])
+        check("register dup rejected (101)", r2.get("code") == 101, str(r2)[:100])
         lg = call("POST", "/user/api/v1/login", {"uid": "qa_user1", "password": "pw1", "imei": "dev1"})
         check("login ok same userId", lg.get("code") == 1
               and lg.get("data", {}).get("userId") == uid1, str(lg)[:150])
@@ -141,7 +141,7 @@ def main():
         lg3 = call("POST", "/user/api/v2/app/login", {"uid": "qa_user1", "password": "pw1"})
         check("v2/app/login ok", lg3.get("code") == 1, str(lg3)[:100])
         nog = call("POST", "/user/api/v1/login", {"uid": "ghost_user", "password": "pw"})
-        check("login unknown account rejected", nog.get("code") == 0, str(nog)[:100])
+        check("login unknown account rejected (102)", nog.get("code") == 102, str(nog)[:100])
 
         print("== visitor / tourist ==")
         vis = call("POST", "/user/api/v1/visitor", {"imei": "qaimei1"})
@@ -500,9 +500,9 @@ def main():
         check("gdiamond weekly ranking", rk2.get("code") == 1
               and len(rk2.get("data", {}).get("data", [])) == 10, str(rk2)[:100])
         ml = call("GET", "/mailbox/api/v1/mail")
-        check("mail list strict (no auth rejected)", ml.get("code") == 0, str(ml)[:80])
+        check("mail list strict (no auth rejected 7)", ml.get("code") == 7, str(ml)[:80])
         mo = call("PUT", "/mailbox/api/v1/mail?status=1&ids=1", [])
-        check("mail op strict (no auth rejected)", mo.get("code") == 0, str(mo)[:80])
+        check("mail op strict (no auth rejected 7)", mo.get("code") == 7, str(mo)[:80])
         td = call("GET", "/clan/api/v2/clan/tribe?clanId=0")
         check("tribe detail no-clan rejected", td.get("code") == 0, str(td)[:80])
         tid = call("GET", "/clan/api/v1/clan/tribe/id")
@@ -555,7 +555,7 @@ def main():
         check("unknown sku rejected", bad.get("code") == 0, str(bad)[:80])
         noauth = call("POST", "/pay/api/v2/pay/users/recharge?type=android",
                       {"sku": sku, "purchaseData": "", "isSub": False})
-        check("unauthenticated recharge rejected", noauth.get("code") == 0, str(noauth)[:80])
+        check("unauthenticated recharge rejected (7)", noauth.get("code") == 7, str(noauth)[:80])
 
         print("== Phase 4: tribe (clan) discovery ==")
         h1 = {"Access-Token": tok1, "userId": str(uid1), "language": "en"}
@@ -579,9 +579,9 @@ def main():
                       ("clanId", "name", "experience", "rank"))
               and trank["data"]["pageInfo"]["data"][0]["rank"] == "1", str(trank)[:200])
         ur = call("GET", "/clan/api/v1/clan/user/rank?type=exp", headers=h1)
-        check("user rank no-clan rejected", ur.get("code") == 0, str(ur)[:80])
+        check("user rank no-clan rejected (7006)", ur.get("code") == 7006, str(ur)[:80])
         mem0 = call("GET", "/clan/api/v1/clan/tribe/member", headers=h1)
-        check("member list no-clan rejected", mem0.get("code") == 0, str(mem0)[:80])
+        check("member list no-clan rejected (7006)", mem0.get("code") == 7006, str(mem0)[:80])
 
         print("== Phase 4: create clan (real wallet cost) ==")
         w_before = call("GET", "/pay/api/v1/wealth/user", headers=h1).get("data", {}).get("golds", 0)
@@ -592,11 +592,11 @@ def main():
               and cr["data"].get("name") == "QA Clan", str(cr)[:150])
         clan_id = cr.get("data", {}).get("clanId", 0)
         w_after = call("GET", "/pay/api/v1/wealth/user", headers=h1).get("data", {}).get("golds", 0)
-        check("create fee deducted (20000 golds)", w_before - w_after == 20000,
+        check("create fee deducted (8000 golds, client-visible pricing)", w_before - w_after == 8000,
               "before=%s after=%s" % (w_before, w_after))
         cr2 = call("POST", "/clan/api/v2/clan/tribe",
                    {"name": "QA Clan 2", "currency": 2}, headers=h1)
-        check("second create rejected (already in clan)", cr2.get("code") == 0, str(cr2)[:80])
+        check("second create rejected (7001 already in clan)", cr2.get("code") == 7001, str(cr2)[:80])
         tid1 = call("GET", "/clan/api/v1/clan/tribe/id", headers=h1)
         check("tribeId now clanId", tid1.get("code") == 1 and tid1.get("data") == str(clan_id),
               str(tid1)[:80])
@@ -612,7 +612,7 @@ def main():
                    headers={"Access-Token": call("POST", "/user/api/v1/register",
                             {"uid": "qa_tribe_x", "password": "pw", "imei": "devx"}
                             ).get("data", {}).get("accessToken", "")})
-        check("duplicate name rejected", dup.get("code") == 0, str(dup)[:80])
+        check("duplicate name rejected (7002)", dup.get("code") == 7002, str(dup)[:80])
 
         print("== Phase 4: bulletin ==")
         r2 = call("POST", "/user/api/v1/register",
@@ -677,7 +677,7 @@ def main():
         check("elder role 10 visible", ml4.get("code") == 1
               and any(m["userId"] == uid2 and m["role"] == 10 for m in ml4["data"]), str(ml4)[:120])
         si2 = call("PUT", "/clan/api/v1/clan/tribe/member?otherId=%d&type=10" % uid3, headers=h2)
-        check("elder cannot set roles", si2.get("code") == 0, str(si2)[:80])
+        check("elder cannot set roles (7003)", si2.get("code") == 7003, str(si2)[:80])
         si3 = call("PUT", "/clan/api/v1/clan/tribe/member?otherId=%d&type=0" % uid1, headers=h1)
         check("cannot demote chief", si3.get("code") == 0, str(si3)[:80])
 
@@ -698,9 +698,9 @@ def main():
         check("donate diamonds x10 exp", dnd.get("code") == 1
               and dnd["data"].get("experienceGot") == 100, str(dnd)[:120])
         dcap = call("POST", "/clan/api/v3/clan/tribe/donation?currency=2&quantity=30000", None, headers=h2)
-        check("donation cap rejected code 5006", dcap.get("code") == 5006, str(dcap)[:100])
+        check("donation cap rejected code 7011", dcap.get("code") == 7011, str(dcap)[:100])
         dnoauth = call("POST", "/clan/api/v3/clan/tribe/donation?currency=2&quantity=100")
-        check("unauthenticated donation rejected", dnoauth.get("code") == 0, str(dnoauth)[:80])
+        check("unauthenticated donation rejected (7)", dnoauth.get("code") == 7, str(dnoauth)[:80])
         dh = call("GET", "/clan/api/v2/clan/tribe/donation/history?pageNo=1&pageSize=10", headers=h1)
         check("donation history rows", dh.get("code") == 1
               and dh["data"].get("totalSize", 0) == 2
@@ -727,7 +727,7 @@ def main():
         check("claim task reward (+50)", trw.get("code") == 1 and tc_after == tc_before + 50,
               "resp=%s before=%s after=%s" % (trw, tc_before, tc_after))
         trw2 = call("PUT", "/clan/api/v1/clan/tasks?id=1&type=1", headers=h2)
-        check("double claim rejected", trw2.get("code") == 0, str(trw2)[:80])
+        check("double claim rejected (7012)", trw2.get("code") == 7012, str(trw2)[:80])
         pt = call("GET", "/clan/api/v2/clan/personal/tasks?type=2", headers=h2)
         check("personal tasks list", pt.get("code") == 1 and len(pt["data"].get("tasks", [])) == 2,
               str(pt)[:150])
@@ -785,7 +785,7 @@ def main():
         check("chief updates clan", up.get("code") == 1 and up["data"].get("details") == "updated details",
               str(up)[:120])
         up2 = call("PUT", "/clan/api/v1/clan/tribe", {"details": "hijack"}, headers=h2)
-        check("elder cannot update", up2.get("code") == 0, str(up2)[:80])
+        check("elder cannot update (7003)", up2.get("code") == 7003, str(up2)[:80])
         rj3 = call("POST", "/user/api/v1/register",
                    {"uid": "qa_user5", "password": "pw5", "imei": "dev5"})
         uid5, tok5 = rj3["data"]["userId"], rj3["data"]["accessToken"]
@@ -802,7 +802,7 @@ def main():
         check("chief cannot exit", chief_exit.get("code") == 0, str(chief_exit)[:80])
         # dissolve guard: non-chief try (uid2 creates own clan, then uid3... uid2 is in main clan)
         dc = call("DELETE", "/clan/api/v1/clan/tribe?clanId=%d" % clan_id, headers=h2)
-        check("elder cannot dissolve", dc.get("code") == 0, str(dc)[:80])
+        check("elder cannot dissolve (7003)", dc.get("code") == 7003, str(dc)[:80])
         # throwaway clan dissolve by its chief
         rc2c = call("POST", "/user/api/v1/register",
                     {"uid": "qa_user6", "password": "pw6", "imei": "dev6"})
@@ -852,7 +852,7 @@ def main():
               and freqs["data"]["data"][0]["msg"] == "hi there"
               and freqs["data"]["data"][0]["status"] == 0, str(freqs)[:200])
         fnoauth = call("POST", "/friend/api/v1/friends", {"friendId": uid3})
-        check("unauthenticated add rejected", fnoauth.get("code") == 0, str(fnoauth)[:80])
+        check("unauthenticated add rejected (7)", fnoauth.get("code") == 7, str(fnoauth)[:80])
         fag = call("PUT", "/friend/api/v1/friends/%d/agreement" % uid2, headers=h3)
         check("accept request", fag.get("code") == 1, str(fag)[:80])
         fl2 = call("GET", "/friend/api/v1/friends?pageNo=1&pageSize=10", headers=h2)
@@ -984,7 +984,7 @@ def main():
         gsm2 = call("PUT", "/msg/api/v1/msg/group/chat/set/manager",
                     {"groupId": gid, "inviterId": uid3, "memberIds": [uid4],
                      "operationType": 1}, headers=h3)
-        check("manager cannot set managers", gsm2.get("code") == 0, str(gsm2)[:80])
+        check("manager cannot set managers (8103)", gsm2.get("code") == 8103, str(gsm2)[:80])
         gkick = call("PUT", "/msg/api/v1/msg/group/chat/kickOut",
                      {"groupId": gid, "inviterId": uid2, "memberIds": [uid4],
                       "groupName": "QA Group"}, headers=h2)
@@ -1009,7 +1009,7 @@ def main():
               and call("GET", "/msg/api/v1/msg/group/chat/info?groupId=%d" % gid,
                        headers=h3).get("code") == 0, str(gdel)[:150])
         gnoauth = call("POST", "/msg/api/v2/msg/group/chat", {"groupName": "x"})
-        check("unauthenticated group create rejected", gnoauth.get("code") == 0, str(gnoauth)[:80])
+        check("unauthenticated group create rejected (7)", gnoauth.get("code") == 7, str(gnoauth)[:80])
 
         print("== Phase 4d: account security + password lifecycle ==")
         sp = call("POST", "/user/api/v1/app/set-password",
@@ -1494,6 +1494,57 @@ def main():
                       headers={"Access-Token": tok1, "userId": str(uid1)})
         check("v2 password restored", pwback.get("code") == 1, str(pwback)[:80])
 
+        print("== Phase 7: client-verified error codes ==")
+        # 7020 (UserOnError has_illegal_character): sensitive rename via a
+        # DEFAULT config word ("admin" is seeded into sensitiveWords)
+        r7 = call("POST", "/user/api/v1/register",
+                  {"uid": "qa_p7_a", "password": "pw7", "imei": "dev7"})
+        uid7, tok7 = r7["data"]["userId"], r7["data"]["accessToken"]
+        h7 = {"Access-Token": tok7, "userId": str(uid7)}
+        s7 = call("PUT", "/user/api/v2/user/nickName?newName=MrAdmin", headers=h7)
+        check("rename to sensitive word rejected (7020)", s7.get("code") == 7020, str(s7)[:100])
+        ok7 = call("PUT", "/user/api/v2/user/nickName?newName=Harmless", headers=h7)
+        check("clean rename still ok", ok7.get("code") == 1, str(ok7)[:80])
+        # 3001 / 3003 (FriendOnError)
+        r7b = call("POST", "/user/api/v1/register",
+                   {"uid": "qa_p7_b", "password": "pw7", "imei": "dev7b"})
+        uid7b, tok7b = r7b["data"]["userId"], r7b["data"]["accessToken"]
+        h7b = {"Access-Token": tok7b, "userId": str(uid7b)}
+        r7c = call("POST", "/user/api/v1/register",
+                   {"uid": "qa_p7_c", "password": "pw7", "imei": "dev7c"})
+        uid7c, tok7c = r7c["data"]["userId"], r7c["data"]["accessToken"]
+        h7c = {"Access-Token": tok7c, "userId": str(uid7c)}
+        call("POST", "/friend/api/v1/friends", {"friendId": uid7b, "msg": "hi"}, headers=h7)
+        call("PUT", "/friend/api/v1/friends/%d/agreement" % uid7, headers=h7b)
+        dupf = call("POST", "/friend/api/v1/friends", {"friendId": uid7b}, headers=h7)
+        check("friend dup rejected (3001)", dupf.get("code") == 3001, str(dupf)[:100])
+        alias7 = call("POST", "/friend/api/v1/friends/%d/alias?alias=buddy" % uid7b, headers=h7)
+        check("alias friend ok", alias7.get("code") == 1, str(alias7)[:80])
+        alias7s = call("POST", "/friend/api/v1/friends/%d/alias?alias=x" % uid7c, headers=h7)
+        check("alias stranger rejected (3003)", alias7s.get("code") == 3003, str(alias7s)[:100])
+        # 7002 / 7014 (TribeOnError): name taken + 24h rejoin cooldown
+        c7 = call("POST", "/clan/api/v2/clan/tribe",
+                  {"name": "P7 Clan", "details": "d", "tags": ["t"], "currency": 2}, headers=h7)
+        check("p7 clan create ok", c7.get("code") == 1, str(c7)[:120])
+        c7dup = call("POST", "/clan/api/v2/clan/tribe",
+                     {"name": "P7 Clan", "currency": 2}, headers=h7b)
+        check("clan name taken (7002)", c7dup.get("code") == 7002, str(c7dup)[:100])
+        lv7pre = call("POST", "/clan/api/v1/clan/tribe/member",
+                      {"clanId": c7["data"]["clanId"], "msg": "join me"}, headers=h7b)
+        check("p7 join requested", lv7pre.get("code") == 1, str(lv7pre)[:80])
+        ag7 = call("PUT", "/clan/api/v1/clan/tribe/member/agreement?otherId=%d" % uid7b, headers=h7)
+        check("p7 chief accepts", ag7.get("code") == 1, str(ag7)[:80])
+        lv7 = call("DELETE", "/clan/api/v1/clan/tribe/member?clanId=%d" % c7["data"]["clanId"],
+                   headers=h7b)
+        check("member leaves clan", lv7.get("code") == 1, str(lv7)[:80])
+        rj7 = call("POST", "/clan/api/v1/clan/tribe/member",
+                   {"clanId": c7["data"]["clanId"], "msg": "rejoin"}, headers=h7b)
+        check("rejoin within 24h rejected (7014)", rj7.get("code") == 7014, str(rj7)[:100])
+        # sensitive clan name (TribeOnError 7020)
+        c7bad = call("POST", "/clan/api/v2/clan/tribe",
+                     {"name": "Admin Squad", "currency": 2}, headers=h7b)
+        check("clan sensitive name rejected (7020)", c7bad.get("code") == 7020, str(c7bad)[:100])
+
         print("== route-table sweep (all routes answer the envelope) ==")
         sys.path.insert(0, os.path.join(REPO, "scripts"))
         sweep_miss = []
@@ -1510,8 +1561,9 @@ def main():
                 count += 1
                 ok = resp.get("code") == 1
                 if not ok and kind.startswith("H:"):
-                    # handlers correctly reject empty/invalid payloads (code 0)
-                    ok = resp.get("code") == 0
+                    # handlers reject empty/invalid payloads with ANY business
+                    # code (Phase 7: 7/101/102/7001-7014/8102-8104/3001-3004...)
+                    ok = isinstance(resp.get("code"), int)
                 if "__sweep_error" in resp:
                     # one retry on a transient socket hiccup before failing
                     try:
@@ -1572,7 +1624,7 @@ def main():
               and dhp["data"].get("totalSize", 0) == 2, str(dhp)[:120])
         recp = call("GET", "/clan/api/v1/clan/tribe/recommendation", headers=h1b)
         check("npc tribes persist (not reseeded)", recp.get("code") == 1
-              and len(recp.get("data", [])) == 9, str(len(recp.get("data", []))))
+              and len(recp.get("data", [])) == 10, str(len(recp.get("data", []))))  # 8 npc + QA Clan + P7 Clan
         # Phase 5c: mailbox persists — welcome mail claimed (no re-credit), wallet intact
         tok1c = tok1b
         mh1c = {"Access-Token": tok1c, "userId": str(uid1)}
