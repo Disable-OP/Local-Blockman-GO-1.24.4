@@ -2206,7 +2206,8 @@ def main():
                     screen.tap_node(sheet)
                     time.sleep(5)
                     f_alive("F2-editform")
-                    title = screen.find(ids=["tv_title"])
+                    title = screen.find(ids=["tv_title"]) \
+                        or screen.find(ids=["tvTemplateTitle"])
                     ok("F2: edit form title=%r (want 'Edit Clan')"
                        % (title.text if title else None))
                     name_in = screen.find(ids=["etTribeName"])
@@ -2287,8 +2288,10 @@ def main():
                     else:
                         print("  [info] F2: 'Clan tag' label not found - "
                               "tags may already exist")
+                    # 5t v10 (run 37374604536): the layout applies
+                    # textAllCaps - the button renders 'MODIFY'
                     modify = next((x for x in screen.dump()
-                                   if (x.text or "") == "Modify"
+                                   if (x.text or "") in ("Modify", "MODIFY")
                                    and x.center), None)
                     if modify:
                         screen.tap_node(modify)
