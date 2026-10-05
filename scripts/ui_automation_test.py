@@ -1852,7 +1852,31 @@ def main():
                                 screen.tap_node(close)
                                 time.sleep(3)
                                 ok("F: Notice Board dialog closed")
-                        own = screen.find(texts=[own_name])
+                        own = screen.wait_for(texts=[own_name], timeout=14,
+                                              poll=3)
+                        if not own:
+                            # 5t v4: the name text may not render where the
+                            # post-close dump expects; the top-right id-less
+                            # ic_more ImageButton is the homepage's
+                            # distinctive control (and the F2 entry anyway -
+                            # the homepage block's tap on it opens the
+                            # settings sheet directly).
+                            for x in screen.dump():
+                                if x.center and x.cls.endswith("ImageButton"):
+                                    cx, cy = x.center
+                                    if cy < 140 and cx > 360:
+                                        own = x
+                                        ok("F: homepage detected via the "
+                                           "top-right ic_more")
+                                        break
+                        if not own:
+                            print("  [evidence] F: screen after the Notice "
+                                  "Board close:")
+                            for x in screen.dump():
+                                if x.res or x.text or x.desc:
+                                    print("  F-afterclose] %s | text=%r" % (
+                                        x.res.rsplit("/", 1)[-1] if x.res
+                                        else "", x.text[:28]))
                         if own:
                             ok("F: clan homepage reached directly via "
                                "rlEnterClan")
