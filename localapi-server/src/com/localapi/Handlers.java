@@ -2143,8 +2143,16 @@ final class Handlers {
         }
         String cardId = ctx.query("cardId");
         int amount = (int) parseLong(ctx.query("amount"), 1);
+        // ScrapOnError codes: 10107 unknown card, 10105 invalid amount,
+        // 10106 insufficient fragments
+        if (ScrapBag.card(cardId) == null) {
+            return failCode(ErrorCodes.SCRAP_CARD_NOT_EXIST, "card does not exist");
+        }
+        if (amount < 1) {
+            return failCode(ErrorCodes.SCRAP_AMOUNT_INVALID, "invalid combine amount");
+        }
         JSONObject out = ScrapBag.combine(store, u, cardId, amount);
-        return out == null ? fail("not enough scraps or unknown card")
+        return out == null ? failCode(ErrorCodes.SCRAP_NO_ENOUGH, "not enough scraps")
                 : envelope("obj", out.toString());
     }
 
@@ -2155,7 +2163,7 @@ final class Handlers {
         }
         String scrapId = ctx.query("scrapId");
         if (ScrapBag.scrapNum(store, u, scrapId) < 1) {
-            return fail("no scrap to send");
+            return failCode(ErrorCodes.SCRAP_USER_WITHOUT_SCRAP, "no scrap to send");
         }
         ScrapBag.addScrap(store, u, scrapId, -1);
         return envelope("str", JSONObject.quote(

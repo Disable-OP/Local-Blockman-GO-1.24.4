@@ -84,4 +84,14 @@ final class ErrorCodes {
     static final int GAME_REPEAT_LIKE = 2005;
     /** 2008 "You need to play the game to like" — NOT emitted yet (see PATCH_PLAN Phase 7d). */
     static final int GAME_NOT_PLAYED = 2008;
+
+    // ---- scrap (ScrapOnError) ----
+    /** base_err_user_without_scrap — "You do not have the fragment". */
+    static final int SCRAP_USER_WITHOUT_SCRAP = 10104;
+    /** base_err_scarp_amount_invalid — "Invalid combine amount". */
+    static final int SCRAP_AMOUNT_INVALID = 10105;
+    /** base_err_scrap_no_enough — "Insufficient fragment". */
+    static final int SCRAP_NO_ENOUGH = 10106;
+    /** base_err_card_not_exist — "The card does not exist". */
+    static final int SCRAP_CARD_NOT_EXIST = 10107;
 }

@@ -488,7 +488,13 @@ def main():
               and hist.get("data", {}).get("totalSize", 0) >= 1, str(hist)[:120])
         badc = call("POST", "/activity/api/v1/collect/exchange/user/combine/card?cardId=c6&amount=999",
                     None, headers={"Access-Token": tok1, "userId": str(uid1)})
-        check("combine insufficient rejected", badc.get("code") == 0, str(badc)[:100])
+        check("combine insufficient rejected (10106)", badc.get("code") == 10106, str(badc)[:100])
+        badcard = call("POST", "/activity/api/v1/collect/exchange/user/combine/card?cardId=c99&amount=1",
+                       None, headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("combine unknown card (10107)", badcard.get("code") == 10107, str(badcard)[:100])
+        badamt = call("POST", "/activity/api/v1/collect/exchange/user/combine/card?cardId=c1&amount=0",
+                      None, headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("combine invalid amount (10105)", badamt.get("code") == 10105, str(badamt)[:100])
         targets = call("GET", "/activity/api/v1/collect/exchange/card/details/scrap?scrapId=s1&pageNo=1&pageSize=10")
         check("scrap request targets", targets.get("code") == 1
               and targets.get("data", {}).get("totalSize", 0) > 0, str(targets)[:120])
