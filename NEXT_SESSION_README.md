@@ -677,3 +677,29 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   Settings (sa.b, the authentication-free toggle) drives; (3) Bind-domain
   codes (102-119) when the account-security screens get driven; (4) NO
   GameServer work (standing instruction).
+
+## Session 17 delta 2 (read first — the guide is patched away; F2 rides v0.6.1)
+
+- The clan-UPDATE drive hit the one-time TribeSettingGuideDialog and FIVE
+  runs of honest evidence exhausted every UI exit (full saga in WORKLOG
+  cont. 2): the label tap re-shows the guide forever (a() -> f() ->
+  H()+Ta(true)), no variant renders the bottom 'Clan Settings' bar, no
+  self-dismiss exists once revealed. The Notice Board (bulletin) dialog is
+  drivable (btnSure CLOSE) and the owner tab3 IS the clan dashboard.
+- RESOLUTION: scripts/patch_tribeguide.py stubs Ta.show() in the build
+  pipeline (killlog-patcher precedent; pure UX, no server contract).
+  Tag v0.6.1-guidefix ships the patched APK; test-redroid verifies F2.
+- FACTS: owner tab3 layout = tvClanName + rl_donate + Chief + 1/22 +
+  ivClanMsg + rlEnterClan('Enter Clan') + ivMakeFriend + btnSearchFriend +
+  'Coming soon' (find-friends placeholder) + the bottom nav. rlEnterClan
+  queues Notice Board (CLOSE) -> homepage. The edit entry: ic_more
+  (id-less ImageButton top-right) -> sheet 'Edit Profile' -> create
+  template in EDIT mode (pre-filled, NO icon, NO golds gate) -> Add Tag
+  (update requires 1..4 tags) -> 'Modify' Button (binding_7 = i() ->
+  TribeApi.clanUpdate). Bounded PUT detection + tribe/base read-back.
+- If the v0.6.1 run is green: PUT /clan/api/v1/clan/tribe is
+  CLIENT-ASSERTED end-to-end; consider Manage Members (oa.a) + Clan
+  Settings (sa.b) drives next; sync PATCH_PLAN "Phase F2" with the run
+  evidence. If red: the F2 checks fail only when the form was reached —
+  read the phase-F dumps first.
+- NO GameServer work (standing instruction).
