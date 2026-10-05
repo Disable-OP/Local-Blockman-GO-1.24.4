@@ -1754,7 +1754,44 @@ def main():
                         x.res.rsplit("/", 1)[-1] if x.res else "",
                         x.text[:28], x.desc[:24]))
             f_alive("F-tab3")
-            own = screen.find(texts=[clan_name_e])
+            # 5s v4: the tab3 dump (reliable - main screen, no GL carousel)
+            # exposes two UNDISCOVERED entries (Session 14 named them):
+            # ivTribe (clan info?) and ivClanMsg0 (clan messages?). For a
+            # clan OWNER, ivTribe may open the own-clan homepage directly
+            # - driving it avoids the flaky clan-screen dumps entirely
+            # (5s v3: every uiautomator dump after the first missed on the
+            # rotating bannerViewPager).
+            own = None
+            for entry, stage in (("ivTribe", "F-tribeentry"),
+                                 ("ivClanMsg0", "F-clanmsg")):
+                node = screen.find(ids=[entry])
+                if not (node and screen.tap_node(node)):
+                    print("  [skip] F: %s not found on tab3" % entry)
+                    continue
+                time.sleep(5)
+                if not f_alive(stage):
+                    break
+                for x in screen.dump():
+                    if x.res or x.text or x.desc:
+                        print("  %s] %s | text=%r" % (
+                            stage, x.res.rsplit("/", 1)[-1] if x.res
+                            else "", x.text[:28]))
+                own = screen.find(texts=[clan_name_e])
+                if own and own.center:
+                    ok("F: own clan %s reachable via %s" % (clan_name_e,
+                                                            entry))
+                    break
+                # not here. BACK only if we actually LEFT the main screen
+                # (the bottom nav is gone) — a no-op entry tap followed by
+                # BACK would exit the app (5s v4 guard)
+                if screen.find(ids=["rb_3"]):
+                    print("  [info] F: %s tap was a no-op (still on tab3)"
+                          % entry)
+                    continue
+                adb.key(4)
+                time.sleep(2)
+                f_alive("%s-back" % stage)
+                own = None
             if not own:
                 # re-enter the clan screen (rlSearchClan - established id)
                 clanrow = screen.find(ids=["rlSearchClan"])
