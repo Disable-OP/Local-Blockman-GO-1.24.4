@@ -1319,10 +1319,17 @@
 - Host rig 349/349 (baseline re-verified 337 first). New "== Phase 7"
   block asserts 7020/3001/3003/7002/7014 + the upgraded codes; the sweep
   now accepts any integer business code for H: handlers.
+- Follow-up waves 7b/7c (same session): GAME codes — gameDetail/preheat
+  unknown id -> 2002, appreciation now requireUser (7) with per-user
+  appreciated[] state and repeat-like -> 2005 (praise grows once); SCRAP
+  codes — combine unknown card 10107 / invalid amount 10105 /
+  insufficient 10106, send-without-scrap 10104. Host rig 354/354 (one
+  watchdog-takeover timing flake re-verified green).
 - Docs: ARCHITECTURE.md section 9 (dispatch contract), PATCH_PLAN.md
   "Phase 7" (authoritative table + false-positive record), ENDPOINTS.md
-  error-code contract. No dex behavior change beyond the server logic —
-  classes6.dex rebuilt (214000 bytes), CI will ship it on the next tag.
+  error-code contract. classes6.dex rebuilt (214572 bytes) and shipped by
+  tag v0.6.0-errorcodes (build-release green); commits 1479931, d35b070,
+  565c271 on local-api.
 - Next candidates: (1) dispatch + verify the redroid run (automation fix
   + Phase 7 in the dex); (2) the icon gate stands: either drive the
   gallery+crop in Redroid (fragile) or drive the clan-UPDATE form as an
