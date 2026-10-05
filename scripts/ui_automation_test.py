@@ -1842,15 +1842,18 @@ def main():
                                 print("  F-clanhome-direct] %s | text=%r" % (
                                     x.res.rsplit("/", 1)[-1] if x.res
                                     else "", x.text[:28]))
-                        # 5t v3/v5 (runs 37338438610, 37342075770,
-                        # 37344788918): entering the clan homepage queues
-                        # TWO overlays — the one-time TribeSettingGuide
-                        # (self-clears in ~20s, evidence) and the "Notice
-                        # Board" bulletin dialog (btnSure CLOSE). uiautomator
-                        # dumps only the ACTIVE window, so settle in a loop:
-                        # close the Notice Board whenever it is up, wait out
-                        # the guide, until a homepage marker shows.
-                        settle_deadline = time.time() + 40
+                        # 5t v3/v6 (runs 37338438610, 37342075770,
+                        # 37344788918, 37348093722): entering the clan
+                        # homepage queues the one-time TribeSettingGuide
+                        # (self-clears ~20s, may RE-SHOW after the Notice
+                        # Board close — v5 evidence) and the "Notice Board"
+                        # bulletin dialog (btnSure CLOSE). uiautomator dumps
+                        # only the ACTIVE window. Settle loop: CLOSE the
+                        # Notice Board whenever up, WAIT OUT the guide
+                        # (tapping it re-shows it — Ta label -> f() ->
+                        # H()+Ta(true).show()), until a homepage marker or
+                        # the budget ends.
+                        settle_deadline = time.time() + 100
                         while time.time() < settle_deadline:
                             d_settle = screen.dump()
                             texts_now = [(x.text or "") for x in d_settle]
@@ -1866,9 +1869,9 @@ def main():
                                 continue
                             if any("Authentication-free mode" in t
                                    for t in texts_now):
-                                # the one-time guide clears by itself
-                                # (run 37344788918 evidence)
-                                time.sleep(4)
+                                # the guide clears by itself; tapping its
+                                # label RE-SHOWS it (f() shows Ta again)
+                                time.sleep(5)
                                 continue
                             break
                         own = screen.wait_for(texts=[own_name], timeout=14,
@@ -2121,10 +2124,15 @@ def main():
                 if guide:
                     print("  [evidence] F2: one-time TribeSettingGuideDialog "
                           "is up - its top-right label tap opens the "
-                          "settings sheet")
+                          "settings sheet (and re-shows the guide: wait "
+                          "it out)")
                     screen.tap_node(guide)
-                    time.sleep(3)
-                sheet = screen.find(texts=["Edit Profile"])
+                    # f() = H() (sheet) + Ta(true).show() — the guide covers
+                    # the sheet again and self-clears (~20s, run evidence)
+                    sheet = screen.wait_for(texts=["Edit Profile"],
+                                            timeout=30, poll=4)
+                else:
+                    sheet = screen.find(texts=["Edit Profile"])
                 if not sheet:
                     more = None
                     for x in screen.dump():
@@ -2137,11 +2145,11 @@ def main():
                     if more and screen.tap_node(more):
                         print("  [evidence] F2: ic_more (top-right id-less "
                               "ImageButton) tapped")
-                        time.sleep(3)
+                        sheet = screen.wait_for(texts=["Edit Profile"],
+                                                timeout=12, poll=3)
                     else:
                         print("  [info] F2: no top-right ImageButton found "
                               "- cannot open the settings sheet")
-                    sheet = screen.find(texts=["Edit Profile"])
                 if sheet and sheet.center:
                     ok("F2: settings sheet shows 'Edit Profile'")
                     screen.tap_node(sheet)
