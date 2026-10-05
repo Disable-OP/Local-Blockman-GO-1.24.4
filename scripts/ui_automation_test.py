@@ -1772,20 +1772,43 @@ def main():
                                 x.text[:28]))
                     own = screen.find(texts=[clan_name_e])
                     if not own:
-                        # search for the exact created name (5n: the input
-                        # is a hint-text picker, no EditText exists). The
-                        # 5s run (37253917363) showed uiautomator can MISS
-                        # the input on a busy clan screen (rotating
-                        # bannerViewPager) - retry the lookup on fresh
-                        # dumps before declaring it absent.
+                        # 5s v2 evidence (run 37255687401 + localapi.txt):
+                        # tribeRecommendation returns ALL tribes — the own
+                        # clan IS in the list, usually below the fold.
+                        # Swipe rvData up once and look again (no typing).
+                        rv = screen.find(ids=["rvData"])
+                        if rv and rv.bounds:
+                            l, t, r, b = rv.bounds
+                            adb.sh("input swipe %d %d %d %d 400"
+                                   % ((l + r) // 2, b - 80,
+                                      (l + r) // 2, t + 80))
+                            time.sleep(3)
+                            f_alive("F-clanscreen-swiped")
+                            for x in screen.dump():
+                                if x.res or x.text or x.desc:
+                                    print("  F-clanscreen-swiped] %s | "
+                                          "text=%r" % (
+                                              x.res.rsplit("/", 1)[-1]
+                                              if x.res else "",
+                                              x.text[:28]))
+                        own = screen.find(texts=[clan_name_e])
+                    if not own:
+                        # exact-name search. 5s v3 decode (jadx
+                        # activity_tribe_search.xml): the input IS a real
+                        # EditText (tvTitle, hint tribe_search_hint) in the
+                        # toolbar + an ID-LESS search Button right of it.
+                        # 5s v2 evidence: the search fired twice yet
+                        # returned 97b EMPTY — the typed name was mangled
+                        # (wave-5q IME-autocorrect trap). So: type,
+                        # VERIFY the EditText content, then tap the search
+                        # Button (fallback key(66)).
                         edit = None
                         for attempt in range(3):
                             edit = next((x for x in screen.dump()
                                          if x.center
-                                         and (x.cls.endswith("EditText")
-                                              or (x.text or "")
-                                              .startswith("Enter clan"))),
-                                        None)
+                                         and x.cls.endswith("EditText")
+                                         and (x.text or "")
+                                         .startswith("Enter clan")), None)
                             if edit:
                                 break
                             print("  [evidence] F: search-input lookup "
@@ -1797,7 +1820,56 @@ def main():
                             time.sleep(1)
                             adb.text(clan_name_e)
                             time.sleep(1)
-                            adb.key(66)  # IME action
+                            typed = None
+                            for x in screen.dump():
+                                if x.cls.endswith("EditText") and x.center:
+                                    typed = x.text or ""
+                                    break
+                            ok("F: tvTitle now holds %r (wanted %r)"
+                               % (typed, clan_name_e))
+                            if typed != clan_name_e:
+                                # retype once: clear (select-all+del is
+                                # unreliable over adb) — retype appends on
+                                # some IMEs, so BACK-space the difference
+                                if typed:
+                                    adb.key(67)  # DEL
+                                    for _ in range(len(typed) + 2):
+                                        adb.key(67)
+                                        time.sleep(0.1)
+                                adb.text(clan_name_e)
+                                time.sleep(1)
+                                for x in screen.dump():
+                                    if x.cls.endswith("EditText") \
+                                            and x.center:
+                                        typed = x.text or ""
+                                        break
+                                ok("F: tvTitle after retype %r" % typed)
+                            # the id-less search Button sits RIGHT of
+                            # tvTitle on the same toolbar row
+                            btn = None
+                            if edit.bounds:
+                                el, et, er, eb = edit.bounds
+                                for x in screen.dump():
+                                    if not (x.clickable and x.bounds
+                                            and x.cls.endswith("Button")):
+                                        continue
+                                    bl, bt, br, bb = x.bounds
+                                    if abs((bt + bb) // 2
+                                           - (et + eb) // 2) < 30 \
+                                            and bl >= er - 10:
+                                        btn = x
+                                        break
+                            if btn:
+                                print("  [info] F: search Button %s "
+                                      "bounds=%s" % (
+                                          btn.res.rsplit("/", 1)[-1]
+                                          if btn.res else "<idless>",
+                                          btn.bounds))
+                                screen.tap_node(btn)
+                            else:
+                                print("  [evidence] F: no search Button "
+                                      "found - falling back to key(66)")
+                                adb.key(66)  # IME action
                             time.sleep(5)
                             f_alive("F-clanscreen-search")
                             # 5n/5p evidence: the first BACK after a search
@@ -1806,6 +1878,11 @@ def main():
                             adb.key(4)
                             time.sleep(2)
                             f_alive("F-clanscreen-imeclosed")
+                            for x in screen.dump():
+                                if x.res or x.text or x.desc:
+                                    print("  F-results] %s | text=%r" % (
+                                        x.res.rsplit("/", 1)[-1]
+                                        if x.res else "", x.text[:28]))
                             own = screen.find(texts=[clan_name_e])
                             if not own:
                                 # one honest re-look: the results may need
