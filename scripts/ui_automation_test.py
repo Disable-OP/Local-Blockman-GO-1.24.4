@@ -1773,12 +1773,25 @@ def main():
                     own = screen.find(texts=[clan_name_e])
                     if not own:
                         # search for the exact created name (5n: the input
-                        # is a hint-text picker, no EditText exists)
-                        edit = next((x for x in screen.dump()
-                                     if x.center
-                                     and (x.cls.endswith("EditText")
-                                          or (x.text or "")
-                                          .startswith("Enter clan"))), None)
+                        # is a hint-text picker, no EditText exists). The
+                        # 5s run (37253917363) showed uiautomator can MISS
+                        # the input on a busy clan screen (rotating
+                        # bannerViewPager) - retry the lookup on fresh
+                        # dumps before declaring it absent.
+                        edit = None
+                        for attempt in range(3):
+                            edit = next((x for x in screen.dump()
+                                         if x.center
+                                         and (x.cls.endswith("EditText")
+                                              or (x.text or "")
+                                              .startswith("Enter clan"))),
+                                        None)
+                            if edit:
+                                break
+                            print("  [evidence] F: search-input lookup "
+                                  "miss #%d (uiautomator dump raced the "
+                                  "banner carousel?)" % (attempt + 1))
+                            time.sleep(3)
                         if edit:
                             screen.tap_node(edit)
                             time.sleep(1)
@@ -1794,6 +1807,19 @@ def main():
                             time.sleep(2)
                             f_alive("F-clanscreen-imeclosed")
                             own = screen.find(texts=[clan_name_e])
+                            if not own:
+                                # one honest re-look: the results may need
+                                # another beat to render after the IME closes
+                                time.sleep(4)
+                                own = screen.find(texts=[clan_name_e])
+                        else:
+                            print("  [evidence] F: no search-input node in "
+                                  "3 dumps - cannot exact-name search")
+                    elif own and not own.center:
+                        print("  [evidence] F: own-clan node present but "
+                              "bounds-less (dump race) - retapping dump")
+                        own = screen.wait_for(texts=[clan_name_e],
+                                              timeout=15, poll=3)
             if own and own.center:
                 ok("F: own clan %s surfaced on the clan screens" % clan_name_e)
                 screen.tap_node(own)
