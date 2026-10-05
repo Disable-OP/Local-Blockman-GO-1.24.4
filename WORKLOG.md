@@ -1456,3 +1456,30 @@
   (a7a2496) — workflow_run executes main's file for tag-triggered runs.
 - Tagged v0.6.1-guidefix: build-release rebuilds the APK with the patch,
   then test-redroid verifies Phase F/F2 end-to-end on the patched client.
+
+## Session 17 cont. 3 — FINAL: PUT /clan/api/v1/clan/tribe CLIENT-ASSERTED (v0.6.1-guidefix)
+
+- Build pipeline note: the v0.6.1-guidefix TAG build was cancelled 3x by
+  the runner (~15-16 min in, no logs); the workflow_dispatch route
+  (supported by build-release.yml) completed cleanly. The verified APK
+  shipped as wip-38; the release was renamed to v0.6.1-guidefix via the
+  API (PATCH tag_name) so the release naming matches the tag.
+- Run 37374604536 (PASS, wip-38): the guide patch VERIFIED on-device —
+  rlEnterClan -> Notice Board CLOSE -> clean homepage (no guide) -> the
+  full F-clanhome dump (Clan/PersClanXXXXX/DONATE/Task/Shop/LeaderBoard/
+  Notice/Chat/Member list 1-22/Chief). ic_more -> sheet 'Edit Profile'
+  -> Edit Clan form -> name retyped (verified) -> tag QA2 added. Only
+  the submit tap missed: the button renders 'MODIFY' (textAllCaps).
+- Run 37377150215 (PASS, v0.6.1-guidefix): the ONE-LINE case fix
+  completed the chain — 'MODIFY' tapped, bounded PUT detection 0 -> 1,
+  server read-back name='EditClan37439'. 57 unique endpoints, 0 FATAL.
+- SESSION 17 TOTALS: 20 pushes (9b4ec36..), host rig 361/361, 10
+  dispatched/tag runs (7 green incl. the final chain, 1 timeout-triaged,
+  1 unpack-bug fixed, 1 build-cancelled->dispatch-routed), server fixes:
+  clanUpdate 7002 uniqueness + 7006 non-member (client-contract gaps),
+  client patch: guide overlay neutralized (patch_tribeguide.py).
+- NEXT (priority): (1) error-driven pass over the final diagnostics;
+  (2) Manage Members (oa.a) + Clan Settings (sa.b) owner drives via the
+  same sheet; (3) Bind-domain codes (102-119) when account-security
+  screens get driven; (4) sync main's test-redroid timeout — DONE
+  (a7a2496). NO GameServer work (standing instruction).
