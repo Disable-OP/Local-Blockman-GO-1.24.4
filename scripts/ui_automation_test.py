@@ -1831,6 +1831,7 @@ def main():
             # fallback for non-owner layouts.
             own = None
             sheet_pre = False
+            guide_left = False
             if screen.find(ids=["tvClanName"]):
                 ok("F: owner dashboard on tab3 (tvClanName=%s)" % own_name)
                 enter = screen.find(ids=["rlEnterClan"]) \
@@ -1872,28 +1873,40 @@ def main():
                                 continue
                             if any("Authentication-free mode" in t
                                    for t in texts_now):
-                                # the guide self-clears ~20s on the FIRST
-                                # show (run 37344788918) but a re-shown one
-                                # stayed 100s+ (runs 37348093722 /
-                                # 37351059115). After ~25s of persistent
-                                # guide: tap its label — the I()-shown
-                                # variant's a() opens the settings sheet AND
-                                # dismisses the guide (no re-show loop; the
-                                # re-show only follows the f() path).
+                                # 5t v8 decode (runs 37348093722 /
+                                # 37351059115 / 37354556790): the guide does
+                                # NOT self-dismiss — the Notice Board simply
+                                # stacks ABOVE it (v4 misread); closing the
+                                # NB REVEALS the guide again. Tapping the
+                                # label (a()) opens the sheet but ALSO
+                                # re-shows a fresh guide forever. The clean
+                                # exit is the guide's BOTTOM 'Clan Settings'
+                                # bar (b()): it dismisses the guide + sheet
+                                # and opens the sa.b template; one BACK then
+                                # lands on a CLEAN homepage (ic_more opens
+                                # the sheet with NO guide — command o calls
+                                # l() -> H() only).
                                 guide_polls += 1
-                                if guide_polls >= 5:
-                                    label = next(
+                                if guide_polls >= 4:
+                                    bar = next(
                                         (x for x in d_settle
-                                         if "Authentication-free mode"
-                                         in (x.text or "") and x.center), None)
-                                    if label and screen.tap_node(label):
-                                        sheet_pre = True
-                                        ok("F: guide label tapped - settings "
-                                           "sheet should be open")
+                                         if (x.text or "") == "Clan Settings"
+                                         and x.center), None)
+                                    if bar and screen.tap_node(bar):
+                                        guide_left = True
+                                        ok("F: guide left via its 'Clan "
+                                           "Settings' bar (b()) - BACKing "
+                                           "from sa.b")
+                                    else:
+                                        print("  [evidence] F: guide's Clan "
+                                              "Settings bar not found")
                                     break
                                 time.sleep(5)
                                 continue
                             break
+                        if guide_left:
+                            adb.key(4)  # leave sa.b - back to the homepage
+                            time.sleep(4)
                         if sheet_pre:
                             own = None  # the sheet window hides the homepage
                         else:
