@@ -703,3 +703,27 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   evidence. If red: the F2 checks fail only when the form was reached —
   read the phase-F dumps first.
 - NO GameServer work (standing instruction).
+
+## Session 17 FINAL (read first — v0.6.1-guidefix verified, the update PUT is client-asserted)
+
+- HEADLINE: PUT /clan/api/v1/clan/tribe is CLIENT-ASSERTED through the
+  real UI (run 37377150215, 57 endpoints, 0 FATAL): persistent clan for
+  the live registered session -> owner tab3 dashboard -> rlEnterClan ->
+  Notice Board CLOSE -> homepage -> ic_more -> 'Edit Profile' -> Edit
+  Clan form (pre-filled, no icon, no golds gate) -> rename EditClan<uniq>
+  -> Add Tag QA2 (update REQUIRES 1..4 tags) -> MODIFY -> PUT fired ->
+  server read-back name matches. Bounded PUT detection + tribe/base
+  read-back are permanent CI assertions now.
+- The guide overlay is patched out (scripts/patch_tribeguide.py stubs
+  Ta.show(); shipped in release v0.6.1-guidefix — renamed from wip-38
+  after the tag-route builds kept getting runner-cancelled at ~15min;
+  workflow_dispatch builds release as wip-N and the API PATCH renames it).
+- FACTS: submit button renders 'MODIFY' (textAllCaps — match both);
+  the template title id is tvTemplateTitle; homepage widgets: DONATE/
+  Task/Shop/LeaderBoard/Notice/Chat/Member list (1/22)/Total contribution;
+  the F2 update contract: {clanId, details, headPic, name, tags} with
+  server-owned 7002 uniqueness.
+- Next candidates: (1) error-driven pass over the final diagnostics
+  artifact; (2) Manage Members (oa.a) + Clan Settings (sa.b) drives from
+  the same sheet; (3) Bind-domain error codes (102-119) when the
+  account-security screens are driven; (4) NO GameServer work.
