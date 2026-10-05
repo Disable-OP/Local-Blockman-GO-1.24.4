@@ -58,6 +58,9 @@ python3 "$REPO/scripts/patch_bootstrap.py" "$BUILD/apktool_out/smali/com/disabng
 echo "== patch_killlog.py (kill-site stack logs) =="
 python3 "$REPO/scripts/patch_killlog.py"
 
+echo "== patch_tribeguide.py (one-time clan guide overlay off) =="
+python3 "$REPO/scripts/patch_tribeguide.py"
+
 # --- embedded server dex ---
 echo "== build_server_dex.sh =="
 bash "$REPO/scripts/build_server_dex.sh"
