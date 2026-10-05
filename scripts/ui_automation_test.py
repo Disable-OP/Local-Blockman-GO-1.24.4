@@ -804,27 +804,30 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                                           x.cls.rsplit(".", 1)[-1]
                                           if x.cls else "",
                                           x.text[:24], x.clickable))
-                        # pick the first clearly selectable option (a
-                        # clickable node with real text, inside the picker
-                        # — not the title/back chrome)
-                        opt = next((x for x in pd
-                                    if x.clickable and x.center
-                                    and (x.text or "").strip()
-                                    and x.text not in ("Create a clan",)),
-                                   None)
-                        if opt:
-                            screen.tap_node(opt)
+                        # v4 (run 37245519359): the "picker" is an Add Tag
+                        # DIALOG — et_msg EditText + CANCEL/CONFIRM buttons
+                        # (ids on record). Type a short tag and confirm;
+                        # the tag is client-validated free text.
+                        msg = screen.find(ids=["et_msg"])
+                        if msg and msg.center:
+                            screen.tap_node(msg)
+                            time.sleep(1)
+                            adb.text("QA")
+                            time.sleep(1)
+                        conf = screen.find(ids=["btn_confirm"])
+                        if conf and conf.center:
+                            screen.tap_node(conf)
                             time.sleep(3)
-                            alive_or_recover("%s-clantag-picked" % tag)
-                            ok("5q v3: tag picked: %r" % opt.text)
+                            alive_or_recover("%s-clantag-confirm" % tag)
+                            ok("5q v4: tag 'QA' typed + CONFIRM tapped")
                             for x in screen.dump():
                                 if x.res or x.text or x.desc:
                                     print("  clantag2] %s | text=%r" % (
                                         x.res.rsplit("/", 1)[-1]
                                         if x.res else "", x.text[:28]))
                         else:
-                            print("  [info] no selectable tag option in "
-                                  "the picker dump")
+                            print("  [info] no btn_confirm in the dialog; "
+                                  "BACKing out")
                             adb.key(4)
                             time.sleep(2)
                     else:
