@@ -1842,16 +1842,35 @@ def main():
                                 print("  F-clanhome-direct] %s | text=%r" % (
                                     x.res.rsplit("/", 1)[-1] if x.res
                                     else "", x.text[:28]))
-                        # 5t v3 (run 37338438610): entering the clan
-                        # homepage opens a "Notice Board" dialog first
-                        # (the clan bulletin — empty for API-created
-                        # clans); its btnSure 'CLOSE' reveals the page.
-                        if screen.find(texts=["Notice Board"]):
-                            close = screen.find(ids=["btnSure"])
-                            if close and close.center:
-                                screen.tap_node(close)
+                        # 5t v3/v5 (runs 37338438610, 37342075770,
+                        # 37344788918): entering the clan homepage queues
+                        # TWO overlays — the one-time TribeSettingGuide
+                        # (self-clears in ~20s, evidence) and the "Notice
+                        # Board" bulletin dialog (btnSure CLOSE). uiautomator
+                        # dumps only the ACTIVE window, so settle in a loop:
+                        # close the Notice Board whenever it is up, wait out
+                        # the guide, until a homepage marker shows.
+                        settle_deadline = time.time() + 40
+                        while time.time() < settle_deadline:
+                            d_settle = screen.dump()
+                            texts_now = [(x.text or "") for x in d_settle]
+                            if "Notice Board" in texts_now:
+                                close = next(
+                                    (x for x in d_settle
+                                     if x.res.rsplit("/", 1)[-1] == "btnSure"
+                                     and x.center), None)
+                                if close:
+                                    screen.tap_node(close)
+                                    ok("F: Notice Board dialog closed")
                                 time.sleep(3)
-                                ok("F: Notice Board dialog closed")
+                                continue
+                            if any("Authentication-free mode" in t
+                                   for t in texts_now):
+                                # the one-time guide clears by itself
+                                # (run 37344788918 evidence)
+                                time.sleep(4)
+                                continue
+                            break
                         own = screen.wait_for(texts=[own_name], timeout=14,
                                               poll=3)
                         if not own:
