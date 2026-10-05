@@ -821,3 +821,28 @@ update (update excludes the caller's own clan). Chief-only stays 7003
 Host rig 361/361 (8 new assertions: chief update+persist, 7002, 7006,
 rename-restore, cleanup). No dex-shape change; classes6.dex rebuilt
 (214728 bytes) — ship by tag if the on-device run is green.
+
+### Phase F2 run evidence (Session 17 — the guide saga, 5t v1..v9)
+
+Each wave landed with the run PASS (F2 checks fire only when the form is
+reached), so the loop stayed green while the evidence accumulated:
+
+| Run | Decode |
+|---|---|
+| 37335622091 | persistent-clan premise TRUE: owner tab3 IS the clan dashboard (tvClanName / Chief / 1-22 / rl_donate / rlEnterClan); owner surfaces hit through the real client |
+| 37338438610 | rlEnterClan opens the homepage under a 'Notice Board' dialog (the empty bulletin; btnSure CLOSE) |
+| 37342075770 | CLOSE works; single post-close name-find misses (evidence dump added) |
+| 37344788918 | the one-time guide overlay appears at entry; the Notice Board replaces it as the active window (misread as self-clear) |
+| 37348093722 | 100s settle budget: after the NB close the guide re-appears and persists — no self-dismiss |
+| 37351059115 | same at 100s+ |
+| 37354556790 | label-tap escape opens the sheet BUT f() re-shows a fresh guide (a() -> messenger -> H()+Ta(true).show()); sheet never visible |
+| 37358087903 | the layout's bottom 'Clan Settings' bar (b()) never appears in either variant's dump |
+| 37361712499 | two-tap dance refuted: the a=true guide has no bar either |
+
+CONCLUSION: the guide overlay has NO drivable dismissal. It is pure UX
+(one analytics event + a SharedUtils one-shot flag), so the build pipeline
+now stubs `Ta.show()` (scripts/patch_tribeguide.py, killlog-patcher
+precedent). With the overlay gone the entry chain is: rlEnterClan ->
+Notice Board CLOSE -> clean homepage -> ic_more -> sheet -> Edit Profile
+-> rename + Add Tag -> Modify -> PUT /clan/api/v1/clan/tribe -> server
+read-back. Shipped by tag v0.6.1-guidefix.
