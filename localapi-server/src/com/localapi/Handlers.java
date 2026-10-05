@@ -659,7 +659,8 @@ final class Handlers {
     private static String gameDetailJson(StateStore store, String gameId) {
         JSONObject g = GameCatalog.byId(store, gameId);
         if (g == null) {
-            return fail("game not found");
+            // GameOnError 2002 base_game_detail_appreciation_game_not_exist
+            return failCode(ErrorCodes.GAME_NOT_EXIST, "game not found");
         }
         return envelope("obj", g.toString());
     }
@@ -673,7 +674,7 @@ final class Handlers {
     private static String gamePreheat(Ctx ctx, StateStore store) {
         JSONObject g = GameCatalog.byId(store, ctx.pathParam("gameId"));
         if (g == null) {
-            return fail("game not found");
+            return failCode(ErrorCodes.GAME_NOT_EXIST, "game not found");
         }
         JSONObject w = new JSONObject();
         w.put("gameId", g.optString("gameId"));
@@ -850,12 +851,35 @@ final class Handlers {
         return envelope("num", "0");
     }
 
-    /** PUT /game/api/v1/games/{gameId}/appreciation — increments praise, returns new total. */
+    /**
+     * PUT /game/api/v1/games/{gameId}/appreciation — like a game (login
+     * required). Client-verified contract (GameOnError): 7 not logged in,
+     * 2002 unknown game, 2005 repeat like, 2008 not played (NOT emitted
+     * yet — recordPlay has no caller until the join/telemetry phase).
+     * Returns the new total (num) on first like.
+     */
     private static String appreciation(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        }
         JSONObject g = GameCatalog.byId(store, pathTail(store, ctx));
         if (g == null) {
-            return envelope("num", "0");
+            return failCode(ErrorCodes.GAME_NOT_EXIST, "game not found");
         }
+        String gid = g.optString("gameId");
+        JSONObject st = store.userState(u);
+        JSONArray liked = st.optJSONArray("appreciated");
+        if (liked == null) {
+            liked = new JSONArray();
+            st.put("appreciated", liked);
+        }
+        for (int i = 0; i < liked.length(); i++) {
+            if (gid.equals(liked.optString(i))) {
+                return failCode(ErrorCodes.GAME_REPEAT_LIKE, "already appreciated");
+            }
+        }
+        liked.put(gid);
         int praises = g.optInt("praiseNumber") + 1;
         g.put("praiseNumber", praises);
         g.put("appreciate", true);

@@ -76,4 +76,12 @@ final class ErrorCodes {
     static final int GROUP_NO_PERMISSION = 8103;
     /** new_group_error_8014 — "The player is not in the group chat". */
     static final int GROUP_NOT_MEMBER = 8104;
+
+    // ---- game (GameOnError) ----
+    /** base_game_detail_appreciation_game_not_exist — "Game not exist". */
+    static final int GAME_NOT_EXIST = 2002;
+    /** base_game_detail_appreciation_game_has_appreciation — "You cannot like repeatedly". */
+    static final int GAME_REPEAT_LIKE = 2005;
+    /** 2008 "You need to play the game to like" — NOT emitted yet (see PATCH_PLAN Phase 7d). */
+    static final int GAME_NOT_PLAYED = 2008;
 }

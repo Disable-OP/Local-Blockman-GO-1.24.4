@@ -727,10 +727,17 @@ GROUP CHAT (GroupOnError):
   now", incl. owner-only gates) | 8104 new_group_error_8014 ("The
   player is not in the group chat")
 
+GAME (GameOnError):
+- 2002 game_not_exist (game detail / warmup / appreciation of an unknown
+  id — detail used to return code 0) | 2005 repeat_like (per-user
+  appreciated[] state; the like total only grows on the first like)
+  | 7 like-after-login (appreciation is requireUser now)
+
 Deliberately NOT emitted (client-verified but no server-enforced rule):
 7005-vs-elder-cap 7010, task refresh limits 7016/7017, join level 7008
 emission (our clans carry no level requirement), donation-count cap is
-enforced (10/day) and maps to 7011.
+enforced (10/day) and maps to 7011, game 2008 not-played (recordPlay
+has no caller until the join/telemetry phase).
 
 ### 7c. Client-visible create pricing correction
 

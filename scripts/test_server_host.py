@@ -258,7 +258,7 @@ def main():
               and pre["data"].get("isPublish") == 1
               and "gameTitle" in pre["data"], str(pre)[:150])
         gnf = call("GET", "/game/api/v2/games/99999999")
-        check("gameDetail unknown -> code 0", gnf.get("code") == 0, str(gnf)[:100])
+        check("gameDetail unknown -> code 2002", gnf.get("code") == 2002, str(gnf)[:100])
 
         print("== Phase 2: categories, ranks, shop ==")
         cats = call("GET", "/game/api/v1/category/list/by/language", headers={"language": "en"})
@@ -386,8 +386,17 @@ def main():
         vt = call("GET", "/video/api/v1/app/video/tag/list", headers={"language": "en"})
         check("video tag list map", vt.get("code") == 1 and vt.get("data") == {}, str(vt)[:80])
         app2 = call("PUT", "/game/api/v1/games/%s/appreciation" % gid)
-        check("appreciation int", app2.get("code") == 1
-              and isinstance(app2.get("data"), int) and app2["data"] > 0, str(app2)[:100])
+        check("appreciation unauth rejected (7)", app2.get("code") == 7, str(app2)[:100])
+        app3 = call("PUT", "/game/api/v1/games/%s/appreciation" % gid,
+                    headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("appreciation int (first like)", app3.get("code") == 1
+              and isinstance(app3.get("data"), int) and app3["data"] > 0, str(app3)[:100])
+        app4 = call("PUT", "/game/api/v1/games/%s/appreciation" % gid,
+                    headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("appreciation repeat rejected (2005)", app4.get("code") == 2005, str(app4)[:100])
+        app5 = call("PUT", "/game/api/v1/games/999999/appreciation",
+                    headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("appreciation unknown game (2002)", app5.get("code") == 2002, str(app5)[:100])
         tok = call("GET", "/game/api/v2/game/auth?typeId=1&targetId=%d&gameVersion=1" % uid1,
                    headers={"Access-Token": tok1, "userId": str(uid1)})
         check("miniGameToken", tok.get("code") == 1 and tok.get("data", {}).get("token")
