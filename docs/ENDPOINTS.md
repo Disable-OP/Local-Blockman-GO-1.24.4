@@ -810,3 +810,26 @@ Automation (scripts/ui_automation_test.py):
 - COVERAGE.json regenerated: 335 / 295 implemented / 40 default /
   234 host-tested / 136 client-asserted (receive/reward + activity/
   action + member/invite now carry the client_asserted flag).
+
+# Wave 8 (Session 23): vipDress classified dead + sign-in semantics corrected
+
+| Route | Verdict | Evidence |
+|---|---|---|
+| GET /decoration/api/v1/vip/decorations/users/{typeId} (vipDress) | dead code | @Deprecated; ZERO call sites across classes1-5 (only the IDecorationApi declaration — not even a static wrapper exists) |
+
+Sign-in status semantics corrected to the client contract (Handlers.java +
+host tests, 422/0):
+- GET /user/api/v2/users/{userId}/daily/sign/in — DailySignInfo.status is
+  the CLIENT's enum (WeekSignDialog item j/h.java): 0 = "It isn't time to
+  sign in", 1 = claimable (the click fires the claim chain k.a -> PUT
+  clickSignIn), 2 = "Received". The previous mapping (claimed = 1) kept
+  the WeekSignDialog unreachable forever (MainModel/Xb opens the dialog
+  only when some day is 1) and mis-labelled claimed days as claimable.
+- GET /activity/api/v1/signIn — MainModel/Zb.java chains INTO the
+  week-sign surface (bc.e -> GET daily/sign/in -> WeekSignDialog) ONLY on
+  signInStatus == 2 (cycle complete) or error 8006 ("The event has
+  ended"). The server now emits 2 when the 8-day cycle is fully claimed;
+  mid-cycle stays 0 (claimable today) / 1 (claimed today). Full chain:
+  MainActivity -> nb (ya.b isSignIn read) -> CampaignManager
+  .getActivitySignUp -> bc.a(ctx,true) -> ya.a isPlayed read -> _b fires
+  CampaignApi.signInList when the user has NOT played yet -> Zb.
