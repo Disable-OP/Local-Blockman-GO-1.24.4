@@ -3339,13 +3339,21 @@ def main():
                 # cards = bg_content nodes (one per title card); the client
                 # renders [weekday, weekend] and ONLY the weekend card
                 # opens the task dialog (c.f titleType switch; weekday
-                # falls into the content switch and our content is inert)
-                cards = [x for x in screen.dump()
-                         if x.center and x.res.rsplit("/", 1)[-1]
-                         == "bg_content"]
-                cards = list({x.bounds: x for x in cards}.values())
-                if len(cards) > h_idx:
-                    h_card = sorted(cards,
+                # falls into the content switch and our content is inert).
+                # The template fetches titles on open (f.onLoad), so poll
+                # for the cards before tapping (bounded).
+                h_cards = []
+                h_card_deadline = time.time() + 12
+                while time.time() < h_card_deadline:
+                    h_cards = [x for x in screen.dump()
+                               if x.center and x.res.rsplit("/", 1)[-1]
+                               == "bg_content"]
+                    h_cards = list({x.bounds: x for x in h_cards}.values())
+                    if len(h_cards) > h_idx:
+                        break
+                    time.sleep(2)
+                if len(h_cards) > h_idx:
+                    h_card = sorted(h_cards,
                                     key=lambda n: n.bounds[1])[h_idx]
                     screen.tap_node(h_card)
                     time.sleep(6)
@@ -3354,7 +3362,7 @@ def main():
                         break
                 print("  [info] H: no GET buttons after card index %d "
                       "(attempt %d, cards=%d)"
-                      % (h_idx, h_attempt, len(cards)))
+                      % (h_idx, h_attempt, len(h_cards)))
             if h_btns:
                 ok("H: weekend task dialog open (%d GET buttons)"
                    % len(h_btns))
