@@ -2346,3 +2346,32 @@
   coverage simulation and fixed before push — the session-24 rule is
   now enforced by simulating gen_coverage before every commit.
 - Expected after the next green run: 166 client-asserted.
+
+---
+
+## Session 25 cont. 4 (run 37522116738 PASS — 166 client-asserted, session close)
+
+- Run PASS (0 FAIL): the boot-window batch (config/blockmods,
+  check/resource, daily/life/info, device/id, language, mac/id,
+  device/token), the Phase I card/combine + card/list {version}
+  assertions, the N overall-leg race fix, and every prior check green.
+  85 unique endpoints, no FATAL.
+- COVERAGE regenerated: 335 discovered / 295 implemented / 40 default /
+  234 host-tested / 166 client-asserted (was 145 at session-24 close:
+  +21 this session).
+- Session 25 totals: 11 pushes, 6 dispatched runs (3 triaged FAIL ->
+  fixes, 1 FULL PASS + the final PASS), the VIP entry decode (item2 is
+  NOT service-gated), the clan GLOBAL-ONLY client contract, the
+  registration-gate rotation fix, the freeVerify per-tap pid guard,
+  window corrections (boot vs deep-drive vs phase-local evidence).
+- Known risks/uncertainties: the ranking activity's self-close drift
+  mechanism remains undecoded (absorbed by re-grounding); check/resource
+  fires at boot (window-sensitive); set-psd/param/check fires only in
+  some runs (needs phase-pin decode before any hard check); the
+  remaining ~129 implemented-but-unasserted routes sit behind
+  IM/payment/settings-deep/room surfaces (GameServer excluded per the
+  standing instruction).
+- Next: error-driven from the next run's traffic; candidate decodes:
+  the settings Account-Switch chain (login/change/record + client-UI
+  login), the tasks surface (dormant dvSignUp gate), the weekly-quest
+  UI. NO GameServer work.

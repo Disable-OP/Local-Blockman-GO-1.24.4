@@ -5,7 +5,7 @@
   "implemented": 295,
   "default": 40,
   "host_tested": 234,
-  "client_asserted": 157
+  "client_asserted": 166
  },
  "endpoints": [
   {
@@ -422,7 +422,7 @@
    "status": "implemented",
    "handler": "appConfig",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -518,7 +518,7 @@
    "status": "implemented",
    "handler": "dressCheckResource",
    "host_tested": false,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -1110,7 +1110,7 @@
    "status": "implemented",
    "handler": "rongToken",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -1582,7 +1582,7 @@
    "status": "implemented",
    "handler": "verifyAck",
    "host_tested": false,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1606,7 +1606,7 @@
    "status": "implemented",
    "handler": "ackPost",
    "host_tested": false,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1614,7 +1614,7 @@
    "status": "implemented",
    "handler": "ackPost",
    "host_tested": false,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -2038,7 +2038,7 @@
    "status": "implemented",
    "handler": "ackPut",
    "host_tested": false,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
@@ -2134,7 +2134,7 @@
    "status": "implemented",
    "handler": "scrapCombineNum",
    "host_tested": false,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -2150,7 +2150,7 @@
    "status": "implemented",
    "handler": "scrapCardList",
    "host_tested": false,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
