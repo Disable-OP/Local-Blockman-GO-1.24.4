@@ -2192,3 +2192,22 @@
   chain).
 - Commits a52c491 + 422680b pushed to local-api (verified). build-release
   dispatched (37475393512); test-redroid dispatch follows the build.
+
+---
+
+## Session 24 cont. (run 37476577270 triage + B-entry soft probe)
+
+- Triage: Phase L fully GREEN in run 37476577270 — podium 0->2, podium row
+  tapped at (182,711), gDiamond region/weekly 0->1, user/info 0->2,
+  gDiamond global/weekly 0->1 (the template's second pager page prefetch,
+  no rb_global_tab fallback needed), L-exit alive. 51 unique endpoints, no
+  app FATAL, no 4xx/5xx. The rank-podium server fix is CLIENT-ASSERTED.
+- The single FAIL was the roaming killer striking at B-PersonalInfo (the
+  editor-entry point had no soft probe, unlike B-Profile which had one).
+  The outer retry recovered (alive at pid 6838 on the second pass) and
+  every later phase passed — a recorded FAIL turned a fully-green run red.
+- Fix (8a4f005): the B-PersonalInfo entry joins the soft-probe family
+  (evidence + False; the phase-B retry owns recovery, exactly matching the
+  documented design intent of that function).
+- Re-dispatched test-redroid -> run 37483483323 (head 8a4f005). No APK
+  rebuild needed (server unchanged since the build-release on a52c491).
