@@ -1933,11 +1933,16 @@ def main():
                    % (fr_uid_num, friend_nick)) if friend_nick else print(
                        "  [info] F: friend %s NOT in the server list: %s"
                        % (fr_uid_num, str(fl)[:100]))
-                rb1 = screen.wait_for(ids=["rb_1"], timeout=10, poll=2)
-                if rb1 and screen.tap_node(rb1):
+                # session 20 run-37409714321 fix: the ChatFragment (with the
+                # internal rbChat/rbFriend radios) is hosted by rb_4, not
+                # rb_1 (nc.java switch: 0x7F090429 = chatFragment). rb_4
+                # also requests storage permissions — dismiss defensively.
+                rb4 = screen.wait_for(ids=["rb_4"], timeout=10, poll=2)
+                if rb4 and screen.tap_node(rb4):
                     time.sleep(4)
-                    handle_campaign_dialogs(adb, screen, "F-rb1")
-                    f_alive("F-messagetab")
+                    dismiss_permission_dialogs(screen)
+                    handle_campaign_dialogs(adb, screen, "F-rb4")
+                    f_alive("F-chatpage")
                     rbf = screen.wait_for(ids=["rbFriend"], timeout=10,
                                           poll=2)
                     if rbf and screen.tap_node(rbf):
@@ -2451,6 +2456,20 @@ def main():
                         time.sleep(4)
                         f_alive("F2-edit-submit")
                         puts_after = put_tribe_count()
+                        # session 20: ONE bounded re-tap when the first
+                        # MODIFY tap missed (run 37409714321: puts 0->0
+                        # with everything else green - tap timing, not
+                        # a contract break)
+                        if puts_after <= puts_before:
+                            modify2 = next(
+                                (x for x in screen.dump()
+                                 if (x.text or "") in ("Modify", "MODIFY")
+                                 and x.center), None)
+                            if modify2:
+                                screen.tap_node(modify2)
+                                time.sleep(4)
+                                f_alive("F2-edit-submit-retry")
+                                puts_after = put_tribe_count()
                         print("  [evidence] F2: PUT count %d -> %d"
                               % (puts_before, puts_after))
                         if live_hdr:
@@ -2557,7 +2576,23 @@ def main():
                                 break
                         if more and screen.tap_node(more):
                             time.sleep(3)
+                        # session 20 (run 37409714321): the FIRST sheet tap
+                        # can miss (timing) — one bounded re-tap of ic_more
+                        # before giving up (the hand-over walk proved the
+                        # sheet + items still render).
                         mm = screen.find(texts=["Manage Members"])
+                        if not (mm and mm.center) and more:
+                            # only re-tap when the sheet is NOT actually
+                            # open (a blind re-tap would toggle it closed)
+                            sheet_open = any(
+                                (x.text or "") in ("Manage Members",
+                                                   "Edit Profile",
+                                                   "Clan Settings")
+                                for x in screen.dump())
+                            if not sheet_open:
+                                screen.tap_node(more)
+                                time.sleep(3)
+                                mm = screen.find(texts=["Manage Members"])
                         if mm and mm.center:
                             ok("G: settings sheet shows 'Manage Members'")
                             screen.tap_node(mm)
@@ -3002,23 +3037,37 @@ def main():
                                                         "/clan/api/v1/clan/"
                                                         "tribe/base",
                                                         headers=live_hdr)
-                                                    chief_ho = (
-                                                        base_ho.get("data")
-                                                        or {}).get("chiefId")
+                                                    # tribe/base carries the
+                                                    # roster (clanMembers),
+                                                    # not a chiefId field —
+                                                    # the chief is the
+                                                    # role-20 row (fix from
+                                                    # run 37409714321:
+                                                    # chiefId=None read the
+                                                    # wrong field)
+                                                    chief_from_base = next(
+                                                        (m.get("userId")
+                                                         for m in
+                                                         (base_ho.get("data")
+                                                          or {}).get(
+                                                              "clanMembers", [])
+                                                         if m.get("role") == 20),
+                                                        None)
                                                     check(
                                                         "G: HAND OVER CHIEF "
                                                         "client-asserted "
                                                         "(PUT %d->%d, gk "
                                                         "role=%s, old chief "
-                                                        "role=%s, chiefId=%s)"
+                                                        "role=%s, chief from "
+                                                        "base=%s)"
                                                         % (pre_ho, post_ho,
                                                            gk_role, me_role,
-                                                           chief_ho),
+                                                           chief_from_base),
                                                         post_ho > pre_ho
                                                         and gk_role == 20
                                                         and me_role == 0
-                                                        and chief_ho
-                                                        == gk_uid_num,
+                                                        and str(chief_from_base)
+                                                        == str(gk_uid_num),
                                                         "members=%s base=%s"
                                                         % (str(ml_ho)[:140],
                                                            str(base_ho)[:100]))
