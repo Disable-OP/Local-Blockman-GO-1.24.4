@@ -4162,6 +4162,10 @@ def main():
     # whole vip package, so a phase-local 0->N is sound).
     print("== Phase M: VIP privilege center (item2) ==")
     m_vip_lit = "/pay/api/v1/sub/info/get"
+    # run 37499606354 evidence: the privilege-center flow ALSO fetches
+    # the vip products list (BillingManager.vipSubsProductsList <-
+    # vip/view/fragment/main/p) — GET /pay/api/v2/pay/products/vip
+    m_vp_lit = "/pay/api/v2/pay/products/vip"
 
     def m_count(marker):
         return sum(1 for ln in adb.raw("logcat", "-d", "-s",
@@ -4170,6 +4174,7 @@ def main():
                    if marker in ln)
 
     m_pre_vip = m_count("REQ GET " + m_vip_lit)
+    m_pre_vp = m_count("REQ GET " + m_vp_lit)
     m_paths_before = set(localapi_paths(adb))
     m_entry = None
     if screen.find(ids=["rb_1"]):
@@ -4213,6 +4218,16 @@ def main():
               m_seen > m_pre_vip,
               "getSubscribeInfo never fired (the privilege center may "
               "not have opened)")
+        m_seen_vp = m_pre_vp
+        m_vp_deadline = time.time() + 10
+        while time.time() < m_vp_deadline and m_seen_vp <= m_pre_vp:
+            time.sleep(2)
+            m_seen_vp = m_count("REQ GET " + m_vp_lit)
+        check("M: vip products list fetched (GET %s %d->%d)"
+              % (m_vp_lit, m_pre_vp, m_seen_vp),
+              m_seen_vp > m_pre_vp,
+              "vipSubsProductsList never fired (the privilege center "
+              "may not have loaded its products)")
         for p in sorted(set(localapi_paths(adb)) - m_paths_before):
             print("  [evidence] M: client fired %s" % p)
         # exit: BACK to the hall; absorb a drift by grounding on rb_1

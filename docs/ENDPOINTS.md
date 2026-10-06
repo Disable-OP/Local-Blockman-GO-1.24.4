@@ -938,3 +938,21 @@ Run 37492582973 verdicts (Phase M/N first live drive):
   logcat BUFFER ROTATION (the D-phase set-password fcalls passed live
   but their REQ lines rotated out). Fix: paths_mid snapshot captured
   right after Phase D and unioned into the final path set.
+
+## Wave 10 amendment 2 (run 37499606354 PASS): M/N client-asserted + bonus vip products route
+
+- ALL 6 new ranking routes client-asserted: active/{region,global}/weekly,
+  active/{region,global}/overall, clan/global/weekly, clan/global/overall
+  (Phase N, all 0->N). Phase L stayed green (podium 0->2, gDiamond both
+  boards). COVERAGE.json regenerated: 154 client-asserted.
+- Phase M client-asserted GET /pay/api/v1/sub/info/get 0->1 (item2 ->
+  privilege center) AND the run's evidence delta revealed the privilege
+  center flow ALSO fires GET /pay/api/v2/pay/products/vip
+  (BillingManager.vipSubsProductsList <- vip/view/fragment/main/p) —
+  decode confirmed, hard check added (expected 155 on the next green).
+- deep-drive additions (evidence: run 37492582973's delta fired both):
+  GET /video/api/v1/app/video/list/{type} (client resolved {type} to
+  "new"/"top" during the game-detail walk) and GET /decoration/api/v1/
+  decorations/{otherId}/using (client resolved {otherId} to the live
+  user id) — hard checks added with split-literal honesty so only these
+  two templates are claimed.
