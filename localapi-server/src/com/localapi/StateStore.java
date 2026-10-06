@@ -531,4 +531,64 @@ public final class StateStore {
         save();
     }
 
+    // ------------------------------------------------- campaign sign-in state
+
+    /** The user's campaign (activity-center) sign-in state:
+     *  {cycle: "yyyy-MM", claimed: [1..8], lastDate: "yyyy-MM-dd"} or null. */
+    public synchronized JSONObject campaignSignIn(JSONObject user) {
+        return userState(user).optJSONObject("campaignSignIn");
+    }
+
+    public synchronized void putCampaignSignIn(JSONObject user, JSONObject cs) {
+        userState(user).put("campaignSignIn", cs);
+        save();
+    }
+
+    /** True when the user claimed a campaign sign-in on the given date. */
+    public synchronized boolean campaignSignedOn(JSONObject user, String date) {
+        JSONObject cs = campaignSignIn(user);
+        return cs != null && date.equals(cs.optString("lastDate"));
+    }
+
+    // ------------------------------------------------------ datareport sink
+
+    /** Append a raw report body to the on-disk datareport store (one JSONL
+     *  file per UTC day under localapi/datareport/). Returns the line count
+     *  of the day file after the append (observability + host-rig check). */
+    public synchronized int appendReport(String kind, String body) {
+        try {
+            String day = new java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US)
+                    .format(new java.util.Date());
+            File dir = new File(file.getParentFile(), "datareport");
+            //noinspection ResultOfMethodCallIgnored
+            dir.mkdirs();
+            File f = new File(dir, kind + "-" + day + ".jsonl");
+            StringBuilder line = new StringBuilder();
+            line.append("{\"ts\":").append(System.currentTimeMillis());
+            line.append(",\"body\":");
+            line.append(body == null || body.isEmpty() ? "null" : body);
+            line.append("}\n");
+            FileOutputStream out = new FileOutputStream(f, true);
+            out.write(line.toString().getBytes(StandardCharsets.UTF_8));
+            out.close();
+            return countLines(f);
+        } catch (Throwable t) {
+            L.e("report append failed: " + t);
+            return -1;
+        }
+    }
+
+    private static int countLines(File f) {
+        try {
+            java.io.LineNumberReader r = new java.io.LineNumberReader(
+                    new java.io.InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8));
+            int n = 0;
+            while (r.readLine() != null) n++;
+            r.close();
+            return n;
+        } catch (Throwable t) {
+            return -1;
+        }
+    }
+
 }

@@ -292,6 +292,13 @@ final class Handlers {
         if ("userRankInfo".equals(name)) return userRankInfo(ctx, store);
         if ("partyAuth".equals(name)) return partyAuth(ctx, store);
         if ("partiesExists".equals(name)) return partiesExists(ctx, store);
+        // ---- Wave 5v: campaign sign-in + turntable status + datareport sink ----
+        if ("campaignSignInList".equals(name)) return campaignSignInList(ctx, store);
+        if ("campaignSignIn".equals(name)) return campaignSignIn(ctx, store);
+        if ("turntableStatus".equals(name)) return turntableStatus(ctx, store);
+        if ("eventReport".equals(name)) return eventReport(ctx, store, "event");
+        if ("funnelReport".equals(name)) return eventReport(ctx, store, "funnel");
+        if ("pingReport".equals(name)) return eventReport(ctx, store, "ping");
         L.e("unknown handler name: " + name);
         return envelope("none", null);
     }
@@ -577,6 +584,10 @@ final class Handlers {
         c.put("isShowShare", false);
         c.put("isShowThirdPart", false);
         c.put("isShowTopActivity", false);
+        // the universal-activity gate reads these (b/b.java a(String)):
+        // missing keys would Gson-default to false/0 — keep them explicit.
+        c.put("isShowUniversalActivity", false);
+        c.put("universalActivityVersionCode", 0);
         return envelope("obj", c.toString());
     }
 
@@ -3083,6 +3094,175 @@ final class Handlers {
         c.set(java.util.Calendar.MILLISECOND, 0);
         long diff = Math.max(0, c.getTimeInMillis() - now) / 1000L;
         return new long[]{diff / 3600, (diff % 3600) / 60, diff % 60};
+    }
+
+    // ---------------------------------- Wave 5v: campaign sign-in + turntable
+
+    /** Campaign (activity-center) 8-day sign-in rewards, golds per signInId. */
+    private static final long[] CAMPAIGN_REWARDS = {200, 300, 500, 800, 1200, 2000, 3000, 8000};
+
+    /** The client's full-screen dialog requires exactly 8 day cells
+     *  (view/dialog/a/k.java: userSignInList.size() != 8 -> bail). */
+    private static final int CAMPAIGN_DAYS = 8;
+
+    private static String campaignCycle() {
+        return new java.text.SimpleDateFormat("yyyy-MM", java.util.Locale.US)
+                .format(new java.util.Date());
+    }
+
+    /** Normalized sign-in state for the current month cycle (resets monthly). */
+    private static JSONObject campaignState(StateStore store, JSONObject u) {
+        JSONObject cs = store.campaignSignIn(u);
+        String cycle = campaignCycle();
+        if (cs == null || !cycle.equals(cs.optString("cycle"))) {
+            cs = new JSONObject();
+            cs.put("cycle", cycle);
+            cs.put("claimed", new JSONArray());
+            cs.put("lastDate", "");
+            store.putCampaignSignIn(u, cs);
+        }
+        return cs;
+    }
+
+    private static boolean campaignDayClaimed(JSONObject cs, int day) {
+        JSONArray claimed = cs.optJSONArray("claimed");
+        if (claimed == null) return false;
+        for (int i = 0; i < claimed.length(); i++) {
+            if (claimed.optInt(i) == day) return true;
+        }
+        return false;
+    }
+
+    /** GET /activity/api/v1/signIn — UserSignInResponse.
+     *  Client contract (ac/Zb callbacks + view/dialog/a/{d,e,k}.java):
+     *  userSignInList = 8 entries {signInId, status(0 unclaimed/1 claimed),
+     *  isSpecial(1 for day 7/8 banner cells), isSelect(false, client sets it),
+     *  rewards[{rewardName, rewardPic}]};
+     *  signInStatus 0 = today's slot still claimable (client then auto-selects
+     *  the first status==0 day and opens the dialog), 1 = already signed today;
+     *  remainingTime = epoch ms of the cycle end (client renders its "dd"). */
+    private static String campaignSignInList(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        JSONObject cs = campaignState(store, u);
+        JSONArray claimed = cs.optJSONArray("claimed");
+        if (claimed == null) {
+            claimed = new JSONArray();
+            cs.put("claimed", claimed);
+        }
+        JSONArray days = new JSONArray();
+        for (int day = 1; day <= CAMPAIGN_DAYS; day++) {
+            JSONObject d = new JSONObject();
+            d.put("signInId", day);
+            d.put("status", campaignDayClaimed(cs, day) ? 1 : 0);
+            d.put("isSpecial", day >= CAMPAIGN_DAYS - 1 ? 1 : 0);
+            d.put("isSelect", false);
+            JSONArray rewards = new JSONArray();
+            if (day == CAMPAIGN_DAYS) {
+                // the special day carries 4 reward cards (g.java: size >= 4
+                // marks the "last day" bookkeeping client-side)
+                rewards.put(reward("8000 Golds"));
+                rewards.put(reward("VIP Day"));
+                rewards.put(reward("Avatar Frame"));
+                rewards.put(reward("Nameplate"));
+            } else {
+                rewards.put(reward(CAMPAIGN_REWARDS[day - 1] + " Golds"));
+            }
+            d.put("rewards", rewards);
+            days.put(d);
+        }
+        JSONObject out = new JSONObject();
+        out.put("signInStatus", store.campaignSignedOn(u, today()) ? 1 : 0);
+        out.put("remainingTime", campaignCycleEndMs());
+        out.put("userSignInList", days);
+        return envelope("obj", out.toString());
+    }
+
+    private static JSONObject reward(String name) {
+        JSONObject r = new JSONObject();
+        r.put("rewardName", name);
+        r.put("rewardPic", "");
+        return r;
+    }
+
+    /** Epoch ms when the current monthly cycle ends (client shows the end day). */
+    private static long campaignCycleEndMs() {
+        java.util.Calendar c = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"));
+        c.set(java.util.Calendar.DAY_OF_MONTH, c.getActualMaximum(java.util.Calendar.DAY_OF_MONTH));
+        c.set(java.util.Calendar.HOUR_OF_DAY, 23);
+        c.set(java.util.Calendar.MINUTE, 59);
+        c.set(java.util.Calendar.SECOND, 59);
+        c.set(java.util.Calendar.MILLISECOND, 0);
+        return c.getTimeInMillis();
+    }
+
+    /** POST /activity/api/v1/signIn — claim today's slot.
+     *  Client contract (view/dialog/a/g.java onSuccess):
+     *  data = {"signInId": <claimed day>}; the client looks the id up in the
+     *  signInList to render the reward dialog, then refreshes the wallet. */
+    private static String campaignSignIn(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        String date = today();
+        if (store.campaignSignedOn(u, date)) {
+            // CampaignOnError -> the same 7012 family as the daily sign-in
+            return failCode(ErrorCodes.SIGN_IN_CLAIMED, "already signed in today");
+        }
+        JSONObject cs = campaignState(store, u);
+        int day = 0;
+        for (int i = 1; i <= CAMPAIGN_DAYS; i++) {
+            if (!campaignDayClaimed(cs, i)) {
+                day = i;
+                break;
+            }
+        }
+        if (day == 0) {
+            return failCode(ErrorCodes.SIGN_IN_CLAIMED, "cycle complete");
+        }
+        JSONArray claimed = cs.optJSONArray("claimed");
+        if (claimed == null) {
+            claimed = new JSONArray();
+            cs.put("claimed", claimed);
+        }
+        claimed.put(day);
+        cs.put("lastDate", date);
+        store.putCampaignSignIn(u, cs);
+        long reward = CAMPAIGN_REWARDS[day - 1];
+        store.award(u, "golds", reward);
+        L.i("campaign sign-in: userId=" + u.optLong("userId")
+                + " day=" + day + " +" + reward + " golds");
+        JSONObject out = new JSONObject();
+        out.put("signInId", day);
+        return envelope("obj", out.toString());
+    }
+
+    /** GET lucky/turntable + slot-machine gold draw status — TurntableStatus.
+     *  Client contract (b/a.java): only isFree matters — >0 paints the
+     *  red-point jackpot icon. Real state: 1 while today's free draw is
+     *  unused (no draw endpoint is wired locally yet, so it stays 1). */
+    private static String turntableStatus(Ctx ctx, StateStore store) {
+        JSONObject out = new JSONObject();
+        out.put("isFree", 1);
+        return envelope("obj", out.toString());
+    }
+
+    // ------------------------------------------------ Wave 5v: datareport sink
+
+    /** POST /datareport/api/v1/event/report (EventRequest{eventRequests[],
+     *  packageName}), /datareport/api/v1/funnel/event/report
+     *  (List<NewEventInfoRequest>), /datareport/api/v1/app/ping/report/batch
+     *  (PingEventDto). Real behavior: persist the report body verbatim to the
+     *  day file under localapi/datareport/<kind>-<yyyymmdd>.jsonl — a genuine
+     *  analytics store the operator can read. Response: plain ack envelope. */
+    private static String eventReport(Ctx ctx, StateStore store, String kind) {
+        String body = ctx.body();
+        int lines = store.appendReport(kind, body);
+        if (lines < 0) {
+            return fail("report store write failed");
+        }
+        L.i("datareport " + kind + ": line " + lines
+                + " (" + (body == null ? 0 : body.length()) + " bytes)");
+        return envelope("none", null);
     }
 
     // ------------------------------------------------- Phase 4c: group chat

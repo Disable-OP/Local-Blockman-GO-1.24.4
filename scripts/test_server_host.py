@@ -1642,6 +1642,68 @@ def main():
                      {"name": "Admin Squad", "currency": 2}, headers=h7b)
         check("clan sensitive name rejected (7020)", c7bad.get("code") == 7020, str(c7bad)[:100])
 
+        print("== Wave 5v: campaign sign-in + turntable + datareport ==")
+        w5v = call("POST", "/user/api/v1/login", {"uid": "qa_user1", "password": "pw1", "imei": "dev1"})
+        tok1 = w5v.get("data", {}).get("accessToken", tok1)
+        golds_c0 = w5v.get("data", {}).get("golds", 0)
+        H5 = {"Access-Token": tok1, "userId": str(uid1)}
+        cslist = call("GET", "/activity/api/v1/signIn", None, headers=H5)
+        d = cslist.get("data", {})
+        days = d.get("userSignInList", [])
+        check("campaign signInList 8 cells", cslist.get("code") == 1 and len(days) == 8, str(cslist)[:150])
+        check("campaign ids 1..8", [x.get("signInId") for x in days] == list(range(1, 9)), str(days)[:150])
+        check("campaign fresh all unclaimed", all(x.get("status") == 0 for x in days), str(days)[:100])
+        check("campaign special days 7/8", days and days[6].get("isSpecial") == 1
+              and days[7].get("isSpecial") == 1, str(days[-2:])[:120])
+        check("campaign day8 carries 4 rewards", days and len(days[7].get("rewards", [])) == 4,
+              str(days[-1])[:150])
+        check("campaign signInStatus 0 (claimable)", d.get("signInStatus") == 0, str(d)[:100])
+        check("campaign remainingTime epoch ms", isinstance(d.get("remainingTime"), int)
+              and d.get("remainingTime", 0) > 0, str(d.get("remainingTime"))[:60])
+        cclaim = call("POST", "/activity/api/v1/signIn", None, headers=H5)
+        check("campaign claim day 1", cclaim.get("code") == 1
+              and cclaim.get("data", {}).get("signInId") == 1, str(cclaim)[:120])
+        w5v2 = call("POST", "/user/api/v1/login", {"uid": "qa_user1", "password": "pw1", "imei": "dev1"})
+        golds_c1 = w5v2.get("data", {}).get("golds", 0)
+        check("campaign claim credited wallet", golds_c1 == golds_c0 + 200,
+              "golds %d -> %d" % (golds_c0, golds_c1))
+        cslist2 = call("GET", "/activity/api/v1/signIn", None,
+                       headers={"Access-Token": tok1, "userId": str(uid1)})
+        d2 = cslist2.get("data", {})
+        check("campaign day1 claimed after claim", d2.get("userSignInList", [{}])[0].get("status") == 1
+              and d2.get("signInStatus") == 1, str(d2)[:150])
+        cclaim2 = call("POST", "/activity/api/v1/signIn", None,
+                       headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("campaign double-claim 7012", cclaim2.get("code") == 7012, str(cclaim2)[:100])
+        csign_nologin = call("POST", "/activity/api/v1/signIn", None)
+        check("campaign claim requires auth", csign_nologin.get("code") == 7, str(csign_nologin)[:80])
+        tt = call("GET", "/activity/api/v1/lucky/turntable/gold/status?activityId=Lucky%202020",
+                  headers={"language": "en"})
+        slot = call("GET", "/activity/api/v1/slot/machine/user/gold/draw/status?activityId=slot_machine",
+                    headers={"language": "en"})
+        check("turntable isFree", tt.get("code") == 1 and tt.get("data", {}).get("isFree") == 1, str(tt)[:100])
+        check("slot draw isFree", slot.get("code") == 1 and slot.get("data", {}).get("isFree") == 1, str(slot)[:100])
+        ev = call("POST", "/datareport/api/v1/event/report",
+                  {"packageName": "com.test.host", "eventRequests": [
+                      {"event": "qa_event", "eventType": "behavior", "platform": "android"}]},
+                  headers={"deviceId": "qa-dev-1"})
+        fu = call("POST", "/datareport/api/v1/funnel/event/report",
+                  [{"eventType": "qa_funnel", "platform": "android", "eventList": []}],
+                  headers={"deviceId": "qa-dev-1"})
+        pg = call("POST", "/datareport/api/v1/app/ping/report/batch", {"pingEvents": []},
+                  headers={"deviceId": "qa-dev-1", "CloudFront-Viewer-Country": "US"})
+        check("event report ack", ev.get("code") == 1, str(ev)[:100])
+        check("funnel report ack", fu.get("code") == 1, str(fu)[:100])
+        check("ping report ack", pg.get("code") == 1, str(pg)[:100])
+        import glob as _glob
+        rep_files = _glob.glob(os.path.join(state_dir, "localapi", "datareport", "*.jsonl"))
+        rep_bodies = ""
+        for rf in rep_files:
+            rep_bodies += open(rf).read()
+        check("datareport persisted to disk store", len(rep_files) >= 1
+              and "qa_event" in rep_bodies and "qa_funnel" in rep_bodies,
+              "files=%d" % len(rep_files))
+
         print("== route-table sweep (all routes answer the envelope) ==")
         sys.path.insert(0, os.path.join(REPO, "scripts"))
         sweep_miss = []
@@ -1702,6 +1764,13 @@ def main():
                    headers={"Access-Token": tok1, "userId": str(uid1)})
         check("sign-in state persists", si3.get("code") == 1
               and si3.get("data", {}).get("first", {}).get("status") == 1, str(si3)[:120])
+        # Wave 5v: campaign sign-in cycle + datareport files persist across restart
+        csp = call("GET", "/activity/api/v1/signIn", None, headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("campaign cycle persists", csp.get("code") == 1
+              and csp.get("data", {}).get("userSignInList", [{}])[0].get("status") == 1
+              and csp.get("data", {}).get("signInStatus") == 1, str(csp)[:150])
+        csp2 = call("POST", "/activity/api/v1/signIn", None, headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("campaign claim still 7012 after restart", csp2.get("code") == 7012, str(csp2)[:100])
         # Phase 4: tribe state persists (uid1 chief + uid2 elder remain; uid3 exited, uid4 kicked)
         lg4 = call("POST", "/user/api/v1/login", {"uid": "qa_user1", "password": "pw1"})
         tok1b = lg4["data"]["accessToken"]

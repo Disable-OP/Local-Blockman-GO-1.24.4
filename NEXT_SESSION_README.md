@@ -754,3 +754,33 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   na.c template -> inviteFriend friendIds); (3) Bind-domain codes
   (102-119) when the account-security screens are driven; (4) NO
   GameServer work (standing instruction).
+
+## Session 19 delta (read first — Wave 5v: campaign sign-in + datareport live)
+
+- 7 new state-backed handlers: GET/POST /activity/api/v1/signIn (monthly
+  8-day campaign cycle; POST returns {"signInId":N}; double-claim 7012),
+  lucky/turntable + slot draw status (TurntableStatus{isFree:1}), and the
+  three /datareport routes now PERSIST every report body to
+  localapi/datareport/<kind>-<yyyymmdd>.jsonl (real analytics store).
+  Host rig 390/390. Coverage: 288 implemented / 47 default (each default
+  now carries a call-site verdict in docs/ENDPOINTS.md "Wave 5v").
+- ROUTING FACT (proven): CampaignApi-family Retrofit clients use the
+  inline CloudFront literal as primary and the PATCHED backup as fallback
+  -> offline primary fails fast -> switchServer retries on loopback. The
+  datareport APIs point at the patched PRIMARY directly. Either way the
+  requests reach the embedded server; nothing else needs patching.
+- ARTIFACTS: work/jadx_out now has src_classes{1,3,4} again (re-decompiled
+  this session; classes5 has no web APIs). work/endpoints.json is STILL
+  gone — RoutingTable is maintained by hand until it is regenerated;
+  gen_router_table.py would need the inventory rebuilt first.
+- DEAD-CODE VERDICTS (do not "implement" these without new evidence):
+  IVIPApi (0 references — VIP goes through Google Play billing),
+  worldCup family (@Deprecated, 0 call sites), campaignLogo +
+  campaign-precious-reward (0 call sites), ugc/status, emails/password/
+  reset, user/password (phone). Videostars = gated by empty starCode on
+  local accounts. halloween/bgtube = event-gated by appConfig.
+- Next: (1) light the campaign sign-in surface on-device (flip
+  isShowUniversalActivity + manifest activityId, add a hall step that
+  handles the full-screen sign dialog: claim via base_sign_in_get, assert
+  bounded POST + reward dialog + wallet); (2) clan invite flow;
+  (3) Hand over Chief UI drive. NO GameServer work.

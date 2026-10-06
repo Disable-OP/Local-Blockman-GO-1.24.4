@@ -885,3 +885,43 @@ bounded PUTs -> restore to 0.
 Run 37391929418 (wip-40) PASS: setIdentity client-asserted (role=10),
 removeMember client-asserted (member gone), freeVerify client-asserted
 ([1,0,1]), plus the F2 clan-UPDATE (name read-back). Host rig 370/370.
+
+## Wave 5v (Session 19): campaign sign-in + datareport sink + turntable status
+
+Phase 8 — the activity/analytics layer. Client contracts decoded from
+jadx classes1-4 (ICampaignApi/IVIPApi/IUserApi/IReportInfoApi/
+IPingReportApi + the view/dialog/a sign-in family + b/b.java activity
+gates), then implemented as real state-backed handlers:
+
+1. campaignSignInList (GET /activity/api/v1/signIn): monthly 8-day cycle
+   per user; 8 cells (the client dialog hard-requires 8), status
+   0/1, isSpecial on days 7/8, day 8 carries 4 reward cards; signInStatus
+   0 = claimable today; remainingTime = cycle end epoch ms.
+2. campaignSignIn (POST): claims the first unclaimed day, credits the
+   wallet (+200..8000 golds by day), returns {"signInId": N}; double
+   claim -> 7012 (CampaignOnError family, same as the daily sign-in).
+3. turntableStatus x2 (lucky/turntable + slot draw): TurntableStatus
+   {isFree: 1} — the free draw is unused (no draw endpoint locally yet).
+4. eventReport/funnelReport/pingReport: the three /datareport routes now
+   persist every report body verbatim to
+   localapi/datareport/<kind>-<yyyymmdd>.jsonl — a real analytics store
+   (also improves observability: the server can now answer "what did the
+   client report today").
+5. appConfig: isShowUniversalActivity/universalActivityVersionCode added
+   explicitly (b/b.java reads them; missing keys Gson-default silently).
+
+Routing pipeline verified end-to-end this session: httpsCreate uses the
+inline CloudFront literal as primary + the patched backup as fallback
+(fail fast -> switchServer -> loopback), while the datareport APIs point
+at the patched PRIMARY directly. All decoded routes land locally.
+
+The remaining 47 default routes are now classified with call-site
+evidence in docs/ENDPOINTS.md ("Wave 5v" table): dead code (IVIPApi,
+worldCup family, ugc/status, email/phone reset paths), gated-off for
+local accounts (videostars — empty starCode), event-gated (halloween,
+bgtube), or honest empty-state configs (banner/editor/moregame). None of
+them is reachable by the live client request graph of 1.24.4 as
+configured; lighting each is a deliberate future decision, not a gap.
+
+Host rig: 390/390 (18 new Wave 5v checks incl. persistence across
+restart + the on-disk datareport store assertion). NO GameServer work.

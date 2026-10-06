@@ -613,3 +613,50 @@ server owns the rule; evidence chain in PATCH_PLAN "Phase F2"), a
 non-member PUT returns 7006 (tribe_not_joined), chief-only stays 7003.
 The route itself was already a real handler; the on-device UI drive
 (Phase F2) client-asserts it end-to-end.
+
+# Wave 5v (Session 19): campaign sign-in + datareport sink + turntable status
+
+## New state-backed handlers (client-contract decoded, host-rig proven)
+
+| Route | Handler | Client evidence (jadx) |
+|---|---|---|
+| GET /activity/api/v1/signIn | campaignSignInList | ICampaignApi.signInList -> UserSignInResponse; the hall dialogs (ac/Zb) show the full-screen sign dialog when signInStatus==0; view/dialog/a/k.java requires EXACTLY 8 userSignInList cells; e.java: status==1 = claimed; g.java (POST callback) reads data.signInId + renders the day's rewards (>=4 rewards = last-day bookkeeping), then refreshes the wallet |
+| POST /activity/api/v1/signIn | campaignSignIn | CampaignApi.signIn -> Map<String,Integer>; the server claims the first unclaimed day of the monthly 8-day cycle, awards the day's golds, returns {"signInId": N}; double-claim returns 7012 (CampaignOnError family) |
+| GET /activity/api/v1/lucky/turntable/gold/status | turntableStatus | ICampaignApi.getTurntableRedPoint -> TurntableStatus{isFree}; b/a.java: isFree > 0 paints the jackpot red-point icon. Real state: 1 while today's free draw is unused |
+| GET /activity/api/v1/slot/machine/user/gold/draw/status | turntableStatus | same TurntableStatus contract (ICampaignApi.getGoldDrawStatus) |
+| POST /datareport/api/v1/event/report | eventReport | IReportInfoApi.reportSandboxData(EventRequest{eventRequests[],packageName}); the impl hits getMetaDataBaseUrl() (patched -> loopback) as PRIMARY. Persisted verbatim to localapi/datareport/event-<yyyymmdd>.jsonl |
+| POST /datareport/api/v1/funnel/event/report | funnelReport | IReportInfoApi.newReportSandboxData(List<NewEventInfoRequest>); persisted to funnel-<day>.jsonl |
+| POST /datareport/api/v1/app/ping/report/batch | pingReport | IPingReportApi.reportPingEvent(PingEventDto, CloudFront-Viewer-Country + deviceId headers); persisted to ping-<day>.jsonl |
+
+appConfig gained the explicit `isShowUniversalActivity: false` +
+`universalActivityVersionCode: 0` keys (b/b.java reads them for the
+universal-activity gate; missing keys Gson-default silently).
+
+## Routing pipeline note (verified this session)
+
+RetrofitFactory.httpsCreate passes the inline CloudFront literal as the
+Retrofit baseUrl and getMetaDataBackupBaseUrl() as the interceptor's
+backup. patch_urls.py rewrites App.smali's setBaseUrl/setBackupBaseUrl
+const-strings, so at runtime: primary attempt -> CloudFront (fails fast,
+no network) -> BaseUrlInterceptor.switchServer retries against
+http://127.0.0.1:18080. The datareport APIs differ: they use
+getMetaDataBaseUrl() (the patched PRIMARY) and reach the loopback on the
+first attempt. Either way every decoded route lands on the embedded server.
+
+## Call-site evidence table for the remaining default endpoints (Session 19)
+
+Decoded from jadx classes1-4 + dex string scans; a method counts as LIVE
+only when a non-interface class invokes it. The wrapper definitions inside
+the Api impl classes themselves do not count.
+
+| Cluster (routes) | Verdict | Evidence |
+|---|---|---|
+| IVIPApi (GET /shop/api/v1/shop/users/vip, PUT buy/vip) | dead code | grep across classes1-4: the interface + impl are referenced NOWHERE; the app's VIP flow goes through Google Play billing (VipService ARouter provider, VipManager) |
+| worldCup family (10 routes: campaignGameList, bet, history, notice, integral, ranks, task v1, reward v1) | dead code | every method is @Deprecated in ICampaignApi and has ZERO non-interface call sites (the apparent "getTaskList/rewardList callers" were UserApi/GameApi name collisions) |
+| GET /config/files/blockymods-activity-logo (CampaignLogo), GET /config/files/campaign-precious-reward (List<Integer>) | dead code | ICampaignApi.campaignLogo/campaignPreciousReward: 0 call sites |
+| videostars (5 routes: config/get, billing/list/get, getbycode, cashapply, exchange) | gated off for local accounts | MoreViewModel guards with `login && !TextUtils.isEmpty(starCode)`; locally-created accounts never carry a starCode, so the calls never fire |
+| GET /game/api/v1/games/ugc/status | dead code | IGameApi.getUGCGameStatus: 0 call sites |
+| POST /user/api/v1/emails/password/reset | dead code | IUserApi.resetPassword has no live caller; the live reset path is resetPasswordBySecretQuestion (implemented) |
+| POST /user/api/v1/user/password (phone SMS retrieve) | dead code | retrievePassword(PhoneBindForm): no live caller; account security uses secret questions + set-password (both implemented) |
+| GET /config/files/blockymods-banner (List<BannerEntity>), game-detail-to-editor (Map<String,List<String>>), indiegame-moregame_introduction (List<BannerInfo>), bg-tube-activity-config | empty = honest state | live interfaces, but an empty banner/editor list is the real "no active campaign" response; the handlers keep schema-true defaults |
+| halloween (6 routes), bgtube (3 routes) | event-gated | the halloween module + bgtube surfaces only fire during an active event config; with the current appConfig (isShowHallowmasChest false etc.) they stay unreachable — documented-deliberate |

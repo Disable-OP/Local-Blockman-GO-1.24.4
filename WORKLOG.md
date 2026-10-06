@@ -1514,3 +1514,51 @@
   flow (oa.a right button -> na.c template, inviteFriend friendIds);
   (3) Bind-domain codes when the account-security screens are driven;
   (4) NO GameServer work.
+
+## Session 19 — Wave 5v: campaign sign-in + datareport sink + turntable status (2026-10-06)
+
+- Cron resume: repo at 1fb11c7 (session 18 FINAL), CI green (run
+  37391929418 wip-40, 0 FATAL). Latest diagnostics: 146 REQ, 0 UNMAPPED,
+  no 4xx/5xx — the clan chain is clean.
+- ARTIFACT RECOVERY: work/jadx_out only held src_classes2 (earlier
+  sessions cleaned the big trees). Re-decompiled classes.dex, classes3.dex
+  and classes4.dex with the pinned per-dex jadx recipe into
+  work/jadx_out/src_classes{1,3,4} (classes5 holds no web APIs; binary
+  string scans proved which dex declares what).
+- CALL-SITE EVIDENCE PASS over the 54 remaining default endpoints: grep
+  for each Retrofit method across classes1-4, excluding the Api wrapper
+  classes. Result: several whole clusters are DEAD CODE or GATED (IVIPApi
+  has zero references; the worldCup family is @Deprecated with zero
+  non-interface call sites; videostars is gated by an empty starCode for
+  local accounts; email/phone reset paths unused). Full table in
+  docs/ENDPOINTS.md "Wave 5v".
+- CLIENT DECODE (the live part): the campaign sign-in chain (ICampaignApi
+  signInList/signIn + view/dialog/a/{d,e,f,g,h,i,k}.java + main ac/Zb):
+  8 cells required, status semantics, POST returns {"signInId"}, rewards
+  rendering, wallet refresh. TurntableStatus{isFree} drives the jackpot
+  red-point (b/a.java). Datareport bodies: EventRequest,
+  List<NewEventInfoRequest>, PingEventDto.
+- ROUTING PIPELINE VERIFIED: httpsCreate primary = inline CloudFront
+  literal (fails fast offline) -> BaseUrlInterceptor.switchServer retries
+  against the patched backup = loopback; datareport APIs point at the
+  patched PRIMARY (getMetaDataBaseUrl) and hit loopback first try. This
+  is why every /activity//datareport route lands on the embedded server.
+- SERVER: 7 new state-backed handlers (campaignSignInList, campaignSignIn,
+  turntableStatus x2 routes, eventReport/funnelReport/pingReport) +
+  campaign sign-in state in StateStore (monthly cycle) + the on-disk
+  datareport store (localapi/datareport/<kind>-<day>.jsonl) + the two
+  missing appConfig keys (isShowUniversalActivity/universalActivityVersionCode).
+  RoutingTable flipped for the 7 routes.
+- HOST RIG: 370 -> 390 (18 new checks: shape contract, claim flow, wallet
+  credit, 7012 double-claim, auth required, persistence across restart,
+  datareport files on disk). All green.
+- COVERAGE: 335 discovered, 288 implemented, 47 default (each of the 47
+  now carries a call-site verdict in the docs), 224 host-tested.
+- Pushes this session: (see git log). NO GameServer work (standing rule).
+- Next candidates: (1) drive the campaign sign-in dialog on-device — flip
+  isShowUniversalActivity=true + a matching manifest activityId and add a
+  hall step that claims the dialog (server side is already rig-proven);
+  (2) the clan invite flow (oa.a right button -> na.c -> inviteFriend);
+  (3) Hand over Chief through the UI (type 3, rig-proven); (4) the
+  per-game turntable draw endpoints (GET/PUT turntable + props) when the
+  jackpot surface is lit.
