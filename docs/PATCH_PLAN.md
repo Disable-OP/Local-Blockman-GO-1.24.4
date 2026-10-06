@@ -846,3 +846,42 @@ precedent). With the overlay gone the entry chain is: rlEnterClan ->
 Notice Board CLOSE -> clean homepage -> ic_more -> sheet -> Edit Profile
 -> rename + Add Tag -> Modify -> PUT /clan/api/v1/clan/tribe -> server
 read-back. Shipped by tag v0.6.1-guidefix.
+
+## Phase G (Session 18): member management + clan settings driven through the real UI
+
+Client decode (jadx oa.TribeMemberManage / TribeHasItemViewModel J /
+sa.TribeSettingFragment + string resources): the manage screen hint is
+"Long press to edit member" — the member sheet is the LONG-CLICK
+command. The chief's sheet for a member: [Hand over Chief | Set as
+Elder | Remove Member | Cancel]; for an elder: [Hand over Chief | Set
+as Member | Remove Member | Cancel]; elders only get Remove on plain
+members. Sheet items feed TwoButtonDialog (base_dialog_two_button,
+btnSure confirms). Clan Settings is the auto-enter CheckBox
+(tribe_auto_enter) whose ViewModel hardcodes TRUE and re-binds after
+every response.
+
+SERVER CONTRACT FIXES (each verified by the real client on-device):
+1. setIdentity type codes: the client sends {1=Set as Elder, 2=Set as
+   Member, 3=Hand over Chief}; the server only accepted {0,10} — every
+   real role-change failed with generic code 0. Now: type 1 -> role 10,
+   type 2 -> role 0, type 3 -> chief handover (target 20, old chief
+   steps down to member, chiefId follows).
+2. kick guard: the chief's sheet offers Remove for ELDERS - the old
+   guard rejected elders. Now: elders remove plain members, the chief
+   removes anyone but the chief.
+3. Wire notes: the client sends both PUTs with params as a FORM body
+   (NanoHTTPD merges them into getParameters; the URI carries no query
+   — the REQ log prints the path only). freeVerify worked all along;
+   setIdentity needed the type-code fix.
+
+THE DRIVE (Phase G, after F2): second member joined via the local API
+(register + requestJoin + chief agreement) -> ic_more -> Manage
+Members -> long-press the member row -> Set as Elder -> btnSure ->
+bounded PUT + tribe/member read-back (role 10) -> long-press -> Remove
+Member -> btnSure -> member-gone read-back -> ic_more -> Clan Settings
+-> auto-enter CheckBox taps -> freeVerify state sequence [1,0,1] with
+bounded PUTs -> restore to 0.
+
+Run 37391929418 (wip-40) PASS: setIdentity client-asserted (role=10),
+removeMember client-asserted (member gone), freeVerify client-asserted
+([1,0,1]), plus the F2 clan-UPDATE (name read-back). Host rig 370/370.

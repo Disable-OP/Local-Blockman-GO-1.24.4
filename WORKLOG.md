@@ -1483,3 +1483,34 @@
   same sheet; (3) Bind-domain codes (102-119) when account-security
   screens get driven; (4) sync main's test-redroid timeout — DONE
   (a7a2496). NO GameServer work (standing instruction).
+
+## Session 18 — Phase G: member management + clan settings client-asserted (wip-40)
+
+- Cron resume: repo at 017c9e2, CI green. Error-driven pass over run
+  37374604536's diagnostics: clean (61 REQ, 0 UNMAPPED).
+- CLIENT DECODE: the manage screen row sheet is LONG-CLICK ("Long press
+  to edit member"); sheet types {1=elder, 2=member, 3=hand over chief};
+  the settings screen is the auto-enter CheckBox; TwoButtonDialog
+  confirms via btnSure (center variant, base_dialog_two_button).
+- SERVER GAPS FOUND AND FIXED: (1) setIdentity rejected the client's
+  type codes {1,2,3} — every real role-change failed generic-0; now
+  speaks the client codes incl. chief handover (old chief -> member,
+  chiefId follows). (2) The kick guard rejected elders — the chief's
+  sheet offers Remove for elders; now elders kick members, chief kicks
+  anyone but the chief. Host rig 370/370 (throwaway kick targets —
+  kicked users carry the 24h rejoin cooldown).
+- WIRE FACT: both PUTs carry params as a FORM body (NanoHTTPD merges
+  into getParameters; the REQ log prints the path only) — the URI-query
+  counters were wrong; fixed to verb+path.
+- RUNS: 37381911382 PASS (long-press decode), 37385167651 FAIL (promote
+  rejected by the pre-fix APK; remove + freeVerify already asserted),
+  37388637097 FAIL (promote OK on wip-39; elder-kick rejected by the
+  old guard), 37391929418 PASS on wip-40: setIdentity (role=10),
+  removeMember (gone), freeVerify ([1,0,1]) — ALL client-asserted,
+  0 FATAL.
+- Pushes this session: 9d8131c, 6427c46, 8d0ac5b, 907a7e1 + docs.
+- Next candidates: (1) Hand over Chief through the UI (type 3 — server
+  proven by the rig; the sheet item exists on-device); (2) the invite
+  flow (oa.a right button -> na.c template, inviteFriend friendIds);
+  (3) Bind-domain codes when the account-security screens are driven;
+  (4) NO GameServer work.
