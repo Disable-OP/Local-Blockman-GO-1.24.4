@@ -2446,6 +2446,11 @@ def main():
                     else:
                         print("  [info] F2: 'Clan tag' label not found - "
                               "tags may already exist")
+                    # run-37418335203: the tag input leaves the soft
+                    # keyboard up - BACK once drops it (the form stays);
+                    # otherwise the MODIFY taps land on the keyboard
+                    adb.key(4)
+                    time.sleep(2)
                     # 5t v10 (run 37374604536): the layout applies
                     # textAllCaps - the button renders 'MODIFY'
                     modify = next((x for x in screen.dump()
@@ -2603,7 +2608,10 @@ def main():
                                     print("  G-manage] %s | text=%r" % (
                                         x.res.rsplit("/", 1)[-1]
                                         if x.res else "", x.text[:28]))
-                            row = screen.wait_for(texts=[g_nick], timeout=12,
+                            loader = screen.find(texts=["Loading…"])
+                            if loader:
+                                time.sleep(6)  # let the member list finish
+                            row = screen.wait_for(texts=[g_nick], timeout=20,
                                                   poll=3)
                             puts_before_g = puts_g()
                             if row and row.center:
@@ -2761,12 +2769,24 @@ def main():
                                                 time.sleep(1)
                                                 adb.text("JoinUsQA")
                                                 time.sleep(1)
+                                                # run-37418335203: the soft
+                                                # keyboard covers the confirm
+                                                # button - BACK once drops the
+                                                # keyboard and keeps the dialog
+                                                adb.key(4)
+                                                time.sleep(2)
                                                 conf = screen.wait_for(
                                                     ids=["btn_confirm"],
                                                     timeout=8, poll=2)
                                                 if conf and conf.center:
                                                     screen.tap_node(conf)
                                                     time.sleep(5)
+                                                    if inv_count() == pre_inv:
+                                                        conf2 = screen.find(
+                                                            ids=["btn_confirm"])
+                                                        if conf2 and conf2.center:
+                                                            screen.tap_node(conf2)
+                                                            time.sleep(5)
                                                     f_alive("G-invite-sent")
                                                     post_inv = inv_count()
                                                     msgs_f = fcall(
