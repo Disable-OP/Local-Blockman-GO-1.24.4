@@ -317,7 +317,8 @@ def main():
         check("dailySignIn map first..seventh", si.get("code") == 1
               and set(si.get("data", {}).keys()) == {"first", "second", "third", "fourth",
                                                      "fifth", "sixth", "seventh"}, str(si)[:150])
-        check("signin unclaimed status", si["data"]["first"]["status"] == 0
+        check("signin fresh day-1 claimable (client: 1 = claimable, "
+              "j/h.java)", si["data"]["first"]["status"] == 1
               and si["data"]["first"]["quantity"] > 0, str(si["data"]["first"])[:100])
         cs = call("PUT", "/user/api/v2/users/%d/daily/sign/in" % uid1,
                   headers={"Access-Token": tok1, "userId": str(uid1)})
@@ -327,7 +328,8 @@ def main():
         check("sign-in credited wallet", golds1 == golds0 + 200, "golds %d -> %d" % (golds0, golds1))
         si2 = call("GET", "/user/api/v2/users/%d/daily/sign/in" % uid1,
                    headers={"Access-Token": tok1, "userId": str(uid1)})
-        check("signin claimed status", si2["data"]["first"]["status"] == 1, str(si2["data"]["first"])[:100])
+        check("signin claimed status (client: 2 = Received)",
+              si2["data"]["first"]["status"] == 2, str(si2["data"]["first"])[:100])
         ad = call("PUT", "/user/api/v1/users/%d/daily/tasks/ads" % uid1,
                   headers={"Access-Token": tok1, "userId": str(uid1)})
         check("ads task reward RechargeEntity", ad.get("code") == 1
@@ -1679,6 +1681,22 @@ def main():
         check("campaign double-claim 7012", cclaim2.get("code") == 7012, str(cclaim2)[:100])
         csign_nologin = call("POST", "/activity/api/v1/signIn", None)
         check("campaign claim requires auth", csign_nologin.get("code") == 7, str(csign_nologin)[:80])
+        # Wave 5v-2 (session 23): the campaign cycle-completion contract.
+        # Client (MainModel/Zb.java): signInStatus 2 = cycle complete ->
+        # the client chains INTO the week-sign surface (bc.e -> GET
+        # /user/api/v2/users/{userId}/daily/sign/in). The cycle is
+        # DATE-GATED server-side (one claim per calendar day — faithful
+        # to a daily calendar), so completion is not reachable within a
+        # single run; what IS testable is the invariant below.
+        cs_done_today = call("GET", "/activity/api/v1/signIn", None,
+                             headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("campaign claimed-today keeps signInStatus 1 (never 2 "
+              "mid-cycle)", cs_done_today.get("data", {}).get("signInStatus") == 1,
+              str(cs_done_today)[:120])
+        cclaim3 = call("POST", "/activity/api/v1/signIn", None,
+                       headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("campaign claim after completion 7012", cclaim3.get("code") == 7012,
+              str(cclaim3)[:100])
         tt = call("GET", "/activity/api/v1/lucky/turntable/gold/status?activityId=Lucky%202020",
                   headers={"language": "en"})
         slot = call("GET", "/activity/api/v1/slot/machine/user/gold/draw/status?activityId=slot_machine",
@@ -1880,8 +1898,8 @@ def main():
               str(cond)[:120])
         si3 = call("GET", "/user/api/v2/users/%d/daily/sign/in" % uid1,
                    headers={"Access-Token": tok1, "userId": str(uid1)})
-        check("sign-in state persists", si3.get("code") == 1
-              and si3.get("data", {}).get("first", {}).get("status") == 1, str(si3)[:120])
+        check("sign-in state persists (claimed = 2)", si3.get("code") == 1
+              and si3.get("data", {}).get("first", {}).get("status") == 2, str(si3)[:120])
         # Wave 5v: campaign sign-in cycle + datareport files persist across restart
         csp = call("GET", "/activity/api/v1/signIn", None, headers={"Access-Token": tok1, "userId": str(uid1)})
         check("campaign cycle persists", csp.get("code") == 1

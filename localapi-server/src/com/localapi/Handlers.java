@@ -1446,6 +1446,13 @@ final class Handlers {
         int[] rewards = {200, 400, 600, 800, 1000, 1500, 3000};
         String[] keys = {"first", "second", "third", "fourth", "fifth", "sixth", "seventh"};
         JSONObject map = new JSONObject();
+        // Client contract (WeekSignDialog item j/h.java): status
+        // 0 = "It isn't time to sign in" (future), 1 = claimable (the
+        // click fires the claim chain), 2 = "Received" (claimed).
+        // MainModel/Xb.java opens the dialog only when SOME day has
+        // status == 1 — the previous mapping (claimed = 1) kept the
+        // dialog unreachable forever and mis-labelled claimed days.
+        int todaySlot = claimedCount % 7;
         for (int i = 0; i < 7; i++) {
             int slot = i + 1;
             JSONObject d = new JSONObject();
@@ -1453,7 +1460,15 @@ final class Handlers {
             d.put("dailyId", slot);
             d.put("name", "Day " + slot);
             d.put("quantity", rewards[i]);
-            d.put("status", (i < claimedCount % 7 || (claimedToday && i == claimedCount % 7)) ? 1 : 0);
+            int status;
+            if (i < todaySlot) {
+                status = 2;                                    // claimed earlier this cycle
+            } else if (i == todaySlot) {
+                status = claimedToday ? 2 : 1;                 // today
+            } else {
+                status = 0;                                    // future
+            }
+            d.put("status", status);
             d.put("type", "golds");
             d.put("url", "");
             d.put("adQuantity", 0);
@@ -3347,6 +3362,7 @@ final class Handlers {
             cs.put("claimed", claimed);
         }
         JSONArray days = new JSONArray();
+        int claimedCount = claimed.length();
         for (int day = 1; day <= CAMPAIGN_DAYS; day++) {
             JSONObject d = new JSONObject();
             d.put("signInId", day);
@@ -3368,7 +3384,15 @@ final class Handlers {
             days.put(d);
         }
         JSONObject out = new JSONObject();
-        out.put("signInStatus", store.campaignSignedOn(u, today()) ? 1 : 0);
+        // Client contract (MainModel/Zb.java): signInStatus 0 = active
+        // campaign (opens the campaign sign dialog), 1 = claimed today
+        // (silence), 2 = cycle complete -> the client CHAINS INTO the
+        // week-sign surface (bc.e -> GET /user/api/v2/users/{userId}/
+        // daily/sign/in -> WeekSignDialog). Error 8006 reaches the same
+        // chain. Emitting 2 only here is what makes that surface
+        // reachable at all.
+        out.put("signInStatus", claimedCount >= CAMPAIGN_DAYS ? 2
+                : (store.campaignSignedOn(u, today()) ? 1 : 0));
         out.put("remainingTime", campaignCycleEndMs());
         out.put("userSignInList", days);
         return envelope("obj", out.toString());
