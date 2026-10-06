@@ -1562,3 +1562,22 @@
   (3) Hand over Chief through the UI (type 3, rig-proven); (4) the
   per-game turntable draw endpoints (GET/PUT turntable + props) when the
   jackpot surface is lit.
+
+## Session 19 cont. — Wave 5w: turntable draw chain + the jackpot surface lit (wip-42)
+
+- Same session, second wave: the per-game turntable (AdsTurntableDialog +
+  gamedetail Z/W/Y) and the universal-activity gate (b/b.java) decoded;
+  3 more handlers (turntableInfo/props/draw) + the status handlers now
+  read the real daily state (isFree 1->0 after the draw, restores next
+  UTC day). appConfig isShowUniversalActivity=true lights the hall's
+  slot_machine jackpot icon (App hardcodes activityId="slot_machine").
+- The campaign sign dialog is now REACHABLE by the client (signInStatus 0
+  + hall bookkeeping) — Phase A gained a defensive claim-or-dismiss
+  handler (dvSignUp probe, non-fatal) plus a jackpot-poll traffic probe.
+- Host rig 397/397. Coverage: 291 implemented / 44 default (each with a
+  call-site verdict). Pushes: a00b220 (5v), d5a186b (5w).
+- CRON NOTE: the cron tool is unavailable in this session's toolset, but
+  the hourly webDevReview schedule is demonstrably firing (both
+  "Continue" triggers this session carried web-cron-review-* trace ids).
+- CI: wip-41 (5v) built green; test-redroid 37398682871 in progress.
+  Next dispatch after this run verifies 5w (wip-42) with the lit surface.
