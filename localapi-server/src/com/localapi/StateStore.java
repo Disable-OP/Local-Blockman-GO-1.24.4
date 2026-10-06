@@ -550,6 +550,29 @@ public final class StateStore {
         return cs != null && date.equals(cs.optString("lastDate"));
     }
 
+    // ------------------------------------------------- turntable draw state
+
+    /** Per-user daily turntable draw: {date, prizeId, gameId} or null. */
+    public synchronized JSONObject turntableDraw(JSONObject user) {
+        return userState(user).optJSONObject("turntableDraw");
+    }
+
+    public synchronized void putTurntableDraw(JSONObject user, String date, long prizeId,
+                                              String gameId) {
+        JSONObject t = new JSONObject();
+        t.put("date", date);
+        t.put("prizeId", prizeId);
+        t.put("gameId", gameId == null ? "" : gameId);
+        userState(user).put("turntableDraw", t);
+        save();
+    }
+
+    /** True when today's free turntable draw is still unused. */
+    public synchronized boolean turntableFreeToday(JSONObject user, String date) {
+        JSONObject t = turntableDraw(user);
+        return t == null || !date.equals(t.optString("date"));
+    }
+
     // ------------------------------------------------------ datareport sink
 
     /** Append a raw report body to the on-disk datareport store (one JSONL

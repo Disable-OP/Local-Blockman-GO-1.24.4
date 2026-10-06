@@ -1683,6 +1683,36 @@ def main():
                     headers={"language": "en"})
         check("turntable isFree", tt.get("code") == 1 and tt.get("data", {}).get("isFree") == 1, str(tt)[:100])
         check("slot draw isFree", slot.get("code") == 1 and slot.get("data", {}).get("isFree") == 1, str(slot)[:100])
+        # Wave 5w: the turntable draw chain (info -> draw -> status flips)
+        ttinfo = call("GET", "/game/api/v1/game/10001/turntable",
+                      headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        check("turntable info 8 prizes", ttinfo.get("code") == 1 and len(ttinfo.get("data", [])) == 8
+              and all("id" in p and "picUrl" in p for p in ttinfo.get("data", [])), str(ttinfo)[:150])
+        ttprops = call("GET", "/game/api/v1/game/10001/turntable/props",
+                       headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        check("turntable props free tip", ttprops.get("code") == 1
+              and "free draw" in str(ttprops.get("data", "")).lower(), str(ttprops)[:120])
+        ttdraw = call("PUT", "/game/api/v1/game/10001/turntable", None,
+                      headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        drawn_id = ttdraw.get("data")
+        check("turntable draw returns prize id", ttdraw.get("code") == 1
+              and isinstance(drawn_id, int) and 1 <= drawn_id <= 8, str(ttdraw)[:120])
+        w5v3 = call("POST", "/user/api/v1/login", {"uid": "qa_user1", "password": "pw1", "imei": "dev1"})
+        golds_c2 = w5v3.get("data", {}).get("golds", 0)
+        prize_table = {1: 100, 2: 200, 3: 500, 4: 1000, 5: 50, 6: 300, 7: 800, 8: 2000}
+        check("turntable prize credited wallet", golds_c2 == golds_c1 + prize_table[drawn_id],
+              "golds %d -> %d (prize %s = +%d)" % (golds_c1, golds_c2, drawn_id, prize_table[drawn_id]))
+        ttstatus2 = call("GET", "/activity/api/v1/lucky/turntable/gold/status?activityId=slot_machine",
+                         headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        check("turntable isFree flips after draw", ttstatus2.get("code") == 1
+              and ttstatus2.get("data", {}).get("isFree") == 0, str(ttstatus2)[:120])
+        ttdraw2 = call("PUT", "/game/api/v1/game/10001/turntable", None,
+                       headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        check("second draw rejected", ttdraw2.get("code") != 1, str(ttdraw2)[:120])
+        ttprops2 = call("GET", "/game/api/v1/game/10001/turntable/props",
+                        headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        check("turntable props used tip", ttprops2.get("code") == 1
+              and "used" in str(ttprops2.get("data", "")).lower(), str(ttprops2)[:120])
         ev = call("POST", "/datareport/api/v1/event/report",
                   {"packageName": "com.test.host", "eventRequests": [
                       {"event": "qa_event", "eventType": "behavior", "platform": "android"}]},

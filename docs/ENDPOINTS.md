@@ -660,3 +660,23 @@ the Api impl classes themselves do not count.
 | POST /user/api/v1/user/password (phone SMS retrieve) | dead code | retrievePassword(PhoneBindForm): no live caller; account security uses secret questions + set-password (both implemented) |
 | GET /config/files/blockymods-banner (List<BannerEntity>), game-detail-to-editor (Map<String,List<String>>), indiegame-moregame_introduction (List<BannerInfo>), bg-tube-activity-config | empty = honest state | live interfaces, but an empty banner/editor list is the real "no active campaign" response; the handlers keep schema-true defaults |
 | halloween (6 routes), bgtube (3 routes) | event-gated | the halloween module + bgtube surfaces only fire during an active event config; with the current appConfig (isShowHallowmasChest false etc.) they stay unreachable — documented-deliberate |
+
+# Wave 5w (Session 19 cont.): the turntable draw chain + the jackpot surface lit
+
+| Route | Handler | Client evidence |
+|---|---|---|
+| GET /game/api/v1/game/{gameId}/turntable | turntableInfo | IGameApi.getAdsTurntableInfo -> List<AdsTurntableInfo{id,picUrl}>; gamedetail Z.b -> W.onSuccess opens AdsTurntableDialog but BAILS on an empty list — the handler serves 8 real prize slots |
+| GET /game/api/v1/game/{gameId}/turntable/props | turntableProps | IGameApi.getAdsTurnHaveReward -> String tip rendered into tvTip (Y.onSuccess); real tip reflects the daily free-draw state |
+| PUT /game/api/v1/game/{gameId}/turntable | turntableDraw | IGameApi.getAdsTurntableReward -> Long prize id; AdsTurntableDialog.getRewardPosition matches the id to a wheel position. Real state: one free draw per UTC day, prize golds credited, isFree flips to 0 |
+| (appConfig) | isShowUniversalActivity=true | b/b.java gates the slot_machine jackpot icon on isShowUniversalActivity && versionCode (App sets activityId="slot_machine"); flipping it lights the hall icon and the draw-status polling |
+
+The lucky/turntable + slot draw status handlers now read REAL state
+(turntableFreeToday) instead of a constant — after a successful draw the
+red-point icon goes gray until the next UTC day, exactly like a real
+backend's daily free-draw rule.
+
+Automation: Phase A handles the (now reachable) campaign sign dialog
+defensively — dvSignUp + Claim tap -> bounded POST + reward-popup
+dismissal, BACK fallback, all non-fatal. The jackpot draw-status poll is
+asserted as a [probe] line first, to be promoted to a hard check once
+observed on-device.

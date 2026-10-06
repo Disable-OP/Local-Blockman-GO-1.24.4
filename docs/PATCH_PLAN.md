@@ -925,3 +925,23 @@ configured; lighting each is a deliberate future decision, not a gap.
 
 Host rig: 390/390 (18 new Wave 5v checks incl. persistence across
 restart + the on-disk datareport store assertion). NO GameServer work.
+
+## Wave 5w (Session 19 cont.): turntable draw chain + jackpot surface lit
+
+1. turntableInfo (GET turntable): 8 prize slots (AdsTurntableInfo) — the
+   client's dialog bails on an empty list, so the default [] was a dead
+   surface, not a working one.
+2. turntableProps (GET turntable/props): real daily-state tip string.
+3. turntableDraw (PUT turntable): one free draw per UTC day; RNG prize
+   (id 1..8 -> +50..2000 golds); the drawn id is what the wheel spins to.
+4. turntableStatus x2 now read the real state: isFree 1 -> 0 after the
+   daily draw (the red-point icon goes gray) — a genuine state machine.
+5. appConfig isShowUniversalActivity=true + universalActivityVersionCode
+   0: the slot_machine jackpot icon is now LIT on the hall (b/b.java
+   gate + App's activityId="slot_machine"), so the client polls the draw
+   status on its own — the first activity surface the 1.24.4 client
+   reaches by itself on this build.
+
+Host rig 397/397 (7 new draw-chain checks). Automation: Phase A gained
+the defensive campaign-sign-dialog handler (claim-or-dismiss, non-fatal)
+and the jackpot poll probe.

@@ -299,6 +299,10 @@ final class Handlers {
         if ("eventReport".equals(name)) return eventReport(ctx, store, "event");
         if ("funnelReport".equals(name)) return eventReport(ctx, store, "funnel");
         if ("pingReport".equals(name)) return eventReport(ctx, store, "ping");
+        // ---- Wave 5w: turntable draw chain ----
+        if ("turntableInfo".equals(name)) return turntableInfo(ctx, store);
+        if ("turntableProps".equals(name)) return turntableProps(ctx, store);
+        if ("turntableDraw".equals(name)) return turntableDraw(ctx, store);
         L.e("unknown handler name: " + name);
         return envelope("none", null);
     }
@@ -584,9 +588,9 @@ final class Handlers {
         c.put("isShowShare", false);
         c.put("isShowThirdPart", false);
         c.put("isShowTopActivity", false);
-        // the universal-activity gate reads these (b/b.java a(String)):
-        // missing keys would Gson-default to false/0 — keep them explicit.
-        c.put("isShowUniversalActivity", false);
+        // b/b.java gates the slot_machine jackpot icon on these (App sets
+        // activityId="slot_machine"); 4003 >= version code -> icon visible.
+        c.put("isShowUniversalActivity", true);
         c.put("universalActivityVersionCode", 0);
         return envelope("obj", c.toString());
     }
@@ -3239,11 +3243,64 @@ final class Handlers {
     /** GET lucky/turntable + slot-machine gold draw status — TurntableStatus.
      *  Client contract (b/a.java): only isFree matters — >0 paints the
      *  red-point jackpot icon. Real state: 1 while today's free draw is
-     *  unused (no draw endpoint is wired locally yet, so it stays 1). */
+     *  unused, 0 after a successful PUT draw (see turntableDraw). */
     private static String turntableStatus(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        int isFree = u == null ? 1 : (store.turntableFreeToday(u, today()) ? 1 : 0);
         JSONObject out = new JSONObject();
-        out.put("isFree", 1);
+        out.put("isFree", isFree);
         return envelope("obj", out.toString());
+    }
+
+    // ---------------------------------------------------- Wave 5w: turntable
+
+    /** The wheel: 8 prize slots (AdsTurntableInfo{id, picUrl}); golds per id
+     *  credited by PUT draw. The client dialog bails on an EMPTY list
+     *  (gamedetail/c/a/a/W.onSuccess) and matches the drawn ID to a position
+     *  (AdsTurntableDialog.getRewardPosition). */
+    private static final long[] TURNTABLE_GOLDS = {100, 200, 500, 1000, 50, 300, 800, 2000};
+
+    /** GET /game/api/v1/game/{gameId}/turntable — List<AdsTurntableInfo>. */
+    private static String turntableInfo(Ctx ctx, StateStore store) {
+        JSONArray list = new JSONArray();
+        for (int i = 0; i < TURNTABLE_GOLDS.length; i++) {
+            JSONObject p = new JSONObject();
+            p.put("id", i + 1);
+            p.put("picUrl", "");
+            list.put(p);
+        }
+        return envelope("list", list.toString());
+    }
+
+    /** GET /game/api/v1/game/{gameId}/turntable/props — String tip
+     *  (gamedetail/c/a/a/Y.onSuccess renders it into the tvTip label). */
+    private static String turntableProps(Ctx ctx, StateStore store) {
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        String tip = (u != null && store.turntableFreeToday(u, today()))
+                ? "1 free draw available today" : "Free draw used - come back tomorrow";
+        return envelope("str", "\"" + tip + "\"");
+    }
+
+    /** PUT /game/api/v1/game/{gameId}/turntable — Long: the drawn prize id.
+     *  Client contract (AdsTurntableDialog.onStartLottery onSuccess): the id
+     *  is matched to a wheel position and the wheel spins to it. Real
+     *  behavior: one free draw per UTC day; the prize's golds are credited;
+     *  the status endpoints flip isFree to 0 until the next UTC day. */
+    private static String turntableDraw(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        String date = today();
+        if (!store.turntableFreeToday(u, date)) {
+            return failCode(ErrorCodes.SIGN_IN_CLAIMED, "free draw already used today");
+        }
+        int pick = java.util.concurrent.ThreadLocalRandom.current().nextInt(TURNTABLE_GOLDS.length);
+        long prizeId = pick + 1;
+        long golds = TURNTABLE_GOLDS[pick];
+        store.putTurntableDraw(u, date, prizeId, ctx.pathParam("gameId"));
+        store.award(u, "golds", golds);
+        L.i("turntable draw: userId=" + u.optLong("userId") + " gameId="
+                + ctx.pathParam("gameId") + " prize=" + prizeId + " +" + golds + " golds");
+        return envelope("num", String.valueOf(prizeId));
     }
 
     // ------------------------------------------------ Wave 5v: datareport sink

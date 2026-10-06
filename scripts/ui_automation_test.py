@@ -219,6 +219,62 @@ def assert_alive(adb, package, stage):
     return True
 
 
+def handle_campaign_dialogs(adb, screen, tag):
+    """Defensive handler for the surfaces the Wave 5v/5w server lights up:
+    the campaign sign-in dialog (dvSignUp grid) and its reward popup.
+
+    The client's hall bookkeeping MAY open the full-screen sign dialog
+    (view/dialog/a/d) whenever signInStatus==0. It would otherwise block
+    the whole drive (the TribeSettingGuide lesson: a self-serving overlay
+    outlasts any timeout). All outcomes are non-fatal probes:
+    - dvSignUp + a tappable "Claim"-text button -> tap it (fires POST
+      /activity/api/v1/signIn), then dismiss the reward popup (ll_reward)
+      that pops on success.
+    - dvSignUp without a claim button -> BACK (the dialog is dismissible
+      via its close command, and BACK closes FullScreenDialogs).
+    Returns a short probe string for the log ('claimed'/'dismissed'/None).
+    """
+    probe = None
+    try:
+        for _round in range(2):
+            nodes = screen.dump()
+            has_grid = any((n.res or "").rsplit("/", 1)[-1] == "dvSignUp" for n in nodes)
+            if not has_grid:
+                break
+            btn = next((n for n in nodes
+                        if n.cls == "android.widget.Button" and n.clickable
+                        and n.text and n.text.strip().lower() in ("claim",)), None)
+            if btn:
+                screen.tap_node(btn)
+                probe = "claimed"
+                print("  [probe] %s: campaign sign dialog -> tapped Claim" % tag)
+                time.sleep(3)
+                reward = screen.find(ids=["ll_reward", "rlBg"])
+                if reward and reward.center:
+                    # the reward popup's confirm button is databound (no
+                    # id/text) - tap its parent region's lower half
+                    n2 = next((x for x in screen.dump()
+                               if x.cls == "android.widget.Button" and x.center), None)
+                    if n2:
+                        screen.tap_node(n2)
+                    else:
+                        adb.key(4)
+                    probe += "+reward-dismissed"
+                    print("  [probe] %s: reward popup dismissed" % tag)
+                time.sleep(2)
+            else:
+                adb.key(4)
+                probe = "dismissed"
+                print("  [probe] %s: campaign sign dialog -> BACK" % tag)
+                time.sleep(2)
+            if not assert_alive(adb, "com.disabngo.blockynexus",
+                                "%s-campaign-dialog" % tag):
+                break
+    except Exception as e:
+        print("  [probe] %s: campaign dialog handler error (non-fatal): %s" % (tag, e))
+    return probe
+
+
 def relaunch_and_wait(adb, screen, package, activity, tag):
     """force-stop + launch + wait for a known main-screen state. Shared by
     the deep-drive recovery, Phase B entry and Phase D's clean_relaunch.
@@ -1039,6 +1095,11 @@ def main():
         fail("A: main screen not reached on fresh data (auto tourist login failed?)")
         finish()
     ok("A: main screen reached without manual login (visitor account)")
+    # Wave 5v/5w: the hall may open the campaign sign dialog (server now
+    # serves the real signInList) - claim or dismiss before driving on.
+    sign_probe = handle_campaign_dialogs(adb, screen, "A")
+    if sign_probe:
+        ok("A: campaign sign dialog handled (%s)" % sign_probe)
     # Snapshot the visitor auth traffic NOW: the deep-drive's dress-detail
     # GL rendering floods the logcat main buffer and rotates early LocalAPI
     # lines out (run 37226628540 evidence), so a single end-of-run scan
@@ -1060,6 +1121,16 @@ def main():
     else:
         ok("A: game-hall traffic served locally (%d endpoints, e.g. %s)"
            % (len(game_hits), ", ".join(game_hits[:3])))
+    # Wave 5w probe: the lit slot_machine jackpot surface should poll the
+    # draw status from the hall. Non-fatal this run (promote to a hard
+    # check once observed on-device).
+    tt_hits = [p for p in paths_a if "turntable/gold/status" in p
+               or "gold/draw/status" in p]
+    if tt_hits:
+        ok("A: jackpot draw-status poll served locally: %s" % ", ".join(tt_hits))
+    else:
+        print("  [probe] A: no jackpot draw-status poll yet (surface gate "
+              "not reached this run - non-fatal)")
 
     # ------------------------------------------------- Phase B: profile edit
     # Shared editor helpers live here (Phase D reuses them). HISTORY (read
