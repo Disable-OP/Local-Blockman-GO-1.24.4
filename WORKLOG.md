@@ -2081,3 +2081,46 @@
     GET /activity/api/v1/signIn in the run endpoint list).
 - Server dex rebuilt (225,208 bytes); build-release dispatched for the
   new APK. NO GameServer work.
+
+## Session 23 cont. — Phase J/K triaged twice; two real UX-flow discoveries banked
+
+- RUN 37453703969 (Phase J alone, 410ef02) FAIL(1): the bag dialog OPENED
+  (ll_library tap at (670,1067) -> getScrapBagValue 0->1 client-asserted)
+  but the backpack check failed — the endpoint list PROVED the fetch
+  fired after the 14s window. Fix: poll 20s + two ViewPager tab-flip
+  swipes (049457c).
+- RUN 37454273455 (Phase J+K, cb6a8fd) PASS-but-hollow: the H-tail
+  relaunch left the QS NOTIFICATION SHADE dragged open (the I-dump was
+  pure quick_settings_panel — the swipe-down pulled the shade, not the
+  collapsing header) so the I/J/K block was skipped (info path, no
+  FAIL). Fix: the Phase I entry walk now runs `cmd statusbar collapse`
+  + a pid check before every swipe attempt (fd7f78c).
+- RUN 37456710154 (NEW APK with the sign-in fix + 049457c) FAIL(3) — the
+  triage decoded TWO real client behaviors (diagnostics logcat evidence):
+  * THE SCRAP BACKPACK FETCH HAS NO QUERY STRING: "REQ GET /activity/
+    api/v2/collect/exchange/user/scrap" — null @Query params are
+    omitted by Retrofit. The fetch fires ~70ms after the dialog opens
+    in THREE parallel requests (binder hf.java sets
+    setOffscreenPageLimit(5) — all pages prefetch at once). The
+    `user/scrap?` marker NEVER matched; fixed to suffix-match minus the
+    value route (36406d4).
+  * THE SCRAP MENU IS A STACK: ll_library/ll_record/ll_rule are 50dp
+    ConstraintLayouts ALL constrained to parent-end (fragment_scrap_
+    main) — they overlap at (670,1067), ll_library LAST = topmost.
+    bg_menu (the 22dp pill) carries the toggle command (binder:
+    f5444a <- o.n -> h() -> AnimatorSet d/e fans them out). J worked
+    from the stack (ll_library is on top); K's record/rule taps hit
+    the stack and RE-OPENED THE BAG three times (logcat: value+scrap
+    fetch triplets at 11:58:44 / 11:59:10 / 11:59:34 — exactly J, K1,
+    K2). Fix: K detects the stack (identical centers) and taps
+    bg_menu to open the fan before each record/rule tap (36406d4).
+- Sign-in chain verdicts banked: the campaign dialog (dvSignUp) probe
+  already exists (Wave 5v) but the dialog has NEVER opened on-device —
+  the hall-load cluster (11:49:30: friends/title/tribe/mail/chat) shows
+  GET /activity/api/v1/signIn is NOT fired despite the static chain
+  (MainActivity -> nb -> CampaignManager.getActivitySignUp -> bc.a ->
+  _b says a fresh user SHOULD fetch it). Upstream gate undecoded — the
+  route stays implemented + host-tested + honestly dormant; next-run
+  evidence should watch for dvSignUp at hall load.
+- build-release completed (dc9d0ce): the sign-in-semantics APK is the
+  current release asset. Host tests: 422/0 with the corrected contract.
