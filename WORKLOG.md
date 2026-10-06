@@ -1736,3 +1736,23 @@
   case-sensitive: the layout's textAllCaps renders 'INVITE FRIEND' —
   same lesson as F2's MODIFY; fixed to case-insensitive + a bounded
   re-long-press for the hand-over sheet).
+
+## Session 20 cont. 4 — runs 37421024074 + 37423815542 (both PASS) — session closed
+
+- 37421024074 (e657624): PASS. HAND OVER CHIEF green again (PUT 0->1,
+  roles flipped, chief from base). F2 clan-UPDATE green (the keyboard fix
+  worked). The G-sheet taps missed (single-shot finds raced the sheet
+  animation) -> poll-hardened in 57dc983.
+- 37423815542 (57dc983): PASS. HAND OVER CHIEF green a THIRD time. The
+  invite POST still not observed in a single PASS (the sheet taps missed
+  again this run; every individual step of the chain has on-device
+  evidence across runs).
+- SESSION 20 TOTALS: 10 pushes (dbad2c7..46bbab6), host rig 399 -> 420
+  (all green), coverage 293 -> 295 implemented / 42 -> 40 default, wip-43
+  built + verified, 8 test-redroid runs dispatched/triaged, 2 new
+  client-asserted chains (hand-over chief x3; the activity-task surface
+  the client now walks on its own) + the invite chain one POST away from
+  full closure. Zero server regressions (the host rig + the route sweep
+  stayed green throughout).
+- Standing next steps recorded in NEXT_SESSION_README (invite POST
+  observation; task-center dialog drive; NO GameServer work).
