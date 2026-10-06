@@ -3654,11 +3654,15 @@ def main():
                 time.sleep(5)
                 assert_alive(adb, args.package, "J-bagdialog")
                 # bounded poll: the dialog construct fires user/scrap/
-                # value; the first ViewPager page fetches user/scrap?
-                # type=0 (the remaining tabs render lazily)
+                # value immediately; the first ViewPager page's
+                # backpack fetch settled AFTER a 14s window in run
+                # 37453703969 (the PageRecyclerView fetches late), so
+                # poll 20s and, if still empty, FLIP A TAB (a real
+                # swipe on the ViewPager forces the next page's
+                # onLoad -> another user/scrap?type=N fetch).
                 j_seen_value = j_pre_value
                 j_seen_bag = j_pre_bag
-                j_deadline = time.time() + 14
+                j_deadline = time.time() + 20
                 while time.time() < j_deadline:
                     j_seen_value = j_count(j_value_marker)
                     j_seen_bag = len(j_bag_paths())
@@ -3666,6 +3670,14 @@ def main():
                             and j_seen_bag > j_pre_bag:
                         break
                     time.sleep(2)
+                if j_seen_bag <= j_pre_bag:
+                    adb.sh("input swipe 560 620 160 620 250")
+                    time.sleep(6)
+                    j_seen_bag = len(j_bag_paths())
+                if j_seen_bag <= j_pre_bag:
+                    adb.sh("input swipe 560 620 160 620 250")
+                    time.sleep(6)
+                    j_seen_bag = len(j_bag_paths())
                 check("J: scrap bag value client-asserted (GET "
                       "user/scrap/value %d->%d)"
                       % (j_pre_value, j_seen_value),
