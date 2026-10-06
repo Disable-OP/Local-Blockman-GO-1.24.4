@@ -2585,7 +2585,10 @@ def main():
                         # can miss (timing) — one bounded re-tap of ic_more
                         # before giving up (the hand-over walk proved the
                         # sheet + items still render).
-                        mm = screen.find(texts=["Manage Members"])
+                        # run-37421024074: single-shot find raced the
+                        # sheet animation - poll instead
+                        mm = screen.wait_for(texts=["Manage Members"],
+                                             timeout=6, poll=2)
                         if not (mm and mm.center) and more:
                             # only re-tap when the sheet is NOT actually
                             # open (a blind re-tap would toggle it closed)
@@ -2597,7 +2600,9 @@ def main():
                             if not sheet_open:
                                 screen.tap_node(more)
                                 time.sleep(3)
-                                mm = screen.find(texts=["Manage Members"])
+                                mm = screen.wait_for(
+                                    texts=["Manage Members"], timeout=8,
+                                    poll=2)
                         if mm and mm.center:
                             ok("G: settings sheet shows 'Manage Members'")
                             screen.tap_node(mm)
@@ -2858,7 +2863,8 @@ def main():
                                 break
                         if more2 and screen.tap_node(more2):
                             time.sleep(3)
-                        cs = screen.find(texts=["Clan Settings"])
+                        cs = screen.wait_for(texts=["Clan Settings"],
+                                             timeout=6, poll=2)
                         if cs and cs.center:
                             screen.tap_node(cs)
                             time.sleep(5)
