@@ -361,7 +361,7 @@ HttpResponse envelope {code:1, message, data}).
 | GET /game/api/v1/games/app-engine/upgrade | getUpgradeInfo | {needUpgrade:false} |
 | GET /game/api/v1/games/app-engine/check-update | getGameResource | [] (nothing to update) |
 | PUT /game/api/v1/games/engine | countUploadVersion | engine-version telemetry recorded into root.engineReports (last 20 kept), ack |
-| GET /user/api/v2/users/{userId}/daily/sign/in | dailySignIn | Map first..seventh DailySignInfo w/ claim status |
+| GET /user/api/v2/users/{userId}/daily/sign/in | dailySignIn | Map first..seventh DailySignInfo; status semantics are the CLIENT's (j/h.java): 0 = "It isn't time to sign in" (future), 1 = claimable today, 2 = "Received"; Xb.onSuccess opens WeekSignDialog only when some day is 1 |
 | PUT /user/api/v2/users/{userId}/daily/sign/in | clickSignIn | claims today's slot, credits 200..3000 golds (7-day cycle) |
 | PUT /user/api/v1/users/{userId}/daily/tasks/ads | getAdsReward | +200 golds (cap 5/day), RechargeEntity |
 | PUT /user/api/v1/users/daily/sign/ads | getSignAdsReward | +300 golds (cap 3/day), AdsSignReward |
@@ -620,7 +620,7 @@ The route itself was already a real handler; the on-device UI drive
 
 | Route | Handler | Client evidence (jadx) |
 |---|---|---|
-| GET /activity/api/v1/signIn | campaignSignInList | ICampaignApi.signInList -> UserSignInResponse; the hall dialogs (ac/Zb) show the full-screen sign dialog when signInStatus==0; view/dialog/a/k.java requires EXACTLY 8 userSignInList cells; e.java: status==1 = claimed; g.java (POST callback) reads data.signInId + renders the day's rewards (>=4 rewards = last-day bookkeeping), then refreshes the wallet |
+| GET /activity/api/v1/signIn | campaignSignInList | ICampaignApi.signInList -> UserSignInResponse; the hall dialogs (ac/Zb) show the full-screen sign dialog when signInStatus==0; view/dialog/a/k.java requires EXACTLY 8 userSignInList cells; e.java: status==1 = claimed; g.java (POST callback) reads data.signInId + renders the day's rewards (>=4 rewards = last-day bookkeeping), then refreshes the wallet. signInStatus 2 = cycle complete -> MainModel/Zb chains INTO the week-sign surface (bc.e -> GET daily/sign/in); error 8006 ("The event has ended") reaches the same chain |
 | POST /activity/api/v1/signIn | campaignSignIn | CampaignApi.signIn -> Map<String,Integer>; the server claims the first unclaimed day of the monthly 8-day cycle, awards the day's golds, returns {"signInId": N}; double-claim returns 7012 (CampaignOnError family) |
 | GET /activity/api/v1/lucky/turntable/gold/status | turntableStatus | ICampaignApi.getTurntableRedPoint -> TurntableStatus{isFree}; b/a.java: isFree > 0 paints the jackpot red-point icon. Real state: 1 while today's free draw is unused |
 | GET /activity/api/v1/slot/machine/user/gold/draw/status | turntableStatus | same TurntableStatus contract (ICampaignApi.getGoldDrawStatus) |
