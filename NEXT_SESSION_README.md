@@ -1125,3 +1125,55 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   wants a second friend account — the fqa*/fqb* pattern applies);
   (2) item0 DiscoverActivity drive; (3) error-driven from new traffic.
   NO GameServer work.
+
+## Session 23 FINAL (read first — sign-in semantics fixed, scrap surface fully client-asserted)
+
+- SERVER FIX (the headline): the sign-in status semantics were wrong
+  against the client contract. DailySignInfo.status is the CLIENT's
+  enum (WeekSignDialog item j/h.java): 0="It isn't time to sign in",
+  1=claimable, 2="Received" — the server used to serve claimed=1 and
+  fresh=all-0, which kept the WeekSignDialog unreachable forever
+  (MainModel/Xb opens it only when some day is 1) AND made claimed days
+  re-claimable. Fixed (dc9d0ce): i<todaySlot -> 2, i==todaySlot ->
+  claimedToday?2:1, future -> 0. ALSO campaignSignInList now emits
+  signInStatus=2 when the 8-day cycle completes — MainModel/Zb CHAINS
+  INTO the week-sign surface (bc.e -> GET daily/sign/in) only on
+  signInStatus==2 or error 8006 ("The event has ended"). Host tests
+  updated to the corrected contract: 422 passed / 0 failed. The new APK
+  is the current release asset (build-release on dc9d0ce).
+- CLIENT-ASSERTED THIS SESSION (run 37466300068 PASS, 82ec4ef):
+  * PHASE J: the scrap BAG dialog end-to-end — ll_library tap ->
+    getScrapBagValue 0->1 + getBackpackInfo 0->3 (the binder sets
+    setOffscreenPageLimit(5): THREE parallel page fetches on open).
+  * PHASE K: ll_record (after the bg_menu fan-out) ->
+    getCombineHistory 0->1; ll_rule -> getScrapRule 0->1.
+  * COVERAGE 141 client-asserted (+4 scrap routes; regen needs FULL
+    path literals in ui_automation_test.py — "REQ GET ..." string
+    concatenation is INVISIBLE to gen_coverage's quote-anchored regex).
+- THREE REAL CLIENT BEHAVIORS BANKED (triage of runs 37453703969,
+  37454273455, 37456710154):
+  * The scrap fetch has NO query string: "REQ GET /activity/api/v2/
+    collect/exchange/user/scrap" — null @Query params are omitted by
+    Retrofit. Never match REQ lines with an expected "?...".
+  * The scrap menu is a STACK: ll_library/ll_record/ll_rule are 50dp
+    ConstraintLayouts ALL constrained to parent-end — they overlap at
+    (670,1067), ll_library LAST = topmost. bg_menu (22dp pill) carries
+    the toggle command (binder hf.java: f5444a <- o.n -> h() ->
+    AnimatorSet fans them out). J works from the stack; K must expand.
+  * The app can DRIFT back to the hall between phases (template self-
+    closed, live hall dump, no FATAL — run 37461423454) and the QS
+    shade can be dragged open by a swipe on a not-yet-rendered window
+    (run 37454273455's I-dump was pure quick_settings_panel). Fixes:
+    reenter_scrap() (self-grounding re-entry for J/K) + `cmd statusbar
+    collapse` before every header swipe.
+- SIGN-IN ON-DEVICE REACHABILITY: still dormant. The hall-load cluster
+  (friends/title/tribe/mail/chat) shows GET /activity/api/v1/signIn is
+  NOT fired despite the static chain (MainActivity -> nb ->
+  CampaignManager.getActivitySignUp -> bc.a -> ya.a isPlayed read ->
+  _b fires signInList when the user has NOT played yet). The upstream
+  gate is undecoded; the dvSignUp probe (Wave 5v) stays in place for
+  the run where it finally opens. NO GameServer work.
+- Next: (1) the bag's scrap-item tap (GET user/scrap/{scrapId} — the
+  last unasserted route of the bag surface) is a one-tap drive away;
+  (2) error-driven from the next run's traffic; (3) the 40 default
+  routes stay classified. Keep CI green; wip-43 APK current.

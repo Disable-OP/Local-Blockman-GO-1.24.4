@@ -5,7 +5,7 @@
   "implemented": 295,
   "default": 40,
   "host_tested": 234,
-  "client_asserted": 137
+  "client_asserted": 141
  },
  "endpoints": [
   {
@@ -198,7 +198,7 @@
    "status": "implemented",
    "handler": "scrapRule",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -214,7 +214,7 @@
    "status": "implemented",
    "handler": "scrapHistory",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -222,7 +222,7 @@
    "status": "implemented",
    "handler": "scrapBagValue",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -2182,7 +2182,7 @@
    "status": "implemented",
    "handler": "scrapBackpack",
    "host_tested": false,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",

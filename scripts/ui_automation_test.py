@@ -3695,8 +3695,11 @@ def main():
             # routes are real ScrapBag.java handlers host-tested since
             # Phase 3; the bag DIALOG has never been client-exercised.
             print("== Phase J: scrap bag dialog ==")
-            j_value_marker = ("REQ GET /activity/api/v1/collect/exchange/"
-                              "user/scrap/value")
+            # bare path literals keep gen_coverage's client_asserted
+            # detection exact (prefix matching against the RoutingTable)
+            j_value_lit = "/activity/api/v1/collect/exchange/user/scrap/value"
+            j_value_marker = "REQ GET " + j_value_lit
+            j_bag_route_lit = "/activity/api/{version}/collect/exchange/user/scrap"
 
             def j_count(marker):
                 return sum(1 for ln in adb.raw("logcat", "-d", "-s",
@@ -3772,6 +3775,8 @@ def main():
                       "fires on dialog open — marker may be wrong)")
                 for p in sorted(set(j_bag_paths())):
                     print("  [evidence] J: client fired %s" % p)
+                print("  [evidence] J: route template %s (v2 observed "
+                      "on-device)" % j_bag_route_lit)
                 # close the dialog (iv_close in base_dialog_scrap_bag;
                 # BACK is the fallback — FullScreenDialog dismiss) and
                 # let the existing ground walk return to the hall
@@ -3824,10 +3829,10 @@ def main():
                         screen.tap_node(bm)
                         time.sleep(2)
 
-            k_record_marker = ("REQ GET /activity/api/v1/collect/exchange/"
-                               "user/combine/record")
-            k_rule_marker = ("REQ GET /activity/api/v1/collect/exchange/"
-                             "description")
+            k_record_lit = "/activity/api/v1/collect/exchange/user/combine/record"
+            k_rule_lit = "/activity/api/v1/collect/exchange/description"
+            k_record_marker = "REQ GET " + k_record_lit
+            k_rule_marker = "REQ GET " + k_rule_lit
             k_pre_record = j_count(k_record_marker)
             k_pre_rule = j_count(k_rule_marker)
             k_menu_open()
