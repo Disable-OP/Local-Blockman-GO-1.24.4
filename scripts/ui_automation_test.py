@@ -1902,6 +1902,10 @@ def main():
         # register a friend candidate, owner adds + candidate accepts via
         # the API, then tap rb_1 -> rbFriend and wait for the row.
         friend_nick = None
+        # wave 7: the second candidate is seeded AFTER the friends-page
+        # refresh below, but the refresh wait already references it —
+        # bind it here (run 37430306318 UnboundLocalError lesson).
+        friend_nick2 = None
         fr_uid_num = 0
         frh = None
         fr_uid = "fqa%05d" % (int(time.time()) % 100000)
