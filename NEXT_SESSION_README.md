@@ -1208,3 +1208,31 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   undriven hall entry is item2 (VipManager.enterVipFragment — service-
   gated, may be a no-op locally); (3) error-driven from new traffic only.
   NO GameServer work.
+
+## Session 24 FINAL (read first — run 37483483323 PASS, rank surface client-asserted)
+
+- Run 37483483323 PASS (0 FAIL): the B-entry soft probe held AND the run
+  stayed green end-to-end. Phase L verdicts (from run 37476577270's logs,
+  where every L check was already green): region/home/page/info 0->2 (both
+  pager pages), podium row tapped (tv_rank_type_top1_name at (182,711)),
+  gold/diamond/region/weekly/rank 0->1, ranking/user/info 0->2,
+  gold/diamond/global/weekly/rank 0->1 via the template's second-pager-page
+  prefetch (rb_global_tab fallback never needed). 51 unique endpoints, no
+  FATAL, no 4xx/5xx.
+- COVERAGE.json regenerated honestly: 335/295/40, 234 host-tested,
+  145 client-asserted (+4 ranking routes the client ACTUALLY fired).
+- TOOLING LESSON (gen_coverage honesty): the client_asserted detection is
+  QUOTE-ANCHORED over the RAW SOURCE — strings inside COMMENTS count too.
+  An unsplit "/ranking/" filter literal (and then even the comment
+  describing it) prefix-matched all 14 ranking routes and inflated the
+  count to 155. Rule: any path-like literal that must NOT assert coverage
+  gets source-split so no fragment exceeds the regex's len>4 threshold,
+  and comments stay free of path literals.
+- Session 24 totals: 6 pushes (a52c491 server podium contract, 422680b
+  pre-count fix, 59314bd docs, 8a4f005 B-entry soft probe, 35f99c9 +
+  this close), 1 build-release (37475393512, APK shipped), 3 test-redroid
+  runs (1 triaged FAIL -> B-probe; 1 PASS), 4 new client-asserted routes.
+- Remaining undriven hall entry: item2 (VipManager.enterVipFragment via
+  iVipService2 — service-gated, may be a no-op locally). getScrapNum stays
+  IM-gated (see Wave 9). Error-driven from new traffic only.
+  NO GameServer work.

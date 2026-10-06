@@ -5,7 +5,7 @@
   "implemented": 295,
   "default": 40,
   "host_tested": 234,
-  "client_asserted": 141
+  "client_asserted": 145
  },
  "endpoints": [
   {
@@ -886,7 +886,7 @@
    "status": "implemented",
    "handler": "regionRankHome",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -894,7 +894,7 @@
    "status": "implemented",
    "handler": "userRankInfo",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -974,7 +974,7 @@
    "status": "implemented",
    "handler": "rankingPage",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -990,7 +990,7 @@
    "status": "implemented",
    "handler": "rankingPage",
    "host_tested": false,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",

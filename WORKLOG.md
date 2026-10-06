@@ -2211,3 +2211,25 @@
   documented design intent of that function).
 - Re-dispatched test-redroid -> run 37483483323 (head 8a4f005). No APK
   rebuild needed (server unchanged since the build-release on a52c491).
+
+---
+
+## Session 24 FINAL (run 37483483323 PASS - session closed green)
+
+- Run 37483483323 PASS (0 FAIL): B-entry soft probe validated; Phase L
+  already fully green in the prior run (podium 0->2, gd region/weekly
+  0->1, user/info 0->2, gd global/weekly 0->1 via pager prefetch). 51
+  unique endpoints, no FATAL, no 4xx/5xx.
+- COVERAGE.json regenerated HONESTLY: 145 client-asserted (+4 ranking
+  routes the client actually fired). Caught and fixed a coverage-detection
+  dishonesty on the way: gen_coverage's quote-anchored regex also matches
+  strings inside comments — the unsplit "/ranking/" evidence-filter
+  literal (then even the comment describing the problem) inflated the
+  count to 155. Fixed via source-split fragments (none longer than the
+  regex threshold) + comment hygiene.
+- Session 24: rank podium client contract fixed (12 category routes +
+  user/info variants reachable again), Phase L drive shipped and
+  client-asserted, getScrapNum classified IM-gated, docs Wave 9.
+- All work committed/pushed to local-api; APK shipped via build-release
+  37475393512. Next session: item2 VIP probe, error-driven from new
+  traffic. NO GameServer work.

@@ -3974,11 +3974,18 @@ def main():
                    if marker in ln)
 
     def l_rank_paths():
+        # the evidence filter's literal is SPLIT in source below so
+        # gen_coverage's quote-anchored regex extracts only "/ran" (len 4,
+        # below its >4 threshold) and cannot prefix-match the 10 ranking
+        # routes the client never fired (session 24: an unsplit single-
+        # string filter here flagged all 14 ranking routes and inflated
+        # client_asserted to 155).
+        rank_frag = "/ran" + "king/"
         return sorted(set(ln.split("REQ ", 1)[1].split(" ")[1]
                           for ln in adb.raw("logcat", "-d", "-s",
                                             "LocalAPI",
                                             timeout=60).splitlines()
-                          if "REQ " in ln and "/ranking/" in ln))
+                          if "REQ " in ln and rank_frag in ln))
 
     l_me = screen.find(ids=["rb_5"])
     l_entered = False
