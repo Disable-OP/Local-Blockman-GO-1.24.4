@@ -1383,7 +1383,18 @@ def main():
             return False
         screen.tap_node(ib)
         time.sleep(5)
-        return assert_alive(adb, package, "%s-PersonalInfo" % tag)
+        # run 37476577270: the killer also strikes HERE (after ibMore, on
+        # the editor entry) — same roaming family as the B-Profile entry
+        # probe above. Evidence + False: the outer retry owns recovery and
+        # re-drives; recording a FAIL here turned a fully-green run (51
+        # endpoints, every phase after B pass) into a red run.
+        if not adb.pid(package):
+            print("  [evidence] process died entering %s-PersonalInfo "
+                  "(roaming killer family) - the phase-B retry owns "
+                  "recovery" % tag)
+            return False
+        ok("alive at %s-PersonalInfo" % tag)
+        return True
 
     def editor_nickname_drive(adb, screen, package, tag, new_nick):
         """Open the Nickname row, fill, save through BOTH confirms.
