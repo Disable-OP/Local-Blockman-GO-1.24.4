@@ -304,6 +304,61 @@ def handle_campaign_dialogs(adb, screen, tag):
     return probe
 
 
+def reenter_scrap(adb, screen, package, activity, tag):
+    """Return to the scrap template from wherever the app drifted to.
+
+    Run 37461423454: the app was back at the hall by the time Phase J
+    searched for ll_library (the scrap template closed itself after the
+    I checks — mechanism undecoded; the dump was a live hall, no FATAL).
+    This helper re-runs the proven entry walk: ground at rb_1, collapse
+    the shade, expand the header, tap item3/littleItem3. Returns True
+    when the template's menu (ll_library) is visible again.
+    """
+    try:
+        if not adb.pid(package):
+            alive_or_recover_at(adb, screen, package, activity,
+                                "%s-reentry" % tag)
+        ground = False
+        for _ in range(4):
+            if screen.find(ids=["rb_1"]):
+                ground = True
+                break
+            adb.key(4)
+            time.sleep(2)
+        if not ground:
+            return False
+        rb1 = screen.find(ids=["rb_1"])
+        if rb1 and rb1.center:
+            screen.tap_node(rb1)
+            time.sleep(4)
+        dismiss_permission_dialogs(screen)
+        handle_campaign_dialogs(adb, screen, "%s-hall" % tag)
+        entry = None
+        for _ in range(3):
+            adb.sh("cmd statusbar collapse")
+            time.sleep(1)
+            if not adb.pid(package):
+                alive_or_recover_at(adb, screen, package, activity,
+                                    "%s-walk" % tag)
+            adb.sh("input swipe 360 300 360 800 300")
+            time.sleep(2)
+            entry = screen.find(ids=["item3"]) \
+                or screen.find(ids=["littleItem3"])
+            if entry and entry.center:
+                break
+        if not (entry and entry.center):
+            return False
+        screen.tap_node(entry)
+        time.sleep(6)
+        assert_alive(adb, package, "%s-reentered" % tag)
+        time.sleep(2)
+        return screen.find(ids=["ll_library"]) is not None
+    except Exception as e:
+        print("  [probe] %s: scrap re-entry error (non-fatal): %s"
+              % (tag, e))
+        return False
+
+
 def relaunch_and_wait(adb, screen, package, activity, tag):
     """force-stop + launch + wait for a known main-screen state. Shared by
     the deep-drive recovery, Phase B entry and Phase D's clean_relaunch.
@@ -3664,6 +3719,16 @@ def main():
             j_pre_value = j_count(j_value_marker)
             j_pre_bag = len(j_bag_paths())
             j_bag = screen.find(ids=["ll_library"])
+            if not (j_bag and j_bag.center):
+                # run 37461423454: the app drifted back to the hall
+                # between the I checks and the J search (template self-
+                # closed; live hall dump, no FATAL). Re-enter and retry
+                # once before giving up.
+                print("  [info] J: ll_library missing - re-entering the "
+                      "scrap template")
+                if reenter_scrap(adb, screen, args.package, args.activity,
+                                 "J"):
+                    j_bag = screen.find(ids=["ll_library"])
             if j_bag and j_bag.center:
                 ok("J: bag entry found (ll_library at %s)" % (j_bag.center,))
                 screen.tap_node(j_bag)
@@ -3767,6 +3832,13 @@ def main():
             k_pre_rule = j_count(k_rule_marker)
             k_menu_open()
             k_rec = screen.find(ids=["ll_record"])
+            if not (k_rec and k_rec.center):
+                print("  [info] K: ll_record missing - re-entering the "
+                      "scrap template")
+                if reenter_scrap(adb, screen, args.package, args.activity,
+                                 "K-record"):
+                    k_menu_open()
+                    k_rec = screen.find(ids=["ll_record"])
             if k_rec and k_rec.center:
                 ok("K: record entry found (ll_record at %s)"
                    % (k_rec.center,))
@@ -3794,6 +3866,13 @@ def main():
                 print("  [info] K: record entry (ll_record) not found")
             k_menu_open()
             k_rule = screen.find(ids=["ll_rule"])
+            if not (k_rule and k_rule.center):
+                print("  [info] K: ll_rule missing - re-entering the "
+                      "scrap template")
+                if reenter_scrap(adb, screen, args.package, args.activity,
+                                 "K-rule"):
+                    k_menu_open()
+                    k_rule = screen.find(ids=["ll_rule"])
             if k_rule and k_rule.center:
                 ok("K: rule entry found (ll_rule at %s)"
                    % (k_rule.center,))
