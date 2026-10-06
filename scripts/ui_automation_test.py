@@ -3697,6 +3697,78 @@ def main():
                         print("  J-dump] %s | text=%r" % (
                             n.res.rsplit("/", 1)[-1] if n.res else "",
                             n.text[:28]))
+            # ------------------------------------------------- Phase K:
+            # scrap record + rule dialogs (session 23, same decode wave).
+            # jadx decode: the scrap main menu's ll_record ("Record")
+            # fires command p -> i() -> ScrapHistoryDialog (view.dialog
+            # .f.b) whose ScrapHistoryListModel.onLoad is the ONLY call
+            # site of ScrapApi.getCombineHistory (GET /activity/api/v1/
+            # collect/exchange/user/combine/record — real server-side
+            # handler scrapHistory, never client-exercised); ll_rule
+            # ("Rule") fires command q -> j() -> ScrapRuleDialog
+            # (view.dialog.h.b) whose ScrapRuleListModel.onLoad is the
+            # ONLY call site of ScrapApi.getScrapRule (GET /activity/
+            # api/v1/collect/exchange/description — handler scrapRule).
+            # Both dialogs close via iv_close (dialog_scrap_history /
+            # dialog_scrap_rule layouts).
+            print("== Phase K: scrap record + rule dialogs ==")
+            k_record_marker = ("REQ GET /activity/api/v1/collect/exchange/"
+                               "user/combine/record")
+            k_rule_marker = ("REQ GET /activity/api/v1/collect/exchange/"
+                             "description")
+            k_pre_record = j_count(k_record_marker)
+            k_pre_rule = j_count(k_rule_marker)
+            k_rec = screen.find(ids=["ll_record"])
+            if k_rec and k_rec.center:
+                ok("K: record entry found (ll_record at %s)"
+                   % (k_rec.center,))
+                screen.tap_node(k_rec)
+                time.sleep(5)
+                assert_alive(adb, args.package, "K-record")
+                k_seen = j_count(k_record_marker)
+                k_deadline = time.time() + 12
+                while time.time() < k_deadline and k_seen <= k_pre_record:
+                    k_seen = j_count(k_record_marker)
+                    time.sleep(2)
+                check("K: combine record fetched (GET user/combine/record "
+                      "%d->%d)" % (k_pre_record, k_seen),
+                      k_seen > k_pre_record,
+                      "getCombineHistory never fired (dialog may not "
+                      "have opened)")
+                k_close = screen.find(ids=["iv_close"])
+                if k_close and k_close.center:
+                    screen.tap_node(k_close)
+                    time.sleep(2)
+                else:
+                    adb.key(4)
+                    time.sleep(2)
+            else:
+                print("  [info] K: record entry (ll_record) not found")
+            k_rule = screen.find(ids=["ll_rule"])
+            if k_rule and k_rule.center:
+                ok("K: rule entry found (ll_rule at %s)"
+                   % (k_rule.center,))
+                screen.tap_node(k_rule)
+                time.sleep(5)
+                assert_alive(adb, args.package, "K-rule")
+                k_seen = j_count(k_rule_marker)
+                k_deadline = time.time() + 12
+                while time.time() < k_deadline and k_seen <= k_pre_rule:
+                    k_seen = j_count(k_rule_marker)
+                    time.sleep(2)
+                check("K: scrap rule fetched (GET description %d->%d)"
+                      % (k_pre_rule, k_seen), k_seen > k_pre_rule,
+                      "getScrapRule never fired (dialog may not have "
+                      "opened)")
+                k_close = screen.find(ids=["iv_close"])
+                if k_close and k_close.center:
+                    screen.tap_node(k_close)
+                    time.sleep(2)
+                else:
+                    adb.key(4)
+                    time.sleep(2)
+            else:
+                print("  [info] K: rule entry (ll_rule) not found")
             # leave the template back at the hall
             for _ in range(4):
                 if screen.find(ids=["rb_1"]):
