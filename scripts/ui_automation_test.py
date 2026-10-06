@@ -4467,26 +4467,35 @@ def main():
                 fail("N: ranking screen unreachable for the overall leg")
         # flip the podium to OVERALL and repeat; the flip itself
         # re-fetches region/home/page/info with rankType=overall.
-        # RACE (run 37511675438): the ranking activity
-        # can self-close to the hall BETWEEN the rows re-check and the
-        # tab find — re-ground and re-find the tab in a bounded loop.
-        o_tab = None
-        for _ in range(2):
+        # RACE (runs 37511675438 + 37533194661): the ranking activity
+        # can self-close to the hall around the flip (before the tab
+        # find, or within seconds AFTER tapping it) — the whole overall
+        # leg is retried up to 3 times: re-open the podium when the
+        # rows vanish, re-find the tab, flip, and VERIFY the podium
+        # survived the flip before driving the rows.
+        o_done = False
+        for o_attempt in range(3):
             if not n_rows() and not n_open_ranking():
-                break
+                continue
             o_tab = screen.find(ids=["rb_overall_tab"])
-            if o_tab and o_tab.center:
-                break
-            time.sleep(3)
-        if o_tab and o_tab.center:
+            if not (o_tab and o_tab.center):
+                time.sleep(3)
+                continue
             screen.tap_node(o_tab)
             time.sleep(5)
+            if not n_rows():
+                print("  [info] N: podium self-closed right after the "
+                      "overall flip (attempt %d) - re-grounding"
+                      % (o_attempt + 1))
+                continue
             n_drive_row(1, "active/overall", [
                 (n_lits[3], "rb_area_tab"), (n_lits[4], "rb_global_tab")])
             n_drive_row(2, "clan/overall", [(n_lits[5], "rb_global_tab")])
-        else:
-            fail("N: rb_overall_tab not found (podium layout drifted "
-                 "or the tab is genuinely absent - triage from the "
+            o_done = True
+            break
+        if not o_done:
+            fail("N: the overall leg could not be driven in 3 attempts "
+                 "(the documented self-close drift struck every time - "
                  "dump below)")
             for n in screen.dump():
                 if n.res or n.text or n.desc:
@@ -4539,26 +4548,35 @@ def main():
     o_paths_before = set(localapi_paths(adb))
     o_form = False
     if screen.find(ids=["rb_1"]) or screen.find(ids=["rb_5"]):
-        # walk: Me tab -> profile header -> ibMore -> settings sheet
+        # walk: Me tab -> the "Setting" row (me_setting; runs the
+        # SettingFragment template via MoreViewModel.N / "more_setup")
+        # -> the "Account Switch" row (setting_change_account).
+        # RUN 37533194661 triage: profile -> ibMore opens the Personal
+        # Info EDITOR, not the settings - the row walk below is the
+        # decoded path.
         tab_o = screen.find(ids=["rb_5"])
         if tab_o and tab_o.center:
             screen.tap_node(tab_o)
             time.sleep(4)
-        prof_o = screen.find(ids=["ll_top", "rl_header"])
-        if prof_o and prof_o.center:
-            screen.tap_node(prof_o)
-            time.sleep(5)
-        more_o = screen.find(ids=["ibMore"])
-        if more_o and more_o.center:
-            screen.tap_node(more_o)
-            time.sleep(5)
+        set_o = None
+        o_deadline = time.time() + 12
+        while time.time() < o_deadline and not set_o:
+            set_o = screen.find(texts=["Setting"])
+            if not set_o:
+                adb.sh("input swipe 360 700 360 400 300")
+                time.sleep(2)
+        if set_o and set_o.center:
+            ok("O: Setting row found at %s" % (set_o.center,))
+            screen.tap_node(set_o)
+            time.sleep(6)
+        else:
+            print("  [info] O: Setting row not found on the Me tab")
         # the Account Switch row (setting_change_account = "Account
-        # Switch"); a bounded wait absorbs the sheet render
+        # Switch"); a bounded wait absorbs the template render
         sw_o = None
         o_deadline = time.time() + 10
         while time.time() < o_deadline and not sw_o:
-            sw_o = screen.find(texts=["Account Switch"]) \
-                or screen.find(contains=["switch account", "Switch"])
+            sw_o = screen.find(texts=["Account Switch"])
             if not sw_o:
                 time.sleep(2)
         if sw_o and sw_o.center:
