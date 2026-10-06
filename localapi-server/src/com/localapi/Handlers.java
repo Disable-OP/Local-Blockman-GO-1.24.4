@@ -303,6 +303,7 @@ final class Handlers {
         if ("turntableInfo".equals(name)) return turntableInfo(ctx, store);
         if ("turntableProps".equals(name)) return turntableProps(ctx, store);
         if ("turntableDraw".equals(name)) return turntableDraw(ctx, store);
+        if ("adsCdConfig".equals(name)) return adsCdConfig(ctx, store);
         L.e("unknown handler name: " + name);
         return envelope("none", null);
     }
@@ -3259,6 +3260,17 @@ final class Handlers {
      *  (gamedetail/c/a/a/W.onSuccess) and matches the drawn ID to a position
      *  (AdsTurntableDialog.getRewardPosition). */
     private static final long[] TURNTABLE_GOLDS = {100, 200, 500, 1000, 50, 300, 800, 2000};
+
+    /** GET /config/files/indiegame-{gameId} + indiegame-new-{gameId} —
+     *  AdsCdConfig {adsCdTimeFirst, adsCdTimeSecond}: the per-game ad
+     *  cooldown seconds (AppInfoCenter.getAdsCdConfig fallback is 0/0 —
+     *  real values here so the main-follow timer uses server-driven CDs). */
+    private static String adsCdConfig(Ctx ctx, StateStore store) {
+        JSONObject c = new JSONObject();
+        c.put("adsCdTimeFirst", 30);
+        c.put("adsCdTimeSecond", 60);
+        return envelope("obj", c.toString());
+    }
 
     /** GET /game/api/v1/game/{gameId}/turntable — List<AdsTurntableInfo>. */
     private static String turntableInfo(Ctx ctx, StateStore store) {

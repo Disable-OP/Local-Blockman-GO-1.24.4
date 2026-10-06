@@ -1713,6 +1713,12 @@ def main():
                         headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
         check("turntable props used tip", ttprops2.get("code") == 1
               and "used" in str(ttprops2.get("data", "")).lower(), str(ttprops2)[:120])
+        # Wave 5w cont: the per-game ads-CD config files (AdsCdConfig)
+        for cfg in ("indiegame-10001", "indiegame-new-10001"):
+            cd = call("GET", "/config/files/%s" % cfg)
+            check("adsCdConfig %s" % cfg, cd.get("code") == 1
+                  and cd.get("data", {}).get("adsCdTimeFirst", 0) > 0
+                  and cd.get("data", {}).get("adsCdTimeSecond", 0) > 0, str(cd)[:120])
         ev = call("POST", "/datareport/api/v1/event/report",
                   {"packageName": "com.test.host", "eventRequests": [
                       {"event": "qa_event", "eventType": "behavior", "platform": "android"}]},

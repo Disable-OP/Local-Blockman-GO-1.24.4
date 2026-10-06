@@ -680,3 +680,14 @@ defensively — dvSignUp + Claim tap -> bounded POST + reward-popup
 dismissal, BACK fallback, all non-fatal. The jackpot draw-status poll is
 asserted as a [probe] line first, to be promoted to a hard check once
 observed on-device.
+
+# Wave 5w cont.: per-game ads-CD config real + final classification
+
+| Route | Handler | Evidence |
+|---|---|---|
+| GET /config/files/indiegame-{gameId} + indiegame-new-{gameId} | adsCdConfig | IUserApi.getAdsCdConfig/getNewAdsCdConfig -> AdsCdConfig{adsCdTimeFirst, adsCdTimeSecond}; AppInfoCenter's getter falls back to 0/0 when unloaded — the handler serves real 30/60 s cooldowns |
+| PUT /shop/api/v2/pay/game/{gameId} (bugGame) | gated: unreachable | gamedetail Z line 20 fires it only in the PAID-game buy flow (isPay==1); every local catalog game serves isPay=0 (deliberate: the local world sells no games) — the buy-game chain stays documented-gated |
+
+Every one of the remaining 42 default routes now carries an explicit
+verdict (dead code / event-gated / account-gated / honest empty) in the
+tables above. Host rig 399/399.
