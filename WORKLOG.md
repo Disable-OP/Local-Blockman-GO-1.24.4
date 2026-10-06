@@ -1886,3 +1886,31 @@
   next REAL work is whatever the client's own traffic surfaces next
   (error-driven), or deepening state (e.g. group-chat message store for
   /msg/api behind the RongCloud shim decision); (3) NO GameServer work.
+
+## Session 22 — the H reward-dialog promoted to a hard check (textAllCaps root cause)
+
+- ROOT CAUSE DECODED (why the dialog was "never seen"): base_sure renders
+  through textAllCaps -> the button text is "CONFIRM", and Screen.find()
+  matches texts= EXACTLY — wait_for(texts=["Confirm"]) could never hit.
+  The banked session-20 lesson (match textAllCaps case-insensitively)
+  simply had not been applied to this wait. Confirmed against the APK
+  resources: res/values/strings.xml base_sure = "Confirm" (en).
+- FIX (scripts/ui_automation_test.py): the H claim wait is now
+  wait_for(contains=["confirm"], timeout=16, poll=2) — case-insensitive
+  substring + a ~2.7x wider window. On a miss the drive takes a REAL
+  screenshot (new Screen.snap() -> /sdcard/snap_<tag>.png) plus a debug
+  dump before moving on.
+- PROMOTED: "H: reward dialog on real claim" is a hard check now, gated
+  on the wallet delta — a real claim credits golds (n.onSuccess both
+  credits and shows CampaignGetIntegralRewardDialog), so a grown wallet
+  without a seen dialog is a genuine miss worth failing the run. If the
+  claim never landed (incomplete/7012 tip), the check skips honestly.
+- CI: test-redroid.yml "Collect diagnostics" now pulls every
+  /sdcard/snap_*.png into diags/ so the artifact carries pixel evidence
+  for any future assertion miss.
+- ZERO server changes this session (the embedded dex and host rig are
+  untouched; the wip-43 APK stays current — test-redroid DISPATCH ONLY).
+- Traffic evidence reviewed first (run 37436975853 artifact): 44 unique
+  REQ paths, 0 UNMAPPED, no 4xx/5xx — no new client-surfaced API gaps.
+  /msg/api/v1/msg/group/chat/list is client-asserted (GroupChat.java is
+  state-backed); the 40 remaining defaults all carry Wave-5v/7 verdicts.

@@ -155,6 +155,16 @@ class Screen:
             time.sleep(2)
         return []
 
+    def snap(self, tag):
+        """Screenshot to /sdcard for the CI diagnostics artifact. Used on
+        assertion misses (e.g. the H reward dialog) so the triage has pixel
+        evidence, not only an XML dump."""
+        try:
+            self.adb.sh("screencap -p /sdcard/snap_%s.png" % tag)
+            print("  [snap] /sdcard/snap_%s.png" % tag)
+        except Exception as e:
+            print("  [snap] %s failed: %s" % (tag, e))
+
     def find(self, ids=None, texts=None, contains=None):
         want_id = set(ids or [])
         want_text = set(texts or [])
@@ -3412,21 +3422,44 @@ def main():
                 screen.tap_node(h_btns[0])  # first row = online_time 10 min
                 time.sleep(6)
                 post_h = h_post()
-                # n.onSuccess shows the reward dialog on a REAL claim;
-                # an incomplete task gets a non-fatal error tip (the POST
-                # still fires - the surface is client-asserted either way)
-                h_conf = screen.wait_for(texts=["Confirm"], timeout=6,
+                # n.onSuccess shows CampaignGetIntegralRewardDialog on a
+                # REAL claim; an incomplete task gets a non-fatal error tip
+                # (the POST still fires). Session-21 lesson: the dialog was
+                # missed in the old 6s EXACT-text wait — the client's
+                # textAllCaps renders base_sure as "CONFIRM", and find()
+                # matches texts= exactly. Match case-insensitively
+                # (contains=["confirm"]), widen to 16s, and PROMOTE to a
+                # hard check gated on the wallet delta (a real claim credits
+                # golds, so a grown wallet + no dialog is a genuine miss).
+                h_conf = screen.wait_for(contains=["confirm"], timeout=16,
                                          poll=2)
+                h_dialog_seen = False
                 if h_conf and h_conf.center:
                     screen.tap_node(h_conf)
                     time.sleep(3)
+                    h_dialog_seen = True
                     ok("H: reward dialog seen (real claim path)")
+                else:
+                    screen.snap("H_reward_dialog_missing")
+                    debug_dump(screen, "H-reward-dialog")
+                h_delta = None
                 if live_hdr:
                     h_wallet2 = fcall("GET", "/pay/api/v1/wealth/user",
                                       headers=live_hdr)
+                    h_golds_after = (h_wallet2.get("data") or {}).get("golds")
                     print("  [evidence] H: golds after claim=%s (before=%s)"
-                          % ((h_wallet2.get("data") or {}).get("golds"),
-                             h_golds_before))
+                          % (h_golds_after, h_golds_before))
+                    try:
+                        h_delta = (int(h_golds_after)
+                                   - int(h_golds_before or 0))
+                    except (TypeError, ValueError):
+                        h_delta = None
+                check("H: reward dialog on real claim (wallet delta=%s, "
+                      "POST receive/reward %d->%d)"
+                      % (h_delta, pre_h, post_h),
+                      (not h_delta or h_delta <= 0) or h_dialog_seen,
+                      "wallet grew but CampaignGetIntegralRewardDialog "
+                      "was never seen (snap_H_reward_dialog_missing.png)")
                 check("H: activity-task claim client-asserted (POST "
                       "receive/reward %d->%d)" % (pre_h, post_h),
                       post_h > pre_h, "no POST observed")

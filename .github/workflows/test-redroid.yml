@@ -96,6 +96,10 @@ jobs:
           adb -s localhost:5555 shell uiautomator dump /sdcard/final_ui.xml >/dev/null 2>&1 || true
           adb -s localhost:5555 pull /sdcard/final_ui.xml diags/final_ui.xml || true
           adb -s localhost:5555 shell dumpsys activity processes > diags/processes.txt || true
+          # assertion-miss screenshots (Screen.snap, e.g. snap_H_reward_dialog_missing)
+          for f in $(adb -s localhost:5555 shell ls /sdcard/snap_*.png 2>/dev/null | tr -d '\r'); do
+            adb -s localhost:5555 pull "$f" diags/ || true
+          done
           tar czf redroid-diagnostics.tgz diags || true
 
       - name: Upload diagnostics

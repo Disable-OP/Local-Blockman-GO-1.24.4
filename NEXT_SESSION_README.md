@@ -1035,3 +1035,23 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   new API work must be error-driven from the client's own traffic, or
   deepen state (group-chat message store for /msg/api once the
   RongCloud shim decision lands); (3) NO GameServer work.
+
+## Session 22 delta (read first — H reward-dialog hard check + screenshot evidence)
+
+- The session-21 "reward dialog not seen" item is RESOLVED as a tooling
+  bug: base_sure renders "CONFIRM" (textAllCaps) and Screen.find()
+  matches texts= exactly. The wait is now case-insensitive
+  (contains=["confirm"]), 16s, and a miss takes a screenshot
+  (Screen.snap -> /sdcard/snap_<tag>.png, pulled into the diagnostics
+  artifact by the workflow) + a debug dump.
+- "H: reward dialog on real claim" is a HARD check gated on the wallet
+  delta (real claim = golds credited = dialog must be seen). Claim-
+  failed runs (incomplete/7012) skip it honestly.
+- No server changes; wip-43 APK stays current. Latest traffic review:
+  0 UNMAPPED, no 4xx/5xx, /msg/api list client-asserted — no new API
+  gaps surfaced by the client.
+- Next: (1) watch the dispatched run for the promoted dialog check —
+  if it FAILS with the screenshot, decode the dialog layout from jadx
+  (dialog_campaign_* / CampaignGetIntegralRewardDialog binding) and
+  match the real button id/text; (2) error-driven work only — the
+  client's own traffic is the spec now; (3) NO GameServer work.
