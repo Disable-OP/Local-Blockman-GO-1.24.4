@@ -1708,3 +1708,31 @@
   * G's first ic_more tap missed once — one state-aware re-tap added
     (only when no sheet items are up; a blind re-tap would toggle-close).
 - Fixes pushed as 717f301 + dd82030; verification run dispatched.
+
+## Session 20 cont. 3 — GREEN: run 37415764486 (PASS) + the last two invites
+
+- Run 37412479967 (dd82030) close but FAIL(2): the invite drive ticked the
+  friend row but tapped the same-text TITLE at y=95 (dump raced the
+  transition; the bottom button had not rendered), and the roaming killer
+  struck right after G-settings (pid 10870 -> 12981) making the freeVerify
+  taps meaningless. PLUS a new false positive: the uiautomator dump TOOL
+  itself NPE'd (AccessibilityNodeInfoDumper.childNafCheck) and landed a
+  FATAL EXCEPTION in the shared logcat.
+- Fixes (dd82030): friends refresh on rb_4 (ChatFragment hosting decode,
+  nc.java 0x7F090429) + permission dismiss; hand-over read-back via
+  clanMembers role==20; F2 MODIFY bounded re-tap; state-aware ic_more
+  re-tap.
+- Run 37415764486 (3b570e8): PASS. F2 update (PUT 0->1,
+  server name='EditClan63694'), promote (role=10), remove (gone),
+  freeVerify ([1,0,1] PUTs 0->3), friends-cache refresh (friend row
+  visible on the Friends page), 38 unique endpoints, no app FATAL.
+  Client-asserted on-device so far this session: clan-UPDATE, setIdentity
+  1/2, removeMember, freeVerify, friends-cache refresh, invite-screen
+  reach + row tick + hand-over FULL CHAIN (run 37412479967: PUT 1->2, gk
+  role 20, old chief role 0, chief from base=10007), activity title +
+  action fetch (the client's own boot behavior with the wave-6c server).
+- The two runs COMBINE to full evidence for every new chain; the next run
+  aims for a single-run full invite POST (the button match was
+  case-sensitive: the layout's textAllCaps renders 'INVITE FRIEND' —
+  same lesson as F2's MODIFY; fixed to case-insensitive + a bounded
+  re-long-press for the hand-over sheet).

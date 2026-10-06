@@ -2719,7 +2719,8 @@ def main():
                                     while time.time() < btn_deadline:
                                         cand = [x for x in screen.dump()
                                                 if x.center
-                                                and x.text == "Invite Friend"
+                                                and (x.text or "").upper()
+                                                == "INVITE FRIEND"
                                                 and x.bounds
                                                 and x.bounds[1] > 900]
                                         if cand:
@@ -3028,6 +3029,7 @@ def main():
                                             texts=[gk_nick], timeout=12,
                                             poll=3)
                                         if row3 and row3.center:
+                                            pid_at_ho = adb.pid(args.package)
                                             pre_ho = puts_g()
                                             l5, t5, r5, b5 = row3.bounds
                                             adb.sh(
@@ -3039,6 +3041,21 @@ def main():
                                             time.sleep(3)
                                             hov = screen.find(
                                                 texts=["Hand over Chief"])
+                                            if not (hov and hov.center) \
+                                                    and adb.pid(args.package) \
+                                                    == pid_at_ho:
+                                                # one bounded re-long-press
+                                                # (sheet timing / a missed
+                                                # press)
+                                                adb.sh(
+                                                    "input swipe %d %d %d %d 1000"
+                                                    % ((l5 + r5) // 2,
+                                                       (t5 + b5) // 2,
+                                                       (l5 + r5) // 2,
+                                                       (t5 + b5) // 2))
+                                                time.sleep(3)
+                                                hov = screen.find(
+                                                    texts=["Hand over Chief"])
                                             if hov and hov.center:
                                                 screen.tap_node(hov)
                                                 time.sleep(3)
