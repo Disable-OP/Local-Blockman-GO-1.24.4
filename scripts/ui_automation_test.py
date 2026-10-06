@@ -3650,11 +3650,17 @@ def main():
                            if marker in ln)
 
             def j_bag_paths():
+                # NOTE (run 37456710154 logcat evidence): the client
+                # sends this fetch WITHOUT a query string (null @Query
+                # params are omitted by Retrofit) — the REQ line is
+                # exactly "REQ GET /activity/api/v2/collect/exchange/
+                # user/scrap". Exclude the value route by suffix.
                 return [ln.split("REQ ", 1)[1].split(" ")[1]
                         for ln in adb.raw("logcat", "-d", "-s", "LocalAPI",
                                           timeout=60).splitlines()
-                        if "REQ " in ln and "/collect/exchange/user/scrap?"
-                        in ln]
+                        if "REQ " in ln
+                        and "/collect/exchange/user/scrap" in ln
+                        and "/user/scrap/value" not in ln]
             j_pre_value = j_count(j_value_marker)
             j_pre_bag = len(j_bag_paths())
             j_bag = screen.find(ids=["ll_library"])
@@ -3694,11 +3700,11 @@ def main():
                       j_seen_value > j_pre_value,
                       "getScrapBagValue never fired (dialog may not "
                       "have opened)")
-                check("J: backpack pages fetched (GET user/scrap?type= "
+                check("J: backpack pages fetched (GET user/scrap "
                       "%d->%d)" % (j_pre_bag, j_seen_bag),
                       j_seen_bag > j_pre_bag,
-                      "no backpack page request (ViewPager may render "
-                      "lazily)")
+                      "no backpack page request (the ViewPager prefetch "
+                      "fires on dialog open — marker may be wrong)")
                 for p in sorted(set(j_bag_paths())):
                     print("  [evidence] J: client fired %s" % p)
                 # close the dialog (iv_close in base_dialog_scrap_bag;
@@ -3734,12 +3740,32 @@ def main():
             # Both dialogs close via iv_close (dialog_scrap_history /
             # dialog_scrap_rule layouts).
             print("== Phase K: scrap record + rule dialogs ==")
+            # The three menu buttons (ll_library/ll_record/ll_rule) are
+            # 50dp ConstraintLayouts ALL constrained to parent-end — they
+            # STACK, ll_library last (= topmost). bg_menu (the 22dp pill)
+            # carries the toggle command n -> o.h() whose AnimatorSet
+            # fans them out (binder hf.java: f5444a <- o.n, e <- o.o,
+            # f <- o.p, g <- o.q). J works from the stack (ll_library is
+            # on top); ll_record/ll_rule need the fan OPEN. Detect the
+            # stack (identical centers) and expand before each tap.
+            def k_menu_open():
+                lib = screen.find(ids=["ll_library"])
+                rec = screen.find(ids=["ll_record"])
+                if lib and rec and lib.center and rec.center \
+                        and abs(lib.center[0] - rec.center[0]) < 8 \
+                        and abs(lib.center[1] - rec.center[1]) < 8:
+                    bm = screen.find(ids=["bg_menu"])
+                    if bm and bm.center:
+                        screen.tap_node(bm)
+                        time.sleep(2)
+
             k_record_marker = ("REQ GET /activity/api/v1/collect/exchange/"
                                "user/combine/record")
             k_rule_marker = ("REQ GET /activity/api/v1/collect/exchange/"
                              "description")
             k_pre_record = j_count(k_record_marker)
             k_pre_rule = j_count(k_rule_marker)
+            k_menu_open()
             k_rec = screen.find(ids=["ll_record"])
             if k_rec and k_rec.center:
                 ok("K: record entry found (ll_record at %s)"
@@ -3766,6 +3792,7 @@ def main():
                     time.sleep(2)
             else:
                 print("  [info] K: record entry (ll_record) not found")
+            k_menu_open()
             k_rule = screen.find(ids=["ll_rule"])
             if k_rule and k_rule.center:
                 ok("K: rule entry found (ll_rule at %s)"
