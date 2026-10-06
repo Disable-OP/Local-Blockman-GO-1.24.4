@@ -911,3 +911,46 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   hand-over); (3) the task-center DIALOG drive (open the activity entry,
   claim a task in the UI) is the natural next wave once the red point is
   lit. NO GameServer work.
+
+## Session 20 FINAL (read first — 8 pushes, 6 CI runs, wave 6a/6b/6c shipped)
+
+- SHIPPED: (6a/6b) the invite flow + hand-over-chief UI drives; (6c) the
+  activity-task chain REAL on the server (titles/actions/claim +
+  online-minute tracking) — coverage 335/295 implemented/40 default,
+  host rig 399 -> 420, wip-43 built and verified on-device.
+- CLIENT-ASSERTED THIS SESSION (multi-run evidence):
+  * HAND OVER CHIEF through the real UI x3 (runs 37412479967,
+    37421024074, 37423815542: sheet -> TwoButtonDialog -> btnSure ->
+    PUT member type=3; gk role 20, old chief role 0, chief from base).
+  * freeVerify toggle x1 more ([1,0,1] PUTs 0->3, run 37415764486).
+  * friends-cache refresh via rb_4 -> internal rbFriend (4 consecutive
+    runs — the ChatFragment hosting decode was the keystone).
+  * invite chain: screen reach + friend row ticked (37412479967), bottom
+    button found after the textAllCaps fix (37418335203: (360,1114)),
+    dialog opened + msg typed + confirm tapped (same run) — the ONLY step
+    never yet observed in a PASS is the invite POST REQ line (it needs one
+    run where the G-sheet taps, the button, and the keyboard-dismiss all
+    land together; 3 of the last 4 runs were overall PASS).
+  * wave 6c: the client fetches /activity/api/v2/activity/title AND
+    /activity/api/v1/activity/action ON ITS OWN at boot (endpoint lists of
+    runs 37409714321/37412479967/37421024074/37423815542) — a whole
+    surface lit with zero client patching.
+- TOOLING FACTS BANKED: uiautomator dump NPEs are TOOL-side (attribute
+  FATAL blocks by frames before failing the crash scan); the soft
+  keyboard overlays confirm buttons (BACK once drops it, dialogs stay);
+  textAllCaps uppercases Buttons (match case-insensitively); single-shot
+  finds race sheet animations (poll with wait_for); the member list has a
+  Loading state (wait it out); tag-triggered test runs STILL CHECK OUT
+  local-api's automation (they execute only main's workflow FILE).
+- CI THIS SESSION: 37407838330 FAIL (my %d-on-string crash), 37409327491
+  FAIL (same, pre-fix checkout), 37409714321 FAIL (2 triaged), 37412479967
+  FAIL (2 triaged), 37415764486 PASS, 37418335203 FAIL (keyboard), 
+  37421024074 PASS, 37423815542 PASS. wip-43 = 71834ab build.
+- Next: (1) one more run to catch the invite POST (all other steps
+  proven; consider seeding 2 friends so the row is denser, or re-entering
+  the invite screen once when the button wait times out); (2) the
+  task-center DIALOG drive (the red point lights after ~10 online
+  minutes — the CI run is long enough; open the activity entry, claim the
+  10-min task in the UI, assert POST receive/reward); (3) the
+  activity-task chain decode backlog: Mb/q.java call sites for
+  activityTitle-driven guide surfaces. NO GameServer work.
