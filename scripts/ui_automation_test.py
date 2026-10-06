@@ -2613,6 +2613,35 @@ def main():
                                    gml.get("data", [])
                                    if m.get("userId") == gj_uid_num), None)
                     if g_nick:
+                        # wave 7: normalize the screen FIRST - the F phase
+                        # can end on rb_4 (friends refresh), and the sheet
+                        # entry needs the CLAN HOME (the recurring sheet
+                        # misses tapped whatever top-right ImageButton the
+                        # CURRENT screen owned). Same walk the proven
+                        # hand-over path uses: rb_3 -> Enter Clan -> clan
+                        # home -> settle Notice Board.
+                        gm_rb3 = screen.wait_for(ids=["rb_3"], timeout=10,
+                                                 poll=2)
+                        if gm_rb3 and screen.tap_node(gm_rb3):
+                            time.sleep(4)
+                        gm_ent = screen.find(ids=["rlEnterClan"]) \
+                            or screen.find(texts=["Enter Clan"])
+                        if gm_ent and gm_ent.center \
+                                and screen.tap_node(gm_ent):
+                            time.sleep(6)
+                            for _ in range(4):
+                                d_g = screen.dump()
+                                if any((x.text or "") == "Notice Board"
+                                       for x in d_g):
+                                    cls_g = next(
+                                        (x for x in d_g
+                                         if x.res.rsplit("/", 1)[-1]
+                                         == "btnSure" and x.center), None)
+                                    if cls_g:
+                                        screen.tap_node(cls_g)
+                                    time.sleep(3)
+                                else:
+                                    break
                         more = None
                         for x in screen.dump():
                             if not (x.center
@@ -3313,13 +3342,20 @@ def main():
         handle_campaign_dialogs(adb, screen, "H-hall")
         h_entry = None
         for _ in range(3):
-            # swipe down to expand the collapsing hall header (parallax)
+            # swipe down to expand the collapsing hall header (parallax);
+            # the BIG header (content_header1) owns item1, the COLLAPSED
+            # small header (content_header2) owns littleItem1 — both fire
+            # MainFragmentViewModel.onActivity (ka.java / ma.java)
             adb.sh("input swipe 360 300 360 800 300")
             time.sleep(2)
-            h_entry = screen.find(ids=["item1"])
+            h_entry = screen.find(ids=["item1"]) \
+                or screen.find(ids=["littleItem1"])
             if h_entry and h_entry.center:
                 break
         if h_entry and h_entry.center:
+            ok("H: hall activity entry found (%s at %s)"
+               % ("item1" if (h_entry.res or "").endswith("item1")
+                  else "littleItem1", h_entry.center))
             pre_h = h_post()
             screen.tap_node(h_entry)
             time.sleep(5)
@@ -3401,10 +3437,28 @@ def main():
                 adb.key(4)
                 time.sleep(2)
         else:
-            print("  [info] H: hall item1 (icon_activity) not found "
-                  "(header bar not visible)")
+            print("  [info] H: hall activity entry not found "
+                  "(item1/littleItem1) - visible nodes:")
+            for n in screen.dump():
+                if n.res or n.text or n.desc:
+                    print("  H-dump] %s | text=%r" % (
+                        n.res.rsplit("/", 1)[-1] if n.res else "",
+                        n.text[:28]))
     else:
         print("  [info] H: rb_1 not found (hall unavailable)")
+    # tail resilience (wave 7): the documented roaming killer has now
+    # struck at the very TAIL of consecutive runs (run 37433234002: died
+    # during the H entry search AFTER every check had gone green). A
+    # tail death is absorbed like deep_drive's: relaunch, and if the app
+    # comes back the run continues (the death itself is recorded as
+    # evidence; a genuine server-induced crash would still show in the
+    # crash scan above it).
+    if not adb.pid(args.package):
+        print("  [evidence] process died at the H tail - relaunching "
+              "(native-kill family signature)")
+        if not relaunch_and_wait(adb, screen, args.package,
+                                 args.activity, "H-tail"):
+            print("  [info] H-tail relaunch failed (kept as evidence)")
     assert_alive(adb, args.package, "H-grounded")
 
     # ------------------------------------------------- assertions
@@ -3466,6 +3520,13 @@ def main():
         ok("no app FATAL EXCEPTION")
     if "ANR in %s" % args.package in fatal:
         fail("ANR detected")
+    # same tail absorb for the final assert (the killer has struck twice
+    # in one tail window in the past; one relaunch covers it)
+    if not adb.pid(args.package):
+        print("  [evidence] process died before the final check - "
+              "relaunching (native-kill family signature)")
+        relaunch_and_wait(adb, screen, args.package, args.activity,
+                          "end-tail")
     if not assert_alive(adb, args.package, "end"):
         finish()
     finish()
