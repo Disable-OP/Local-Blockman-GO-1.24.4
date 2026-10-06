@@ -1002,3 +1002,36 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   tap misses, use the H dump evidence (cards count/bounds printed);
   (3) promote the reward-dialog probe to a hard check once observed;
   (4) NO GameServer work.
+
+## Session 21 FINAL (read first — invite POST caught, claim chain client-asserted, coverage honest)
+
+- SHIPPED (run 37436975853 PASS, beb8b8d): G: inviteFriend POST 0->1
+  with the invitee seeing the type-2 message (the 3-session chase is
+  OVER — the fix was normalizing the screen before the sheet search:
+  the F friends-refresh leaves the app on rb_4 and the ic_more finder
+  was tapping the WRONG screen's button); hand-over chief 5th pass;
+  Phase H full claim chain — item1 -> weekend dialog (3 GET buttons)
+  -> POST /activity/api/v1/receive/reward 0->1 -> wallet 42000->42300
+  (+300 = the exact 10-min online_time reward; the server read-back
+  before the drive showed status=1, no state injection needed).
+- CLASSIFICATION CLOSED: the 7 activity integral/task routes are DEAD
+  CODE (see docs/ENDPOINTS.md Wave 7 — @Deprecated + zero external
+  wrapper callers, collision-audited). All 335 routes now carry
+  explicit verdicts: 295 implemented / 40 default. COVERAGE.json
+  regenerated: 234 host-tested / 136 client-asserted.
+- HALL HEADER FACT: the collapsing hall has TWO header variants —
+  content_header1 (item0..3, expanded) and content_header2
+  (littleItem0..3, collapsed); item1 AND littleItem1 both fire
+  MainFragmentViewModel.onActivity (ka.java / ma.java). Phase H
+  accepts either and dumps evidence when neither shows.
+- TOOLING BANKED: seed friend_nick2 BEFORE any reference (the
+  UnboundLocalError run); quoted path literals keep COVERAGE.json's
+  client_asserted detection honest; the tail relaunch absorbs
+  (H-grounded + end) survive the roaming killer without diluting the
+  crash scan.
+- Next: (1) the H reward dialog ("Confirm") was not seen in its 6s
+  window — the wallet delta proves the claim; screenshot/widen and
+  PROMOTE to a hard check; (2) every remaining default is classified —
+  new API work must be error-driven from the client's own traffic, or
+  deepen state (group-chat message store for /msg/api once the
+  RongCloud shim decision lands); (3) NO GameServer work.

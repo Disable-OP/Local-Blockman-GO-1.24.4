@@ -5,7 +5,7 @@
   "implemented": 295,
   "default": 40,
   "host_tested": 234,
-  "client_asserted": 135
+  "client_asserted": 136
  },
  "endpoints": [
   {
@@ -1262,7 +1262,7 @@
    "status": "implemented",
    "handler": "activityTaskReward",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",

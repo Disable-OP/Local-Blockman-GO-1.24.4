@@ -3309,10 +3309,13 @@ def main():
     # (wave-6c handler); this drive runs after the F/G walks, late in the
     # run, so the budget has already accrued. NO GameServer work.
     print("== Phase H: activity-task claim (weekend task dialog) ==")
+    # the quoted literal keeps docs/COVERAGE.json's client_asserted
+    # detection honest (the assertion really is in this script)
+    h_rr_path = "/activity/api/v1/receive/reward"
     h_post = lambda: sum(
         1 for line in adb.raw("logcat", "-d", "-s", "LocalAPI",
                               timeout=60).splitlines()
-        if "REQ POST /activity/api/v1/receive/reward" in line)
+        if ("REQ POST " + h_rr_path) in line)
     h_golds_before = None
     if live_hdr:
         h_act = fcall("GET",

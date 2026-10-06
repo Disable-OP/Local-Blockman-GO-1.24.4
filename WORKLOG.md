@@ -1853,3 +1853,36 @@
     relaunch absorbs at H-grounded and end (the death is recorded as
     evidence; the crash scan above it stays the honesty gate).
 - Dispatched run 37436975853 (beb8b8d).
+
+## Session 21 FINAL — run 37436975853 PASS: every standing chain closed
+
+- THE INVITE POST IS CAUGHT (3 sessions of chasing): run 37436975853
+  (beb8b8d) — G: inviteFriend client-asserted (POST 0->1, invitee sees
+  the type-2 message). The screen-normalization walk (rb_3 -> Enter
+  Clan -> settle Notice Board before the ic_more search) fixed the
+  recurring sheet race.
+- PHASE H: THE CLAIM CHAIN IS REAL THROUGH THE UI: hall item1 at
+  (276,208) -> weekend dialog (3 GET buttons) -> POST receive/reward
+  0->1 -> wallet 42000 -> 42300 (+300 = exactly the weekend 10-min
+  online_time reward). The server read-back BEFORE the drive showed
+  status=1 — the wave-6c online-minute tracking made the task claimable
+  during the run, no injection needed.
+- Hand-over chief: 5th client-asserted pass. Second friendship (fqb*)
+  worked as designed. 40 unique endpoints, no app FATAL, alive at end.
+- Session 21 totals: 8 pushes (0eede44..this), 2 dispatched runs
+  triaged (37430306318 tool-crash; 37433234002 sheet-race + tail killer
+  — both fixed), coverage report regenerated (136 client-asserted),
+  the 7-route integral/task family classified dead, the whole claim
+  surface decoded end-to-end (hall entry -> template -> dialog ->
+  claim), COVERAGE.json honest again.
+- Fixes banked: friend_nick2 ordering bug (UnboundLocalError), G sheet
+  screen normalization, H littleItem1 variant + dump evidence, tail
+  relaunch absorbs (H-grounded + end), quoted literal for coverage
+  detection.
+- Next session: (1) the reward dialog probe (H: "Confirm" not seen in
+  its 6s window this run — the wallet delta proves the claim; widen the
+  wait or screenshot it and PROMOTE to a hard check); (2) the remaining
+  default endpoints are all classified (dead/gated/honest-empty) — the
+  next REAL work is whatever the client's own traffic surfaces next
+  (error-driven), or deepening state (e.g. group-chat message store for
+  /msg/api behind the RongCloud shim decision); (3) NO GameServer work.

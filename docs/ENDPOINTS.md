@@ -795,3 +795,18 @@ Automation (scripts/ui_automation_test.py):
   find has a fallback nick; one bounded invite-screen RE-ENTRY tap of
   ibTemplateRight mid-wait (runs 37421024074/37423815542 missed the
   first transition).
+
+## Run 37436975853 (PASS): both chains client-asserted in a single run
+
+- G: inviteFriend client-asserted (POST 0->1, invitee sees the type-2
+  message=True) — the G-sheet race is fixed by the screen-normalization
+  walk; hand-over chief green a 5th time.
+- H: the FULL claim chain — item1 found at (276,208), weekend dialog
+  opened (3 GET buttons), POST /activity/api/v1/receive/reward 0->1,
+  wallet 42000 -> 42300 golds (exactly the weekend 10-min online_time
+  reward). The server's own read-back before the drive:
+  "weekend online_time status=1" (the wave-6c tracking made the task
+  claimable during the run). 40 unique endpoints, no FATAL, PASS.
+- COVERAGE.json regenerated: 335 / 295 implemented / 40 default /
+  234 host-tested / 136 client-asserted (receive/reward + activity/
+  action + member/invite now carry the client_asserted flag).
