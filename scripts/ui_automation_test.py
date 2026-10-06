@@ -4054,6 +4054,24 @@ def main():
             print("  [info] H-tail relaunch failed (kept as evidence)")
     assert_alive(adb, args.package, "H-grounded")
 
+    def ground_main(tag):
+        """Wait for the MAIN screen (rb_1) after any recovery. RUN
+        37542145915: a relaunch right before L left the app on the
+        SPLASH (pid alive, no bottom bar) — L/M/N/O's rb_5 finds all
+        raced it and three phases silently skipped inside a green run.
+        Waits up to 30s, relaunching once if the process died."""
+        deadline = time.time() + 30
+        relaunched = False
+        while time.time() < deadline:
+            if screen.find(ids=["rb_1"]):
+                return True
+            if not adb.pid(args.package) and not relaunched:
+                relaunch_and_wait(adb, screen, args.package,
+                                  args.activity, tag)
+                relaunched = True
+            time.sleep(3)
+        return bool(screen.find(ids=["rb_1"]))
+
     # ------------------------------------------------- Phase L: the rank
     # surface (session 24, error-driven UI expansion). jadx decode:
     # the Me-tab "Ranking" row opens OverViewRankActivity (k) whose TWO
@@ -4111,7 +4129,10 @@ def main():
     # landed on a shifted list, the activity never opened, and L (and the
     # M header walk that trusted the same screen) drifted. The walk now
     # VERIFIES the open with the podium fetch delta and retries once.
-    for l_try in range(2):
+    # run 37542145915: ground on the MAIN screen first (the splash has
+    # no rb_5).
+    l_grounded = ground_main("L-ground")
+    for l_try in range(2) if l_grounded else range(0):
         l_me = screen.find(ids=["rb_5"])
         if not (l_me and l_me.center and screen.tap_node(l_me)):
             break
@@ -4250,7 +4271,7 @@ def main():
     m_pre_vp = m_count("REQ GET " + m_vp_lit)
     m_paths_before = set(localapi_paths(adb))
     m_entry = None
-    if screen.find(ids=["rb_1"]):
+    if ground_main("M-ground"):
         # ground on the HALL TAB first: rb_1 is the bottom bar's first
         # radio and exists on EVERY main tab (run 37492582973: L's walk
         # left the app on the Me tab; the header walk then searched the
@@ -4382,6 +4403,8 @@ def main():
         # the row tap is retried once on a stale-position miss, and an
         # already-open podium short-circuits (the ranking activity has no
         # rb_5 — a second walk attempt from ON the podium would fail).
+        if not ground_main("N-ground"):
+            return False
         for _ in range(2):
             if n_rows():
                 return True
@@ -4559,7 +4582,7 @@ def main():
         + o_count("REQ POST " + o_v2_lit)
     o_paths_before = set(localapi_paths(adb))
     o_form = False
-    if screen.find(ids=["rb_1"]) or screen.find(ids=["rb_5"]):
+    if ground_main("O-ground"):
         # walk: Me tab -> the "Setting" row (me_setting; runs the
         # SettingFragment template via MoreViewModel.N / "more_setup")
         # -> the "Account Switch" row (setting_change_account).

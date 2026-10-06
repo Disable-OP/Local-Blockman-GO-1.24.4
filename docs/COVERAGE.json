@@ -5,7 +5,7 @@
   "implemented": 295,
   "default": 40,
   "host_tested": 234,
-  "client_asserted": 166
+  "client_asserted": 167
  },
  "endpoints": [
   {
@@ -1750,7 +1750,7 @@
    "status": "implemented",
    "handler": "login",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",

@@ -2375,3 +2375,28 @@
   the settings Account-Switch chain (login/change/record + client-UI
   login), the tasks surface (dormant dvSignUp gate), the weekly-quest
   UI. NO GameServer work.
+
+---
+
+## Session 25 cont. 5 (runs 37533194661/37538041177/37542145915: Phase O decoded, ground_main added)
+
+- Phase O (account switch + client-UI login) shipped in 3 iterations:
+  1. 37533194661: the profile->ibMore walk opened the Personal Info
+     EDITOR, not settings (dump proved it). DECODE: the settings screen
+     is the SettingFragment TEMPLATE opened by the Me-tab "Setting" row
+     (MoreViewModel.N, "more_setup", me_setting="Setting").
+  2. 37538041177: the corrected walk reached the login form; the client
+     submitted POST /user/api/v2/app/login (the modern unified login),
+     NOT v1 — the check now watches both (v2 quoted, evidence-backed);
+     accountRecord has NEVER fired on-device (probe-gated, its quote
+     removed until proven — the split-marker trick keeps the coverage
+     claim honest).
+  3. 37542145915 PASSED but with a silent skip: a relaunch right before
+     L left the app on the SPLASH — L/M/N/O's rb_5 finds all raced it
+     and three phases ran zero checks inside a green run. FIX:
+     ground_main(tag) — wait up to 30s for the main screen (rb_1),
+     relaunch once if dead — wired into the L/M/N/O walks.
+- N overall leg: the self-close drift around the rb_overall_tab flip is
+  now absorbed by a 3-attempt retry loop (re-open + re-find + verify).
+- Coverage stays 167 (v2/app/login asserted in run 37538041177's
+  evidence; the next green run re-validates the O checks).
