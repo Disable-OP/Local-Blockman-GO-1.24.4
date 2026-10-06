@@ -1918,7 +1918,7 @@ def main():
             add = fcall("POST", "/friend/api/v1/friends",
                         {"friendId": fr_uid_num, "msg": "qa-add"},
                         headers=live_hdr)
-            agr = fcall("PUT", "/friend/api/v1/friends/%d/agreement"
+            agr = fcall("PUT", "/friend/api/v1/friends/%s/agreement"
                         % d_uid_live, None, headers=frh)
             if add.get("code") == 1 and agr.get("code") == 1:
                 ok("F: real friendship via the API (%s <-> live session)"
@@ -2995,8 +2995,8 @@ def main():
                                                         (m.get("role")
                                                          for m in
                                                          ml_ho.get("data", [])
-                                                         if m.get("userId")
-                                                         == d_uid_live), None)
+                                                         if str(m.get("userId"))
+                                                         == str(d_uid_live)), None)
                                                     base_ho = fcall(
                                                         "GET",
                                                         "/clan/api/v1/clan/"
