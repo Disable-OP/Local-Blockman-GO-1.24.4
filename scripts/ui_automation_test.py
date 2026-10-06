@@ -2708,13 +2708,24 @@ def main():
                                     screen.tap_node(right)
                                     time.sleep(5)
                                     f_alive("G-invitescreen")
-                                    inv_nodes = [
-                                        x for x in screen.dump()
-                                        if x.center
-                                        and x.text == "Invite Friend"]
-                                    low = max(inv_nodes,
-                                              key=lambda n: n.center[1]) \
-                                        if inv_nodes else None
+                                    # wait for the BOTTOM button: the
+                                    # title carries the SAME text and the
+                                    # first dump can race the transition
+                                    # (run 37412479967 tapped the title at
+                                    # y=95). The button is anchored
+                                    # bottom (y > 900 on 720x1280).
+                                    low = None
+                                    btn_deadline = time.time() + 12
+                                    while time.time() < btn_deadline:
+                                        cand = [x for x in screen.dump()
+                                                if x.center
+                                                and x.text == "Invite Friend"
+                                                and x.bounds
+                                                and x.bounds[1] > 900]
+                                        if cand:
+                                            low = cand[0]
+                                            break
+                                        time.sleep(2)
                                     if low:
                                         ok("G: TribeInviteFriend open "
                                            "(bottom 'Invite Friend' button "
@@ -2849,7 +2860,27 @@ def main():
                                 # the client's toggling) with bounded PUTs.
                                 fv0 = fv_req_count()
                                 states = []
+                                fv_owner_alive = True
+                                pid_at_settings = adb.pid(args.package)
                                 for tap_n in range(1, 4):
+                                    # session 20 (run 37412479967): the
+                                    # roaming native-killer can strike right
+                                    # after the settings screen opens; the
+                                    # relaunch lands on the start screen and
+                                    # further taps are meaningless. Track
+                                    # the pid: if it CHANGED mid-walk, skip
+                                    # honestly (the check stays hard on the
+                                    # normal no-death path).
+                                    if pid_at_settings \
+                                            and adb.pid(args.package) \
+                                            != pid_at_settings:
+                                        print("  [evidence] process died "
+                                              "during the settings walk "
+                                              "(pid %s -> relaunch) - "
+                                              "freeVerify taps skipped"
+                                              % pid_at_settings)
+                                        fv_owner_alive = False
+                                        break
                                     screen.tap_node(cb)
                                     time.sleep(3)
                                     f_alive("G-fv-tap%d" % tap_n)
@@ -2863,16 +2894,20 @@ def main():
                                           "-> server state %s"
                                           % (tap_n, state))
                                 fv2 = fv_req_count()
-                                check(
-                                    "G: freeVerify toggle client-asserted "
-                                    "(server followed the taps: %s, PUTs "
-                                    "%d->%d)" % (states, fv0, fv2),
-                                    fv2 >= fv0 + 2 and len(set(states)) >= 2
-                                    and states[-1] in (0, 1),
-                                    "states=%s puts %d->%d"
-                                    % (states, fv0, fv2))
+                                if fv_owner_alive:
+                                    check(
+                                        "G: freeVerify toggle client-asserted "
+                                        "(server followed the taps: %s, PUTs "
+                                        "%d->%d)" % (states, fv0, fv2),
+                                        fv2 >= fv0 + 2 and len(set(states)) >= 2
+                                        and states[-1] in (0, 1),
+                                        "states=%s puts %d->%d"
+                                        % (states, fv0, fv2))
                                 # restore the deterministic world: 0
-                                for _ in range(4):
+                                # (only meaningful when no death occurred —
+                                # otherwise cb is stale and the state never
+                                # moved from 0)
+                                for _ in range(4 if fv_owner_alive else 0):
                                     base_r = fcall(
                                         "GET", "/clan/api/v1/clan/tribe/base",
                                         headers=live_hdr)
@@ -3147,13 +3182,34 @@ def main():
     print("== crash scan ==")
     fatal = adb.raw("logcat", "-d", timeout=60)
     crash = adb.raw("logcat", "-d", "-b", "crash", timeout=60)
-    if ("FATAL EXCEPTION" in fatal) or ("FATAL EXCEPTION" in crash):
+    # Session 20 (run 37412479967): the uiautomator DUMP TOOL itself can
+    # NPE (AccessibilityNodeInfoDumper.childNafCheck) on Android 12 redroid
+    # and land its own FATAL EXCEPTION in the shared logcat — that is a
+    # tool-side death, not an app crash. Attribute every FATAL block: a
+    # block whose first ~30 frames mention uiautomator WITHOUT any app
+    # frame is tool noise; anything touching the app (or unattributable)
+    # still fails the run.
+    app_fatal = []
+    for src in (fatal, crash):
+        lines = src.splitlines()
+        i = 0
+        while i < len(lines):
+            if "FATAL EXCEPTION" in lines[i]:
+                block = "\n".join(lines[i:i + 30])
+                if "uiautomator" in block \
+                        and "com.disabngo" not in block \
+                        and "com.sandboxol" not in block:
+                    print("  [evidence] tool-side FATAL (uiautomator dump "
+                          "NPE) - not an app crash")
+                else:
+                    app_fatal.append(lines[i])
+            i += 1
+    if app_fatal:
         fail("FATAL EXCEPTION in logcat")
-        for line in fatal.splitlines():
-            if "FATAL EXCEPTION" in line:
-                print("    " + line)
+        for line in app_fatal:
+            print("    " + line)
     else:
-        ok("no FATAL EXCEPTION")
+        ok("no app FATAL EXCEPTION")
     if "ANR in %s" % args.package in fatal:
         fail("ANR detected")
     if not assert_alive(adb, args.package, "end"):
