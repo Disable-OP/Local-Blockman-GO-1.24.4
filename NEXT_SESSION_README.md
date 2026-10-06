@@ -1072,3 +1072,27 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   reward dialog on real claim"); if it fails, read snap_H_reward_
   dialog_missing.png in the artifact and decode from there. NO
   GameServer work.
+
+## Session 22 FINAL (read first — the H reward dialog is client-asserted)
+
+- Run 37445232759 PASS (0 FAIL): FULL H claim chain client-asserted —
+  status=1 pre-read -> hall item1 -> weekend dialog (3 GETs) -> POST
+  receive/reward 0->1 -> CampaignGetIntegralRewardDialog SEEN (CONFIRM
+  via the textAllCaps-aware contains-match) -> wallet +300 (exact
+  10-min online_time reward). Both H hard checks green.
+- The recovery hardening proved itself: the killer struck at
+  A-dress-character AND G-grounded (the exact spot that killed
+  37441604561) — both absorbed, H ran after the G recovery.
+- Tooling banked: Screen.snap() screenshots land in the diagnostics
+  artifact (workflow pulls /sdcard/snap_*.png); alive_or_recover_at()
+  is the late-phase recovery primitive; the claim path uses the CENTER
+  CampaignGetIntegralRewardDialog (base_sure -> "CONFIRM"), NOT the
+  blocky variant (hardcoded "OK").
+- Zero server changes this session — wip-43 APK current, coverage
+  unchanged (335/295/40, 234 host-tested, 136 client-asserted + the H
+  dialog now asserted through the hard check).
+- Next: (1) the client's own traffic shows 0 UNMAPPED — new API work
+  must be error-driven from future client traffic; (2) deepening-state
+  candidates if the UI surfaces them (chat message store BEHIND the
+  RongCloud transport decision — the IM protocol is non-HTTP and stays
+  out per the standing instruction); (3) NO GameServer work.

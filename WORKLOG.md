@@ -1953,3 +1953,33 @@
   * H-activitycenter assert_alive -> alive_or_recover_at (a mid-H death
     recovers and the bounded card polls degrade to info prints).
 - Re-dispatched test-redroid on the fix commit. NO server changes.
+
+## Session 22 FINAL — run 37445232759 PASS: the reward dialog is CLIENT-ASSERTED
+
+- HEADLINE (run 37445232759, 93aae4e, 0 FAIL): the FULL H claim chain is
+  client-asserted end-to-end: status=1 pre-read (golds 42000) -> hall
+  item1 (276,208) -> weekend task dialog (3 GET buttons) -> POST
+  receive/reward 0->1 -> CampaignGetIntegralRewardDialog SEEN (the
+  "CONFIRM" button matched after the textAllCaps fix) -> Confirm tapped
+  -> wallet 42300 (+300 = the exact 10-min online_time reward). BOTH H
+  hard checks green: "reward dialog on real claim (wallet delta=300)"
+  and "claim client-asserted (POST 0->1)".
+- THE RECOVERY HARDENING PROVED ITSELF IN THE SAME RUN: the roaming
+  killer struck TWICE (A-dress-character, G-grounded) and both were
+  absorbed — G-grounded is the exact spot that killed run 37441604561.
+  Phase H ran after the G-grounded recovery and completed the chain.
+- Run totals: 41 unique endpoints, no app FATAL, alive at end. F2
+  (edit+tag), G (elder/remove/invite/freeVerify [1,0,1]) all green.
+- Session 22 totals: 3 pushes (461b02b, 93aae4e, this), 1 dispatched
+  run triaged (37441604561), the H dialog probe PROMOTED to a hard
+  check, screenshot evidence plumbed into the diagnostics artifact
+  (Screen.snap + workflow pull), dialog-class disambiguation banked
+  (center variant = the claim path's base_sure dialog; blocky variant
+  hardcodes "OK" and is unused there).
+- Next: (1) everything the client surfaces on its own is now
+  client-asserted — the next REAL work is error-driven from NEW client
+  traffic (0 UNMAPPED in the last two runs) or deepening state the UI
+  can exercise (e.g. the RongCloud-transport decision stays OUT: the
+  IM protocol is non-HTTP, GameServer-scale); (2) keep CI green; the
+  wip-43 APK stays current (zero server changes this session);
+  (3) NO GameServer work.
