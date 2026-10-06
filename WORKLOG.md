@@ -1807,3 +1807,21 @@
   handlers, host rig untouched; wip-43 remains the current APK).
 - Next: dispatch test-redroid; triage the Phase H evidence (POST count,
   reward dialog, wallet delta) and the invite POST single-run catch.
+
+## Session 21 cont. — run 37430306318 triage + re-dispatch
+
+- Dispatched on 0eede44 mid-wave: run 37430306318 FAIL — MY TOOL BUG,
+  not an app/server issue: UnboundLocalError at the friends-refresh wait
+  (line 1952) because the wave-7 friend_nick2 seeding block sits AFTER
+  the wait that references it (Python binds the name local to main()).
+  Everything before the crash was GREEN: 10s keepalive, visitor boot,
+  register/login, D profile edit (nickName + intro PUTs verified from
+  the record), E clan-create attempt (the known form-gate info; the
+  F persistent clan covers the route), F persistent clan +
+  ownership + first friendship + friends-page refresh walk (died inside
+  the wait). Phases G/H never ran this run.
+- Fix: bind friend_nick2 = None next to friend_nick's init (da94593);
+  pushed + re-dispatched -> run 37433234002.
+- Also this session: COVERAGE.json regenerated from the live
+  RoutingTable (335/295/40, 234 host-tested, 135 client-asserted) —
+  the machine-readable report matches ENDPOINTS.md again.
