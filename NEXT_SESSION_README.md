@@ -1055,3 +1055,20 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   (dialog_campaign_* / CampaignGetIntegralRewardDialog binding) and
   match the real button id/text; (2) error-driven work only — the
   client's own traffic is the spec now; (3) NO GameServer work.
+
+## Session 22 cont. 2 (read first — run 37441604561 triage + H-entry recovery)
+
+- The killer struck BETWEEN G and H (after every G check green, no app
+  FATAL) and starved Phase H: dead app = dead embedded server = None
+  wallet read + unfoundable rb_1. Fixes: module-level
+  alive_or_recover_at() (evidence + relaunch, no FAIL), G-grounded and
+  F-grounded now recover, the H ground walk relaunches at its ENTRY
+  (2 attempts), and the wallet pre-read runs AFTER recovery.
+- Dialog disambiguation banked: the claim path uses the CENTER
+  CampaignGetIntegralRewardDialog (base_sure -> "CONFIRM"); the blocky
+  variant (hardcoded "OK") is unused there. contains=["confirm"] is
+  correct.
+- Next: watch the re-dispatched run for the promoted hard check ("H:
+  reward dialog on real claim"); if it fails, read snap_H_reward_
+  dialog_missing.png in the artifact and decode from there. NO
+  GameServer work.

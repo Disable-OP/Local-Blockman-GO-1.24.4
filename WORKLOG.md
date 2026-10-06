@@ -1914,3 +1914,42 @@
   REQ paths, 0 UNMAPPED, no 4xx/5xx — no new client-surfaced API gaps.
   /msg/api/v1/msg/group/chat/list is client-asserted (GroupChat.java is
   state-backed); the 40 remaining defaults all carry Wave-5v/7 verdicts.
+
+## Session 22 cont. — run 37441604561 triage: the killer starved Phase H; recovery added at the H entry
+
+- Run 37441604561 (461b02b) FAIL(2): "process died at stage: G-grounded"
+  and "F-grounded". EVERY chain check had already gone green before the
+  deaths (F2 edit+tag, G setIdentity role=10, removeMember, inviteFriend
+  POST 0->1 + type-2 message, freeVerify [1,0,1] PUTs 0->3, third member
+  joined) — the documented roaming native-kill family struck between G
+  and H with NO app FATAL (crash scan clean, 47 unique endpoints).
+- CONSEQUENCE DECODED: the embedded server IS the app process. The dead
+  app meant the H wallet pre-read returned None (status=None golds=None),
+  rb_1 was never found (dead UI), and the WHOLE claim drive was skipped
+  to the tail absorb. The H-dialog hard check never got its chance.
+- CLIENT DECODE BONUS (blocky vs center dialog disambiguation): TWO
+  CampaignGetIntegralRewardDialog classes exist. The claim callback
+  (view/dialog/activity/n.java n.onSuccess) uses the CENTER variant
+  (com.sandboxol.center.view.dialog, layout base_dialog_campaign_get_
+  integral_reward, button @string/base_sure -> "CONFIRM" via textAllCaps)
+  — the committed contains=["confirm"] wait matches it. The blocky
+  variant (com.sandboxol.blocky.dialog, layout dialog_campaign_get_
+  integral_reward, button hardcoded text "OK") is a DIFFERENT class not
+  used by this path. Session-21's "Confirm = base_sure" note was right
+  for the class that matters.
+- FIXES (all in scripts/ui_automation_test.py):
+  * NEW module-level alive_or_recover_at(): the deep-drive closure's
+    alive_or_recover semantics for the late phases — death recorded as
+    evidence, relaunch_and_wait, drive continues (crash scan stays the
+    honesty gate).
+  * G-grounded / F-grounded now RECOVER instead of failing (the killer
+    has hit both AFTER all green checks — a death there is noise).
+  * H ENTRY recovery: the ground walk runs inside a 2-attempt loop that
+    relaunches the app if the pid is gone (the killer struck BETWEEN G
+    and H — rb_1 is unfoundable on a dead app).
+  * The H wallet pre-read moved AFTER the ground/recovery (it rides the
+    server; a pre-recovery read resolves None) — now h_wallet_preread(),
+    called once h_ground is true.
+  * H-activitycenter assert_alive -> alive_or_recover_at (a mid-H death
+    recovers and the bounded card polls degrade to info prints).
+- Re-dispatched test-redroid on the fix commit. NO server changes.

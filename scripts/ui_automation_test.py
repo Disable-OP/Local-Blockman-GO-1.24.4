@@ -59,6 +59,25 @@ def fail(msg):
     print("  [FAIL] %s" % msg)
 
 
+def alive_or_recover_at(adb, screen, package, activity, stage):
+    """Module-level alive_or_recover (the deep-drive closure is out of
+    scope in the late phases). The roaming native-kill family has now
+    struck at G-grounded and F-grounded AFTER every chain check had gone
+    green (run 37441604561), which then starved Phase H entirely - the
+    embedded server IS the app process, so a dead app means no server,
+    no wallet reads, no hall. Record the death as evidence, relaunch, and
+    let the drive continue; the crash scan stays the honesty gate."""
+    if adb.pid(package):
+        ok("alive at %s (pid %s)" % (stage, adb.pid(package)))
+        return True
+    print("  [evidence] process died at stage: %s - relaunching "
+          "(native-kill family signature)" % stage)
+    if relaunch_and_wait(adb, screen, package, activity, stage):
+        ok("recovered after death at %s" % stage)
+        return True
+    return False
+
+
 def debug_dump(screen, tag="debug"):
     """Print what the script currently sees, for CI log debugging."""
     try:
@@ -3274,7 +3293,8 @@ def main():
                         else:
                             print("  [info] G: no third member (hand-over "
                                   "drive skipped)")
-                        assert_alive(adb, args.package, "G-grounded")
+                        alive_or_recover_at(adb, screen, args.package,
+                                            args.activity, "G-grounded")
                     else:
                         print("  [skip] G: no second member (API join "
                               "failed) - member/settings drives skipped")
@@ -3290,7 +3310,8 @@ def main():
                     break
                 adb.key(4)
                 time.sleep(2)
-            assert_alive(adb, args.package, "F-grounded")
+            alive_or_recover_at(adb, screen, args.package, args.activity,
+                                "F-grounded")
         else:
             print("  [skip] F: rb_3 not found after Phase E")
     else:
@@ -3327,7 +3348,13 @@ def main():
                               timeout=60).splitlines()
         if ("REQ POST " + h_rr_path) in line)
     h_golds_before = None
-    if live_hdr:
+
+    def h_wallet_preread():
+        # the embedded server IS the app process: a dead app (the roaming
+        # killer) means NO server -> this read resolves to None. Called
+        # AFTER the H ground/recovery so the read rides a live server.
+        if not live_hdr:
+            return None
         h_act = fcall("GET",
                       "/activity/api/v1/activity/action?titleType=weekend",
                       headers=live_hdr)
@@ -3336,17 +3363,29 @@ def main():
         h_first = next((r for r in h_rows
                         if r.get("actionFlag") == "online_time"), None)
         h_wallet = fcall("GET", "/pay/api/v1/wealth/user", headers=live_hdr)
-        h_golds_before = (h_wallet.get("data") or {}).get("golds")
+        h_golds = (h_wallet.get("data") or {}).get("golds")
         print("  [evidence] H: weekend online_time status=%s golds=%s"
-              % ((h_first or {}).get("status"), h_golds_before))
+              % ((h_first or {}).get("status"), h_golds))
+        return h_golds
+
     h_ground = False
-    for _ in range(4):
-        if screen.find(ids=["rb_1"]):
-            h_ground = True
+    for h_try in range(2):
+        # the killer struck BETWEEN G and H (run 37441604561): recover at
+        # the H ENTRY or the whole claim drive starves (rb_1 is never
+        # found on a dead app and the drive was skipped to its tail)
+        if not adb.pid(args.package):
+            alive_or_recover_at(adb, screen, args.package, args.activity,
+                                "H-entry")
+        for _ in range(4):
+            if screen.find(ids=["rb_1"]):
+                h_ground = True
+                break
+            adb.key(4)
+            time.sleep(2)
+        if h_ground:
             break
-        adb.key(4)
-        time.sleep(2)
     if h_ground:
+        h_golds_before = h_wallet_preread()
         rb1h = screen.find(ids=["rb_1"])
         if rb1h and rb1h.center:
             screen.tap_node(rb1h)
@@ -3372,7 +3411,8 @@ def main():
             pre_h = h_post()
             screen.tap_node(h_entry)
             time.sleep(5)
-            assert_alive(adb, args.package, "H-activitycenter")
+            alive_or_recover_at(adb, screen, args.package, args.activity,
+                                "H-activitycenter")
 
             def h_get_buttons():
                 # bounded poll: the dialog fetches the weekend actions
