@@ -2034,3 +2034,50 @@
   ask/receive loop wants a second account); (2) item0 DiscoverActivity
   drive; (3) error-driven from the next run's traffic. NO GameServer
   work.
+
+## Session 23 — sign-in semantics bug found + fixed; Phase J/K scrap drives shipped
+
+- PHASE J (scrap BAG dialog, 410ef02): hall item3 -> scrap template ->
+  ll_library ("Inventory", command o -> f()) opens ScrapBagDialog ->
+  ScrapBagViewModel ctor fires getScrapBagValue (GET /activity/api/v1/
+  collect/exchange/user/scrap/value — EXACTLY ONE call site, phase-local
+  0->N sound) + 5 ViewPager pages fire getBackpackInfo (GET .../user/
+  scrap?type=0..4). Server handlers verified state-backed (ScrapBag.java
+  seeds s1..s6 per user) and wire-shape compatible (ScrapInfoInBackpack
+  fields match server JSON exactly). Dispatched run 37453703969.
+- PHASE K (scrap record + rule, cb6a8fd): ll_record -> ScrapHistoryDialog
+  -> getCombineHistory (GET .../user/combine/record, single call site);
+  ll_rule -> ScrapRuleDialog -> getScrapRule (GET .../description, single
+  call site). Both server handlers real. Dispatched run 37454273455.
+- SIGN-IN SEMANTICS BUG (the session's headline — dc9d0ce):
+  * dailySignIn (GET /user/api/v2/users/{userId}/daily/sign/in) served
+    claimed days as status=1 — but the client (WeekSignDialog item
+    j/h.java) defines 0="It isn't time to sign in", 1=claimable (click
+    fires the claim), 2="Received". Fresh users got all-0 (nothing
+    claimable -> Xb.onSuccess's z=false never opened the dialog) and
+    claimed days would have been RE-CLAIMABLE. Fixed: i<todaySlot -> 2,
+    i==todaySlot -> claimedToday?2:1, future -> 0.
+  * campaignSignInList (GET /activity/api/v1/signIn) never emitted
+    signInStatus=2 — but MainModel/Zb.java CHAINS INTO the week-sign
+    surface (bc.e -> GET daily/sign/in -> WeekSignDialog) only on
+    signInStatus==2 or campaign error 8006 ("The event has ended").
+    Fixed: cycle complete (8/8 claimed) -> signInStatus 2.
+  * CHAIN DECODED END-TO-END (smali + jadx): MainActivity hall load ->
+    nb (ya.b isSignIn read) -> CampaignManager.getActivitySignUp ->
+    bc.a(ctx,true) -> c(ctx,true) -> ya.a isPlayed read -> _b fires
+    CampaignApi.signInList when NOT isPlayed (fresh user) -> Zb opens
+    campaign dialog (status 0) / chains into week-sign (status 2 or
+    8006). Claim = PUT clickSignIn (POST /activity/api/v1/signIn for
+    campaign; PUT /user/api/v2/users/{userId}/daily/sign/in for week).
+  * HOST TESTS updated to the corrected client contract (the old
+    assertions encoded the bug): fresh day-1 = 1, claimed = 2 (also
+    after restart), claimed-today keeps campaign signInStatus 1 (never
+    2 mid-cycle — the cycle is date-gated, one claim per calendar day,
+    faithful to a daily calendar). 422 passed / 0 failed.
+  * NOTE: neither sign list route has EVER fired in real run traffic
+    (both unasserted) despite the static chain saying a fresh user
+    should fetch the campaign list at hall load — the on-device gate
+    needs next-run evidence (watch for the campaign dialog open /
+    GET /activity/api/v1/signIn in the run endpoint list).
+- Server dex rebuilt (225,208 bytes); build-release dispatched for the
+  new APK. NO GameServer work.
