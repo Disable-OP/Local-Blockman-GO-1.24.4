@@ -4468,8 +4468,18 @@ def main():
             if not n_open_ranking():
                 fail("N: ranking screen unreachable for the overall leg")
         # flip the podium to OVERALL and repeat; the flip itself
-        # re-fetches region/home/page/info with rankType=overall
-        o_tab = screen.find(ids=["rb_overall_tab"])
+        # re-fetches region/home/page/info with rankType=overall.
+        # RACE (run 37511675438): the ranking activity
+        # can self-close to the hall BETWEEN the rows re-check and the
+        # tab find — re-ground and re-find the tab in a bounded loop.
+        o_tab = None
+        for _ in range(2):
+            if not n_rows() and not n_open_ranking():
+                break
+            o_tab = screen.find(ids=["rb_overall_tab"])
+            if o_tab and o_tab.center:
+                break
+            time.sleep(3)
         if o_tab and o_tab.center:
             screen.tap_node(o_tab)
             time.sleep(5)

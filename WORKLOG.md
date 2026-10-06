@@ -2325,3 +2325,24 @@
 - COVERAGE regenerated: 155 client-asserted. The boot-window checks
   (activity/title + slot draw status) ride the next dispatch (expected
   157).
+
+---
+
+## Session 25 cont. 3 (run 37511675438: boot checks green; one drift race fixed)
+
+- Run FAILED on ONE check: the N overall leg's rb_overall_tab. Triage:
+  the ranking activity self-closed to the hall BETWEEN the rows
+  re-check and the tab find (the documented drift struck in a ~2s
+  window); the dump proves the hall was on screen at the find.
+  FIX: bounded re-ground + re-find loop (re-open the ranking screen
+  when rows vanish, then find the tab; 2 attempts).
+- GREEN in the same run: boot-window activity/title + slot draw
+  status (now validated), video/list/{type}, decorations/{otherId}/
+  using, vip products v2, all week-podium drives, the whole A-K chain.
+- Evidence batch committed (9c0d156, awaiting its run): 6 boot
+  surfaces, scrap card/combine + card/list {version} templates, dress
+  check/resource. A split-literal honesty slip (a fragment prefix-
+  claiming 6 sibling scrap routes) was caught by the pre-commit
+  coverage simulation and fixed before push — the session-24 rule is
+  now enforced by simulating gen_coverage before every commit.
+- Expected after the next green run: 166 client-asserted.
