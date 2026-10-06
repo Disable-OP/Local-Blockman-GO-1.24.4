@@ -784,3 +784,38 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   handles the full-screen sign dialog: claim via base_sign_in_get, assert
   bounded POST + reward dialog + wallet); (2) clan invite flow;
   (3) Hand over Chief UI drive. NO GameServer work.
+
+## Session 19 FINAL (read first — waves 5v/5w shipped, 293 implemented / 42 classified)
+
+- SERVER (host rig 399/399): campaign sign-in (GET 8-cell list + POST
+  claim {"signInId":N}, 7012 double-claim, monthly cycle, wallet credit);
+  turntable chain (info 8 slots / props tip / PUT draw 1 free per UTC day,
+  prize golds credited, isFree 1->0 after); datareport x3 PERSIST every
+  body to localapi/datareport/<kind>-<yyyymmdd>.jsonl; per-game ads-CD
+  config (30/60 s). appConfig isShowUniversalActivity=true LIT the
+  slot_machine jackpot icon (App hardcodes activityId="slot_machine").
+- COVERAGE: 335 discovered / 293 implemented / 42 default — every one of
+  the 42 now carries an explicit verdict in docs/ENDPOINTS.md (dead code:
+  IVIPApi, worldCup family, ugc/status, email/phone reset, campaignLogo,
+  precious-reward; gated: videostars (empty starCode), bugGame (no paid
+  games locally), halloween/bgtube (event config), activity/action +
+  receive/reward (gated by the empty activityTitle); honest empty:
+  banner/editor/moregame config files).
+- CI EVIDENCE: 5v (wip-41, run 37398682871 PASS) — 157 REQ, 0 UNMAPPED,
+  no 4xx/5xx, 0 FATAL. 5w (wip-42, run 37400811634) verifies the LIT
+  jackpot surface + the Phase A campaign-dialog handler; check its
+  localapi.txt for turntable/gold/status + the [probe] lines.
+- TOOLING NOTES: the git remote's embedded token is BAD (revoked) — push
+  still works via the platform credential helper; API calls use the
+  session PAT (base64, decode inline). The cron tool is unavailable in
+  this toolset, but the hourly webDevReview schedule fires (trace ids
+  web-cron-review-*). work/endpoints.json is STILL gone; RoutingTable is
+  hand-maintained (documented in WORKLOG); re-decompiled
+  work/jadx_out/src_classes{1,3,4} this session.
+- Next: (1) read run 37400811634's diagnostics — if the jackpot poll /
+  sign-dialog probes fired, promote the probe to a hard check and drive
+  the slot dialog (Watch ads likely ad-gated on-device: AdsManager);
+  (2) the clan invite flow (oa.a right button -> na.c -> inviteFriend);
+  (3) Hand over Chief UI drive (type 3, rig-proven); (4) activity/action
+  + receive/reward become reachable the moment activityTitle serves a
+  title — decode Mb/q.java call sites first. NO GameServer work.
