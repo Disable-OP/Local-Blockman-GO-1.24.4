@@ -1281,8 +1281,16 @@ def main():
             return False
         screen.tap_node(prof)
         time.sleep(5)
-        if not assert_alive(adb, package, "%s-Profile" % tag):
+        # SOFT probe (run 37400811634): the roaming native-killer family
+        # SIGKILLs the app right here occasionally (Session 11 forensics)
+        # and the outer retry below recovers fully — a death at editor
+        # ENTRY is evidence, not a run failure. A death after the retry
+        # still fails the run through the editor_up=False path.
+        if not adb.pid(package):
+            print("  [evidence] process died entering %s-Profile (roaming "
+                  "killer family) - the phase-B retry owns recovery" % tag)
             return False
+        ok("alive at %s-Profile" % tag)
         ib = screen.find(ids=["ibMore"])
         if not (ib and ib.center):
             debug_dump(screen, "ibMore-not-found")

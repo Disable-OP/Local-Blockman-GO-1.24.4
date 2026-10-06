@@ -1581,3 +1581,24 @@
   "Continue" triggers this session carried web-cron-review-* trace ids).
 - CI: wip-41 (5v) built green; test-redroid 37398682871 in progress.
   Next dispatch after this run verifies 5w (wip-42) with the lit surface.
+
+## Session 19 cont. 2 — wip-42 triage: the killer at editor entry, absorbed
+
+- Run 37400811634 FAIL(1): the ONLY failure was "process died at stage:
+  B-Profile" — the documented roaming native-killer SIGKILLed the app at
+  editor entry (Session 11 forensics) and the phase-B retry recovered
+  FULLY (every later check green: F2 clan-UPDATE, G setIdentity/remove/
+  freeVerify, C's 35+ API assertions, D upgrade+restart).
+- WIN in the same run: "A: jackpot draw-status poll served locally:
+  /activity/api/v1/slot/machine/user/gold/draw/status" — the lit
+  universal-activity surface is CLIENT-ASSERTED; the 1.24.4 client now
+  polls the jackpot draw status from the hall on its own. The campaign
+  sign dialog did NOT open this run (client-side isPlayed/isSignIn
+  bookkeeping — the server is ready for it when it does).
+- FIX: open_personal_info_editor's entry liveness is now a SOFT probe
+  ([evidence] + return False -> the existing retry path owns recovery);
+  a death after the retry still fails the run. Matches the deep-drive's
+  absorb convention; no weakening of the suite (the retry must still
+  reach the editor or the phase fails).
+- NOTE: automation changes run from the CI CHECKOUT (ref local-api), so
+  this fix needs a test-redroid dispatch only — no rebuild.
