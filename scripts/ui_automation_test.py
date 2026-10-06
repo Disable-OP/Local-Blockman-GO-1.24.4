@@ -3971,6 +3971,13 @@ def main():
 
     l_me = screen.find(ids=["rb_5"])
     l_entered = False
+    # pre-counts BEFORE the tap: the OverViewRankActivity fires the podium
+    # fetch during its first seconds — counting after the open sleep would
+    # swallow the delta (the classic 0->N honesty rule).
+    l_pre_home = l_count("REQ GET " + l_home_lit)
+    l_pre_user = l_count("REQ GET " + l_user_lit)
+    l_pre_gdr = l_count("REQ GET " + l_gd_region_lit)
+    l_pre_gdg = l_count("REQ GET " + l_gd_global_lit)
     if l_me and l_me.center and screen.tap_node(l_me):
         time.sleep(4)
         l_row = screen.find(texts=["Ranking"])
@@ -3981,10 +3988,6 @@ def main():
                                    args.activity, "L-rank-open"):
                 l_entered = True
     if l_entered:
-        l_pre_home = l_count("REQ GET " + l_home_lit)
-        l_pre_user = l_count("REQ GET " + l_user_lit)
-        l_pre_gdr = l_count("REQ GET " + l_gd_region_lit)
-        l_pre_gdg = l_count("REQ GET " + l_gd_global_lit)
         # L1: the podium fetch fires on page 0 (week) — bounded poll.
         l_seen_home = l_pre_home
         l_deadline = time.time() + 14
