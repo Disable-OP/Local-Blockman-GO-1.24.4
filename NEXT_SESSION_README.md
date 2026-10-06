@@ -869,3 +869,45 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   the client-side isPlayed/isSignIn bookkeeping that gates it; (3) the
   activity-task chain (bc.a callers, Mb/q.java) stays the next DECODE
   target. NO GameServer work.
+
+## Session 20 delta 2 (read first — Wave 6c: the activity-task chain is REAL)
+
+- The Session-19 verdict "activity/action + receive/reward gated by the
+  empty activityTitle" is RESOLVED. Decode: MainModel bc.b -> Lb.onSuccess —
+  a NON-EMPTY title list makes the client register per-title red points
+  (e.b.c.f.b) and IMMEDIATELY fetch
+  GET /activity/api/v1/activity/action?titleType=weekend|weekday
+  (DateUtils.isWeekend(serverTime) picks which). Mb then feeds the
+  "online_time" quantities into the local countdown
+  (ActivityTaskCountDownUtils; the client knows 10/30/60-min buckets).
+  Claim path: ActivityTaskContentItemViewModel o.h ->
+  POST /activity/api/v1/receive/reward -> n.onSuccess sets status 2 +
+  CampaignGetIntegralRewardDialog. Status semantics: 0 in-progress,
+  1 claimable, 2 claimed.
+- SERVER (71834ab): activityTitle now serves weekday+weekend titles
+  (countryList=[] passes f.a, endTime=-1, isEnable=true, cumulativeTime =
+  tracked minutes); NEW activityActionList (weekday: online_time
+  10/30/60min 200/400/800 golds; weekend: online_time 10min 300 golds +
+  saturday_login/sunday_login 200 golds, complete only on their real UTC
+  weekday + a login that day); NEW activityTaskReward (7012 double-claim,
+  incomplete rejected, wallet credit, post-claim action returned).
+- STATE (nothing hardcoded): per-user per-day `activity` bucket —
+  onlineMinutes credited by the SERVER (one per DISTINCT UTC minute with
+  authenticated traffic, ticked from requireUser — real client-driven),
+  lastDayLogin on the first request of the day, claimed map "a<actionId>".
+- HOST RIG 399 -> 420 (all green): the completion path is tested by
+  injecting 15 online minutes into state.json BETWEEN the two boots (the
+  state file is the documented, inspectable store) — claim + wallet + 7012
+  all verified. The old "activity title empty" check was REWRITTEN (the
+  empty-list era is over).
+- COVERAGE: 335 / 295 implemented / 40 default. RoutingTable flipped for
+  the two routes; docs/ENDPOINTS.md "Wave 6c" documents the whole chain.
+- CI: wave 6c needs a REBUILD (server dex lives in the APK):
+  build-release dispatched on 71834ab (wip-43) — dispatch test-redroid
+  after it lands. The 6a/6b drives ride the same or the next run.
+- Next: (1) watch wip-43's test run: Phase A must show the client's OWN
+  GET /activity/api/v1/activity/action?titleType=... at boot (a NEW
+  client-asserted surface); (2) check the 6a/6b drive evidence (invite +
+  hand-over); (3) the task-center DIALOG drive (open the activity entry,
+  claim a task in the UI) is the natural next wave once the red point is
+  lit. NO GameServer work.

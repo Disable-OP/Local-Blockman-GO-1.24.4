@@ -1660,3 +1660,21 @@
   (automation runs from the CI checkout; APK unchanged at wip-42).
 - Next: read the dispatched run's diagnostics; then the activity-task
   chain decode (bc.a callers / Mb/q.java). NO GameServer work.
+
+## Session 20 cont. — Wave 6c: activity-task chain implemented + rig-proven
+
+- Decode pass over bc.a callers delivered MORE than expected: a non-empty
+  activityTitleList is the master gate — the client registers red points
+  AND fetches the action list on its own at boot. Full chain decoded with
+  no guesses (Lb -> f.a/f.b/w.a -> bc.a -> Mb -> w countdown -> o.h ->
+  n.onSuccess).
+- Implemented activityTitle (real), activityActionList, activityTaskReward
+  + StateStore activity bucket + requireUser online-minute tick.
+  RoutingTable flipped x2. Host rig rewritten checks: 420/420 PASS
+  (399 -> 420), including a state-file injection between boots to test
+  the 10-minute completion path in milliseconds (honest: the file is the
+  documented store; the completion RULES are the code under test).
+- One stale rig check ("activity title empty") rewritten for the new
+  contract. Coverage 295 implemented / 40 default.
+- Pushes: dbad2c7 (6a/6b drives), 71834ab (6c). build-release dispatched
+  for wip-43; test-redroid to follow. NO GameServer work.
