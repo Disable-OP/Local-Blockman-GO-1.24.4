@@ -1626,3 +1626,37 @@
   and decide whether to light activityTitle; (2) the clan invite flow;
   (3) Hand over Chief UI drive; (4) observe the sign dialog on a run
   where the client's local bookkeeping opens it. NO GameServer work.
+
+## Session 20 — Waves 6a/6b: invite flow + hand-over-chief UI drives (cron resume)
+
+- Cron resume: repo at 73eaf72 (session 19 FINAL), CI green (run
+  37403070448 wip-42). Latest diagnostics clean per session 19.
+- CLIENT DECODE (full chain, no guesses): invite = oa.a
+  (TribeMemberManage, hosted by TemplateActivity with the ic_add_friend
+  RIGHT_RESOURCE_ID so ibTemplateRight renders) -> na.c
+  (TribeInviteFriend) -> greendao Friend rows + CheckBox -> bottom
+  'Invite Friend' (binding_2) -> EditTextDialog (et_msg/btn_confirm) ->
+  POST /clan/api/v1/clan/tribe/member/invite?friendIds=&msg=. Hand-over =
+  TribeHasItemViewModel J.h/f: chief long-press member row -> sheet
+  'Hand over Chief' -> TwoButtonDialog 'Are you sure to hand over?' ->
+  btnSure -> PUT .../member?otherId=&type=3.
+- KEYSTONE FACT: the invite list reads the greendao Friend table
+  directly; network rows reach it only via ChatModel v.a ->
+  friendList(0,50) -> P.b() clear + inserts, triggered by the Messages
+  tab's INTERNAL rbFriend sub-tab (ChatViewModel x.a num==1|2). The drive
+  therefore builds a real friendship via the API first (fresh fqaNNNNN
+  account: owner adds -> candidate accepts), then refreshes the cache
+  through the UI.
+- AUTOMATION (+388 lines, py_compile clean): Phase F friendship+cache
+  block (rb_1 -> rbFriend -> row wait), Phase G invite drive (ibTemplateRight
+  -> row tick -> lowest 'Invite Friend' match -> dialog msg -> POST count
+  0->1 + invitee type-2 message read-back), Phase G hand-over drive (LAST:
+  fresh hqaNNNNN joins via API -> re-entry walk -> long-press -> sheet ->
+  btnSure -> PUT 0->1 + gk role 20 + old chief role 0 + chiefId==gk).
+- SERVER: zero changes (invite + setIdentity type 3 were already rig-proven;
+  the drive converts rig evidence into CLIENT-ASSERTED evidence). Host rig
+  stays 399/399.
+- Pushes this session: (see git log). Dispatch-only verification planned
+  (automation runs from the CI checkout; APK unchanged at wip-42).
+- Next: read the dispatched run's diagnostics; then the activity-task
+  chain decode (bc.a callers / Mb/q.java). NO GameServer work.

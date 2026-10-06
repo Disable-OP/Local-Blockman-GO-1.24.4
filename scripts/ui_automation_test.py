@@ -1893,6 +1893,78 @@ def main():
             return relaunch_and_wait(adb, screen, args.package, args.activity,
                                      stage)
 
+        # ---- Session 20 (wave 6a): a REAL friendship for the invite drive.
+        # jadx decode: TribeInviteFriendListModel g.onLoad reads the greendao
+        # Friend table (P) directly — network rows reach that cache only via
+        # ChatModel v.a -> FriendApi.friendList(0, 50) -> P.b() clear +
+        # per-row insert, which fires when the Messages tab's internal
+        # rbFriend sub-tab is selected (ChatViewModel x.a num==1|2). So:
+        # register a friend candidate, owner adds + candidate accepts via
+        # the API, then tap rb_1 -> rbFriend and wait for the row.
+        friend_nick = None
+        fr_uid_num = 0
+        frh = None
+        fr_uid = "fqa%05d" % (int(time.time()) % 100000)
+        fr_pw = "LocalQA%05d" % (int(time.time()) % 100000)
+        fr = fcall("POST", "/user/api/v1/register",
+                   {"uid": fr_uid, "password": fr_pw,
+                    "confirmPassword": fr_pw, "imei": "f-device",
+                    "appType": "android", "os": "12"})
+        fr_uid_num = (fr.get("data") or {}).get("userId", 0)
+        fr_tok = (fr.get("data") or {}).get("accessToken", "")
+        if fr.get("code") == 1 and fr_uid_num > 0 and live_hdr:
+            frh = {"Access-Token": fr_tok, "userId": str(fr_uid_num),
+                   "language": "en"}
+            add = fcall("POST", "/friend/api/v1/friends",
+                        {"friendId": fr_uid_num, "msg": "qa-add"},
+                        headers=live_hdr)
+            agr = fcall("PUT", "/friend/api/v1/friends/%d/agreement"
+                        % d_uid_live, None, headers=frh)
+            if add.get("code") == 1 and agr.get("code") == 1:
+                ok("F: real friendship via the API (%s <-> live session)"
+                   % fr_uid)
+                fl = fcall("GET",
+                           "/friend/api/v1/friends?pageNo=1&pageSize=20",
+                           headers=live_hdr)
+                frow_api = next((m for m in (fl.get("data") or {}).get(
+                    "data", []) if m.get("userId") == fr_uid_num), None)
+                friend_nick = (frow_api or {}).get("nickName")
+                ok("F: friend %s listed by the server (nick=%r)"
+                   % (fr_uid_num, friend_nick)) if friend_nick else print(
+                       "  [info] F: friend %s NOT in the server list: %s"
+                       % (fr_uid_num, str(fl)[:100]))
+                rb1 = screen.wait_for(ids=["rb_1"], timeout=10, poll=2)
+                if rb1 and screen.tap_node(rb1):
+                    time.sleep(4)
+                    handle_campaign_dialogs(adb, screen, "F-rb1")
+                    f_alive("F-messagetab")
+                    rbf = screen.wait_for(ids=["rbFriend"], timeout=10,
+                                          poll=2)
+                    if rbf and screen.tap_node(rbf):
+                        time.sleep(5)
+                        f_alive("F-friends-refresh")
+                        seen = screen.wait_for(texts=[friend_nick],
+                                               timeout=14, poll=3) \
+                            if friend_nick else None
+                        if seen:
+                            ok("F: friend row %r visible on the Friends "
+                               "page (greendao cache refreshed)"
+                               % friend_nick)
+                        else:
+                            print("  [info] F: friend row %r not on the "
+                                  "Friends page (cache timing)" % friend_nick)
+                    else:
+                        print("  [info] F: internal rbFriend not found "
+                              "(Messages layout changed?)")
+                else:
+                    print("  [info] F: rb_1 not found (tab bar unavailable)")
+            else:
+                print("  [info] F: API friendship failed: add=%s agr=%s"
+                      % (str(add)[:80], str(agr)[:80]))
+        else:
+            print("  [info] F: friend candidate register failed: %s"
+                  % str(fr)[:100])
+
         # tab3 as a CLAN OWNER: dump it (evidence - does the owner state
         # change the tab3 layout? does the clan name appear here already?)
         tab3f = screen.find(ids=["rb_3"])
@@ -2573,6 +2645,135 @@ def main():
                             else:
                                 print("  [info] G: member row %r not on "
                                       "the manage screen" % g_nick)
+                            # ---- Session 20 (wave 6a): the INVITE flow,
+                            # still ON the manage screen. jadx decode:
+                            # TribeMemberManage (oa.a) is hosted by
+                            # TemplateActivity with RIGHT_RESOURCE_ID =
+                            # ic_add_friend (T.c -> startTemplate), so the
+                            # title bar's ibTemplateRight is visible; its
+                            # onRightButtonClick starts TribeInviteFriend
+                            # (na.c). Rows = greendao friends with a
+                            # right-aligned CheckBox (tick adds
+                            # String(userId) to the selection); the bottom
+                            # green 'Invite Friend' button (binding_2)
+                            # opens EditTextDialog (et_msg + btn_confirm)
+                            # -> POST /clan/api/v1/clan/tribe/member/invite
+                            # ?friendIds=&msg= (ITribeApi @POST). Success
+                            # -> tribe_invite_success toast.
+                            if friend_nick and fr_uid_num and frh:
+                                inv_count = lambda: sum(
+                                    1 for line in adb.raw(
+                                        "logcat", "-d", "-s", "LocalAPI",
+                                        timeout=60).splitlines()
+                                    if "REQ POST /clan/api/v1/clan/tribe/"
+                                       "member/invite" in line)
+                                right = screen.wait_for(ids=["ibTemplateRight"],
+                                                        timeout=8, poll=2)
+                                if right and right.center:
+                                    screen.tap_node(right)
+                                    time.sleep(5)
+                                    f_alive("G-invitescreen")
+                                    inv_nodes = [
+                                        x for x in screen.dump()
+                                        if x.center
+                                        and x.text == "Invite Friend"]
+                                    low = max(inv_nodes,
+                                              key=lambda n: n.center[1]) \
+                                        if inv_nodes else None
+                                    if low:
+                                        ok("G: TribeInviteFriend open "
+                                           "(bottom 'Invite Friend' button "
+                                           "at %s)" % (low.center,))
+                                        pre_inv = inv_count()
+                                        frow = screen.wait_for(
+                                            texts=[friend_nick], timeout=12,
+                                            poll=3)
+                                        if frow and frow.center:
+                                            icb = next(
+                                                (x for x in screen.dump()
+                                                 if x.center and
+                                                 x.cls.endswith("CheckBox")),
+                                                None)
+                                            if icb and icb.center:
+                                                screen.tap_node(icb)
+                                            else:
+                                                l4, t4, r4, b4 = frow.bounds
+                                                adb.tap(r4 - 30,
+                                                        (t4 + b4) // 2)
+                                            time.sleep(2)
+                                            ok("G: friend row %r ticked "
+                                               "(selection=String(userId))"
+                                               % friend_nick)
+                                            screen.tap_node(low)
+                                            time.sleep(3)
+                                            et = screen.wait_for(
+                                                ids=["et_msg"], timeout=8,
+                                                poll=2)
+                                            if et and et.center:
+                                                screen.tap_node(et)
+                                                time.sleep(1)
+                                                adb.text("JoinUsQA")
+                                                time.sleep(1)
+                                                conf = screen.wait_for(
+                                                    ids=["btn_confirm"],
+                                                    timeout=8, poll=2)
+                                                if conf and conf.center:
+                                                    screen.tap_node(conf)
+                                                    time.sleep(5)
+                                                    f_alive("G-invite-sent")
+                                                    post_inv = inv_count()
+                                                    msgs_f = fcall(
+                                                        "GET",
+                                                        "/clan/api/v2/clan/"
+                                                        "tribe/member/message",
+                                                        headers=frh)
+                                                    inv_msg = next(
+                                                        (m for m in
+                                                         (msgs_f.get("data")
+                                                          or [])
+                                                         if m.get("type") == 2
+                                                         and m.get("clanId")
+                                                         == own_clan_id),
+                                                        None)
+                                                    check(
+                                                        "G: inviteFriend "
+                                                        "client-asserted "
+                                                        "(POST %d->%d, "
+                                                        "invitee sees the "
+                                                        "type-2 message=%s)"
+                                                        % (pre_inv, post_inv,
+                                                           bool(inv_msg)),
+                                                        post_inv > pre_inv
+                                                        and inv_msg is not None,
+                                                        "msgs=%s" % str(msgs_f)[:140])
+                                                else:
+                                                    print("  [info] G: "
+                                                          "EditTextDialog "
+                                                          "btn_confirm not "
+                                                          "found")
+                                            else:
+                                                print("  [info] G: "
+                                                      "EditTextDialog did "
+                                                      "not open (selection "
+                                                      "not registered?)")
+                                        else:
+                                            print("  [info] G: friend row "
+                                                  "%r not on the invite "
+                                                  "screen (greendao cache)"
+                                                  % friend_nick)
+                                    else:
+                                        print("  [info] G: 'Invite Friend' "
+                                              "button not on the invite "
+                                              "screen")
+                                    adb.key(4)  # invite screen -> manage
+                                    time.sleep(3)
+                                else:
+                                    print("  [info] G: ibTemplateRight not "
+                                          "on the manage screen (invite "
+                                          "entry unavailable)")
+                            else:
+                                print("  [info] G: no friend candidate "
+                                      "(invite drive skipped)")
                             adb.key(4)
                             time.sleep(3)
                         else:
@@ -2658,6 +2859,193 @@ def main():
                                 break
                             adb.key(4)
                             time.sleep(2)
+                        # ---- Session 20 (wave 6b): HAND OVER CHIEF through
+                        # the UI, deliberately LAST (after this the live
+                        # session is a plain member — no chief-gated drive
+                        # may follow). jadx decode (TribeHasItemViewModel
+                        # J.h/f): chief long-presses a MEMBER row -> sheet
+                        # [Hand over Chief | Set as Elder | Remove Member |
+                        # Cancel] -> item 2131823573 'Hand over Chief' ->
+                        # e(3) TwoButtonDialog ('Are you sure to hand over?')
+                        # -> btnSure -> PUT /clan/api/v1/clan/tribe/member
+                        # ?otherId=&type=3 (client code 3 = chief handover;
+                        # server: old chief -> member, chiefId follows).
+                        gk_uid = "hqa%05d" % (int(time.time()) % 100000)
+                        gk_pw = "LocalQA%05d" % (int(time.time()) % 100000)
+                        gk = fcall("POST", "/user/api/v1/register",
+                                   {"uid": gk_uid, "password": gk_pw,
+                                    "confirmPassword": gk_pw,
+                                    "imei": "h-device", "appType": "android",
+                                    "os": "12"})
+                        gk_uid_num = (gk.get("data") or {}).get("userId", 0)
+                        gk_tok = (gk.get("data") or {}).get("accessToken", "")
+                        gk_ok = gk.get("code") == 1 and gk_uid_num > 0
+                        gk_nick = None
+                        if gk_ok:
+                            gkh = {"Access-Token": gk_tok,
+                                   "userId": str(gk_uid_num), "language": "en"}
+                            gkr = fcall("POST",
+                                        "/clan/api/v1/clan/tribe/member",
+                                        {"clanId": own_clan_id,
+                                         "msg": "h-join"}, headers=gkh)
+                            gka = fcall("PUT",
+                                        "/clan/api/v1/clan/tribe/member/"
+                                        "agreement?otherId=%d" % gk_uid_num,
+                                        None, headers=live_hdr)
+                            gk_ok = gkr.get("code") == 1 \
+                                and gka.get("code") == 1
+                            gml2 = fcall("GET",
+                                         "/clan/api/v1/clan/tribe/member",
+                                         headers=live_hdr)
+                            gk_nick = next(
+                                (m.get("nickName") for m in
+                                 gml2.get("data", [])
+                                 if m.get("userId") == gk_uid_num), None)
+                            ok("G: third member joined via the API (%s, "
+                               "nick=%r)" % (gk_uid, gk_nick)) if gk_ok \
+                                else print(
+                                    "  [info] G: third-member API join "
+                                    "failed: %s %s" % (str(gkr)[:80],
+                                                       str(gka)[:80]))
+                        ho_done = False
+                        if gk_ok and gk_nick:
+                            # re-enter: rb_3 -> Enter Clan -> clan home ->
+                            # ic_more -> Manage Members
+                            rb3h = screen.wait_for(ids=["rb_3"], timeout=10,
+                                                   poll=2)
+                            if rb3h and screen.tap_node(rb3h):
+                                time.sleep(4)
+                                ent2 = screen.find(ids=["rlEnterClan"]) \
+                                    or screen.find(texts=["Enter Clan"])
+                                if ent2 and screen.tap_node(ent2):
+                                    time.sleep(6)
+                                    for _ in range(4):
+                                        d_h = screen.dump()
+                                        if any(
+                                                (x.text or "")
+                                                == "Notice Board"
+                                                for x in d_h):
+                                            cls_h = next(
+                                                (x for x in d_h
+                                                 if x.res.rsplit("/", 1)[-1]
+                                                 == "btnSure" and x.center),
+                                                None)
+                                            if cls_h:
+                                                screen.tap_node(cls_h)
+                                            time.sleep(3)
+                                        else:
+                                            break
+                                    more3 = None
+                                    for x in screen.dump():
+                                        if not (x.center
+                                                and x.cls.endswith(
+                                                    "ImageButton")):
+                                            continue
+                                        cx, cy = x.center
+                                        if cy < 140 and cx > 360:
+                                            more3 = x
+                                            break
+                                    if more3 and screen.tap_node(more3):
+                                        time.sleep(3)
+                                    mm3 = screen.wait_for(
+                                        texts=["Manage Members"], timeout=8,
+                                        poll=2)
+                                    if mm3 and mm3.center:
+                                        screen.tap_node(mm3)
+                                        time.sleep(5)
+                                        f_alive("G-managescreen-ho")
+                                        row3 = screen.wait_for(
+                                            texts=[gk_nick], timeout=12,
+                                            poll=3)
+                                        if row3 and row3.center:
+                                            pre_ho = puts_g()
+                                            l5, t5, r5, b5 = row3.bounds
+                                            adb.sh(
+                                                "input swipe %d %d %d %d 1000"
+                                                % ((l5 + r5) // 2,
+                                                   (t5 + b5) // 2,
+                                                   (l5 + r5) // 2,
+                                                   (t5 + b5) // 2))
+                                            time.sleep(3)
+                                            hov = screen.find(
+                                                texts=["Hand over Chief"])
+                                            if hov and hov.center:
+                                                screen.tap_node(hov)
+                                                time.sleep(3)
+                                                sure3 = screen.wait_for(
+                                                    ids=["btnSure"], timeout=8,
+                                                    poll=2)
+                                                if sure3 and sure3.center:
+                                                    screen.tap_node(sure3)
+                                                    time.sleep(5)
+                                                    f_alive("G-handover")
+                                                    post_ho = puts_g()
+                                                    ml_ho = fcall(
+                                                        "GET",
+                                                        "/clan/api/v1/clan/"
+                                                        "tribe/member",
+                                                        headers=live_hdr)
+                                                    gk_role = next(
+                                                        (m.get("role")
+                                                         for m in
+                                                         ml_ho.get("data", [])
+                                                         if m.get("userId")
+                                                         == gk_uid_num), None)
+                                                    me_role = next(
+                                                        (m.get("role")
+                                                         for m in
+                                                         ml_ho.get("data", [])
+                                                         if m.get("userId")
+                                                         == d_uid_live), None)
+                                                    base_ho = fcall(
+                                                        "GET",
+                                                        "/clan/api/v1/clan/"
+                                                        "tribe/base",
+                                                        headers=live_hdr)
+                                                    chief_ho = (
+                                                        base_ho.get("data")
+                                                        or {}).get("chiefId")
+                                                    check(
+                                                        "G: HAND OVER CHIEF "
+                                                        "client-asserted "
+                                                        "(PUT %d->%d, gk "
+                                                        "role=%s, old chief "
+                                                        "role=%s, chiefId=%s)"
+                                                        % (pre_ho, post_ho,
+                                                           gk_role, me_role,
+                                                           chief_ho),
+                                                        post_ho > pre_ho
+                                                        and gk_role == 20
+                                                        and me_role == 0
+                                                        and chief_ho
+                                                        == gk_uid_num,
+                                                        "members=%s base=%s"
+                                                        % (str(ml_ho)[:140],
+                                                           str(base_ho)[:100]))
+                                                    ho_done = True
+                                                else:
+                                                    print("  [info] G: "
+                                                          "hand-over "
+                                                          "TwoButtonDialog "
+                                                          "not confirmed")
+                                            else:
+                                                print("  [info] G: 'Hand "
+                                                      "over Chief' not on "
+                                                      "the member sheet")
+                                        else:
+                                            print("  [info] G: third member "
+                                                  "row %r not on the manage "
+                                                  "screen" % gk_nick)
+                                    else:
+                                        print("  [info] G: 'Manage Members' "
+                                              "not on the sheet (hand-over "
+                                              "re-entry)")
+                            if not ho_done and not rb3h:
+                                print("  [info] G: rb_3 not found for the "
+                                      "hand-over re-entry")
+                        else:
+                            print("  [info] G: no third member (hand-over "
+                                  "drive skipped)")
                         assert_alive(adb, args.package, "G-grounded")
                     else:
                         print("  [skip] G: no second member (API join "

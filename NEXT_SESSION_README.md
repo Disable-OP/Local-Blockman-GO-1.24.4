@@ -819,3 +819,53 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   (3) Hand over Chief UI drive (type 3, rig-proven); (4) activity/action
   + receive/reward become reachable the moment activityTitle serves a
   title — decode Mb/q.java call sites first. NO GameServer work.
+
+## Session 20 delta (read first — waves 6a/6b: the invite + hand-over drives are wired)
+
+- SCOPE: zero server changes this wave — both remaining Session-19
+  candidates are UI drives over ALREADY rig-proven handlers
+  (Tribe.invite POST /clan/api/v1/clan/tribe/member/invite and setIdentity
+  client type 3), wired into scripts/ui_automation_test.py (+388 lines,
+  syntax-checked). Running from the CI checkout (ref local-api) →
+  test-redroid DISPATCH ONLY, no rebuild (the APK stays wip-42).
+- CLIENT DECODE (invite, wave 6a): TribeMemberManage (oa.a) is hosted by
+  TemplateActivity with RIGHT_RESOURCE_ID = ic_add_friend (view/fragment/
+  tribehas/T.c -> startTemplate), so the title-bar ibTemplateRight is
+  visible and its onRightButtonClick starts TribeInviteFriend (na.c).
+  Rows = greendao Friend rows + right-aligned CheckBox; a tick adds
+  String(userId) to the selection (na.d); the bottom green 'Invite Friend'
+  button (fragment binding_2, text=tribe_invite_friend — SAME string as
+  the title, so the driver picks the LOWEST match) opens EditTextDialog
+  (dialog_edittext: et_msg + btn_confirm) -> POST .../member/invite
+  (ITribeApi @POST, @Query friendIds + msg). Success -> tribe_invite_success.
+- CACHE FACT (wave 6a keystone): the invite screen reads the greendao
+  Friend table DIRECTLY (TribeInviteFriendListModel g.onLoad -> J.a -> P),
+  and network rows reach that cache ONLY via ChatModel v.a ->
+  FriendApi.friendList(0,50) -> P.b() clear + per-row insert — fired when
+  the Messages tab's INTERNAL rbFriend sub-tab is selected (ChatViewModel
+  x.a num==1|2). So the drive creates a REAL friendship via the API
+  (register fqaNNNNN -> owner POST /friend/api/v1/friends -> candidate PUT
+  /friend/api/v1/friends/{ownerId}/agreement), then taps rb_1 -> rbFriend
+  and waits for the row. Assertions: POST count 0->1 in logcat AND the
+  invitee (frh session) sees the type-2 invitation in GET .../member/message.
+- CLIENT DECODE (hand-over, wave 6b): TribeHasItemViewModel J.h/f — chief
+  (TribeCenter.tribeRole==20) long-presses a MEMBER row -> BottomDialog
+  [Hand over Chief|Set as Elder|Remove Member|Cancel] (elder rows: Set as
+  Member instead of Elder); 'Hand over Chief' (2131823573) -> e(3)
+  TwoButtonDialog ('Are you sure to hand over?') -> btnSure -> PUT
+  .../member?otherId=&type=3. Deliberately the LAST chief-gated drive
+  (after it the live session is a plain member); a fresh third account
+  (hqaNNNNN) joins via the API for the hand-over (gj carries the 24h
+  rejoin cooldown after its Remove drive). Assertions: PUT count 0->1,
+  gk role==20, old chief role==0, tribe/base chiefId==gk.
+- Order in Phase G: promote (existing) -> remove (existing) -> INVITE
+  (new, needs the manage screen's ibTemplateRight; ends with BACK to the
+  manage screen) -> settings/freeVerify (existing) -> HAND OVER (new,
+  full re-entry walk: rb_3 -> Enter Clan -> Notice Board settle -> ic_more
+  -> Manage Members).
+- Next: (1) watch the dispatched run — first evidence will tell whether
+  the greendao cache refresh renders the friend row (the invite's keystone
+  assumption); (2) if the campaign sign dialog still never opens, decode
+  the client-side isPlayed/isSignIn bookkeeping that gates it; (3) the
+  activity-task chain (bc.a callers, Mb/q.java) stays the next DECODE
+  target. NO GameServer work.
