@@ -5,7 +5,7 @@
   "implemented": 295,
   "default": 40,
   "host_tested": 234,
-  "client_asserted": 154
+  "client_asserted": 157
  },
  "endpoints": [
   {
@@ -270,7 +270,7 @@
    "status": "implemented",
    "handler": "turntableStatus",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -278,7 +278,7 @@
    "status": "implemented",
    "handler": "activityTitle",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -870,7 +870,7 @@
    "status": "implemented",
    "handler": "vipProducts",
    "host_tested": false,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",

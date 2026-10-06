@@ -3129,29 +3129,40 @@ def main():
                                 fv0 = fv_req_count()
                                 states = []
                                 fv_owner_alive = True
-                                pid_at_settings = adb.pid(args.package)
                                 for tap_n in range(1, 4):
-                                    # session 20 (run 37412479967): the
-                                    # roaming native-killer can strike right
-                                    # after the settings screen opens; the
-                                    # relaunch lands on the start screen and
-                                    # further taps are meaningless. Track
-                                    # the pid: if it CHANGED mid-walk, skip
-                                    # honestly (the check stays hard on the
-                                    # normal no-death path).
-                                    if pid_at_settings \
-                                            and adb.pid(args.package) \
-                                            != pid_at_settings:
-                                        print("  [evidence] process died "
-                                              "during the settings walk "
-                                              "(pid %s -> relaunch) - "
-                                              "freeVerify taps skipped"
-                                              % pid_at_settings)
-                                        fv_owner_alive = False
-                                        break
-                                    screen.tap_node(cb)
+                                    # session 20 (run 37412479967) + run
+                                    # 37505691180: the roaming native-killer
+                                    # can strike INSIDE this loop — in
+                                    # 37505691180 the app died between the
+                                    # settings dump and tap 1, the recovery
+                                    # landed on the hall, and the old
+                                    # once-captured pid guard was None
+                                    # (captured while dead) so it never
+                                    # fired: the remaining taps hit wrong
+                                    # UI and the hard check failed on a
+                                    # state that never moved. Track the
+                                    # pid PER TAP and abandon honestly on
+                                    # any death (the check stays hard on
+                                    # the normal no-death path).
+                                    pid_pre = adb.pid(args.package)
+                                    cb_now = next(
+                                        (x for x in screen.dump()
+                                         if x.center
+                                         and x.cls.endswith("CheckBox")),
+                                        None) or cb
+                                    screen.tap_node(cb_now)
                                     time.sleep(3)
                                     f_alive("G-fv-tap%d" % tap_n)
+                                    pid_post = adb.pid(args.package)
+                                    if not pid_pre or not pid_post \
+                                            or pid_post != pid_pre:
+                                        print("  [evidence] process died "
+                                              "around freeVerify tap %d "
+                                              "(pid %s -> %s) - taps "
+                                              "abandoned honestly"
+                                              % (tap_n, pid_pre, pid_post))
+                                        fv_owner_alive = False
+                                        break
                                     base_g = fcall(
                                         "GET", "/clan/api/v1/clan/tribe/base",
                                         headers=live_hdr)

@@ -2306,3 +2306,22 @@
 - Verified: syntax OK; the quoted-literal set is exactly the 6 new
   ranking routes (clan/region absent) + sub/info/get — coverage honesty
   holds. No server changes; no APK rebuild needed.
+
+---
+
+## Session 25 cont. 2 (run 37505691180: +4 routes asserted; freeVerify pid-guard fixed)
+
+- Run FAILED on exactly ONE check: the G-phase freeVerify toggle. Triage:
+  the roaming killer killed the app between the settings dump and tap 1;
+  the recovery relanded on the hall; the once-captured pid guard was None
+  (captured while dead) so it never fired and the remaining taps hit
+  wrong UI (states [0,0,0], PUTs 0->0). FIX: per-tap pid tracking — any
+  death abandons the taps honestly (check stays hard on the no-death
+  path), and the CheckBox is re-found each tap.
+- ALL other new checks GREEN in the same run: video/list/{type} (new +
+  top), decorations/{otherId}/using, sub/info/get 0->1, AND the vip
+  products v2 0->1 (the run's own evidence promoted it). 91 unique
+  endpoints — the deepest run so far.
+- COVERAGE regenerated: 155 client-asserted. The boot-window checks
+  (activity/title + slot draw status) ride the next dispatch (expected
+  157).
