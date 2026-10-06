@@ -1113,3 +1113,15 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   a no-op locally). The ScrapBagDialog (bag icon on the scrap screen ->
   getBackpackInfo + getScrapBagValue) is the natural Phase I extension.
 - NO GameServer work.
+
+## Session 22 FINAL 2 (read first — Phase I client-asserted)
+
+- Run 37449385673 PASS (0 FAIL): scrap surface CLIENT-ASSERTED — item3
+  -> getRewardValue 0->1 + card/list (the client uses the V2 paths;
+  served by the {version} template handlers). H chain green in the same
+  run. Coverage: 137 client-asserted.
+- Next: (1) ScrapBagDialog drive (bag icon on the scrap screen ->
+  getBackpackInfo + getScrapBagValue; the send/ask/receive scrap loop
+  wants a second friend account — the fqa*/fqb* pattern applies);
+  (2) item0 DiscoverActivity drive; (3) error-driven from new traffic.
+  NO GameServer work.

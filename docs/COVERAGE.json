@@ -5,7 +5,7 @@
   "implemented": 295,
   "default": 40,
   "host_tested": 234,
-  "client_asserted": 136
+  "client_asserted": 137
  },
  "endpoints": [
   {
@@ -206,7 +206,7 @@
    "status": "implemented",
    "handler": "scrapRewardValue",
    "host_tested": false,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",

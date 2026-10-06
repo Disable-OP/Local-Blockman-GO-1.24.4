@@ -2011,3 +2011,26 @@
   Activity) and item2 (VipManager service router) remain candidates.
 - NO server changes (all 16 handlers already real). Dispatched after
   commit; COVERAGE.json regenerates once the run is green.
+
+## Session 22 FINAL 2 — run 37449385673 PASS: Phase I client-asserted, zero regressions
+
+- Run 37449385673 (2bb2c90) PASS, 0 FAILs: I: scrap entry found (item3
+  at (612,208)) -> getRewardValue 0->1 -> card/list fetched. The client
+  fired the V2 variants (/activity/api/v2/collect/exchange/card/list +
+  card/combine) — both served by the {version} template handlers (no
+  4xx/5xx, no UNMAPPED). 43 unique endpoints, no app FATAL.
+- NO REGRESSIONS: the H chain stayed green in the same run (reward
+  dialog seen, wallet delta=300, POST 0->1).
+- COVERAGE.json regenerated: 335/295/40, 234 host-tested, 137
+  client-asserted (+reward/value; the v2 card/list assertion stays
+  documented via the run-log evidence — gen_coverage's prefix matching
+  is against the {version} template literal).
+- Session 22 totals: 4 pushes, 3 dispatched runs (1 triaged FAIL ->
+  recovery fix, 2 PASS), the H reward dialog PROMOTED and
+  client-asserted, G/F-grounded recovery hardening (validated by the
+  same run that killed its predecessor), Phase I scrap drive shipped.
+- Next session candidates: (1) ScrapBagDialog drive (bag icon ->
+  getBackpackInfo + getScrapBagValue + combine/send flows — the send/
+  ask/receive loop wants a second account); (2) item0 DiscoverActivity
+  drive; (3) error-driven from the next run's traffic. NO GameServer
+  work.
