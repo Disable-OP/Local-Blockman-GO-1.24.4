@@ -727,3 +727,30 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   artifact; (2) Manage Members (oa.a) + Clan Settings (sa.b) drives from
   the same sheet; (3) Bind-domain error codes (102-119) when the
   account-security screens are driven; (4) NO GameServer work.
+
+## Session 18 FINAL (read first — Phase G green: members + settings client-asserted)
+
+- HEADLINE (run 37391929418, wip-40, 0 FATAL): the full owner clan
+  chain is now client-asserted end-to-end: persistent clan -> owner
+  tab3 dashboard -> homepage -> F2 clan-UPDATE (PUT + name read-back)
+  -> G setIdentity (long-press sheet, type 1 elder -> server role 10)
+  -> G removeMember (member gone) -> G freeVerify toggle (server
+  followed the taps [1,0,1]). Host rig 370/370.
+- SERVER FIXES this session (client-contract gaps found by the drive):
+  setIdentity client type codes {1=elder, 2=member, 3=hand over chief
+  incl. chiefId transfer + old-chief demotion}; chief may kick elders.
+- FACTS a new session must know:
+  * Manage-screen rows are LONG-PRESS ("Long press to edit member");
+    taps open the friend card instead.
+  * setIdentity/freeVerify PUTs carry params as a FORM body — the REQ
+    log prints the path only (no query). Count by verb+path excluding
+    the sibling routes (member/agreement, member/remove).
+  * Kicked users carry the 24h rejoin cooldown — never rejoin a kicked
+    account in tests; use fresh throwaways.
+  * The settings toggle re-binds TRUE after every response; assert the
+    state SEQUENCE, not a single value.
+- Next candidates: (1) Hand over Chief through the UI (type 3; the
+  server side is rig-proven); (2) the invite flow (oa.a right button ->
+  na.c template -> inviteFriend friendIds); (3) Bind-domain codes
+  (102-119) when the account-security screens are driven; (4) NO
+  GameServer work (standing instruction).
