@@ -2272,3 +2272,37 @@
 - Next: dispatch test-redroid; on green regenerate COVERAGE.json (expect
   145 -> 154 client-asserted: +1 sub/info/get, +8 ranking category routes);
   then error-driven from the new run's traffic. NO GameServer work.
+
+---
+
+## Session 25 cont. (run 37492582973 triage: 2 hard client-contract findings + 3 drive-robustness fixes)
+
+- Run FAILED with 5 checks, triaged into 2 real findings + 3 flakiness
+  chains; every fix is decoded from the decompiled client, none is a
+  tolerance bump:
+- FINDING 1 (client contract): the CLAN rank template is GLOBAL-ONLY.
+  ClanRankViewModel (W/b/p) constructs ONE pager page (area=1 global);
+  fragment_clan_rank.xml carries only rb_global_tab. The clan/region/
+  {weekly,overall} routes have NO reachable client call path — the run's
+  clan/region 0->0 FAIL is exactly the decode's prediction. Phase N now
+  hard-checks clan/global/{weekly,overall} only; the two clan/region
+  routes stay implemented + host-tested, classified not-client-assertable.
+  ACTIVE keeps both areas (region page + rb_area_tab, global page +
+  rb_global_tab) — active/{region,global}/weekly were BOTH client-asserted
+  in this very run on the first attempt.
+- FINDING 2 (infra): the final account-creation gate is blind to logcat
+  BUFFER ROTATION — the D-phase set-password fcalls passed live (their
+  REQ lines rotate out by the end of the ~30-min run). Fix: paths_mid
+  snapshot captured right after Phase D, unioned into the final path set.
+- FLAKE FIX 1: L's Me-tab walk tapped "Ranking" on a stale list position
+  right after the K-phase relaunch (podium fetch 0->0; the app stayed on
+  the Me tab, which also starved M's header walk because rb_1 exists on
+  every main tab). Fixes: L/N walks VERIFY the open (podium fetch delta /
+  podium rows visible) and retry once; Phase M grounds on the HALL TAB
+  (taps rb_1) before the header walk.
+- FLAKE FIX 2: the overall leg now re-opens the ranking screen when the
+  podium rows vanish after the week drives (the documented template
+  self-close drift, run 37492582973 N-dump shows the live hall).
+- Verified: syntax OK; the quoted-literal set is exactly the 6 new
+  ranking routes (clan/region absent) + sub/info/get — coverage honesty
+  holds. No server changes; no APK rebuild needed.

@@ -1189,6 +1189,12 @@ def main():
     # lines out (run 37226628540 evidence), so a single end-of-run scan
     # misses the login/auth-token evidence entirely.
     paths_early = localapi_paths(adb)
+    # mid-run snapshot (filled after Phase D's registration fcalls): the
+    # main buffer rotates long before the final assertions, so the
+    # registration/set-password proof needs its own capture (run
+    # 37492582973: the D-phase upgrade PASSED live but the final
+    # register-endpoint gate failed on a rotated-out buffer)
+    paths_mid = []
     navigate_all_tabs(adb, screen, args.package, "A")
     deep_drive(adb, screen, args.package, args.activity, "A",
                set(paths_early))
@@ -1779,6 +1785,9 @@ def main():
                       li.get("code") == 1
                       and str(li.get("data", {}).get("userId", "")) == str(d_uid),
                       str(li)[:120])
+                # capture the registration proof NOW — later phases rotate
+                # the main buffer and the final gate would go blind
+                paths_mid = localapi_paths(adb)
                 # restart the client: the boot restores the saved session,
                 # whose user is now registered (hasPassword=true)
                 if clean_relaunch("D-restart-registered"):
@@ -3996,15 +4005,32 @@ def main():
     l_pre_user = l_count("REQ GET " + l_user_lit)
     l_pre_gdr = l_count("REQ GET " + l_gd_region_lit)
     l_pre_gdg = l_count("REQ GET " + l_gd_global_lit)
-    if l_me and l_me.center and screen.tap_node(l_me):
-        time.sleep(4)
+    # run 37492582973: right after the K-phase relaunch the Me tab was
+    # still settling — the "Ranking" row was found and tapped but the tap
+    # landed on a shifted list, the activity never opened, and L (and the
+    # M header walk that trusted the same screen) drifted. The walk now
+    # VERIFIES the open with the podium fetch delta and retries once.
+    for l_try in range(2):
+        l_me = screen.find(ids=["rb_5"])
+        if not (l_me and l_me.center and screen.tap_node(l_me)):
+            break
+        time.sleep(4 + 2 * l_try)
         l_row = screen.find(texts=["Ranking"])
         if l_row and l_row.center:
             screen.tap_node(l_row)
             time.sleep(6)
-            if alive_or_recover_at(adb, screen, args.package,
-                                   args.activity, "L-rank-open"):
+            l_seen_open = l_pre_home
+            l_open_deadline = time.time() + 6
+            while time.time() < l_open_deadline \
+                    and l_seen_open <= l_pre_home:
+                time.sleep(2)
+                l_seen_open = l_count("REQ GET " + l_home_lit)
+            if l_seen_open > l_pre_home:
                 l_entered = True
+                break
+    if not l_entered:
+        alive_or_recover_at(adb, screen, args.package,
+                            args.activity, "L-rank-open")
     if l_entered:
         # L1: the podium fetch fires on page 0 (week) — bounded poll.
         l_seen_home = l_pre_home
@@ -4119,6 +4145,15 @@ def main():
     m_paths_before = set(localapi_paths(adb))
     m_entry = None
     if screen.find(ids=["rb_1"]):
+        # ground on the HALL TAB first: rb_1 is the bottom bar's first
+        # radio and exists on EVERY main tab (run 37492582973: L's walk
+        # left the app on the Me tab; the header walk then searched the
+        # wrong screen and item2 was "not found"). Tapping rb_1 switches
+        # back to the hall regardless of the current tab.
+        m_rb1 = screen.find(ids=["rb_1"])
+        if m_rb1 and m_rb1.center:
+            screen.tap_node(m_rb1)
+            time.sleep(4)
         for _ in range(3):
             adb.sh("cmd statusbar collapse")
             time.sleep(1)
@@ -4171,20 +4206,28 @@ def main():
     # type->template ("gDiamond"->W.c.h, "active"->W.a.h,
     # "clan"->W.b.h) and puts the podium period (rank_period_type) in
     # the bundle; the template list models W.a.n / W.b.n fire IRankingApi
-    # getActive* / getClan* {region|global} x {weekly|overall} + the
-    # shared ranking/user/info. The podium activity also carries
-    # rb_overall_tab (activity_overview_rank.xml): flipping it re-fetches
-    # region/home/page/info?rankType=overall and the inherited period
-    # drives the templates' overall variants.
+    # getActive* / getClan* fetches + the shared ranking/user/info.
+    # CLIENT CONTRACT (run 37492582973 triage + decode):
+    # - ActiveRankViewModel (W/a/p) constructs TWO pager pages — area 0
+    #   (region) + area 1 (global); both fetch on open. The active
+    #   template's fragment has rb_area_tab + rb_global_tab.
+    # - ClanRankViewModel (W/b/p) constructs ONE page only — area 1
+    #   (GLOBAL); fragment_clan_rank.xml carries ONLY rb_global_tab.
+    #   The clan REGION routes (clan/region/weekly + clan/region/
+    #   overall) have NO reachable client call path from the podium —
+    #   they stay implemented + host-tested but are NOT client-
+    #   assertable, so Phase N hard-checks the clan GLOBAL boards only.
+    # The podium activity also carries rb_overall_tab
+    # (activity_overview_rank.xml): flipping it re-fetches region/home/
+    # page/info?rankType=overall and the inherited period drives the
+    # templates' overall variants.
     print("== Phase N: rank podium rows 2+3 (active, clan) ==")
     n_lits = [
         "/ranking/api/v1/active/region/weekly/rank",
         "/ranking/api/v1/active/global/weekly/rank",
-        "/ranking/api/v1/clan/region/weekly/rank",
         "/ranking/api/v1/clan/global/weekly/rank",
         "/ranking/api/v1/active/region/overall/rank",
         "/ranking/api/v1/active/global/overall/rank",
-        "/ranking/api/v1/clan/region/overall/rank",
         "/ranking/api/v1/clan/global/overall/rank",
     ]
     n_home_lit = "/ranking/api/v1/ranking/region/home/page/info"
@@ -4218,17 +4261,33 @@ def main():
     n_pre_user = n_count("REQ GET " + n_user_lit)
 
     def n_open_ranking():
-        me = screen.find(ids=["rb_5"])
-        if not (me and me.center) or not screen.tap_node(me):
-            return False
-        time.sleep(4)
-        row = screen.find(texts=["Ranking"])
-        if not (row and row.center):
-            return False
-        screen.tap_node(row)
-        time.sleep(6)
+        # VERIFIED open (the L-walk lesson, run 37492582973): the walk
+        # only reports success when the podium rows are actually visible;
+        # the row tap is retried once on a stale-position miss, and an
+        # already-open podium short-circuits (the ranking activity has no
+        # rb_5 — a second walk attempt from ON the podium would fail).
+        for _ in range(2):
+            if n_rows():
+                return True
+            me = screen.find(ids=["rb_5"])
+            if not (me and me.center):
+                return False
+            if not screen.tap_node(me):
+                return False
+            time.sleep(4)
+            row = screen.find(texts=["Ranking"])
+            if row and row.center:
+                screen.tap_node(row)
+                time.sleep(6)
+                rows = n_rows()
+                deadline = time.time() + 8
+                while not rows and time.time() < deadline:
+                    time.sleep(2)
+                    rows = n_rows()
+                if rows:
+                    return True
         return alive_or_recover_at(adb, screen, args.package,
-                                   args.activity, "N-rank-open")
+                                   args.activity, "N-rank-open") and bool(n_rows())
 
     def n_back_to_podium():
         for _ in range(4):
@@ -4238,8 +4297,15 @@ def main():
             time.sleep(2)
         return bool(n_rows())
 
-    def n_drive_row(idx, lit_region, lit_global, label):
+    def n_drive_row(idx, label, board_checks):
+        # board_checks: [(literal, fallback_tab_id)] — each literal is
+        # hard-checked 0->N; when the on-open prefetch lags, the given
+        # template tab is tapped as the fallback (Phase L pattern).
         rows = n_rows()
+        deadline = time.time() + 8
+        while not rows and time.time() < deadline:
+            time.sleep(2)
+            rows = n_rows()
         if idx >= len(rows):
             fail("N: %s podium row missing (found %d row(s) with "
                  "tv_rank_type_top1_name; server emits 3 categories)"
@@ -4253,44 +4319,54 @@ def main():
         screen.tap_node(rows[idx])
         time.sleep(6)
         assert_alive(adb, args.package, "N-%s-template" % label)
-        seen_r = n_wait(lit_region, n_pre[lit_region])
-        check("N: %s board fetched (GET %s %d->%d)"
-              % (label, lit_region, n_pre[lit_region], seen_r),
-              seen_r > n_pre[lit_region],
-              "%s region fetch never fired (the podium tap may have "
-              "been a silent no-op - check TopRankInfo.type)" % label)
-        # the template's SECOND pager page (period, global) prefetches
-        # on open; a real rb_global_tab tap is the fallback (Phase L
-        # pattern)
-        seen_g = n_wait(lit_global, n_pre[lit_global], 8)
-        if seen_g <= n_pre[lit_global]:
-            g_tab = screen.find(ids=["rb_global_tab"])
-            if g_tab and g_tab.center:
-                screen.tap_node(g_tab)
-                seen_g = n_wait(lit_global, n_pre[lit_global], 12)
-        check("N: %s global board fetched (GET %s %d->%d)"
-              % (label, lit_global, n_pre[lit_global], seen_g),
-              seen_g > n_pre[lit_global],
-              "%s global fetch never fired (prefetch and rb_global_tab "
-              "both missed)" % label)
+        for lit, tab in board_checks:
+            seen = n_wait(lit, n_pre[lit], 8)
+            if seen <= n_pre[lit] and tab:
+                t = screen.find(ids=[tab])
+                if t and t.center:
+                    screen.tap_node(t)
+                    seen = n_wait(lit, n_pre[lit], 12)
+            check("N: %s board fetched (GET %s %d->%d)"
+                  % (label, lit, n_pre[lit], seen),
+                  seen > n_pre[lit],
+                  "%s fetch never fired (prefetch and the %s tab both "
+                  "missed - the podium tap may have been a silent "
+                  "no-op)" % (label, tab or "template"))
         n_back_to_podium()
 
     if n_open_ranking():
         # week podium (default tab): sorted rows[1] = active, rows[2] =
-        # clan (row 0 = gDiamond, already asserted by Phase L)
-        n_drive_row(1, n_lits[0], n_lits[1], "active/week")
-        n_drive_row(2, n_lits[2], n_lits[3], "clan/week")
+        # clan (row 0 = gDiamond, already asserted by Phase L). Active
+        # gets both areas (region page + global page / rb_area_tab +
+        # rb_global_tab); clan is GLOBAL-ONLY per the client contract.
+        n_drive_row(1, "active/week", [
+            (n_lits[0], "rb_area_tab"), (n_lits[1], "rb_global_tab")])
+        n_drive_row(2, "clan/week", [(n_lits[2], "rb_global_tab")])
+        # the documented drift (run 37492582973: the template self-closed
+        # to the hall between drives) — re-ground before the overall leg
+        if not n_rows():
+            print("  [info] N: podium gone after the week drives "
+                  "(documented drift) - re-opening")
+            if not n_open_ranking():
+                fail("N: ranking screen unreachable for the overall leg")
         # flip the podium to OVERALL and repeat; the flip itself
         # re-fetches region/home/page/info with rankType=overall
         o_tab = screen.find(ids=["rb_overall_tab"])
         if o_tab and o_tab.center:
             screen.tap_node(o_tab)
             time.sleep(5)
-            n_drive_row(1, n_lits[4], n_lits[5], "active/overall")
-            n_drive_row(2, n_lits[6], n_lits[7], "clan/overall")
+            n_drive_row(1, "active/overall", [
+                (n_lits[3], "rb_area_tab"), (n_lits[4], "rb_global_tab")])
+            n_drive_row(2, "clan/overall", [(n_lits[5], "rb_global_tab")])
         else:
-            print("  [info] N: rb_overall_tab not found (podium layout "
-                  "drifted)")
+            fail("N: rb_overall_tab not found (podium layout drifted "
+                 "or the tab is genuinely absent - triage from the "
+                 "dump below)")
+            for n in screen.dump():
+                if n.res or n.text or n.desc:
+                    print("  N-dump] %s | text=%r" % (
+                        n.res.rsplit("/", 1)[-1] if n.res else "",
+                        n.text[:28]))
         seen_user = n_count("REQ GET " + n_user_lit)
         if seen_user > n_pre_user:
             ok("N: my-rank rows kept fetching (user/info %d->%d)"
@@ -4310,9 +4386,11 @@ def main():
 
     # ------------------------------------------------- assertions
     print("== assertions ==")
-    # Union with the early snapshot: GL-heavy screens rotate the logcat
-    # main buffer, so end-of-run scans alone miss early traffic.
-    paths = sorted(set(paths_early) | set(localapi_paths(adb)))
+    # Union with the early + mid snapshots: GL-heavy screens rotate the
+    # logcat main buffer, so end-of-run scans alone miss early (Phase A)
+    # and mid-run (Phase D registration) traffic.
+    paths = sorted(set(paths_early) | set(paths_mid)
+                   | set(localapi_paths(adb)))
     print("  LocalAPI unique endpoints hit: %d" % len(paths))
     for p in paths:
         print("    - %s" % p)
@@ -4321,8 +4399,9 @@ def main():
                           or "REQ POST /user/api/v1/app/set-password" in reg_hit
                           or "REQ POST /user/api/v2/app/set-password" in reg_hit
                           or "REQ POST /user/api/v1/user/register" in reg_hit
-                          # buffer-rotation-resilient fallback: the path set
-                          # (merged with the early snapshot) is authoritative
+                          # buffer-rotation-resilient fallback: the path sets
+                          # (early + mid snapshots) are authoritative — the
+                          # mid snapshot holds Phase D's registration fcalls
                           or "/register" in " ".join(paths)
                           or "set-password" in " ".join(paths))
     check("account-creation endpoint hit the embedded server", register_endpoints,

@@ -1262,3 +1262,21 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   alternate — a missing row FAILs with a dump; decode from there;
   (b) the M entry walk mirrors the proven H/I header dance.
 - NO GameServer work.
+
+## Session 25 cont. (read first — run 37492582973 triaged, M/N drives fixed)
+
+- Run FAILED (5 checks). Triage (all decoded from the client, in
+  ENDPOINTS.md Wave 10 amendment):
+  1. CLAN rank template is GLOBAL-ONLY (W/b/p constructs one page,
+     area=1; fragment_clan_rank.xml has only rb_global_tab) — the
+     clan/region/{weekly,overall} routes are NOT client-assertable;
+     Phase N now checks clan/global/{weekly,overall}. Active kept both
+     areas and PASSED both on the first attempt.
+  2. Registration gate blind to logcat rotation — paths_mid snapshot
+     added after Phase D.
+  3. L/M/N walks hardened: verify-the-open + retry (L, N), ground on
+     the hall TAB (M), re-open on podium drift before the overall leg.
+- Re-dispatched test-redroid expected green with +7 client-asserted
+  routes (sub/info/get, active x4, clan/global x2) → 152. On green:
+  regenerate COVERAGE.json, verify each against REQ evidence, commit.
+- NO GameServer work.

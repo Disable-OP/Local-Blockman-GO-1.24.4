@@ -902,3 +902,39 @@ Phase N (rank podium rows 2+3, the natural completion of Phase L):
   rb_global_tab fallback for the template's second pager page (Phase L
   pattern). CI timeouts bumped (UI step 32 -> 40 min, workflow 45 -> 55)
   to absorb the added phases.
+
+## Wave 10 amendment (run 37492582973 triage): the clan rank template is GLOBAL-ONLY
+
+Client decode (e/b/W/b/p.smali ClanRankViewModel + fragment_clan_rank.xml):
+- ActiveRankViewModel constructs TWO pager pages — area 0 (region) + area 1
+  (global); both fetch on open; fragment_active_rank.xml carries
+  rb_area_tab + rb_global_tab.
+- ClanRankViewModel constructs ONE page only — W/b/o(ctx, period, area=1
+  GLOBAL); fragment_clan_rank.xml carries ONLY rb_global_tab.
+- Consequence: GET /ranking/api/v1/clan/region/weekly/rank and
+  GET /ranking/api/v1/clan/region/overall/rank have NO reachable client
+  call path from the podium. They stay implemented + host-tested but are
+  NOT client-assertable; Phase N hard-checks the clan GLOBAL boards only
+  (clan/global/weekly + clan/global/overall asserted).
+
+Run 37492582973 verdicts (Phase M/N first live drive):
+- ACTIVE: region/weekly 0->1 + global/weekly 0->1 (both pager pages) —
+  client-asserted on the first attempt.
+- CLAN: the template opened and its global page fetched (clan/global/
+  weekly 0->1); the region check failed exactly as the decode predicts —
+  the check is removed per the contract above.
+- Phase L flake (post-K-relaunch): the Me-tab "Ranking" row was tapped on
+  a stale list position and OverViewRankActivity never opened; the podium
+  fetch 0->0 FAILed and the app stayed on the Me tab, which also starved
+  Phase M's header walk (item2 lives on the HALL tab; rb_1 exists on
+  every main tab so the old precondition passed on the wrong screen).
+  Fixes: L/N walks now VERIFY the open (podium fetch delta / podium rows)
+  and retry once; Phase M grounds on the HALL TAB by tapping rb_1 first.
+- Overall-leg drift: after the week drives the template self-closed to
+  the hall (the documented drift) — the overall leg now re-opens the
+  ranking screen when the podium rows vanish before flipping
+  rb_overall_tab.
+- Registration gate: the final account-creation check failed on
+  logcat BUFFER ROTATION (the D-phase set-password fcalls passed live
+  but their REQ lines rotated out). Fix: paths_mid snapshot captured
+  right after Phase D and unioned into the final path set.
