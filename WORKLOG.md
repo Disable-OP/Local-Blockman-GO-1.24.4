@@ -1983,3 +1983,31 @@
   IM protocol is non-HTTP, GameServer-scale); (2) keep CI green; the
   wip-43 APK stays current (zero server changes this session);
   (3) NO GameServer work.
+
+## Session 22 cont. 3 — Phase I: the scrap surface is driven (error-driven UI expansion)
+
+- GAP FOUND by cross-checking the hall header decode against the drive's
+  coverage: the automation NEVER opens item0 (discover), item2 (vip) or
+  item3 (scrap). The scrap surface is the prize: ALL 16 IScrapApi routes
+  are real state-backed handlers (ScrapBag.java, host-tested since
+  Phase 3) but the CLIENT never exercised them on-device.
+- CLIENT DECODE (Phase I chain): item3/littleItem3 (icon_scrap,
+  ka.java/ma.java) -> MainFragmentViewModel.onScrap -> onEnterScrap ->
+  TemplateUtils.startTemplate(e.b.da.h = ScrapMainFragment). The model
+  (o = ScrapMainViewModel) fires ScrapApi.getRewardValue on CONSTRUCT
+  (GET /activity/api/v1/collect/exchange/reward/value) and renders 5
+  tabs; each tab's DefaultListModel (l.java) fetches getScrapRewardList
+  (GET /activity/api/{version}/collect/exchange/card/list?type=N). The
+  bag entry opens ScrapBagDialog -> getBackpackInfo + getScrapBagValue.
+- ASSERTION HONESTY: getRewardValue has EXACTLY ONE call site (the scrap
+  model constructor) and 0 hits in past-run traffic — the phase-local
+  0->N check is sound. The card-list check polls bounded (12s) because
+  the ViewPager may render lazily. Every /collect/exchange/ path the
+  client fires is printed as evidence for the next wave.
+- Phase I (scripts/ui_automation_test.py): H-style entry recovery
+  (2-attempt ground walk + alive_or_recover_at at I-entry), swipe
+  header dance (item3 vs littleItem3), template open, the two hard
+  checks, evidence dump, ground back at the hall. item0 (Discover
+  Activity) and item2 (VipManager service router) remain candidates.
+- NO server changes (all 16 handlers already real). Dispatched after
+  commit; COVERAGE.json regenerates once the run is green.

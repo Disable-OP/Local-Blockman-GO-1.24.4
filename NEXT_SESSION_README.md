@@ -1096,3 +1096,20 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   candidates if the UI surfaces them (chat message store BEHIND the
   RongCloud transport decision — the IM protocol is non-HTTP and stays
   out per the standing instruction); (3) NO GameServer work.
+
+## Session 22 cont. 3 (Phase I: scrap drive wired)
+
+- NEW Phase I in the automation: opens the scrap screen via the hall's
+  item3/littleItem3, asserts getRewardValue (GET .../collect/exchange/
+  reward/value, exactly one call site = the scrap model constructor, 0
+  past-run hits) and the tab card list (.../collect/exchange/card/list,
+  bounded 12s poll), and prints every /collect/exchange/ path fired.
+- All 16 IScrapApi routes are real handlers (ScrapBag.java) — this is
+  the first CLIENT exercise of the surface. If the run is green,
+  regenerate COVERAGE.json (scripts/gen_coverage.py) — the new quoted
+  literals mark reward/value + card/list client-asserted.
+- Remaining undriven hall entries: item0 (DiscoverActivity) and item2
+  (VipManager.enterVipFragment via iVipService2 — service-gated, may be
+  a no-op locally). The ScrapBagDialog (bag icon on the scrap screen ->
+  getBackpackInfo + getScrapBagValue) is the natural Phase I extension.
+- NO GameServer work.

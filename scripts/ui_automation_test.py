@@ -3522,6 +3522,111 @@ def main():
                         n.text[:28]))
     else:
         print("  [info] H: rb_1 not found (hall unavailable)")
+
+    # ------------------------------------------------- Phase I: the scrap
+    # screen through the REAL UI (session 22, error-driven UI expansion).
+    # jadx decode: the hall's icon_scrap entry (content_header1 item3 /
+    # content_header2 littleItem3) fires MainFragmentViewModel.onScrap ->
+    # onEnterScrap -> TemplateUtils.startTemplate(e.b.da.h =
+    # ScrapMainFragment, string 2131820785). The model (o =
+    # ScrapMainViewModel) calls m() -> ScrapApi.getRewardValue on CONSTRUCT
+    # (GET /activity/api/v1/collect/exchange/reward/value), and renders 5
+    # tabs (l(): ObservableList<p> from the icon int-array); each tab is a
+    # ListItemViewModel whose DefaultListModel (l.java) fetches
+    # ScrapApi.getScrapRewardList (GET /activity/api/{version}/collect/
+    # exchange/card/list?type=N) on render. The bag entry (command o ->
+    # f()) opens ScrapBagDialog -> ScrapBagListModel -> getBackpackInfo
+    # (GET /activity/api/{version}/collect/exchange/user/scrap) +
+    # getScrapBagValue. ALL 16 IScrapApi routes are real state-backed
+    # handlers (ScrapBag.java) host-tested since Phase 3 — but this
+    # surface has never been exercised by the client; the drive asserts
+    # the on-open pair and records every /collect/exchange/ path the
+    # client actually fires (error-driven evidence for the next wave).
+    print("== Phase I: scrap screen (collect & exchange) ==")
+    i_rv_path = "/activity/api/v1/collect/exchange/reward/value"
+    i_cl_marker = "/collect/exchange/card/list"
+    i_reqs = lambda: [ln.split("REQ ", 1)[1].split(" ")[1]
+                      for ln in adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                        timeout=60).splitlines()
+                      if "REQ " in ln and "/collect/exchange/" in ln]
+    i_ground = False
+    for i_try in range(2):
+        if not adb.pid(args.package):
+            alive_or_recover_at(adb, screen, args.package, args.activity,
+                                "I-entry")
+        for _ in range(4):
+            if screen.find(ids=["rb_1"]):
+                i_ground = True
+                break
+            adb.key(4)
+            time.sleep(2)
+        if i_ground:
+            break
+    if i_ground:
+        rb1i = screen.find(ids=["rb_1"])
+        if rb1i and rb1i.center:
+            screen.tap_node(rb1i)
+            time.sleep(4)
+        dismiss_permission_dialogs(screen)
+        handle_campaign_dialogs(adb, screen, "I-hall")
+        i_entry = None
+        for _ in range(3):
+            # same collapsing-header dance as H: BIG header item3 vs
+            # COLLAPSED littleItem3 — both fire MainFragmentViewModel
+            # .onScrap (ka.java / ma.java)
+            adb.sh("input swipe 360 300 360 800 300")
+            time.sleep(2)
+            i_entry = screen.find(ids=["item3"]) \
+                or screen.find(ids=["littleItem3"])
+            if i_entry and i_entry.center:
+                break
+        if i_entry and i_entry.center:
+            ok("I: scrap entry found (%s at %s)"
+               % ("item3" if (i_entry.res or "").endswith("item3")
+                  else "littleItem3", i_entry.center))
+            screen.tap_node(i_entry)
+            time.sleep(6)
+            assert_alive(adb, args.package, "I-scrapcenter")
+            # the on-open pair: reward/value (model m()) + card/list
+            # (first tab's DefaultListModel render)
+            i_rv = sum(1 for ln in adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                           timeout=60).splitlines()
+                       if ("REQ GET " + i_rv_path) in ln)
+            check("I: scrap on-open getRewardValue client-asserted "
+                  "(GET %s 0->%d)" % (i_rv_path, i_rv), i_rv > 0,
+                  "reward/value was never requested")
+            # bounded poll: the ViewPager may render the first tab a beat
+            # after the template settles
+            i_seen = []
+            i_cl = False
+            i_deadline = time.time() + 12
+            while time.time() < i_deadline:
+                i_seen = sorted(set(i_reqs()))
+                i_cl = any(i_cl_marker in p for p in i_seen)
+                if i_cl:
+                    break
+                time.sleep(2)
+            check("I: scrap card list fetched by a tab (%s in %s)"
+                  % (i_cl_marker, i_seen), i_cl,
+                  "no tab fetched card/list (tabs may render lazily)")
+            for p in i_seen:
+                print("  [evidence] I: client fired %s" % p)
+            # leave the template back at the hall
+            for _ in range(4):
+                if screen.find(ids=["rb_1"]):
+                    break
+                adb.key(4)
+                time.sleep(2)
+        else:
+            print("  [info] I: scrap entry not found (item3/littleItem3) "
+                  "- visible nodes:")
+            for n in screen.dump():
+                if n.res or n.text or n.desc:
+                    print("  I-dump] %s | text=%r" % (
+                        n.res.rsplit("/", 1)[-1] if n.res else "",
+                        n.text[:28]))
+    else:
+        print("  [info] I: rb_1 not found (hall unavailable)")
     # tail resilience (wave 7): the documented roaming killer has now
     # struck at the very TAIL of consecutive runs (run 37433234002: died
     # during the H entry search AFTER every check had gone green). A
