@@ -2155,3 +2155,40 @@
 - Recommended next step: drive the bag's scrap-item tap (GET user/scrap/
   {scrapId}), then error-driven from the next run's traffic. NO
   GameServer work.
+
+---
+
+## Session 24 (cron session): rank podium client contract + Phase L drive
+
+- State check: restored /home/z/work/bg/repo at 0a6a834 -> pulled session-23
+  head 09b929f (sign-in semantics fix + J/K scrap drives, run 37466300068
+  PASS, coverage 141 client-asserted). CI reviewed: local-api green; the
+  main-branch test-redroid (37456710154) failure is the known main/archive
+  divergence, not a local-api issue.
+- getScrapNum handover item CLOSED with a decode verdict: its ONLY call site
+  across classes1-5 is ScrapAskHelpProvider (k.java) — the RongCloud IMKit
+  provider rendering a friend's ScrapAskHelpMessage in a PRIVATE chat. The
+  bag item tap sends TOKEN_SEND_SCRAP_CARD (IM), not HTTP. The route is
+  IM-gated -> not client-assertable locally while the RongCloud transport
+  stays out (standing decision). Documented in docs/ENDPOINTS.md Wave 9.
+- REAL BUG (error-driven, from the item0-adjacent surface): the rank home
+  podium contract. overviewrank/f.java maps TopRankInfo.type -> template
+  ("gDiamond"->W.c.h, "active"->W.a.h, "clan"->W.b.h) and ANY other value
+  makes the podium tap a SILENT NO-OP (b2 == -1 -> return). The server used
+  to emit type="gold" -> the whole category-rank surface (12 list routes +
+  user/info variants) was unreachable despite HTTP 200s. FIX (a52c491):
+  regionRankHome now emits ONE row per category (each the #1 of that board,
+  real accounts first, citizens filling) so the client can navigate.
+- Host tests updated to the new podium contract (types == {gDiamond, active,
+  clan}): 422 passed / 0 failed. Server rebuilt (classes6.dex).
+- Phase L added (scripts/ui_automation_test.py): Me tab -> "Ranking" ->
+  OverViewRankActivity (hard check region/home/page/info 0->N) -> tap the
+  FIRST podium row (tv_rank_type_top1_name; server order [gDiamond, active,
+  clan]) -> the gDiamond template (hard checks: gold/diamond/region/weekly/
+  rank 0->N, ranking/user/info 0->N; gold/diamond/global/weekly/rank via
+  prefetch or the real rb_global_tab tap). Pre-counts taken BEFORE the tap
+  (422680b: the open sleep would otherwise swallow the delta).
+- Docs: ENDPOINTS.md Wave 9 (podium contract + getScrapNum verdict + Phase L
+  chain).
+- Commits a52c491 + 422680b pushed to local-api (verified). build-release
+  dispatched (37475393512); test-redroid dispatch follows the build.

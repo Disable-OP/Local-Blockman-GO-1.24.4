@@ -1177,3 +1177,34 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   last unasserted route of the bag surface) is a one-tap drive away;
   (2) error-driven from the next run's traffic; (3) the 40 default
   routes stay classified. Keep CI green; wip-43 APK current.
+
+## Session 24 (read first — rank podium contract fixed, Phase L drive dispatched)
+
+- SERVER FIX (the headline): the rank home podium was DEAD against the
+  client. overviewrank/f.java maps TopRankInfo.type -> the matching rank
+  template ("gDiamond"->W.c.h, "active"->W.a.h, "clan"->W.b.h) and ANY other
+  value makes the tap a silent no-op — the server emitted type="gold", so
+  all 12 category-rank list routes + user/info variants were unreachable
+  from the UI despite HTTP 200s. regionRankHome now emits ONE row per
+  category (each the #1 of that board; real accounts first). Host tests
+  422/0 (podium types == {gDiamond, active, clan}).
+- getScrapNum VERDICT (session-23 handover item closed): implemented +
+  host-tested but IM-GATED — its only call site is ScrapAskHelpProvider
+  (k.java), a RongCloud IMKit message provider (private-chat ask-help
+  card). The bag item tap sends TOKEN_SEND_SCRAP_CARD (an IM message), NOT
+  getScrapNum. Not client-assertable locally while the RongCloud transport
+  stays out. docs/ENDPOINTS.md Wave 9.
+- Phase L dispatched (rank surface drive): Me tab -> Ranking ->
+  OverViewRankActivity (region/home/page/info 0->N) -> first podium row
+  (gDiamond) -> gold/diamond/region/weekly/rank + ranking/user/info 0->N,
+  gold/diamond/global/weekly/rank via prefetch or rb_global_tab. On green:
+  regenerate COVERAGE.json (expected ~145 client-asserted) — the literals
+  are quoted full paths in Phase L.
+- Tooling banked: phase pre-counts MUST be taken BEFORE the navigation tap
+  when the target screen fires during its open sleep (the L delta would
+  otherwise be swallowed — commit 422680b).
+- Next: (1) watch the dispatched test-redroid run for the Phase L verdict —
+  a FAIL prints the L-dump + evidence paths in the log; (2) the remaining
+  undriven hall entry is item2 (VipManager.enterVipFragment — service-
+  gated, may be a no-op locally); (3) error-driven from new traffic only.
+  NO GameServer work.
