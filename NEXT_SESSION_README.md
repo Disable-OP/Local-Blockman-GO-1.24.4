@@ -954,3 +954,51 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   10-min task in the UI, assert POST receive/reward); (3) the
   activity-task chain decode backlog: Mb/q.java call sites for
   activityTitle-driven guide surfaces. NO GameServer work.
+
+## Session 21 delta (read first — wave 7: integral/task family classified, Phase H claim drive wired)
+
+- CLASSIFICATION CLOSED (docs/ENDPOINTS.md "Wave 7"): the 7 activity
+  integral/task routes (GET activity/task, PUT activity/task/reward,
+  GET activity/integral/rank, GET user/integral/rank,
+  GET+PUT user/integral/reward, GET user/rank/reward) are DEAD CODE —
+  every ICampaignApi method is @Deprecated AND its CampaignApi static
+  wrapper has ZERO external call sites across classes1-5 (the apparent
+  hits are halloween's own getTaskList, TribeApi.getTaskReward = the
+  implemented tribe route, and entity getters
+  CampaignRedPoint.getIntegralReward / CampaignRankRewardWithTime.rewardList).
+  This closes the session-20 "Mb/q.java decode backlog" item. All 335
+  routes now carry explicit verdicts: 295 implemented / 40 default.
+- ZERO SERVER CHANGES this wave — the host rig and RoutingTable are
+  untouched (wip-43 APK stays current; test-redroid DISPATCH ONLY).
+- Phase H (NEW, scripts/ui_automation_test.py): the activity-task claim
+  through the REAL UI. Decoded end-to-end: hall content_header1 item1
+  (icon_activity, bound by ka.java to MainFragmentViewModel.onActivity)
+  -> bc.j -> D.b -> Template ActivityFragment (e.b.c.b; its title bar
+  literally shows "Bed Wars" — client string reuse) -> ActivityListModel
+  f -> title cards -> the "weekend" card (ActivityItemViewModel c.f:
+  ONLY weekend/recharge open ActivityNewDialog; weekday falls into the
+  inert content switch) -> ActivityTaskContentListModel q fetches
+  GET .../activity/action?titleType=weekend FRESH on open -> rows with
+  id-less "Get" buttons (string/receive) -> o.h -> POST
+  /activity/api/v1/receive/reward -> n.onSuccess status 2 +
+  CampaignGetIntegralRewardDialog (Confirm = base_sure). Drive: rb_1 ->
+  swipe-down (expand collapsing header) -> item1 -> bg_content card
+  index 1 (fallback 0) -> poll GET buttons -> tap the first (10-min
+  online_time) -> hard check POST 0->1 -> Confirm dismiss + wallet
+  read-back (GET /pay/api/v1/wealth/user before/after).
+- INVITE HARDENING (standing item): a second friend candidate (fqb*)
+  joins via the API (register + friends POST + agreement PUT) so the
+  invite screen has a denser list and the row find waits for EITHER
+  nick; one bounded ibTemplateRight RE-ENTRY tap mid-wait (the two
+  session-20 misses were first-tap transition races).
+- CLIENT FACTS BANKED: the hall top bar ids are item0..item3
+  (discover/activity/vip/scrap) in content_header1 (included as
+  headCaegory in fragment_main); the activity center is a TEMPLATE, not
+  a dialog; e.b.c.g (ActivityViewModel) + ActivityDialog (dialog_activity)
+  are a SECOND, unreferenced activity surface (dead like the list
+  wrappers it shares).
+- Next: (1) watch the dispatched run for the Phase H POST + reward
+  dialog and the invite POST single-run catch; (2) if the weekend card
+  tap misses, use the H dump evidence (cards count/bounds printed);
+  (3) promote the reward-dialog probe to a hard check once observed;
+  (4) NO GameServer work.

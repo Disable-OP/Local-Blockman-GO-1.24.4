@@ -1948,27 +1948,66 @@ def main():
                     if rbf and screen.tap_node(rbf):
                         time.sleep(5)
                         f_alive("F-friends-refresh")
-                        seen = screen.wait_for(texts=[friend_nick],
-                                               timeout=14, poll=3) \
-                            if friend_nick else None
+                        seen = screen.wait_for(
+                            texts=[n for n in (friend_nick, friend_nick2)
+                                   if n], timeout=14, poll=3) \
+                            if (friend_nick or friend_nick2) else None
                         if seen:
                             ok("F: friend row %r visible on the Friends "
                                "page (greendao cache refreshed)"
-                               % friend_nick)
+                               % seen.text)
                         else:
-                            print("  [info] F: friend row %r not on the "
-                                  "Friends page (cache timing)" % friend_nick)
+                            print("  [info] F: friend rows %r/%r not on the "
+                                  "Friends page (cache timing)"
+                                  % (friend_nick, friend_nick2))
                     else:
                         print("  [info] F: internal rbFriend not found "
                               "(Messages layout changed?)")
                 else:
-                    print("  [info] F: rb_1 not found (tab bar unavailable)")
+                    print("  [info] F: rb_4 not found (tab bar unavailable)")
             else:
                 print("  [info] F: API friendship failed: add=%s agr=%s"
                       % (str(add)[:80], str(agr)[:80]))
         else:
             print("  [info] F: friend candidate register failed: %s"
                   % str(fr)[:100])
+
+        # wave 7 (session 21): a SECOND friend candidate - the invite
+        # screen renders one row per greendao Friend row, so a denser list
+        # gives the row-find a fallback (the standing session-20 next-step
+        # list suggested seeding 2 friends for the single-run POST catch).
+        friend_nick2 = None
+        f2_uid = "fqb%05d" % (int(time.time()) % 100000)
+        f2_pw = "LocalQA%05d" % (int(time.time()) % 100000)
+        f2 = fcall("POST", "/user/api/v1/register",
+                   {"uid": f2_uid, "password": f2_pw,
+                    "confirmPassword": f2_pw, "imei": "f2-device",
+                    "appType": "android", "os": "12"})
+        f2_uid_num = (f2.get("data") or {}).get("userId", 0)
+        f2_tok = (f2.get("data") or {}).get("accessToken", "")
+        if f2.get("code") == 1 and f2_uid_num > 0 and live_hdr:
+            f2h = {"Access-Token": f2_tok, "userId": str(f2_uid_num),
+                   "language": "en"}
+            add2 = fcall("POST", "/friend/api/v1/friends",
+                         {"friendId": f2_uid_num, "msg": "qa-add2"},
+                         headers=live_hdr)
+            agr2 = fcall("PUT", "/friend/api/v1/friends/%s/agreement"
+                         % d_uid_live, None, headers=f2h)
+            if add2.get("code") == 1 and agr2.get("code") == 1:
+                fl2 = fcall("GET",
+                            "/friend/api/v1/friends?pageNo=1&pageSize=20",
+                            headers=live_hdr)
+                f2row = next((m for m in (fl2.get("data") or {}).get(
+                    "data", []) if m.get("userId") == f2_uid_num), None)
+                friend_nick2 = (f2row or {}).get("nickName")
+                ok("F: second friendship via the API (%s, nick=%r)"
+                   % (f2_uid, friend_nick2))
+            else:
+                print("  [info] F: second friendship failed: %s %s"
+                      % (str(add2)[:80], str(agr2)[:80]))
+        else:
+            print("  [info] F: second friend candidate register failed: %s"
+                  % str(f2)[:100])
 
         # tab3 as a CLAN OWNER: dump it (evidence - does the owner state
         # change the tab3 layout? does the clan name appear here already?)
@@ -2727,8 +2766,16 @@ def main():
                                     # (run 37412479967 tapped the title at
                                     # y=95). The button is anchored
                                     # bottom (y > 900 on 720x1280).
+                                    # wave 7: one bounded RE-ENTRY - runs
+                                    # 37421024074/37423815542 missed the
+                                    # FIRST ibTemplateRight tap (transition
+                                    # race). ibTemplateRight lives only on
+                                    # the manage screen, so a find hit there
+                                    # mid-wait means we never left: tap it
+                                    # once more and keep waiting.
                                     low = None
-                                    btn_deadline = time.time() + 12
+                                    btn_deadline = time.time() + 16
+                                    h_reentered = False
                                     while time.time() < btn_deadline:
                                         cand = [x for x in screen.dump()
                                                 if x.center
@@ -2739,6 +2786,15 @@ def main():
                                         if cand:
                                             low = cand[0]
                                             break
+                                        if not h_reentered \
+                                                and time.time() > btn_deadline - 10:
+                                            r2 = screen.find(
+                                                ids=["ibTemplateRight"])
+                                            if r2 and r2.center:
+                                                screen.tap_node(r2)
+                                                h_reentered = True
+                                                print("  [info] G: invite "
+                                                      "screen re-entry tap")
                                         time.sleep(2)
                                     if low:
                                         ok("G: TribeInviteFriend open "
@@ -2746,7 +2802,9 @@ def main():
                                            "at %s)" % (low.center,))
                                         pre_inv = inv_count()
                                         frow = screen.wait_for(
-                                            texts=[friend_nick], timeout=12,
+                                            texts=[n for n in
+                                                   (friend_nick, friend_nick2)
+                                                   if n], timeout=12,
                                             poll=3)
                                         if frow and frow.center:
                                             icb = next(
@@ -2763,7 +2821,7 @@ def main():
                                             time.sleep(2)
                                             ok("G: friend row %r ticked "
                                                "(selection=String(userId))"
-                                               % friend_nick)
+                                               % frow.text)
                                             screen.tap_node(low)
                                             time.sleep(3)
                                             et = screen.wait_for(
@@ -3195,6 +3253,147 @@ def main():
     else:
         print("  [info] Phase F skipped - no own clan (no session token from "
               "Phase D, API create failed, or rb_3 unavailable)")
+
+    # ------------------------------------------------- Phase H: the
+    # activity-task claim through the REAL UI (session 21, wave 7).
+    # jadx decode: the hall's icon_activity entry (content_header1 item1,
+    # bound by ka.java to MainFragmentViewModel.onActivity) -> bc.j -> D.b
+    # -> TemplateUtils.startTemplate(ActivityFragment (e.b.c.b), title
+    # string game_g1008) -> ActivityViewModel g -> ActivityListModel f ->
+    # CampaignApi.getActivityTaskTitleList (GET /activity/api/v2/activity/
+    # title, the wave-6c surface) -> title cards (item_activity_list).
+    # Clicking the "weekend" card (ActivityItemViewModel c.f titleType
+    # switch: weekend/recharge -> ActivityNewDialog) opens m (FullScreen
+    # dialog, layout activity_content_temp_weekend) -> ActivityTaskContent
+    # ListModel q -> GET .../activity/action?titleType=weekend fetched
+    # FRESH on dialog open -> rows (item_activity_task_content); each
+    # row's Button (text = string/receive "Get", NO resource-id) fires
+    # ActivityTaskContentItemViewModel o.h -> POST /activity/api/v1/
+    # receive/reward?titleType=&actionId=; n.onSuccess sets status 2 and
+    # shows CampaignGetIntegralRewardDialog (Confirm button = base_sure).
+    # The 10-min online_time task turns claimable once the server has
+    # tracked >= 10 DISTINCT authenticated online minutes for this user
+    # (wave-6c handler); this drive runs after the F/G walks, late in the
+    # run, so the budget has already accrued. NO GameServer work.
+    print("== Phase H: activity-task claim (weekend task dialog) ==")
+    h_post = lambda: sum(
+        1 for line in adb.raw("logcat", "-d", "-s", "LocalAPI",
+                              timeout=60).splitlines()
+        if "REQ POST /activity/api/v1/receive/reward" in line)
+    h_golds_before = None
+    if live_hdr:
+        h_act = fcall("GET",
+                      "/activity/api/v1/activity/action?titleType=weekend",
+                      headers=live_hdr)
+        h_rows = h_act.get("data") if isinstance(h_act.get("data"), list) \
+            else []
+        h_first = next((r for r in h_rows
+                        if r.get("actionFlag") == "online_time"), None)
+        h_wallet = fcall("GET", "/pay/api/v1/wealth/user", headers=live_hdr)
+        h_golds_before = (h_wallet.get("data") or {}).get("golds")
+        print("  [evidence] H: weekend online_time status=%s golds=%s"
+              % ((h_first or {}).get("status"), h_golds_before))
+    h_ground = False
+    for _ in range(4):
+        if screen.find(ids=["rb_1"]):
+            h_ground = True
+            break
+        adb.key(4)
+        time.sleep(2)
+    if h_ground:
+        rb1h = screen.find(ids=["rb_1"])
+        if rb1h and rb1h.center:
+            screen.tap_node(rb1h)
+            time.sleep(4)
+        dismiss_permission_dialogs(screen)
+        handle_campaign_dialogs(adb, screen, "H-hall")
+        h_entry = None
+        for _ in range(3):
+            # swipe down to expand the collapsing hall header (parallax)
+            adb.sh("input swipe 360 300 360 800 300")
+            time.sleep(2)
+            h_entry = screen.find(ids=["item1"])
+            if h_entry and h_entry.center:
+                break
+        if h_entry and h_entry.center:
+            pre_h = h_post()
+            screen.tap_node(h_entry)
+            time.sleep(5)
+            assert_alive(adb, args.package, "H-activitycenter")
+
+            def h_get_buttons():
+                # bounded poll: the dialog fetches the weekend actions
+                # fresh on open (q.onLoad) before the rows render
+                end = time.time() + 10
+                while time.time() < end:
+                    btns = [x for x in screen.dump()
+                            if x.center and x.cls.endswith("Button")
+                            and (x.text or "").strip().upper() == "GET"]
+                    if btns:
+                        return btns
+                    time.sleep(2)
+                return []
+
+            h_btns = []
+            for h_attempt, h_idx in ((1, 1), (2, 0)):
+                # cards = bg_content nodes (one per title card); the client
+                # renders [weekday, weekend] and ONLY the weekend card
+                # opens the task dialog (c.f titleType switch; weekday
+                # falls into the content switch and our content is inert)
+                cards = [x for x in screen.dump()
+                         if x.center and x.res.rsplit("/", 1)[-1]
+                         == "bg_content"]
+                cards = list({x.bounds: x for x in cards}.values())
+                if len(cards) > h_idx:
+                    h_card = sorted(cards,
+                                    key=lambda n: n.bounds[1])[h_idx]
+                    screen.tap_node(h_card)
+                    time.sleep(6)
+                    h_btns = h_get_buttons()
+                    if h_btns:
+                        break
+                print("  [info] H: no GET buttons after card index %d "
+                      "(attempt %d, cards=%d)"
+                      % (h_idx, h_attempt, len(cards)))
+            if h_btns:
+                ok("H: weekend task dialog open (%d GET buttons)"
+                   % len(h_btns))
+                screen.tap_node(h_btns[0])  # first row = online_time 10 min
+                time.sleep(6)
+                post_h = h_post()
+                # n.onSuccess shows the reward dialog on a REAL claim;
+                # an incomplete task gets a non-fatal error tip (the POST
+                # still fires - the surface is client-asserted either way)
+                h_conf = screen.wait_for(texts=["Confirm"], timeout=6,
+                                         poll=2)
+                if h_conf and h_conf.center:
+                    screen.tap_node(h_conf)
+                    time.sleep(3)
+                    ok("H: reward dialog seen (real claim path)")
+                if live_hdr:
+                    h_wallet2 = fcall("GET", "/pay/api/v1/wealth/user",
+                                      headers=live_hdr)
+                    print("  [evidence] H: golds after claim=%s (before=%s)"
+                          % ((h_wallet2.get("data") or {}).get("golds"),
+                             h_golds_before))
+                check("H: activity-task claim client-asserted (POST "
+                      "receive/reward %d->%d)" % (pre_h, post_h),
+                      post_h > pre_h, "no POST observed")
+            else:
+                print("  [info] H: task dialog not reached from the title "
+                      "cards (dump evidence above)")
+            # ground: leave the dialog + template back at the hall
+            for _ in range(4):
+                if screen.find(ids=["rb_1"]):
+                    break
+                adb.key(4)
+                time.sleep(2)
+        else:
+            print("  [info] H: hall item1 (icon_activity) not found "
+                  "(header bar not visible)")
+    else:
+        print("  [info] H: rb_1 not found (hall unavailable)")
+    assert_alive(adb, args.package, "H-grounded")
 
     # ------------------------------------------------- assertions
     print("== assertions ==")

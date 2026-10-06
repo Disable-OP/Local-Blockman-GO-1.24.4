@@ -724,3 +724,74 @@ wallet credit + 7012, day-aware login-task claims, cumulativeTime
 read-back). The on-device run observes the client fetching
 /activity/api/v2/activity/title and (for the first time)
 /activity/api/v1/activity/action?titleType=... on its own at boot.
+
+# Wave 7 (Session 21): the integral/task family classified + the claim surface driven
+
+## Verdict table for the last unclassified activity routes (jadx classes1-5)
+
+Every ICampaignApi method below is @Deprecated AND its CampaignApi static
+wrapper has ZERO non-wrapper call sites (grepped all five dex source
+trees; the only hits are entity field getters or OTHER APIs' methods with
+the same name — halloween's IHalloweenApi.getTaskList(language, "thanks_giving"),
+TribeApi.getTaskReward = the implemented /tribe task route, and
+CampaignRedPoint.getIntegralReward()/CampaignRankRewardWithTime.rewardList
+getters). Same dead-code class as the worldCup family.
+
+| Route | Verdict | Evidence |
+|---|---|---|
+| GET /activity/api/v1/activity/task (getTaskList, List&lt;CampaignTask&gt;) | dead code | @Deprecated; CampaignApi.getTaskList wrapper: 0 external callers |
+| PUT /activity/api/v1/activity/task/reward (getTaskReward, Integer) | dead code | @Deprecated; wrapper 0 external callers (TribeApi.getTaskReward is the DIFFERENT implemented tribe route) |
+| GET /activity/api/v1/activity/integral/rank (totalRank, PageData&lt;CampaignRank&gt;) | dead code | @Deprecated; wrapper 0 external callers |
+| GET /activity/api/v1/activity/user/integral/rank (myRank, CampaignRank) | dead code | @Deprecated; wrapper 0 external callers; no reference to myRank anywhere outside the interface+wrapper |
+| GET /activity/api/v1/activity/user/integral/reward (rewardList, CampaignReward) | dead code | @Deprecated; wrapper 0 external callers (hits are CampaignRankRewardWithTime.rewardList field getter + FirstTopUp/ExchangeResponse fields) |
+| PUT /activity/api/v1/activity/user/integral/reward (getIntegralReward) | dead code | @Deprecated; wrapper 0 external callers (CampaignRedPoint.getIntegralReward is an entity getter) |
+| GET /activity/api/v1/activity/user/rank/reward (getRankReward, CampaignRankRewardWithTime) | dead code | @Deprecated; wrapper 0 external callers |
+
+All 335 discovered routes now carry an explicit verdict; 40 remain
+default (dead code / event- or account-gated / honest empty), 295 are
+state-backed handlers.
+
+## The activity-task claim surface, walked end-to-end through the real UI
+
+Full jadx decode of the path the UI drive now takes (session 21):
+
+1. Hall top bar (content_header1): item0=icon_discover, item1=icon_activity
+   (+red point binding_3), item2=icon_vip, item3=icon_scrap. The binding
+   (ka.java) wires item1 -> MainFragmentViewModel.onActivity.
+2. onEnterActivity -> bc.j -> D.b -> TemplateUtils.startTemplate(
+   ActivityFragment (e.b.c.b), title string game_g1008). The template's
+   title bar literally reads "Bed Wars" (client string-reuse quirk).
+3. ActivityFragment -> ActivityViewModel (e.b.c.g) -> ActivityListModel
+   (e.b.c.f) -> CampaignApi.getActivityTaskTitleList -> the wave-6c title
+   handler. Cards render from item_activity_list (bg_content card,
+   iv_pic image, timer, per-title red point).
+4. Card click (ActivityItemViewModel e.b.c.c.f): titleType "weekend" or
+   "recharge" -> ActivityNewDialog (m, FullScreenDialog, layout
+   activity_content_temp_weekend). "weekday" falls into the content
+   switch (inside-url / url / activity:wheel|slot_machine|sign|...) —
+   with the local content ("Play to earn rewards") it is inert.
+5. ActivityNewDialog -> ActivityTaskContentListModel (q):
+   q.onLoad fetches GET /activity/api/v1/activity/action?titleType=
+   FRESH on every dialog open (a second client-asserted action surface
+   beyond the boot-time fetch). online_time rows compute their local
+   progress from the client countdown + server cumulativeTime; status
+   0/1/2 semantics as decoded in wave 6c.
+6. Row button (item_activity_task_content, text = string/receive "Get",
+   NO resource-id, binding_6) -> ActivityTaskContentItemViewModel o.h ->
+   POST /activity/api/v1/receive/reward?titleType=&actionId=.
+   n.onSuccess: status=2, per-title red point removed, and
+   CampaignGetIntegralRewardDialog (Confirm = base_sure) with the
+   actionRewards.
+
+Automation (scripts/ui_automation_test.py):
+- Phase H: hall rb_1 -> swipe-down to expand the collapsing header ->
+  tap item1 -> tap the weekend card (index 1 of bg_content; falls back
+  to index 0 once) -> poll the "GET" buttons -> tap the first (= the
+  10-min online_time row) -> hard check POST receive/reward 0->1 ->
+  dismiss the Confirm dialog; wallet read-back via GET /pay/api/v1/
+  wealth/user before/after.
+- Invite hardening (standing session-20 item): a SECOND friend candidate
+  (fqb*) joins via the API so the invite screen is denser and the row
+  find has a fallback nick; one bounded invite-screen RE-ENTRY tap of
+  ibTemplateRight mid-wait (runs 37421024074/37423815542 missed the
+  first transition).

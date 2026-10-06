@@ -1756,3 +1756,54 @@
   stayed green throughout).
 - Standing next steps recorded in NEXT_SESSION_README (invite POST
   observation; task-center dialog drive; NO GameServer work).
+
+## Session 21 — wave 7: the integral/task family is dead code; the claim surface goes UI-driven
+
+- Resumed from session 20 FINAL (46bbab6, CI green: 37421024074 +
+  37423815542 PASS). Picked the standing decode backlog (Mb/q.java) and
+  the two standing evidence items (invite POST catch, task-center claim).
+- DECODE (activity integral/task family): all 7 remaining unclassified
+  routes (GET activity/task, PUT activity/task/reward, GET
+  activity/integral/rank, GET user/integral/rank, GET+PUT
+  user/integral/reward, GET user/rank/reward) are @Deprecated in
+  ICampaignApi AND their CampaignApi static wrappers have ZERO external
+  call sites across jadx classes1-5. Name-collision audit: halloween
+  IHalloweenApi.getTaskList (own route), TribeApi.getTaskReward (the
+  implemented /tribe task reward), CampaignRedPoint.getIntegralReward +
+  CampaignRankRewardWithTime.rewardList + FirstTopUp.rewardList (entity
+  getters). Verdict recorded in docs/ENDPOINTS.md Wave 7: dead code.
+  Coverage stays 335/295/40 — now with every route classified.
+- DECODE (the claim surface, full chain): hall content_header1 item1
+  (icon_activity; binding ka.java maps it to MainFragmentViewModel
+  .onActivity — NOT onRanking) -> bc.j -> D.b -> TemplateUtils
+  .startTemplate(ActivityFragment e.b.c.b, title game_g1008="Bed Wars")
+  -> ActivityViewModel g -> ActivityListModel f (e.b.c.f.b registers the
+  per-title red points from the SAME title response; Lb calls it at
+  boot) -> cards item_activity_list. Card click c.f(): titleType
+  weekend/recharge -> ActivityNewDialog m; weekday -> content switch
+  (inert with our content). m -> q (ActivityTaskContentListModel):
+  q.onLoad fetches actions FRESH per dialog open. Rows: o items, the
+  id-less "Get" button -> o.h -> POST receive/reward; n.onSuccess ->
+  status 2 + CampaignGetIntegralRewardDialog (Confirm=base_sure) +
+  red-point removal. Dead-surface note: ActivityDialog (dialog_activity)
+  + its A/q/u/o chain is the OLD unreferenced activity screen; the LIVE
+  chain is the template one.
+- AUTOMATION (scripts/ui_automation_test.py, +200 lines):
+  * Phase H: ground rb_1 -> swipe-down to expand the collapsing header
+    -> tap item1 (3 bounded swipe+find tries) -> H-activitycenter alive
+    check -> poll GET buttons (10s) -> tap bg_content card index 1
+    (weekend; fallback attempt on index 0) -> tap the FIRST GET (the
+    10-min online_time row) -> HARD check POST /activity/api/v1/
+    receive/reward 0->1 -> Confirm dismissal (soft probe, promote when
+    observed) -> wallet golds read-back before/after via GET
+    /pay/api/v1/wealth/user.
+  * Wave 6a hardening: second friend candidate (fqb*) registered +
+    befriended via the API (denser invite screen, fallback nick for
+    both the Friends-page wait and the invite row wait); one bounded
+    ibTemplateRight re-entry tap mid button-wait (the two session-20
+    invite misses were first-tap transition races).
+- Docs: ENDPOINTS.md Wave 7 (verdicts + the full client chain),
+  NEXT_SESSION_README session 21 delta. No server changes (RoutingTable,
+  handlers, host rig untouched; wip-43 remains the current APK).
+- Next: dispatch test-redroid; triage the Phase H evidence (POST count,
+  reward dialog, wallet delta) and the invite POST single-run catch.
