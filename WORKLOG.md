@@ -1602,3 +1602,27 @@
   reach the editor or the phase fails).
 - NOTE: automation changes run from the CI CHECKOUT (ref local-api), so
   this fix needs a test-redroid dispatch only — no rebuild.
+
+## Session 19 FINAL (run 37403070448 PASS — v0.6.x line continues)
+
+- The absorb fix verified green on-device (run 37403070448, wip-42).
+- SESSION 19 TOTALS: 8 pushes (a00b220..157eec4), host rig 370 -> 399
+  (+29 checks), 12 new state-backed handlers (campaign sign-in GET/POST,
+  turntable status x2 + info/props/draw, datareport x3, adsCdConfig x2
+  routes), appConfig contract completion (isShowUniversalActivity lit).
+- Coverage: 335 discovered / 293 implemented / 42 default — every
+  remaining default carries an explicit call-site verdict in
+  docs/ENDPOINTS.md (dead code / gated / honest empty).
+- CLIENT-ASSERTED NEW: the slot_machine jackpot draw-status poll
+  (/activity/api/v1/slot/machine/user/gold/draw/status) fires from the
+  hall on its own — the first activity surface the client reaches by
+  itself. The campaign sign dialog remains armed-but-gated (client-side
+  bookkeeping); the server side is rig-proven for when it opens.
+- Routing pipeline fact (proven + documented): CloudFront-primary
+  Retrofit clients fail fast offline and retry via switchServer onto the
+  patched loopback backup; the datareport APIs use the patched PRIMARY
+  directly. No additional patching is needed for any decoded route.
+- Next candidates: (1) decode the activity-task chain gates (bc.a callers)
+  and decide whether to light activityTitle; (2) the clan invite flow;
+  (3) Hand over Chief UI drive; (4) observe the sign dialog on a run
+  where the client's local bookkeeping opens it. NO GameServer work.
