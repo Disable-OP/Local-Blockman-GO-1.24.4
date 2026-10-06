@@ -1280,3 +1280,38 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   routes (sub/info/get, active x4, clan/global x2) → 152. On green:
   regenerate COVERAGE.json, verify each against REQ evidence, commit.
 - NO GameServer work.
+
+## Session 25 FINAL (read first — 166 client-asserted, all loops green)
+
+- Session 25 closed: run 37522116738 PASS, COVERAGE 166 client-asserted
+  (+21 over session 24). Head b9ca668. The webDevReview cron tool is
+  unavailable inside the session sandbox, but the gateway-level hourly
+  "Continue" schedule is ACTIVE (trace_id web-cron-review-* on every
+  cron session) — no action needed there.
+- THIS SESSION'S VERDICTS (all in ENDPOINTS.md Wave 10 + amendments):
+  1. item2 VIP is NOT service-gated (VipService is a registered ARouter
+     provider) — the privilege center asserts sub/info/get + vip
+     products v2 (Phase M).
+  2. The CLAN rank template is GLOBAL-ONLY — clan/region/{weekly,overall}
+     are NOT client-assertable (decode + run evidence agree).
+  3. Podium rows 2+3 (active, clan) asserted across week+overall
+     (Phase N); active keeps both areas.
+  4. Boot-window surfaces asserted: activity/title, slot draw status,
+     config/blockmods, check/resource, life/info, device/id, language,
+     mac/id, device/token.
+  5. Deep-drive assertions: video/list/{type}, decorations/{otherId}/
+     using; Phase I: card/combine + card/list ({version} templates).
+- INFRA FIXES BANKED: registration gate survives logcat rotation
+  (paths_mid); freeVerify per-tap pid guard (the killer struck mid-loop
+  with a None pid disabling the old guard); N overall-leg drift race
+  fix (bounded re-ground + tab re-find); L/N walks verify-the-open.
+- HONESTY TOOLING: simulate gen_coverage's quote-anchored extraction
+  BEFORE every commit — a split string literal ("/a/b/" + "c") makes
+  the first fragment a prefix-claiming literal (caught twice this
+  session, both before push). Full-path template literals go on ONE
+  source line.
+- NEXT CANDIDATES (error-driven first): the settings Account-Switch
+  chain (login/change/record + the client-UI login POST + password/
+  check + login-out — decode started, the popup belongs to the login
+  screen, not the settings), the tasks surface (dormant dvSignUp gate,
+  weekTasks/claimTask), week-quest UI. NO GameServer work.
