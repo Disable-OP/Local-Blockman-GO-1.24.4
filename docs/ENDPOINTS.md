@@ -456,7 +456,7 @@ Delete state.json to regenerate.
 | POST /geoinfo/api/v1/userGeoInfo?longitude=&latitude= | postUserGeoInfo | stores the user's real coordinates in user state (strict auth) |
 | GET /geoinfo/api/v1/userGeoInfo | userGeoList | UserMapInfo list: requester (if geo posted) + citizens with lazy persisted coordinates; x/y equirectangular projection, distance = km (haversine) from the requester |
 | GET /geoinfo/api/v1/user/game/career/data/{userId} | careerData | UserGameCareerTotalData with truthful zero counters (no engine sessions yet) + gameTimeMap keys from the real played history |
-| GET /ranking/api/v1/ranking/region/home/page/info?rankType= | regionRankHome | RankHomePageInfoResponse: top-3 podium from real wallets/activity/tribe-currency across users+citizens; remainingTime = ms to next Monday UTC |
+| GET /ranking/api/v1/ranking/region/home/page/info?rankType= | regionRankHome | RankHomePageInfoResponse: podium = ONE row per category (type = gDiamond/active/clan, each the #1 of that board across users+citizens) — client contract overviewrank/f.java maps row type -> rank template and ANY other value makes the tap a silent no-op; remainingTime = ms to next Monday UTC |
 | GET /ranking/api/v1/ranking/user/info?rankType=&type=&isRegion= | userRankInfo | the requesting user's RankInfoResponse (rank + quantity from real state; types gold/gDiamond/clan/active) |
 | GET /game/api/v2/party/auth | partyAuth | PartyAuthInfo shape with partyService=127.0.0.1:18080 (host:port — the client split(":") it) + dynamic token/signature; the gRPC party transport stays offline (RongCloud-shim policy) |
 | GET /api/v1/parties/exists | partiesExists | "" (no party exists in the local world) |
@@ -833,3 +833,34 @@ host tests, 422/0):
   MainActivity -> nb (ya.b isSignIn read) -> CampaignManager
   .getActivitySignUp -> bc.a(ctx,true) -> ya.a isPlayed read -> _b fires
   CampaignApi.signInList when the user has NOT played yet -> Zb.
+
+# Wave 9 (Session 24): rank podium client contract + getScrapNum IM-gated verdict
+
+Server semantics fix (Handlers.java regionRankHome, host tests 422/0):
+- GET /ranking/api/v1/ranking/region/home/page/info — the podium is ONE row
+  per category, not the top-3 of a single board. Client decode: the item VM
+  (overviewrank/f.java) maps TopRankInfo.type to the matching rank template —
+  "gDiamond" -> W.c.h, "active" -> W.a.h, "clan" -> W.b.h — and ANY other
+  value falls into b2 == -1 -> return (the podium tap is a SILENT NO-OP).
+  The previous "gold"-typed rows made the whole category-rank surface dead
+  against the real client even though every route returned HTTP 200.
+
+getScrapNum reachability verdict (session 23 handover item, closed):
+- GET /activity/api/v1/collect/exchange/user/scrap/{scrapId} (getScrapNum,
+  implemented + host-tested) has EXACTLY ONE call site across classes1-5:
+  ScrapAskHelpProvider (k.java) — the RongCloud IMKit message provider that
+  renders a FRIEND's ScrapAskHelpMessage in a PRIVATE conversation. The
+  scrap BAG item tap does NOT fire it (ScrapBagItemViewModel sends
+  TOKEN_SEND_SCRAP_CARD — an IM message, not an HTTP call). The route is
+  therefore IM-gated and stays not client-assertable locally while the
+  RongCloud transport remains out of scope (non-HTTP proprietary protocol).
+
+Phase L (rank surface drive, scripts/ui_automation_test.py):
+- Me tab (rb_5) -> "Ranking" row -> OverViewRankActivity: hard check on
+  GET /ranking/api/v1/ranking/region/home/page/info (0->N).
+- Tap the FIRST podium row (tv_rank_type_top1_name; server order
+  [gDiamond, active, clan] -> the gDiamond template W.c.h): hard checks on
+  GET /ranking/api/v1/gold/diamond/region/weekly/rank (0->N) and
+  GET /ranking/api/v1/ranking/user/info (0->N); the template's second
+  pager page (period, global) prefetches or fires via the real
+  rb_global_tab tap -> GET /ranking/api/v1/gold/diamond/global/weekly/rank.

@@ -1447,9 +1447,15 @@ def main():
               and "gameTimeMap" in cd["data"]["userGameCareerInfo"], str(cd)[:150])
         rh = call("GET", "/ranking/api/v1/ranking/region/home/page/info?rankType=overall")
         tops = rh.get("data", {}).get("topRankInfos", [])
-        check("region rank home podium", rh.get("code") == 1 and len(tops) == 3
+        # Session 24 contract (overviewrank/f.java): the podium is ONE row per
+        # category — gDiamond/active/clan — so the client's tap mapper can open
+        # the matching rank template. Any other type value = silent no-op tap.
+        top_types = [t.get("type") for t in tops]
+        check("region rank home podium (one row per category)",
+              rh.get("code") == 1 and len(tops) == 3
+              and set(top_types) == {"gDiamond", "active", "clan"}
               and rh["data"].get("remainingTime", 0) > 0
-              and tops[0].get("topName"), str(rh)[:200])
+              and tops[0].get("topName"), str(rh)[:220])
         ri = call("GET", "/ranking/api/v1/ranking/user/info?rankType=overall&type=gDiamond&isRegion=false",
                   headers={"Access-Token": tok1, "userId": str(uid1)})
         check("user rank info gDiamond", ri.get("code") == 1

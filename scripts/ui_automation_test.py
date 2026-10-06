@@ -3933,6 +3933,144 @@ def main():
             print("  [info] H-tail relaunch failed (kept as evidence)")
     assert_alive(adb, args.package, "H-grounded")
 
+    # ------------------------------------------------- Phase L: the rank
+    # surface (session 24, error-driven UI expansion). jadx decode:
+    # the Me-tab "Ranking" row opens OverViewRankActivity (k) whose TWO
+    # ViewPager pages (week/overall, rb_week_tab checked by default)
+    # each load OverViewRankListModel -> GET /ranking/api/v1/ranking/
+    # region/home/page/info?rankType=week|overall (the top-3 podium).
+    # Each podium row (TopRankInfo) carries a `type` that the item VM
+    # (overviewrank/f.java) maps to the matching rank template:
+    # "gDiamond" -> W.c.h, "active" -> W.a.h, "clan" -> W.b.h — ANY
+    # other value (e.g. the old server's "gold") makes the tap a
+    # SILENT NO-OP. The server now emits one row per category; the
+    # first row is therefore the gDiamond board's #1. Tapping it opens
+    # the gDiamond template whose W.c.n list model fires GET /ranking/
+    # api/v1/gold/diamond/{region|global}/{weekly|overall}/rank and
+    # GET /ranking/api/v1/ranking/user/info (rankType inherited from
+    # the podium's page: week here; the template's TWO pager pages
+    # (period, area) + (period, global) both fetch on open).
+    print("== Phase L: rank home podium + gDiamond template ==")
+    l_home_lit = "/ranking/api/v1/ranking/region/home/page/info"
+    l_user_lit = "/ranking/api/v1/ranking/user/info"
+    l_gd_region_lit = "/ranking/api/v1/gold/diamond/region/weekly/rank"
+    l_gd_global_lit = "/ranking/api/v1/gold/diamond/global/weekly/rank"
+
+    def l_count(marker):
+        return sum(1 for ln in adb.raw("logcat", "-d", "-s",
+                                       "LocalAPI",
+                                       timeout=60).splitlines()
+                   if marker in ln)
+
+    def l_rank_paths():
+        return sorted(set(ln.split("REQ ", 1)[1].split(" ")[1]
+                          for ln in adb.raw("logcat", "-d", "-s",
+                                            "LocalAPI",
+                                            timeout=60).splitlines()
+                          if "REQ " in ln and "/ranking/" in ln))
+
+    l_me = screen.find(ids=["rb_5"])
+    l_entered = False
+    if l_me and l_me.center and screen.tap_node(l_me):
+        time.sleep(4)
+        l_row = screen.find(texts=["Ranking"])
+        if l_row and l_row.center:
+            screen.tap_node(l_row)
+            time.sleep(6)
+            if alive_or_recover_at(adb, screen, args.package,
+                                   args.activity, "L-rank-open"):
+                l_entered = True
+    if l_entered:
+        l_pre_home = l_count("REQ GET " + l_home_lit)
+        l_pre_user = l_count("REQ GET " + l_user_lit)
+        l_pre_gdr = l_count("REQ GET " + l_gd_region_lit)
+        l_pre_gdg = l_count("REQ GET " + l_gd_global_lit)
+        # L1: the podium fetch fires on page 0 (week) — bounded poll.
+        l_seen_home = l_pre_home
+        l_deadline = time.time() + 14
+        while time.time() < l_deadline and l_seen_home <= l_pre_home:
+            time.sleep(2)
+            l_seen_home = l_count("REQ GET " + l_home_lit)
+        check("L: rank home podium fetched (GET region/home/page/info "
+              "%d->%d)" % (l_pre_home, l_seen_home),
+              l_seen_home > l_pre_home,
+              "getRegionRankHomePageInfoResponse never fired (the "
+              "Ranking screen may not have opened)")
+        # podium rows: item_rank_left/right_type carry tv_rank_type_
+        # top1_name; row order mirrors the server's [gDiamond, active,
+        # clan]. Tap the FIRST row = gDiamond template (W.c.h).
+        l_podium = screen.find(ids=["tv_rank_type_top1_name"])
+        if l_podium and l_podium.center:
+            ok("L: podium row found (top1 name at %s)" % (l_podium.center,))
+            screen.tap_node(l_podium)
+            time.sleep(6)
+            assert_alive(adb, args.package, "L-template")
+            # L2: the template's list fetch (page 0 = area, period =
+            # week inherited from the podium page).
+            l_seen_gdr = l_pre_gdr
+            l_deadline = time.time() + 16
+            while time.time() < l_deadline and l_seen_gdr <= l_pre_gdr:
+                time.sleep(2)
+                l_seen_gdr = l_count("REQ GET " + l_gd_region_lit)
+            check("L: gDiamond board fetched (GET gold/diamond/region/"
+                  "weekly/rank %d->%d)" % (l_pre_gdr, l_seen_gdr),
+                  l_seen_gdr > l_pre_gdr,
+                  "getGDiamondRegionWeeklyRanks never fired (the podium "
+                  "tap may have been a no-op — check TopRankInfo.type)")
+            # L3: my-row fetch fires alongside every list load
+            # (W.c.n.onLoad -> a() -> getUserRankInfoResponse).
+            l_seen_user = l_pre_user
+            l_deadline = time.time() + 8
+            while time.time() < l_deadline and l_seen_user <= l_pre_user:
+                time.sleep(2)
+                l_seen_user = l_count("REQ GET " + l_user_lit)
+            check("L: my rank row fetched (GET ranking/user/info "
+                  "%d->%d)" % (l_pre_user, l_seen_user),
+                  l_seen_user > l_pre_user,
+                  "getUserRankInfoResponse never fired")
+            # L4: the template's SECOND pager page (period, global)
+            # prefetches on open; a real rb_global_tab tap is the
+            # fallback if the prefetch lags.
+            l_seen_gdg = l_pre_gdg
+            l_deadline = time.time() + 8
+            while time.time() < l_deadline and l_seen_gdg <= l_pre_gdg:
+                time.sleep(2)
+                l_seen_gdg = l_count("REQ GET " + l_gd_global_lit)
+            if l_seen_gdg <= l_pre_gdg:
+                g_tab = screen.find(ids=["rb_global_tab"])
+                if g_tab and g_tab.center:
+                    screen.tap_node(g_tab)
+                    l_deadline = time.time() + 12
+                    while time.time() < l_deadline \
+                            and l_seen_gdg <= l_pre_gdg:
+                        time.sleep(2)
+                        l_seen_gdg = l_count("REQ GET " + l_gd_global_lit)
+            check("L: gDiamond global board fetched (GET gold/diamond/"
+                  "global/weekly/rank %d->%d)" % (l_pre_gdg, l_seen_gdg),
+                  l_seen_gdg > l_pre_gdg,
+                  "getGDiamondGlobalWeeklyRanks never fired (prefetch "
+                  "and rb_global_tab both missed)")
+        else:
+            print("  [info] L: podium rows not found - visible nodes:")
+            for n in screen.dump():
+                if n.res or n.text or n.desc:
+                    print("  L-dump] %s | text=%r" % (
+                        n.res.rsplit("/", 1)[-1] if n.res else "",
+                        n.text[:28]))
+        for p in l_rank_paths():
+            print("  [evidence] L: client fired %s" % p)
+        # exit: BACK to the rank activity (if the template opened) and
+        # BACK again to the hall; absorb a drift by grounding on rb_1.
+        for _ in range(4):
+            if screen.find(ids=["rb_1"]):
+                break
+            adb.key(4)
+            time.sleep(2)
+        alive_or_recover_at(adb, screen, args.package, args.activity,
+                            "L-exit")
+    else:
+        print("  [info] L: Ranking row not found (Me tab walk failed)")
+
     # ------------------------------------------------- assertions
     print("== assertions ==")
     # Union with the early snapshot: GL-heavy screens rotate the logcat

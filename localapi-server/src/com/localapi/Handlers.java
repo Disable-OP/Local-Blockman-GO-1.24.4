@@ -1349,20 +1349,26 @@ final class Handlers {
 
     /** GET /ranking/api/v1/ranking/region/home/page/info?rankType= — top-3 podium. */
     private static String regionRankHome(Ctx ctx, StateStore store) {
-        String rankType = ctx.query("rankType") == null ? "gold" : ctx.query("rankType");
+        String rankType = ctx.query("rankType") == null ? "week" : ctx.query("rankType");
         boolean weekly = rankType.contains("week");
-        String type = rankType.replace("week", "").replace("overall", "");
-        if (type.isEmpty()) type = "gold";
-        JSONArray rows = rankRowsByType(store, type, weekly);
+        // Client contract (overviewrank/f.java, session 24): each podium
+        // row's TopRankInfo.type is mapped to the matching rank template —
+        // "gDiamond" -> W.c.h, "active" -> W.a.h, "clan" -> W.b.h — and ANY
+        // other value makes the tap a silent no-op (b2 == -1 -> return).
+        // The home podium therefore shows the #1 of EACH board (one row per
+        // category), not the top-3 of a single board.
+        String[] podiumCats = {"gDiamond", "active", "clan"};
         JSONArray tops = new JSONArray();
-        for (int i = 0; i < rows.length() && i < 3; i++) {
-            JSONObject r = rows.getJSONObject(i);
+        for (String cat : podiumCats) {
+            JSONArray rows = rankRowsByType(store, cat, weekly);
+            if (rows.length() == 0) continue;
+            JSONObject r = rows.getJSONObject(0);
             JSONObject t = new JSONObject();
             t.put("userId", r.optLong("id"));
             t.put("topName", r.optString("name"));
             t.put("topPic", r.optString("pic"));
             t.put("quantity", r.optLong("quantity"));
-            t.put("type", type);
+            t.put("type", cat);
             tops.put(t);
         }
         JSONObject out = new JSONObject();
