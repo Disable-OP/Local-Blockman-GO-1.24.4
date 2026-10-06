@@ -1825,3 +1825,31 @@
 - Also this session: COVERAGE.json regenerated from the live
   RoutingTable (335/295/40, 234 host-tested, 135 client-asserted) —
   the machine-readable report matches ENDPOINTS.md again.
+
+## Session 21 cont. 2 — run 37433234002 triage + three fixes (beb8b8d)
+
+- Run 37433234002 (da94593) FAIL(2): "process died at H-grounded/end".
+  The GOOD evidence: G: HAND OVER CHIEF client-asserted a 4TH time
+  (PUT 0->1, gk role=20, old chief 0, chief from base=10008); H's
+  server read-back printed "weekend online_time status=1 golds=42000"
+  — the wave-6c tracking made the 10-min task CLAIMABLE and the wallet
+  served through adb-forward. No app FATAL; 39 unique endpoints.
+- TWO decoded root causes + one environment killer:
+  * The G sheet missed AGAIN because the drive was NOT on the clan
+    home when the ic_more search ran (the F friends-refresh leaves the
+    screen on rb_4; the finder then taps whatever top-right ImageButton
+    the CURRENT screen owns). Fix: the G manage entry now runs the SAME
+    full re-entry walk the proven hand-over path uses (rb_3 -> Enter
+    Clan -> settle Notice Board) BEFORE the sheet search.
+  * H's item1 not found: the hall header has TWO variants — the BIG
+    header (content_header1, ids item0..item3) and the COLLAPSED small
+    header (content_header2, ids littleItem0..3); BOTH wire the activity
+    entry (ka.java / ma.java bind item1 AND littleItem1 to
+    MainFragmentViewModel.onActivity). Fix: H accepts item1 OR
+    littleItem1, prints which one it tapped, and dumps the visible
+    nodes when neither shows.
+  * The process death at the tail = the documented native-kill family
+    (no FATAL, no am_kill in the collected diagnostics). Fix: bounded
+    relaunch absorbs at H-grounded and end (the death is recorded as
+    evidence; the crash scan above it stays the honesty gate).
+- Dispatched run 37436975853 (beb8b8d).
