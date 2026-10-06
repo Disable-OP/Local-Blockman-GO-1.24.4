@@ -202,7 +202,11 @@ final class Tribe {
         if (role != 20 && role != 10) return "no permission";
         JSONObject target = memberOf(clan, otherId);
         if (target == null) return "not a member";
-        if (target.optInt("role") > 0) return "cannot remove chiefs or elders";
+        // client contract (on-device 5u evidence): the chief's sheet for an
+        // ELDER offers 'Remove Member' - only a chief may remove elders;
+        // elders remove plain members; nobody removes the chief.
+        if (target.optInt("role") == 20) return "cannot remove the chief";
+        if (target.optInt("role") > 0 && role != 20) return "cannot remove chiefs or elders";
         JSONArray members = clan.optJSONArray("members");
         JSONArray next = new JSONArray();
         if (members != null) {

@@ -851,10 +851,28 @@ def main():
         check("auto-join when free verify", aj.get("code") == 1
               and call("GET", "/clan/api/v1/clan/tribe/id", headers=h4).get("data") == str(clan_id),
               str(aj)[:100])
-        kj = call("DELETE", "/clan/api/v1/clan/tribe/member/remove?otherId=%d" % uid4, headers=h1)
-        check("chief kicks member", kj.get("code") == 1
+        # client contract (on-device 5u): the chief's sheet for an ELDER
+        # offers 'Remove Member' - the chief may remove elders too. Promote
+        # the throwaway to elder first (kicked users carry the 24h rejoin
+        # cooldown, so each kick target is used exactly once).
+        pe = call("PUT", "/clan/api/v1/clan/tribe/member?otherId=%d&type=1" % uid4, headers=h1)
+        check("chief promotes elder (client type 1)", pe.get("code") == 1, str(pe)[:100])
+        kj2 = call("DELETE", "/clan/api/v1/clan/tribe/member/remove?otherId=%d" % uid4, headers=h1)
+        check("chief kicks elder", kj2.get("code") == 1
               and call("GET", "/clan/api/v1/clan/tribe/id", headers=h4).get("data") == "0",
-              str(kj)[:100])
+              str(kj2)[:100])
+        rc7 = call("POST", "/user/api/v1/register",
+                   {"uid": "qa_user7", "password": "pw7", "imei": "dev7"})
+        h7 = {"Access-Token": rc7["data"]["accessToken"], "userId": str(rc7["data"]["userId"]),
+              "language": "en"}
+        aj7 = call("POST", "/clan/api/v1/clan/tribe/member", {"clanId": clan_id, "msg": ""},
+                   headers=h7)
+        check("second throwaway auto-joins", aj7.get("code") == 1, str(aj7)[:100])
+        kj3 = call("DELETE", "/clan/api/v1/clan/tribe/member/remove?otherId=%d"
+                   % rc7["data"]["userId"], headers=h1)
+        check("chief kicks plain member", kj3.get("code") == 1
+              and call("GET", "/clan/api/v1/clan/tribe/id", headers=h7).get("data") == "0",
+              str(kj3)[:100])
         fv0 = call("PUT", "/clan/api/v1/clan/free/verification?freeVerify=0", headers=h1)
         check("free verify off again", fv0.get("code") == 1
               and fv0["data"].get("freeVerify") == 0, str(fv0)[:100])
