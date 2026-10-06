@@ -1101,6 +1101,34 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
     ok("deep drive added %d new endpoint paths" % len(added))
     for p in added:
         print("    + %s" % p)
+    # Evidence-backed surface assertions (run 37492582973's deep-drive
+    # delta proved both fetches fire during THIS walk):
+    # - the game detail's video section fetches GET /video/api/v1/app/
+    #   video/list/{type} (the client resolved {type} to "new" and
+    #   "top");
+    # - the profile/friend surface fetches GET /decoration/api/v1/
+    #   decorations/{otherId}/using (the client resolved {otherId} to
+    #   the live user id). Both route templates are implemented +
+    #   host-tested but were never client-asserted. HONESTY (the
+    #   session-24 rule): the template constants below are the ONLY
+    #   full-path fragments quoted here, so gen_coverage maps exactly
+    #   these two routes; the evidence-filter prefix is source-split at
+    #   4 chars so no sibling route gets prefix-claimed.
+    n_video_tmpl = "/video/api/v1/app/video/list/{type}"
+    n_using_tmpl = "/decoration/api/v1/decorations/{otherId}/using"
+    video_frag = "/vid" + "eo/api/v1/app/video/list/"
+    deco_frag = "/dec" + "oration/api/v1/decorations/"
+    video_hits = [p for p in added if p.startswith(video_frag)]
+    check("A: game-detail video list fetched (GET %s in %s)"
+          % (n_video_tmpl, video_hits or "[]"),
+          bool(video_hits),
+          "the game-detail walk never fetched the video list")
+    using_hits = [p for p in added
+                  if p.startswith(deco_frag) and p.endswith("/using")]
+    check("A: other-user using list fetched (GET %s in %s)"
+          % (n_using_tmpl, using_hits or "[]"),
+          bool(using_hits),
+          "no other-user using-list fetch in the deep drive")
     # Return the app to a SAFE screen. Evidence (v0.5.9/0511/0513): all three
     # between-phase SIGKILL incidents happened while the app sat IDLE on
     # FriendInfoActivity (the rank/comment probes can land there); the runs
