@@ -4510,6 +4510,134 @@ def main():
     else:
         print("  [info] N: Ranking walk failed (Me tab)")
 
+    # ------------------------------------------------- Phase O: account
+    # switch + the CLIENT's own login (session 25). jadx decode:
+    # SettingViewModel.u() -> LoginManager.onSwitchAccount(activity) ->
+    # LoginService (ARouter /login/service): fetches the account records
+    # then starts com.sandbox.login.view.activity.login.LoginActivity
+    # (extras key.is.with.back.btn / key.is.with.register). The login
+    # screen's model fires GET /user/api/v1/user/login/change/record
+    # (IUserLoginApi.accountRecord, LoginModel y.smali) and the
+    # btn_sign submit fires IUserLoginApi.login ->
+    # POST /user/api/v1/login (LoginRegisterAccountForm) — the client's
+    # OWN login submit has never been client-asserted (the C/D phases
+    # log in via runner-side fcalls). The form: editName + edit_password
+    # (login_activity_login.xml). The registered D-phase credentials
+    # (qa_uid_d / password_d) are reused so the session stays valid.
+    print("== Phase O: account switch + client-UI login ==")
+    o_rec_lit = "/user/api/v1/user/login/change/record"
+    o_login_lit = "/user/api/v1/login"
+
+    def o_count(marker):
+        return sum(1 for ln in adb.raw("logcat", "-d", "-s",
+                                       "LocalAPI",
+                                       timeout=60).splitlines()
+                   if marker in ln)
+
+    o_pre_rec = o_count("REQ GET " + o_rec_lit)
+    o_pre_login = o_count("REQ POST " + o_login_lit)
+    o_paths_before = set(localapi_paths(adb))
+    o_form = False
+    if screen.find(ids=["rb_1"]) or screen.find(ids=["rb_5"]):
+        # walk: Me tab -> profile header -> ibMore -> settings sheet
+        tab_o = screen.find(ids=["rb_5"])
+        if tab_o and tab_o.center:
+            screen.tap_node(tab_o)
+            time.sleep(4)
+        prof_o = screen.find(ids=["ll_top", "rl_header"])
+        if prof_o and prof_o.center:
+            screen.tap_node(prof_o)
+            time.sleep(5)
+        more_o = screen.find(ids=["ibMore"])
+        if more_o and more_o.center:
+            screen.tap_node(more_o)
+            time.sleep(5)
+        # the Account Switch row (setting_change_account = "Account
+        # Switch"); a bounded wait absorbs the sheet render
+        sw_o = None
+        o_deadline = time.time() + 10
+        while time.time() < o_deadline and not sw_o:
+            sw_o = screen.find(texts=["Account Switch"]) \
+                or screen.find(contains=["switch account", "Switch"])
+            if not sw_o:
+                time.sleep(2)
+        if sw_o and sw_o.center:
+            ok("O: Account Switch row found at %s" % (sw_o.center,))
+            screen.tap_node(sw_o)
+            time.sleep(8)
+            # the LoginActivity (or a confirm dialog first)
+            handle_campaign_dialogs(adb, screen, "O-switch")
+            name_o = next((x for x in screen.dump()
+                           if x.res and x.res.rsplit("/", 1)[-1]
+                           == "editName" and x.center), None)
+            if name_o:
+                o_form = True
+            else:
+                print("  [info] O: login form not shown after the "
+                      "switch tap - visible nodes:")
+                for n in screen.dump():
+                    if n.res or n.text or n.desc:
+                        print("  O-dump] %s | text=%r" % (
+                            n.res.rsplit("/", 1)[-1] if n.res else "",
+                            n.text[:28]))
+        else:
+            print("  [info] O: Account Switch row not found (settings "
+                  "sheet layout drifted) - visible nodes:")
+            for n in screen.dump():
+                if n.res or n.text or n.desc:
+                    print("  O-dump] %s | text=%r" % (
+                        n.res.rsplit("/", 1)[-1] if n.res else "",
+                        n.text[:28]))
+    if o_form:
+        # the account-record fetch fires with the login screen
+        o_seen_rec = o_pre_rec
+        o_deadline = time.time() + 14
+        while time.time() < o_deadline and o_seen_rec <= o_pre_rec:
+            time.sleep(2)
+            o_seen_rec = o_count("REQ GET " + o_rec_lit)
+        check("O: login-screen account records fetched (GET %s %d->%d)"
+              % (o_rec_lit, o_pre_rec, o_seen_rec),
+              o_seen_rec > o_pre_rec,
+              "accountRecord never fired (the login screen may have "
+              "restored a cached list)")
+        # fill the form with the registered credentials and submit
+        fill_focused_edit(adb, screen, qa_uid_d)
+        pw_o = next((x for x in screen.dump()
+                     if x.res and x.res.rsplit("/", 1)[-1]
+                     == "edit_password" and x.center), None)
+        if pw_o and pw_o.center:
+            screen.tap_node(pw_o)
+            time.sleep(1)
+            adb.key(123)
+            for _ in range(40):
+                adb.key(67)
+            adb.text(password_d)
+            time.sleep(1)
+            adb.key(111)
+        sign_o = screen.find(ids=["btn_sign"])
+        if sign_o and sign_o.center:
+            screen.tap_node(sign_o)
+            time.sleep(8)
+        o_seen_login = o_pre_login
+        o_deadline = time.time() + 16
+        while time.time() < o_deadline and o_seen_login <= o_pre_login:
+            time.sleep(2)
+            o_seen_login = o_count("REQ POST " + o_login_lit)
+        check("O: client-UI login submitted (POST %s %d->%d)"
+              % (o_login_lit, o_pre_login, o_seen_login),
+              o_seen_login > o_pre_login,
+              "the login screen never submitted POST /user/api/v1/login")
+        for p in sorted(set(localapi_paths(adb)) - o_paths_before):
+            print("  [evidence] O: client fired %s" % p)
+        # recover: BACK out of whatever landed (hall or login result)
+        for _ in range(4):
+            if screen.find(ids=["rb_1"]):
+                break
+            adb.key(4)
+            time.sleep(2)
+        alive_or_recover_at(adb, screen, args.package, args.activity,
+                            "O-exit")
+
     # ------------------------------------------------- assertions
     print("== assertions ==")
     # Union with the early + mid snapshots: GL-heavy screens rotate the
