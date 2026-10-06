@@ -3611,6 +3611,92 @@ def main():
                   "no tab fetched card/list (tabs may render lazily)")
             for p in i_seen:
                 print("  [evidence] I: client fired %s" % p)
+            # ------------------------------------------------- Phase J:
+            # the scrap BAG dialog (session 23, error-driven UI
+            # expansion). jadx decode: the scrap main bottom-right menu
+            # has three buttons — ll_library ("Inventory"/背包, command
+            # o -> f()), ll_record ("Record"), ll_rule ("Rule").
+            # f() opens ScrapBagDialog(context, isFromMain=true, 0L,
+            # isPrivate=true); the dialog's ScrapBagViewModel CONSTRUCTOR
+            # calls ScrapApi.getScrapBagValue (GET /activity/api/v1/
+            # collect/exchange/user/scrap/value — EXACTLY ONE call site
+            # across classes1-5, so a phase-local 0->N is sound), and
+            # each of the 5 ViewPager pages (ScrapBagPageViewModel ->
+            # ScrapBagListModel.onLoad) fetches ScrapApi.getBackpackInfo
+            # (GET /activity/api/{version}/collect/exchange/user/scrap?
+            # type=N&pageNo=&pageSize=; tab order types 0,2,4,1,3 from
+            # R.array.scrap_bag_tab_array_type — Phase I evidence shows
+            # the client resolves {version} to v2 at runtime). Both
+            # routes are real ScrapBag.java handlers host-tested since
+            # Phase 3; the bag DIALOG has never been client-exercised.
+            print("== Phase J: scrap bag dialog ==")
+            j_value_marker = ("REQ GET /activity/api/v1/collect/exchange/"
+                              "user/scrap/value")
+
+            def j_count(marker):
+                return sum(1 for ln in adb.raw("logcat", "-d", "-s",
+                                               "LocalAPI",
+                                               timeout=60).splitlines()
+                           if marker in ln)
+
+            def j_bag_paths():
+                return [ln.split("REQ ", 1)[1].split(" ")[1]
+                        for ln in adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                          timeout=60).splitlines()
+                        if "REQ " in ln and "/collect/exchange/user/scrap?"
+                        in ln]
+            j_pre_value = j_count(j_value_marker)
+            j_pre_bag = len(j_bag_paths())
+            j_bag = screen.find(ids=["ll_library"])
+            if j_bag and j_bag.center:
+                ok("J: bag entry found (ll_library at %s)" % (j_bag.center,))
+                screen.tap_node(j_bag)
+                time.sleep(5)
+                assert_alive(adb, args.package, "J-bagdialog")
+                # bounded poll: the dialog construct fires user/scrap/
+                # value; the first ViewPager page fetches user/scrap?
+                # type=0 (the remaining tabs render lazily)
+                j_seen_value = j_pre_value
+                j_seen_bag = j_pre_bag
+                j_deadline = time.time() + 14
+                while time.time() < j_deadline:
+                    j_seen_value = j_count(j_value_marker)
+                    j_seen_bag = len(j_bag_paths())
+                    if j_seen_value > j_pre_value \
+                            and j_seen_bag > j_pre_bag:
+                        break
+                    time.sleep(2)
+                check("J: scrap bag value client-asserted (GET "
+                      "user/scrap/value %d->%d)"
+                      % (j_pre_value, j_seen_value),
+                      j_seen_value > j_pre_value,
+                      "getScrapBagValue never fired (dialog may not "
+                      "have opened)")
+                check("J: backpack pages fetched (GET user/scrap?type= "
+                      "%d->%d)" % (j_pre_bag, j_seen_bag),
+                      j_seen_bag > j_pre_bag,
+                      "no backpack page request (ViewPager may render "
+                      "lazily)")
+                for p in sorted(set(j_bag_paths())):
+                    print("  [evidence] J: client fired %s" % p)
+                # close the dialog (iv_close in base_dialog_scrap_bag;
+                # BACK is the fallback — FullScreenDialog dismiss) and
+                # let the existing ground walk return to the hall
+                j_close = screen.find(ids=["iv_close"])
+                if j_close and j_close.center:
+                    screen.tap_node(j_close)
+                    time.sleep(2)
+                else:
+                    adb.key(4)
+                    time.sleep(2)
+            else:
+                print("  [info] J: bag entry (ll_library) not found - "
+                      "visible nodes:")
+                for n in screen.dump():
+                    if n.res or n.text or n.desc:
+                        print("  J-dump] %s | text=%r" % (
+                            n.res.rsplit("/", 1)[-1] if n.res else "",
+                            n.text[:28]))
             # leave the template back at the hall
             for _ in range(4):
                 if screen.find(ids=["rb_1"]):
