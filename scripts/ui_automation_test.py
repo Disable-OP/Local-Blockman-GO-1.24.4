@@ -1249,6 +1249,24 @@ def main():
     else:
         print("  [probe] A: no jackpot draw-status poll yet (surface gate "
               "not reached this run - non-fatal)")
+    # Boot-window surfaces the client fetches EVERY run (evidence: the
+    # early snapshot in runs 37492582973 + 37499606354):
+    # - GET /activity/api/v2/activity/title — CampaignApi
+    #   .getActivityTaskTitleList fired from the main boot chain
+    #   (view/activity/main/bc);
+    # - GET /activity/api/v1/slot/machine/user/gold/draw/status — the
+    #   lit jackpot poll (wave-5w probe observed green twice; now hard).
+    a_title_lit = "/activity/api/v2/activity/title"
+    a_slot_lit = "/activity/api/v1/slot/machine/user/gold/draw/status"
+    a_bare = [p.split("?")[0] for p in paths_a]
+    check("A: activity title list fetched at boot (GET %s)"
+          % a_title_lit,
+          a_title_lit in a_bare,
+          "the boot never fetched activity/title (bc chain gate)")
+    check("A: jackpot draw-status poll served locally (GET %s)"
+          % a_slot_lit,
+          a_slot_lit in a_bare,
+          "no slot-machine draw-status poll in the boot window")
 
     # ------------------------------------------------- Phase B: profile edit
     # Shared editor helpers live here (Phase D reuses them). HISTORY (read
