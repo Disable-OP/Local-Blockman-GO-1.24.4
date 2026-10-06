@@ -1116,7 +1116,6 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
     #   4 chars so no sibling route gets prefix-claimed.
     n_video_tmpl = "/video/api/v1/app/video/list/{type}"
     n_using_tmpl = "/decoration/api/v1/decorations/{otherId}/using"
-    n_res_tmpl = "/decoration/api/v1/new/decorations/check/resource"
     video_frag = "/vid" + "eo/api/v1/app/video/list/"
     deco_frag = "/dec" + "oration/api/v1/decorations/"
     video_hits = [p for p in added if p.startswith(video_frag)]
@@ -1130,9 +1129,8 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
           % (n_using_tmpl, using_hits or "[]"),
           bool(using_hits),
           "no other-user using-list fetch in the deep drive")
-    check("A: dress resource check fetched (GET %s)" % n_res_tmpl,
-          n_res_tmpl in [p.split("?")[0] for p in added],
-          "the dressing walk never fetched check/resource")
+    # (check/resource moved to the BOOT batch — it fires at startup, not
+    # in this delta window; run 37516781819 triage.)
     # Return the app to a SAFE screen. Evidence (v0.5.9/0511/0513): all three
     # between-phase SIGKILL incidents happened while the app sat IDLE on
     # FriendInfoActivity (the rank/comment probes can land there); the runs
@@ -1283,6 +1281,7 @@ def main():
     # - GET /user/api/v1/users/device/token (periodic IM token poll)
     for a_boot_lit in [
             "/config/files/blockmods-config-v1",
+            "/decoration/api/v1/new/decorations/check/resource",
             "/user/api/v1/user/daily/life/info",
             "/user/api/v1/user/device/id",
             "/user/api/v1/user/language",
@@ -3706,6 +3705,9 @@ def main():
     # the template form so the concrete v2 the client fires maps to it
     # (the session-23 j_bag_route_lit pattern)
     i_cl_route_lit = "/activity/api/{version}/collect/exchange/card/list"
+    # the scrap tabs ALSO fetch the per-card combine counts (v2 observed
+    # in runs 37505691180 + 37516781819 I-windows)
+    i_combine_route_lit = "/activity/api/{version}/collect/exchange/card/combine"
     i_reqs = lambda: [ln.split("REQ ", 1)[1].split(" ")[1]
                       for ln in adb.raw("logcat", "-d", "-s", "LocalAPI",
                                         timeout=60).splitlines()
@@ -3782,6 +3784,11 @@ def main():
                   "no tab fetched card/list (tabs may render lazily)")
             print("  [evidence] I: route template %s (v2 observed "
                   "on-device)" % i_cl_route_lit)
+            i_comb = any("/card/combine" in p for p in i_seen)
+            check("I: scrap card combine counts fetched (%s in %s)"
+                  % ("/card/combine", i_seen), i_comb,
+                  "no tab fetched card/combine")
+            print("  [evidence] I: route template %s" % i_combine_route_lit)
             for p in i_seen:
                 print("  [evidence] I: client fired %s" % p)
             # ------------------------------------------------- Phase J:
@@ -3811,8 +3818,9 @@ def main():
             # the bag pager pages also fetch the per-card combine counts
             # (GET /activity/api/{version}/collect/exchange/card/combine,
             # v2 observed on-device in runs 37492582973 + 37505691180)
-            j_combine_route_lit = "/activity/api/{version}/collect/exchange/card/combine"
-            j_combine_marker = "REQ GET /activity/api/v2/collect/exchange/card/combine"
+            # NOTE: card/combine is asserted in PHASE I (the scrap tabs
+            # fetch it there; the bag dialog reuses the cached counts —
+            # run 37516781819: J-window delta was 2->2).
 
             def j_count(marker):
                 return sum(1 for ln in adb.raw("logcat", "-d", "-s",
@@ -3834,7 +3842,6 @@ def main():
                         and "/user/scrap/value" not in ln]
             j_pre_value = j_count(j_value_marker)
             j_pre_bag = len(j_bag_paths())
-            j_pre_combine = j_count(j_combine_marker)
             j_bag = screen.find(ids=["ll_library"])
             if not (j_bag and j_bag.center):
                 # run 37461423454: the app drifted back to the hall
@@ -3887,15 +3894,6 @@ def main():
                       j_seen_bag > j_pre_bag,
                       "no backpack page request (the ViewPager prefetch "
                       "fires on dialog open — marker may be wrong)")
-                j_seen_combine = j_count(j_combine_marker)
-                check("J: card combine counts fetched (%s %d->%d)"
-                      % (j_combine_marker[8:], j_pre_combine,
-                         j_seen_combine),
-                      j_seen_combine > j_pre_combine,
-                      "card/combine never fired from the bag dialog "
-                      "pages")
-                print("  [evidence] J: route template %s" %
-                      j_combine_route_lit)
                 for p in sorted(set(j_bag_paths())):
                     print("  [evidence] J: client fired %s" % p)
                 print("  [evidence] J: route template %s (v2 observed "
