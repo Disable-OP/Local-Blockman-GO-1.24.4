@@ -1678,3 +1678,33 @@
   contract. Coverage 295 implemented / 40 default.
 - Pushes: dbad2c7 (6a/6b drives), 71834ab (6c). build-release dispatched
   for wip-43; test-redroid to follow. NO GameServer work.
+
+## Session 20 cont. 2 — triage of runs 37407838330 / 37409327491 / 37409714321
+
+- Run 37407838330 (6a/6b, dbad2c7) FAILED fast: my wave-6a code formatted
+  the UI-derived live uid with %d (it is a STRING from current_user_id).
+  Crash right after the F-restart; everything before green.
+- Run 37409327491 (wip-43 tag-triggered) hit the SAME crash — because
+  tag-triggered runs still CHECK OUT local-api's automation (they execute
+  main's workflow FILE only). Useful anyway: the whole A-E chain ran green
+  against the NEW wave-6c server dex (no client crash from the activity
+  surface).
+- Run 37409714321 (717f301 + wip-43) reached the END, 2 fails, both
+  triaged:
+  * WIN: /activity/api/v1/activity/action IS IN THE RUN'S ENDPOINT LIST —
+    the client fetched the actions on its own with the real title list.
+    Wave 6c is CLIENT-ASSERTED on-device (44 unique endpoints, 0 FATAL,
+    process alive at end).
+  * HAND-OVER essentially proven: the independent re-entry walk reached
+    the manage screen, long-pressed gk's row, 'Hand over Chief' -> btnSure,
+    PUT 0->1, gk role 20, old chief role 0 — only the check's chiefId
+    read-back used a non-existent field (tribe/base carries the ROSTER;
+    the chief is the role-20 row). Fixed.
+  * F2 MODIFY tap missed once (tap timing, puts 0->0) — one bounded
+    re-tap added.
+  * friends-cache refresh tapped the WRONG TAB (rb_1): the ChatFragment
+    with the internal rbChat/rbFriend radios is hosted by rb_4 (nc.java
+    switch decode). Fixed + permission-dialog dismiss.
+  * G's first ic_more tap missed once — one state-aware re-tap added
+    (only when no sheet items are up; a blind re-tap would toggle-close).
+- Fixes pushed as 717f301 + dd82030; verification run dispatched.
