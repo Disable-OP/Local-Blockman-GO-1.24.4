@@ -2124,3 +2124,34 @@
   evidence should watch for dvSignUp at hall load.
 - build-release completed (dc9d0ce): the sign-in-semantics APK is the
   current release asset. Host tests: 422/0 with the corrected contract.
+
+## Session 23 FINAL — run 37466300068 PASS: the whole scrap surface is client-asserted
+
+- Run 37466300068 (82ec4ef) PASS, 0 FAILs, 45 unique endpoints, no app
+  FATAL, alive at end. The reentry_scrap() self-grounding absorbed the
+  template self-close (K: "ll_record missing - re-entering" -> found at
+  (570,1067) — the bg_menu FAN-OUT worked: record at 570, library at
+  670).
+- HARD CHECKS GREEN: J bag value 0->1 + backpack 0->3 (three parallel
+  prefetches); K combine record 0->1 + description 0->1. The H chain
+  stayed green in the same run (reward dialog seen, wallet delta=300,
+  POST 0->1). C-phase daily sign-in claim green (the pre-fix dialog
+  path still works).
+- COVERAGE.json regenerated honestly: 335 discovered / 295 implemented
+  / 40 default (all classified), 234 host-tested, **141 client-asserted**
+  (+4 scrap routes this session; the {version} template matched via the
+  "/activity/api/{version}/collect/exchange/user/scrap" literal).
+- Session 23 totals: 12 pushes (410ef02..dc45f2d), 4 dispatched runs
+  (2 triaged FAIL -> fixes, 1 hollow pass -> self-grounding, 1 FULL
+  PASS), the sign-in semantics bug found+fixed+host-verified (422/0),
+  release rebuilt, vipDress classified dead (Wave 8), ENDPOINTS.md
+  sign contracts documented, NEXT_SESSION_README handed over.
+- Known risks/uncertainties: the sign-in on-device trigger remains
+  undecoded (GET /activity/api/v1/signIn never fires despite the static
+  chain saying a fresh user should fetch it; watch dvSignUp); the
+  template self-close mechanism is undecoded (absorbed, not explained);
+  scrap/{scrapId} (single-scrap detail) still unasserted — one bag-item
+  tap away.
+- Recommended next step: drive the bag's scrap-item tap (GET user/scrap/
+  {scrapId}), then error-driven from the next run's traffic. NO
+  GameServer work.
