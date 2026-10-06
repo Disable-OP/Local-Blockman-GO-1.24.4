@@ -2233,3 +2233,42 @@
 - All work committed/pushed to local-api; APK shipped via build-release
   37475393512. Next session: item2 VIP probe, error-driven from new
   traffic. NO GameServer work.
+
+---
+
+## Session 25 (cron session): item2 VIP decoded + Phase M/N dispatched
+
+- State check: cloned the repo fresh (local-api at 44b85b6, run 37483483323
+  PASS). CI reviewed: local-api green; main-branch test-redroid failure is
+  the known archive divergence. Decompiled the base APK locally (apktool
+  3.0.3, 349MB tree at /home/z/work/bg/build/apktool_out) for the two
+  handover items. (Note: the previous worklog's "no work yet" summary was
+  wrong — 24 sessions of real work exist; this session continues them.)
+- getScrapNum / user/scrap/{scrapId} handover item: confirmed CLOSED (IM-
+  gated per session 24's verdict — the only call site is the RongCloud
+  ScrapAskHelpProvider; the bag tap sends TOKEN_SEND_SCRAP_CARD).
+- item2 VIP handover item CLOSED with a decode verdict: NOT service-gated.
+  VipManager.<clinit> resolves IVipService via
+  RouteServiceManager.provide("/subs/service"); VipService is a registered
+  ARouter provider (@Route /subs/service, ARouter$$Providers$$vip) in
+  smali_classes4. enterVipFragment opens the PrivilegeCenterFragment
+  template whose initData() fires VipApi.getSubscribeInfo ->
+  GET /pay/api/v1/sub/info/get (single call site in the vip package; the
+  server's VipSubInfo shape matches the client entity).
+- Phase M added (automation): the collapsing-header walk (item2 vs
+  littleItem2, mirroring H/I) -> hard check sub/info/get 0->N + REQ-path
+  delta evidence. Exit grounded on rb_1.
+- Phase N added (automation): the rank podium rows 2+3. Re-opens Ranking,
+  sorts tv_rank_type_top1_name rows by (y,x), taps row 1 (active -> W.a.h)
+  and row 2 (clan -> W.b.h) on the WEEK podium, flips rb_overall_tab and
+  repeats on OVERALL. Hard checks (0->N, pre-counted): 8 literals
+  active|clan x region|global x weekly|overall, with the rb_global_tab
+  fallback. user/info deltas printed as evidence. Missing podium rows or
+  the overall tab print dumps (fetch failures FAIL per the honesty rule).
+- CI: UI-step timeout 32 -> 40 min, workflow 45 -> 55 (the step measured
+  28.5 min in run 37483483323; the new phases add ~3-5 min).
+- No server changes this session (both drives target implemented,
+  host-tested routes). Docs: ENDPOINTS.md Wave 10.
+- Next: dispatch test-redroid; on green regenerate COVERAGE.json (expect
+  145 -> 154 client-asserted: +1 sub/info/get, +8 ranking category routes);
+  then error-driven from the new run's traffic. NO GameServer work.

@@ -17,7 +17,7 @@ permissions:
 jobs:
   redroid-test:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
+    timeout-minutes: 55
     env:
       PACKAGE: com.disabngo.blockynexus
       ACTIVITY: com.disabngo.blockynexus.view.activity.start.StartActivity
@@ -75,7 +75,9 @@ jobs:
           fi
 
       - name: Run UI automation suite (register, login, navigate all tabs)
-        timeout-minutes: 32
+        # session 25: Phase M (VIP privilege center) + Phase N (rank podium
+        # rows 2+3, week+overall) add ~3-5 min to the 28.5-min step
+        timeout-minutes: 40
         run: |
           python3 scripts/ui_automation_test.py \
             --serial localhost:5555 \

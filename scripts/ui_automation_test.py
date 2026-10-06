@@ -4092,6 +4092,222 @@ def main():
     else:
         print("  [info] L: Ranking row not found (Me tab walk failed)")
 
+    # ------------------------------------------------- Phase M: the VIP
+    # privilege center (session 25, the last undriven hall entry -
+    # item2). jadx decode: the hall header's item2 (content_header1) /
+    # littleItem2 (collapsed content_header2) fires
+    # MainFragmentViewModel.onEnterVip -> VipManager.enterVipFragment
+    # -> ARouter "/subs/service" -> com.sandboxol.vip.service.VipService
+    # (a REGISTERED ARouter provider - ARouter$$Providers$$vip - the
+    # "service-gated" worry from session 24 is DECODED: the static
+    # VipManager.<clinit> resolves it via RouteServiceManager.provide
+    # and the route table is present, so it is not a no-op locally) ->
+    # TemplateUtils.startTemplate(PrivilegeCenterFragment) whose
+    # PrivilegeCenterViewModel.initData() calls VipApi.getSubscribeInfo
+    # -> GET /pay/api/v1/sub/info/get (exactly one call site in the
+    # whole vip package, so a phase-local 0->N is sound).
+    print("== Phase M: VIP privilege center (item2) ==")
+    m_vip_lit = "/pay/api/v1/sub/info/get"
+
+    def m_count(marker):
+        return sum(1 for ln in adb.raw("logcat", "-d", "-s",
+                                       "LocalAPI",
+                                       timeout=60).splitlines()
+                   if marker in ln)
+
+    m_pre_vip = m_count("REQ GET " + m_vip_lit)
+    m_paths_before = set(localapi_paths(adb))
+    m_entry = None
+    if screen.find(ids=["rb_1"]):
+        for _ in range(3):
+            adb.sh("cmd statusbar collapse")
+            time.sleep(1)
+            if not adb.pid(args.package):
+                alive_or_recover_at(adb, screen, args.package,
+                                    args.activity, "M-walk")
+            # same collapsing-header dance as H/I: BIG header item2 vs
+            # COLLAPSED littleItem2 - both fire onEnterVip
+            adb.sh("input swipe 360 300 360 800 300")
+            time.sleep(2)
+            m_entry = screen.find(ids=["item2"]) \
+                or screen.find(ids=["littleItem2"])
+            if m_entry and m_entry.center:
+                break
+    if m_entry and m_entry.center:
+        ok("M: vip entry found (%s at %s)"
+           % ("item2" if (m_entry.res or "").endswith("item2")
+              else "littleItem2", m_entry.center))
+        screen.tap_node(m_entry)
+        time.sleep(6)
+        assert_alive(adb, args.package, "M-privilegecenter")
+        m_seen = m_pre_vip
+        m_deadline = time.time() + 14
+        while time.time() < m_deadline and m_seen <= m_pre_vip:
+            time.sleep(2)
+            m_seen = m_count("REQ GET " + m_vip_lit)
+        check("M: vip subscribe info fetched (GET %s %d->%d)"
+              % (m_vip_lit, m_pre_vip, m_seen),
+              m_seen > m_pre_vip,
+              "getSubscribeInfo never fired (the privilege center may "
+              "not have opened)")
+        for p in sorted(set(localapi_paths(adb)) - m_paths_before):
+            print("  [evidence] M: client fired %s" % p)
+        # exit: BACK to the hall; absorb a drift by grounding on rb_1
+        for _ in range(4):
+            if screen.find(ids=["rb_1"]):
+                break
+            adb.key(4)
+            time.sleep(2)
+        alive_or_recover_at(adb, screen, args.package, args.activity,
+                            "M-exit")
+    else:
+        print("  [info] M: vip entry not found (item2/littleItem2)")
+
+    # ------------------------------------------------- Phase N: the rank
+    # podium rows 2+3 (session 25, the natural completion of Phase L).
+    # Session 24's podium contract emits ONE row per category
+    # ([gDiamond, active, clan]) and Phase L taps only the FIRST row
+    # (gDiamond -> W.c.h). jadx decode: overviewrank/f.smali maps
+    # type->template ("gDiamond"->W.c.h, "active"->W.a.h,
+    # "clan"->W.b.h) and puts the podium period (rank_period_type) in
+    # the bundle; the template list models W.a.n / W.b.n fire IRankingApi
+    # getActive* / getClan* {region|global} x {weekly|overall} + the
+    # shared ranking/user/info. The podium activity also carries
+    # rb_overall_tab (activity_overview_rank.xml): flipping it re-fetches
+    # region/home/page/info?rankType=overall and the inherited period
+    # drives the templates' overall variants.
+    print("== Phase N: rank podium rows 2+3 (active, clan) ==")
+    n_lits = [
+        "/ranking/api/v1/active/region/weekly/rank",
+        "/ranking/api/v1/active/global/weekly/rank",
+        "/ranking/api/v1/clan/region/weekly/rank",
+        "/ranking/api/v1/clan/global/weekly/rank",
+        "/ranking/api/v1/active/region/overall/rank",
+        "/ranking/api/v1/active/global/overall/rank",
+        "/ranking/api/v1/clan/region/overall/rank",
+        "/ranking/api/v1/clan/global/overall/rank",
+    ]
+    n_home_lit = "/ranking/api/v1/ranking/region/home/page/info"
+    n_user_lit = "/ranking/api/v1/ranking/user/info"
+
+    def n_count(marker):
+        return sum(1 for ln in adb.raw("logcat", "-d", "-s",
+                                       "LocalAPI",
+                                       timeout=60).splitlines()
+                   if marker in ln)
+
+    def n_rows():
+        rows = [n for n in screen.dump()
+                if n.res and n.res.rsplit("/", 1)[-1]
+                == "tv_rank_type_top1_name" and n.center]
+        rows.sort(key=lambda n: (n.center[1], n.center[0]))
+        return rows
+
+    def n_wait(lit, pre, seconds=16):
+        seen = pre
+        deadline = time.time() + seconds
+        while time.time() < deadline and seen <= pre:
+            time.sleep(2)
+            seen = n_count("REQ GET " + lit)
+        return seen
+
+    # pre-counts BEFORE the Me-tab walk (the 0->N honesty rule)
+    n_pre = {}
+    for lit in n_lits:
+        n_pre[lit] = n_count("REQ GET " + lit)
+    n_pre_user = n_count("REQ GET " + n_user_lit)
+
+    def n_open_ranking():
+        me = screen.find(ids=["rb_5"])
+        if not (me and me.center) or not screen.tap_node(me):
+            return False
+        time.sleep(4)
+        row = screen.find(texts=["Ranking"])
+        if not (row and row.center):
+            return False
+        screen.tap_node(row)
+        time.sleep(6)
+        return alive_or_recover_at(adb, screen, args.package,
+                                   args.activity, "N-rank-open")
+
+    def n_back_to_podium():
+        for _ in range(4):
+            if n_rows():
+                return True
+            adb.key(4)
+            time.sleep(2)
+        return bool(n_rows())
+
+    def n_drive_row(idx, lit_region, lit_global, label):
+        rows = n_rows()
+        if idx >= len(rows):
+            fail("N: %s podium row missing (found %d row(s) with "
+                 "tv_rank_type_top1_name; server emits 3 categories)"
+                 % (label, len(rows)))
+            for n in screen.dump():
+                if n.res or n.text or n.desc:
+                    print("  N-dump] %s | text=%r" % (
+                        n.res.rsplit("/", 1)[-1] if n.res else "",
+                        n.text[:28]))
+            return
+        screen.tap_node(rows[idx])
+        time.sleep(6)
+        assert_alive(adb, args.package, "N-%s-template" % label)
+        seen_r = n_wait(lit_region, n_pre[lit_region])
+        check("N: %s board fetched (GET %s %d->%d)"
+              % (label, lit_region, n_pre[lit_region], seen_r),
+              seen_r > n_pre[lit_region],
+              "%s region fetch never fired (the podium tap may have "
+              "been a silent no-op - check TopRankInfo.type)" % label)
+        # the template's SECOND pager page (period, global) prefetches
+        # on open; a real rb_global_tab tap is the fallback (Phase L
+        # pattern)
+        seen_g = n_wait(lit_global, n_pre[lit_global], 8)
+        if seen_g <= n_pre[lit_global]:
+            g_tab = screen.find(ids=["rb_global_tab"])
+            if g_tab and g_tab.center:
+                screen.tap_node(g_tab)
+                seen_g = n_wait(lit_global, n_pre[lit_global], 12)
+        check("N: %s global board fetched (GET %s %d->%d)"
+              % (label, lit_global, n_pre[lit_global], seen_g),
+              seen_g > n_pre[lit_global],
+              "%s global fetch never fired (prefetch and rb_global_tab "
+              "both missed)" % label)
+        n_back_to_podium()
+
+    if n_open_ranking():
+        # week podium (default tab): sorted rows[1] = active, rows[2] =
+        # clan (row 0 = gDiamond, already asserted by Phase L)
+        n_drive_row(1, n_lits[0], n_lits[1], "active/week")
+        n_drive_row(2, n_lits[2], n_lits[3], "clan/week")
+        # flip the podium to OVERALL and repeat; the flip itself
+        # re-fetches region/home/page/info with rankType=overall
+        o_tab = screen.find(ids=["rb_overall_tab"])
+        if o_tab and o_tab.center:
+            screen.tap_node(o_tab)
+            time.sleep(5)
+            n_drive_row(1, n_lits[4], n_lits[5], "active/overall")
+            n_drive_row(2, n_lits[6], n_lits[7], "clan/overall")
+        else:
+            print("  [info] N: rb_overall_tab not found (podium layout "
+                  "drifted)")
+        seen_user = n_count("REQ GET " + n_user_lit)
+        if seen_user > n_pre_user:
+            ok("N: my-rank rows kept fetching (user/info %d->%d)"
+               % (n_pre_user, seen_user))
+        for p in l_rank_paths():
+            print("  [evidence] N: client fired %s" % p)
+        # exit: BACK to the hall; absorb a drift by grounding on rb_1
+        for _ in range(4):
+            if screen.find(ids=["rb_1"]):
+                break
+            adb.key(4)
+            time.sleep(2)
+        alive_or_recover_at(adb, screen, args.package, args.activity,
+                            "N-exit")
+    else:
+        print("  [info] N: Ranking walk failed (Me tab)")
+
     # ------------------------------------------------- assertions
     print("== assertions ==")
     # Union with the early snapshot: GL-heavy screens rotate the logcat

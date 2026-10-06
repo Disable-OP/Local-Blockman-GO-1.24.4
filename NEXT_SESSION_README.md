@@ -1236,3 +1236,29 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   iVipService2 — service-gated, may be a no-op locally). getScrapNum stays
   IM-gated (see Wave 9). Error-driven from new traffic only.
   NO GameServer work.
+
+## Session 25 (read first — item2 VIP decoded, Phase M/N dispatched)
+
+- VIP entry verdict (session-24 handover item CLOSED): item2 is NOT
+  service-gated. VipManager.<clinit> -> RouteServiceManager.provide
+  ("/subs/service") -> VipService (@Route /subs/service, registered in
+  ARouter$$Providers$$vip) -> PrivilegeCenterFragment -> initData() ->
+  VipApi.getSubscribeInfo (GET /pay/api/v1/sub/info/get, one call site).
+  The server response already matches VipSubInfo. Phase M drives item2/
+  littleItem2 and hard-checks the fetch (0->N).
+- Phase N (new): the rank podium rows 2+3. The podium emits [gDiamond,
+  active, clan]; Phase L only ever tapped row 0. Phase N re-opens
+  Ranking, sorts tv_rank_type_top1_name by (y,x), taps rows 1+2 on the
+  WEEK podium and again on the OVERALL podium (rb_overall_tab). 8 hard
+  checks: active|clan x region|global x weekly|overall (0->N, pre-counted
+  before the Me-tab walk; rb_global_tab fallback per Phase L).
+- CI timeouts bumped for the added phases: UI step 32 -> 40 min,
+  workflow 45 -> 55.
+- On a green run: regenerate COVERAGE.json (expect 145 -> 154:
+  +sub/info/get, +8 ranking category routes) and verify each new
+  assertion against the run's REQ evidence lines (honesty gate).
+- Watch for: (a) the podium's 3rd row may not render if the two item
+  view types (item_rank_left_type / item_rank_right_type) don't
+  alternate — a missing row FAILs with a dump; decode from there;
+  (b) the M entry walk mirrors the proven H/I header dance.
+- NO GameServer work.

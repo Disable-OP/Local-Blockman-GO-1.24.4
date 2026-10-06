@@ -864,3 +864,41 @@ Phase L (rank surface drive, scripts/ui_automation_test.py):
   GET /ranking/api/v1/ranking/user/info (0->N); the template's second
   pager page (period, global) prefetches or fires via the real
   rb_global_tab tap -> GET /ranking/api/v1/gold/diamond/global/weekly/rank.
+
+# Wave 10 (Session 25): item2 VIP entry DECODED (not service-gated) + podium rows 2+3 drives
+
+item2 VIP reachability verdict (session 24 handover item, closed):
+- The hall header's item2 (content_header1) / littleItem2 (content_header2)
+  fires MainFragmentViewModel.onEnterVip -> VipManager.enterVipFragment.
+  VipManager.<clinit> resolves IVipService via
+  RouteServiceManager.provide("/subs/service") — and that route IS
+  registered: smali_classes4/com/sandboxol/vip/service/VipService.smali
+  carries @Route(path = "/subs/service") and appears in
+  ARouter$$Providers$$vip / ARouter$$Group$$subs. The "service-gated, may
+  be a no-op" worry from session 24 is DECODED: the entry works locally.
+- VipService.enterVipFragment -> TemplateUtils.startTemplate
+  (com.sandboxol.vip.view.fragment.main.n = PrivilegeCenterFragment) whose
+  PrivilegeCenterViewModel.initData() calls VipApi.getSubscribeInfo ->
+  GET /pay/api/v1/sub/info/get (exactly one call site in the whole vip
+  package). The server response (playerInfo{vip,expireDate,...} + subInfo[])
+  matches the client entity com.sandboxol.center.entity.VipSubInfo.
+- Phase M (scripts/ui_automation_test.py) drives item2/littleItem2 and
+  hard-checks GET /pay/api/v1/sub/info/get 0->N, printing the REQ-path
+  delta as evidence.
+
+Phase N (rank podium rows 2+3, the natural completion of Phase L):
+- Phase L taps only the FIRST podium row (gDiamond -> W.c.h). The podium
+  emits one row per category ([gDiamond, active, clan]) and the item VM
+  (overviewrank/f.smali) maps "active" -> W.a.h, "clan" -> W.b.h with the
+  podium period (rank_period_type) in the template bundle. The template
+  list models W.a.n / W.b.n fire the active/clan boards + the shared
+  ranking/user/info.
+- Phase N re-opens the Ranking screen, sorts all tv_rank_type_top1_name
+  rows by (y,x), taps row 1 (active) and row 2 (clan) on the WEEK podium,
+  then flips rb_overall_tab (activity_overview_rank.xml) and repeats on the
+  OVERALL podium. Hard checks (all 0->N, pre-counted before the walk):
+  active/{region,global}/weekly, clan/{region,global}/weekly,
+  active/{region,global}/overall, clan/{region,global}/overall — with the
+  rb_global_tab fallback for the template's second pager page (Phase L
+  pattern). CI timeouts bumped (UI step 32 -> 40 min, workflow 45 -> 55)
+  to absorb the added phases.
