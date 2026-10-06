@@ -573,6 +573,78 @@ public final class StateStore {
         return t == null || !date.equals(t.optString("date"));
     }
 
+    // ------------------------------------------------- activity task state (wave 6c)
+
+    /** The server-wide day key (UTC): "yyyy-MM-dd". Shared by the activity
+     *  task system so the client's local countdown and the server's day
+     *  bucketing agree on resets. */
+    public static String utcDay() {
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat(
+                "yyyy-MM-dd", java.util.Locale.US);
+        f.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+        return f.format(new java.util.Date());
+    }
+
+    /**
+     * Per-user per-day activity progress bucket:
+     * {"day":"yyyy-MM-dd","onlineMinutes":N,"lastMinute":"yyyy-MM-dd HH:mm",
+     *  "lastDayLogin":"yyyy-MM-dd","claimed":{"a<actionId>":"yyyy-MM-dd"}}.
+     * Resets when the UTC day rolls over (lastDayLogin re-stamped on the
+     * first authenticated request of the new day by tickActivityMinute).
+     */
+    public synchronized JSONObject activityProgress(JSONObject user) {
+        JSONObject st = userState(user);
+        JSONObject a = st.optJSONObject("activity");
+        String today = utcDay();
+        if (a == null || !today.equals(a.optString("day"))) {
+            a = new JSONObject();
+            a.put("day", today);
+            a.put("onlineMinutes", 0);
+            a.put("lastMinute", "");
+            a.put("lastDayLogin", "");
+            a.put("claimed", new JSONObject());
+            st.put("activity", a);
+            save();
+        }
+        return a;
+    }
+
+    /**
+     * Online-time tracking: the first authenticated request in each distinct
+     * UTC minute credits one minute. The client tracks its own session
+     * countdown locally (ActivityTaskCountDownUtils) but the SERVER-side
+     * truth for task completion is this counter — driven by real client
+     * traffic, never hardcoded.
+     */
+    public synchronized void tickActivityMinute(JSONObject user, String minuteKey) {
+        JSONObject a = activityProgress(user);
+        if (minuteKey.equals(a.optString("lastMinute"))) return;
+        a.put("lastMinute", minuteKey);
+        a.put("onlineMinutes", a.optInt("onlineMinutes") + 1);
+        if (a.optString("lastDayLogin").isEmpty()) {
+            a.put("lastDayLogin", utcDay());
+        }
+        save();
+    }
+
+    /** True when the user already claimed the action today. */
+    public synchronized boolean activityClaimedToday(JSONObject user, String day, long actionId) {
+        JSONObject claimed = activityProgress(user).optJSONObject("claimed");
+        return claimed != null && day.equals(claimed.optString("a" + actionId));
+    }
+
+    /** Mark the action claimed for the given day. */
+    public synchronized void markActivityClaimed(JSONObject user, String day, long actionId) {
+        JSONObject a = activityProgress(user);
+        JSONObject claimed = a.optJSONObject("claimed");
+        if (claimed == null) {
+            claimed = new JSONObject();
+            a.put("claimed", claimed);
+        }
+        claimed.put("a" + actionId, day);
+        save();
+    }
+
     // ------------------------------------------------------ datareport sink
 
     /** Append a raw report body to the on-disk datareport store (one JSONL

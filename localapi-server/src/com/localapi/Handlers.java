@@ -170,6 +170,9 @@ final class Handlers {
         if ("setPsdParamCheck".equals(name)) return envelope("obj", "{}");
         if ("securitySettings".equals(name)) return securitySettings(ctx, store);
         if ("activityTitle".equals(name)) return activityTitle(ctx, store);
+        // ---- Wave 6c: activity task chain (titles light the surface) ----
+        if ("activityActionList".equals(name)) return activityActionList(ctx, store);
+        if ("activityTaskReward".equals(name)) return activityTaskReward(ctx, store);
         if ("getVipInfo".equals(name)) return getVipInfo(ctx, store);
         if ("getSubscribeInfo".equals(name)) return getSubscribeInfo(ctx, store);
         // ---- Phase 3: decoration / dress shop / scrap exchange ----
@@ -2378,7 +2381,16 @@ final class Handlers {
 
     /** Strict auth for economy-mutating endpoints: token must resolve to a real user. */
     private static JSONObject requireUser(Ctx ctx, StateStore store) {
-        return store.findByToken(ctx.header("access-token"));
+        JSONObject u = store.findByToken(ctx.header("access-token"));
+        if (u != null) {
+            // wave 6c: online-time tracking — one credit per distinct UTC
+            // minute with authenticated traffic (real client-driven state;
+            // the activity tasks read it, nothing is hardcoded).
+            String minuteKey = new java.text.SimpleDateFormat(
+                    "yyyy-MM-dd HH:mm", java.util.Locale.US).format(new java.util.Date());
+            store.tickActivityMinute(u, minuteKey);
+        }
+        return u;
     }
 
     private static final String NO_AUTH = "authentication required";
@@ -3079,14 +3091,193 @@ final class Handlers {
         return envelope("obj", out.toString());
     }
 
-    /** GET /activity/api/v2/activity/title — ActivityTaskTitleList (activities are
-     *  flag-gated off in appConfig; the list stays empty, serverTime is real). */
+    /** GET /activity/api/v2/activity/title — ActivityTaskTitleList.
+     *  Wave 6c: REAL titles (weekday + weekend). A non-empty list makes the
+     *  client register red points (e.b.c.f.b) and immediately fetch
+     *  /activity/api/v1/activity/action?titleType=weekend|weekday
+     *  (MainModel bc.b -> Lb.onSuccess, weekend decided by
+     *  DateUtils.isWeekend(serverTime)). countryList stays empty = every
+     *  language passes f.a's filter. endTime=-1 = no expiry (f.b:
+     *  registerRedPoint(.., endTime != -1, ..)). */
     private static String activityTitle(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        long cum = u == null ? 0L : store.activityProgress(u).optInt("onlineMinutes");
+        JSONArray list = new JSONArray();
+        list.put(activityTitleNode("weekday", 0));
+        list.put(activityTitleNode("weekend", 1));
         JSONObject out = new JSONObject();
-        out.put("activityTitleList", new JSONArray());
-        out.put("cumulativeTime", 0L);
+        out.put("activityTitleList", list);
+        out.put("cumulativeTime", cum);
         out.put("serverTime", System.currentTimeMillis());
         return envelope("obj", out.toString());
+    }
+
+    private static JSONObject activityTitleNode(String type, int position) {
+        JSONObject t = new JSONObject();
+        t.put("titleType", type);
+        t.put("titleName", "weekend".equals(type) ? "Weekend Tasks" : "Weekday Tasks");
+        t.put("content", "Play to earn rewards");
+        t.put("dateDesc", "");
+        t.put("pic", "");
+        t.put("position", position);
+        // 1 = the title carries claimable content when its actions say so;
+        // computed for real below by the caller? kept simple: the red point
+        // register uses status; claimable actions light their OWN red point
+        // (o's constructor), so the title-level status stays 1 (visible).
+        t.put("status", 1);
+        t.put("closeRedPoint", false);
+        t.put("isEnable", true);
+        t.put("isLast", "weekend".equals(type));
+        t.put("endTime", -1L);
+        t.put("countryList", new JSONArray());
+        return t;
+    }
+
+    /** GET /activity/api/v1/activity/action?titleType= — the day's task rows.
+     *  Wave 6c: state-backed. Flags mirror the client's own vocabulary
+     *  (ActivityTaskContentItemViewModel analytics: online_time 10/30/60,
+     *  saturday_login, sunday_login). status: 0 in-progress, 1 claimable
+     *  (o's constructor lights the per-action red point), 2 claimed
+     *  (n.onSuccess writes 2 after a successful receive/reward). */
+    private static String activityActionList(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        String type = ctx.query("titleType");
+        if (!"weekday".equals(type) && !"weekend".equals(type)) {
+            return fail("unknown titleType: " + type);
+        }
+        return envelope("list", activityActionsFor(type, u, store).toString());
+    }
+
+    /** POST /activity/api/v1/receive/reward?titleType=&amp;actionId= — claim.
+     *  Returns the updated ActivityTaskAction (status 2) on success and
+     *  credits the reward for real; 7012 on a double claim, generic fail
+     *  when the task is not complete (client shows CampaignOnError/ServerOnError). */
+    private static String activityTaskReward(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        String type = ctx.query("titleType");
+        long actionId = parseLong(ctx.query("actionId"), 0);
+        if (!"weekday".equals(type) && !"weekend".equals(type)) {
+            return fail("unknown titleType: " + type);
+        }
+        JSONArray actions = activityActionsFor(type, u, store);
+        JSONObject claimed = null;
+        for (int i = 0; i < actions.length(); i++) {
+            JSONObject a = actions.optJSONObject(i);
+            if (a != null && a.optLong("actionId") == actionId) {
+                claimed = a;
+                break;
+            }
+        }
+        if (claimed == null) return fail("unknown actionId: " + actionId);
+        if (store.activityClaimedToday(u, StateStore.utcDay(), actionId)) {
+            return failCode(7012, "already claimed");
+        }
+        if (claimed.optInt("status") != 1) {
+            return fail("task not complete");
+        }
+        JSONArray rewards = claimed.optJSONArray("actionRewards");
+        long golds = 0;
+        for (int i = 0; rewards != null && i < rewards.length(); i++) {
+            JSONObject r = rewards.optJSONObject(i);
+            if (r != null && "golds".equals(r.optString("rewardType"))) {
+                golds += r.optLong("quantity");
+            }
+        }
+        if (golds > 0) store.award(u, "golds", golds);
+        store.markActivityClaimed(u, StateStore.utcDay(), actionId);
+        // the response carries the POST-claim truth (client n.onSuccess also
+        // forces status 2 locally — both agree)
+        claimed.put("status", 2);
+        claimed.put("completeQuantity", claimed.opt("quantity"));
+        L.i("activityTaskReward: userId=" + u.optLong("userId") + " actionId=" + actionId
+                + " +" + golds + " golds");
+        return envelope("obj", claimed.toString());
+    }
+
+    /** The day's actions for a title type, computed from real state. */
+    private static JSONArray activityActionsFor(String type, JSONObject u, StateStore store) {
+        JSONArray out = new JSONArray();
+        String today = StateStore.utcDay();
+        int minutes = store.activityProgress(u).optInt("onlineMinutes");
+        if ("weekday".equals(type)) {
+            out.put(onlineTimeAction(store, u, 1, 10, 200, minutes));
+            out.put(onlineTimeAction(store, u, 2, 30, 400, minutes));
+            out.put(onlineTimeAction(store, u, 3, 60, 800, minutes));
+        } else {
+            out.put(onlineTimeAction(store, u, 4, 10, 300, minutes));
+            out.put(loginAction(store, u, 5, "saturday_login", 200));
+            out.put(loginAction(store, u, 6, "sunday_login", 200));
+        }
+        return out;
+    }
+
+    private static JSONObject onlineTimeAction(StateStore store, JSONObject u, long id, int qtyMinutes,
+                                               int rewardGolds, int trackedMinutes) {
+        int status;
+        if (store.activityClaimedToday(u, StateStore.utcDay(), id)) {
+            status = 2;
+        } else {
+            status = trackedMinutes >= qtyMinutes ? 1 : 0;
+        }
+        return activityActionNode(id, "online_time", "Online " + qtyMinutes + " min",
+                qtyMinutes, Math.min(trackedMinutes, qtyMinutes), status, rewardGolds);
+    }
+
+    private static JSONObject loginAction(StateStore store, JSONObject u, long id, String flag,
+                                          int rewardGolds) {
+        String today = StateStore.utcDay();
+        boolean rightDay = "saturday_login".equals(flag)
+                ? dayOfWeekUtc() == java.util.Calendar.SATURDAY
+                : dayOfWeekUtc() == java.util.Calendar.SUNDAY;
+        boolean loggedToday = today.equals(store.activityProgress(u).optString("lastDayLogin"));
+        int status;
+        if (store.activityClaimedToday(u, today, id)) {
+            status = 2;
+        } else {
+            status = rightDay && loggedToday ? 1 : 0;
+        }
+        return activityActionNode(id, flag,
+                "saturday_login".equals(flag) ? "Saturday Login" : "Sunday Login",
+                1, status == 0 ? 0 : 1, status, rewardGolds);
+    }
+
+    private static int dayOfWeekUtc() {
+        java.util.Calendar c = java.util.Calendar.getInstance(
+                java.util.TimeZone.getTimeZone("UTC"));
+        return c.get(java.util.Calendar.DAY_OF_WEEK);
+    }
+
+    private static JSONObject activityActionNode(long id, String flag, String name, int quantity,
+                                                 int completeQuantity, int status, int rewardGolds) {
+        JSONObject a = new JSONObject();
+        a.put("actionId", (int) id);
+        a.put("actionFlag", flag);
+        a.put("actionName", name);
+        a.put("content", "");
+        a.put("dateDesc", "");
+        a.put("pic", "");
+        a.put("quantity", quantity);
+        a.put("completeQuantity", completeQuantity);
+        a.put("status", status);
+        a.put("actionFrequency", 1);
+        a.put("isSingleCumulative", 1);
+        a.put("isShowComplete", 1);
+        a.put("isFirst", false);
+        JSONArray rewards = new JSONArray();
+        JSONObject r = new JSONObject();
+        r.put("rewardType", "golds");
+        r.put("quantity", rewardGolds);
+        r.put("rewardName", "Golds");
+        r.put("rewardPic", "");
+        r.put("rewardDesc", "");
+        r.put("decorationId", 0);
+        r.put("isShowDesc", 0);
+        r.put("level", 0);
+        rewards.put(r);
+        a.put("actionRewards", rewards);
+        return a;
     }
 
     private static long[] untilMidnightUtc() {

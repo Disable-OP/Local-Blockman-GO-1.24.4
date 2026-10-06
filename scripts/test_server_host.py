@@ -1278,8 +1278,10 @@ def main():
               and ss2["data"]["email"] == "qa@example.com", str(ss2)[:150])
         at = call("GET", "/activity/api/v2/activity/title",
                   headers={"Access-Token": tok5, "userId": str(uid5)})
-        check("activity title empty + serverTime", at.get("code") == 1
-              and at["data"].get("activityTitleList") == []
+        # wave 6c: the list is now REAL (weekday + weekend) — the empty-list
+        # era is over; the surface is lit by design (see Wave 6c section).
+        check("activity title served + serverTime", at.get("code") == 1
+              and len(at["data"].get("activityTitleList", [])) == 2
               and at["data"].get("serverTime", 0) > 0, str(at)[:150])
 
         # ------------------------------------------------ Phase 5: dispatch bridge
@@ -1740,6 +1742,68 @@ def main():
               and "qa_event" in rep_bodies and "qa_funnel" in rep_bodies,
               "files=%d" % len(rep_files))
 
+        print("== Wave 6c: activity task chain (titles light the surface) ==")
+        at_h = {"Access-Token": tok1, "userId": str(uid1)}
+        at_titles = call("GET", "/activity/api/v2/activity/title", None, headers=at_h)
+        at_list = at_titles.get("data", {}).get("activityTitleList", [])
+        at_types = sorted(x.get("titleType") for x in at_list)
+        check("activity titles weekday+weekend served", at_titles.get("code") == 1
+              and at_types == ["weekday", "weekend"], str(at_titles)[:160])
+        check("activity titles pass the client's country filter (f.a)",
+              all(x.get("countryList") == [] for x in at_list), str(at_list)[:120])
+        check("activity titles endTime -1 (no expiry, f.b)",
+              all(x.get("endTime") == -1 for x in at_list), str(at_list)[:120])
+        check("activity serverTime real", at_titles.get("data", {}).get("serverTime", 0) > 0,
+              str(at_titles.get("data", {}))[:100])
+        at_wd = call("GET", "/activity/api/v1/activity/action?titleType=weekday",
+                     None, headers=at_h)
+        check("weekday actions = 3 online_time rows (10/30/60)",
+              at_wd.get("code") == 1
+              and [x.get("quantity") for x in at_wd.get("data", [])] == [10, 30, 60]
+              and all(x.get("actionFlag") == "online_time" for x in at_wd.get("data", [])),
+              str(at_wd)[:200])
+        check("weekday action carries the client's fields",
+              at_wd.get("data") and all(k in at_wd["data"][0] for k in
+                  ("actionId", "actionFlag", "actionName", "quantity",
+                   "completeQuantity", "status", "actionRewards")),
+              str(at_wd.get("data", [{}])[0])[:180])
+        check("weekday rewards shaped (golds 200)",
+              at_wd.get("data")
+              and at_wd["data"][0]["actionRewards"][0].get("rewardType") == "golds"
+              and at_wd["data"][0]["actionRewards"][0].get("quantity") == 200,
+              str(at_wd.get("data", [{}])[0].get("actionRewards"))[:140])
+        at_we = call("GET", "/activity/api/v1/activity/action?titleType=weekend",
+                     None, headers=at_h)
+        check("weekend actions incl the login rows", at_we.get("code") == 1
+              and sorted(x.get("actionFlag") for x in at_we.get("data", []))
+              == ["online_time", "saturday_login", "sunday_login"], str(at_we)[:200])
+        at_bad = call("GET", "/activity/api/v1/activity/action?titleType=nope",
+                      None, headers=at_h)
+        check("unknown titleType rejected", at_bad.get("code") != 1, str(at_bad)[:100])
+        at_noauth = call("GET", "/activity/api/v1/activity/action?titleType=weekday")
+        check("action list requires auth", at_noauth.get("code") == 7, str(at_noauth)[:80])
+        # fresh user -> deterministic in-progress state (onlineMinutes < 10)
+        call("POST", "/user/api/v1/register",
+             {"uid": "atq1", "password": "pwatq1", "confirmPassword": "pwatq1",
+              "imei": "atqdev", "appType": "android", "os": "12"})
+        atq = call("POST", "/user/api/v1/login",
+                   {"uid": "atq1", "password": "pwatq1", "imei": "atqdev"})
+        atq_h = {"Access-Token": atq.get("data", {}).get("accessToken", ""),
+                 "userId": str(atq.get("data", {}).get("userId", 0))}
+        atq_wd = call("GET", "/activity/api/v1/activity/action?titleType=weekday",
+                      None, headers=atq_h)
+        check("fresh user online_time in progress (status 0, complete < 10)",
+              atq_wd.get("code") == 1 and atq_wd["data"][0].get("status") == 0
+              and atq_wd["data"][0].get("completeQuantity", 99) < 10, str(atq_wd)[:180])
+        atq_claim = call("POST",
+                         "/activity/api/v1/receive/reward?titleType=weekday&actionId=1",
+                         None, headers=atq_h)
+        check("incomplete claim rejected", atq_claim.get("code") != 1, str(atq_claim)[:100])
+        atq_bad = call("POST",
+                       "/activity/api/v1/receive/reward?titleType=weekday&actionId=999",
+                       None, headers=atq_h)
+        check("unknown action claim rejected", atq_bad.get("code") != 1, str(atq_bad)[:100])
+
         print("== route-table sweep (all routes answer the envelope) ==")
         sys.path.insert(0, os.path.join(REPO, "scripts"))
         sweep_miss = []
@@ -1780,6 +1844,24 @@ def main():
             proc.kill()
         time.sleep(1.5)
     # second boot must see persisted users
+    # wave 6c: inject 15 online minutes for qa_user1 while the server is
+    # stopped — the state file is the documented, inspectable store, so the
+    # completion path (status 1 -> claim -> status 2 -> wallet) is testable
+    # in milliseconds instead of 10 real minutes of client traffic.
+    st_path = os.path.join(state_dir, "localapi", "state.json")
+    with open(st_path, "r", encoding="utf-8") as fh:
+        st_root = json.load(fh)
+    _today = time.strftime("%Y-%m-%d", time.gmtime())
+    _hit = False
+    for _u in st_root.get("users", {}).values():
+        if str(_u.get("userId")) == str(uid1):
+            _act = _u.setdefault("state", {}).setdefault("activity", {})
+            _act.update({"day": _today, "onlineMinutes": 15, "lastMinute": "",
+                         "lastDayLogin": _today, "claimed": {}})
+            _hit = True
+    with open(st_path, "w", encoding="utf-8") as fh:
+        json.dump(st_root, fh)
+    check("activity state injected for the completion test", _hit, st_path)
     server_log2 = open(os.path.join(state_dir, "server2.log"), "wb")
     proc2 = subprocess.Popen(
         ["java", "-cp", HOST_CP, "com.localapi.HostTest", state_dir, str(PORT)],
@@ -1807,6 +1889,53 @@ def main():
               and csp.get("data", {}).get("signInStatus") == 1, str(csp)[:150])
         csp2 = call("POST", "/activity/api/v1/signIn", None, headers={"Access-Token": tok1, "userId": str(uid1)})
         check("campaign claim still 7012 after restart", csp2.get("code") == 7012, str(csp2)[:100])
+        # Wave 6c cont: the injected 15 online minutes complete the 10-min
+        # task; the full lifecycle closes (status 1 -> claim -> status 2 ->
+        # wallet credit -> 7012). Day-dependent login tasks branch on the
+        # real UTC weekday so the rig stays deterministic any day.
+        lg6 = call("POST", "/user/api/v1/login", {"uid": "qa_user1", "password": "pw1"})
+        h6 = {"Access-Token": lg6.get("data", {}).get("accessToken", tok1),
+              "userId": str(uid1)}
+        at_wd2 = call("GET", "/activity/api/v1/activity/action?titleType=weekday",
+                      None, headers=h6)
+        _a1 = (at_wd2.get("data") or [{}])[0]
+        check("injected minutes -> 10min task claimable (status 1, complete 10)",
+              at_wd2.get("code") == 1 and _a1.get("status") == 1
+              and _a1.get("completeQuantity") == 10, str(at_wd2)[:200])
+        at_title2 = call("GET", "/activity/api/v2/activity/title", None, headers=h6)
+        check("cumulativeTime reflects tracked minutes (>=15)",
+              at_title2.get("code") == 1
+              and at_title2.get("data", {}).get("cumulativeTime", 0) >= 15,
+              str(at_title2.get("data", {}))[:140])
+        g_before6 = lg6.get("data", {}).get("golds", 0)
+        at_claim6 = call("POST",
+                         "/activity/api/v1/receive/reward?titleType=weekday&actionId=1",
+                         None, headers=h6)
+        check("claim 10min task (+200, status 2)",
+              at_claim6.get("code") == 1 and at_claim6.get("data", {}).get("status") == 2
+              and at_claim6.get("data", {}).get("completeQuantity") == 10,
+              str(at_claim6)[:180])
+        lg6b = call("POST", "/user/api/v1/login", {"uid": "qa_user1", "password": "pw1"})
+        g_after6 = lg6b.get("data", {}).get("golds", 0)
+        check("activity claim credited wallet (+200)", g_after6 == g_before6 + 200,
+              "golds %d -> %d" % (g_before6, g_after6))
+        at_claim6b = call("POST",
+                          "/activity/api/v1/receive/reward?titleType=weekday&actionId=1",
+                          None, headers=h6)
+        check("activity double-claim 7012", at_claim6b.get("code") == 7012,
+              str(at_claim6b)[:100])
+        _wday = time.gmtime().tm_wday  # Monday=0 .. Sunday=6
+        for _aid, _flagname, _pywday in ((5, "saturday_login", 5),
+                                         (6, "sunday_login", 6)):
+            _lc = call("POST",
+                       "/activity/api/v1/receive/reward?titleType=weekend&actionId=%d" % _aid,
+                       None, headers=h6)
+            if _wday == _pywday:
+                check("%s claimable on its real day" % _flagname,
+                      _lc.get("code") == 1, str(_lc)[:120])
+            else:
+                check("%s rejected off-day" % _flagname,
+                      _lc.get("code") != 1, str(_lc)[:120])
         # Phase 4: tribe state persists (uid1 chief + uid2 elder remain; uid3 exited, uid4 kicked)
         lg4 = call("POST", "/user/api/v1/login", {"uid": "qa_user1", "password": "pw1"})
         tok1b = lg4["data"]["accessToken"]

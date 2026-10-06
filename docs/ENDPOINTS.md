@@ -691,3 +691,36 @@ observed on-device.
 Every one of the remaining 42 default routes now carries an explicit
 verdict (dead code / event-gated / account-gated / honest empty) in the
 tables above. Host rig 399/399.
+
+# Wave 6c (Session 20): the activity-task chain goes real
+
+The Session-19 verdict "activity/action + receive/reward gated by the
+empty activityTitle" is RESOLVED by lighting the title surface — the
+client does the rest on its own.
+
+| Route | Handler | Client evidence |
+|---|---|---|
+| GET /activity/api/v2/activity/title | activityTitle (real) | MainModel bc.b -> Lb.onSuccess: a NON-EMPTY list makes the client register per-title red points (e.b.c.f.b) and IMMEDIATELY fetch the actions for "weekend"/"weekday" (DateUtils.isWeekend(serverTime) picks which). Titles carry countryList=[] (passes f.a's language filter), endTime=-1 (no expiry), isEnable=true |
+| GET /activity/api/v1/activity/action?titleType= | activityActionList | ICampaignApi.getActivityTaskActionList @GET; MainModel bc.a -> Mb feeds "online_time" quantities (10/30/60 min buckets known to the client's analytics) into the local countdown (ActivityTaskCountDownUtils). Status semantics decoded: 0 in-progress, 1 claimable (o's constructor lights the per-action red point), 2 claimed |
+| POST /activity/api/v1/receive/reward?titleType=&actionId= | activityTaskReward | ActivityTaskContentItemViewModel o.h -> CampaignApi.getActivityTaskReward; n.onSuccess sets status 2 + shows CampaignGetIntegralRewardDialog with the actionRewards. Server: 7012 double-claim, generic fail while incomplete, wallet credit on success |
+
+State model (nothing hardcoded): per-user per-day `activity` bucket in
+state.json — onlineMinutes tracked by the server (one credit per DISTINCT
+UTC minute with authenticated traffic, ticked from requireUser),
+lastDayLogin stamped on the first request of the day, claimed map keyed
+"a<actionId>". Actions mirror the client's own flag vocabulary:
+weekday = online_time 10/30/60 min (200/400/800 golds), weekend =
+online_time 10 min (300 golds) + saturday_login + sunday_login (200
+golds, complete only on their real UTC weekday with a login that day).
+cumulativeTime on the title response = the tracked minutes (the client
+adds them to its local countdown).
+
+Coverage now: 335 discovered / 295 implemented / 40 default — every
+remaining default still carries its verdict in the tables above.
+Host rig 399 -> 420 checks (21 new: title shape + filter semantics,
+action shape per type, fresh-user in-progress state, incomplete/unknown
+claim rejection, injected-minutes completion via the state file, claim +
+wallet credit + 7012, day-aware login-task claims, cumulativeTime
+read-back). The on-device run observes the client fetching
+/activity/api/v2/activity/title and (for the first time)
+/activity/api/v1/activity/action?titleType=... on its own at boot.
