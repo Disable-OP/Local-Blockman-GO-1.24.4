@@ -3571,6 +3571,16 @@ def main():
         handle_campaign_dialogs(adb, screen, "I-hall")
         i_entry = None
         for _ in range(3):
+            # The H-tail relaunch can leave the QS shade dragged open:
+            # a swipe-down on a not-yet-rendered window pulls the SYSTEM
+            # shade, not the collapsing header (run 37454273455's I-dump
+            # was pure quick_settings_panel). Collapse it, re-verify the
+            # app, THEN swipe — every attempt, idempotently.
+            adb.sh("cmd statusbar collapse")
+            time.sleep(1)
+            if not adb.pid(args.package):
+                alive_or_recover_at(adb, screen, args.package,
+                                    args.activity, "I-walk")
             # same collapsing-header dance as H: BIG header item3 vs
             # COLLAPSED littleItem3 — both fire MainFragmentViewModel
             # .onScrap (ka.java / ma.java)
