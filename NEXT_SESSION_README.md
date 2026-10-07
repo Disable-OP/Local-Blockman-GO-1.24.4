@@ -1500,3 +1500,32 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   remaining defaults stay static (no live call sites — verified this
   session); error-driven only.
 - NO GameServer work.
+
+## Session 28 FINAL (read first — 4x ~5:00 fast runs; Wave 13 live; next steps)
+
+- USER MANDATE DELIVERED AND STABLE: fast CI = 5:03 / ~5:00 / ~5:00 /
+  ~5:00 (runs 37583919830, 37586200196, 37587512455 + one more) — all
+  green, 0 FAIL. Caps 12/8 (fast) bound any hang.
+- Wave 13 LIVE on the released APK: PUT /shop/api/v2/pay/game/{gameId}
+  is state-backed (H:payGame); catalog carries premium game 5043
+  (Mystic Vault, 800 diamonds); drift() skips it (index-derived metrics
+  bug caught by the rig); detail v1/v2 serves the per-user owned view.
+  Host rig 458/458.
+- Coverage: client_asserted 142 after two honesty changes — (a) gen_
+  coverage prefix claims now need >=4-segment literals (the "/shop/api"
+  substring probe used to claim 27 routes), (b) A-phase hard-gates the
+  two hall list feeds per route. COVERAGE.json regenerated.
+- Full mode: run 37584366843 all green (setIdentity/removeMember/
+  inviteFriend/freeVerify/RSA login client-asserted). The G hand-over
+  re-entry now rebuilds the stale tribeRole cache via a clean relaunch
+  (G-ho-cache) — full-mode-only, validation run in flight.
+- NEXT SESSION: (1) read the full-run verdict for G-ho-cache (search
+  "G: HAND OVER CHIEF" in the run log; on green the last deep-drive
+  flake is closed); (2) the 39 defaults have NO live call sites (all
+  verified this session) — do NOT implement speculatively; (3) the
+  sign surface (GET+POST /activity/api/v1/signIn client-assertion)
+  stays blocked on game-play (Wave 12: boot gate needs hasPlayed /
+  game-return z=true) — revisit in the GameServer phase; (4) a future
+  full run MAY add a premium-detail buy drive to client-assert
+  payGame via UI (host rig already covers the contract).
+- NO GameServer work.
