@@ -1286,6 +1286,19 @@ def main():
     else:
         ok("A: game-hall traffic served locally (%d endpoints, e.g. %s)"
            % (len(game_hits), ", ".join(game_hits[:3])))
+    # Session-28 honesty: the hall's two list feeds are hard-gated per
+    # route (the client fires BOTH on every fresh-data boot — evidence:
+    # every fast/full run's game-hall line). Concrete literals so
+    # gen_coverage claims exactly these routes.
+    a_more_lit = "/game/api/v1/game/revision/list/more"
+    a_reco_lit = "/game/api/v1/game/revision/list/recommend"
+    a_bare = [p.split("?")[0] for p in paths_a]
+    check("A: hall more-list served (GET %s)" % a_more_lit,
+          a_more_lit in a_bare,
+          "the hall never fetched %s on fresh data" % a_more_lit)
+    check("A: hall recommend-list served (GET %s)" % a_reco_lit,
+          a_reco_lit in a_bare,
+          "the hall never fetched %s on fresh data" % a_reco_lit)
     # Wave 5w probe: the lit slot_machine jackpot surface should poll the
     # draw status from the hall. Non-fatal this run (promote to a hard
     # check once observed on-device).

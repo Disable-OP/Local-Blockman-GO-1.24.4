@@ -5,7 +5,7 @@
   "implemented": 296,
   "default": 39,
   "host_tested": 237,
-  "client_asserted": 140
+  "client_asserted": 142
  },
  "endpoints": [
   {
@@ -598,7 +598,7 @@
    "status": "implemented",
    "handler": "gameListMore",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -606,7 +606,7 @@
    "status": "implemented",
    "handler": "gameListGuessYouLike",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
