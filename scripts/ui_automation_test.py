@@ -787,8 +787,21 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
             # when the drive actually performed it on-device.
             check("A: video tag-filter strip served tag list (GET %s)"
                   % tag_lit, tag_gate_pass)
-            adb.key(4)  # back to Me
-            time.sleep(2)
+            # Close the dropdown FIRST: the VideoTagPopupWindowDialog stays
+            # open on row-select (CONFIRM/CANCEL semantics) — run
+            # 37640357412 evidence: the open popup swallowed the single
+            # BACK, every subsequent Me-tab find failed ('Party'/ivTurntable/
+            # rb_2 not found) and the shop-mode block + type-radio probes
+            # skipped. Then ground on the main tab bar (up to 3 BACKs).
+            cancel = screen.find(texts=["CANCEL", "Cancel"])
+            if cancel and cancel.center:
+                screen.tap_node(cancel)
+                time.sleep(2)
+            for _ in range(3):
+                if screen.find(ids=["rgBottom"]):
+                    break
+                adb.key(4)
+                time.sleep(2)
         else:
             print("  [skip] 'Video' row not found on the Me tab")
         # Wave 15 — Party row (MoreViewModel.K -> PartyHallFragment):
