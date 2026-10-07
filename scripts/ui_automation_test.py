@@ -3446,6 +3446,20 @@ def main():
                             if gk_ok and gk_nick:
                                 # re-enter: rb_3 -> Enter Clan -> clan home ->
                                 # ic_more -> Manage Members
+                                # RUN 37584366843 + decode: the settings sheet
+                                # drops 'Manage Members' when the client's
+                                # CACHED TribeCenter.tribeRole went stale
+                                # across the phase's force-stops (the guard
+                                # h() silently drops unless the cache reads
+                                # 10/20). A clean relaunch makes the boot
+                                # re-fetch the tribe info and rebuilds the
+                                # cache before the re-entry (full-mode-only
+                                # cost, ~80s).
+                                if relaunch_and_wait(adb, screen, args.package,
+                                                     args.activity,
+                                                     "G-ho-cache"):
+                                    assert_alive(adb, args.package,
+                                                 "G-ho-cache")
                                 rb3h = screen.wait_for(ids=["rb_3"], timeout=10,
                                                        poll=2)
                                 if rb3h and screen.tap_node(rb3h):

@@ -2735,3 +2735,19 @@
   ~5:00 wall (37583919830 + 37586200196 + earlier). User mandate met.
 - Full-mode evidence run 37584366843 still in flight (hand-over
   mitigation verdict pending). NO GameServer work.
+
+### Session 28 cont. 3 (FULL run 37584366843 GREEN; hand-over cache-refresh fix)
+
+- FULL-mode run 37584366843 (old APK, new scripts): 0 FAIL, complete
+  23m16s drive. Client-asserted this run: setIdentity (elder),
+  removeMember, inviteFriend (POST 0->1 + invitee message), freeVerify
+  toggle (PUTs followed the taps 1/0/1), Phase O client-UI login RSA
+  accepted (RES code=1). The hand-over re-entry hit the known
+  stale-role path ("'Manage Members' not on the sheet") — non-fatal.
+- FIX (deep-mode only): the hand-over re-entry now does a clean
+  relaunch first (relaunch_and_wait "G-ho-cache") — the client's cached
+  TribeCenter.tribeRole goes stale across the phase's force-stops and
+  the sheet silently drops the Manage Members item unless the cache
+  reads 10/20 (decode, session 26 cont. 5). The boot re-fetch rebuilds
+  the cache. Fast mode untouched.
+- Host rig re-verified 458/458 after the edit. NO GameServer work.
