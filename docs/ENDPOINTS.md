@@ -956,3 +956,32 @@ Run 37492582973 verdicts (Phase M/N first live drive):
   decorations/{otherId}/using (client resolved {otherId} to the live
   user id) — hard checks added with split-literal honesty so only these
   two templates are claimed.
+
+## Wave 11 (session 26): the login-surface contract fixes (IUserLoginApi decode)
+
+The sandbox was reset this session (prior jadx_out/APK artifacts gone; base
+APK re-pulled from release v0.6.1-guidefix, jadx 1.5.6 reinstalled, per-dex
+decompile redone). classes2 decode (com/sandbox/login/web/IUserLoginApi —
+the login-screen API surface) exposed two response-contract defects that
+Gson could not parse, plus a systematic audit that found no others:
+
+| Route | Was | Client model (jadx) | Now |
+|---|---|---|---|
+| GET /user/api/v1/user/set-psd/param/check | data:{} (JsonSyntaxException on HttpResponse\<Long\>) | `HttpResponse<Long>` paramCheck(@Query type) | data: server-millis Long (envelope "num") |
+| POST /user/api/v1/account/invalid/check | ackPost → no data field (Boolean stayed null) | `HttpResponse<Boolean>` accountCheck(@Header bmg-device-id, @Header bmg-sign, @Query account, @Query loginTypeId, @Query type) | data: false Boolean, real handler (pre-auth, stateless) |
+
+- Value semantics: paramCheck's Long is used by the set-password flow (the
+  SetPasswordForm carries account/password/confirmPassword/userId — no
+  param field, so the Long is consumed by the caller); server-millis is the
+  type-true stand-in until the call-site decode lands. accountCheck's
+  Boolean branch (invalid vs available) is pending the LoginActivity call
+  site (classes1); "false = not invalid" is the permissive local reading.
+  Both documented as uncertain-value/type-certain — the crash itself was
+  the client-visible defect.
+- RoutingTable audit (script over all 335 entries): NO phantom H: mappings
+  (every H: name dispatches in Handlers.handle). The remaining ackPost/ackPut
+  routes were cross-checked against their client models: pay/v1 recharge
+  (raw HttpResponse), user/language, user/mac/id, user/device/id (all raw
+  HttpResponse) — generic ack is contract-true for all of them.
+- Host rig: +4 checks (Long-parse, Boolean-parse, stateless-false,
+  probe-visitor) → 426/426.

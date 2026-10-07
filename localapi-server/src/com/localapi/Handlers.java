@@ -167,7 +167,8 @@ final class Handlers {
         if ("prefectReward".equals(name)) return prefectReward(ctx, store);
         if ("idCardStatus".equals(name)) return envelope("str", "\"0\"");
         if ("idCardSubmit".equals(name)) return envelope("str", "\"0\"");
-        if ("setPsdParamCheck".equals(name)) return envelope("obj", "{}");
+        if ("setPsdParamCheck".equals(name)) return setPsdParamCheck(ctx, store);
+        if ("accountInvalidCheck".equals(name)) return accountInvalidCheck(ctx, store);
         if ("securitySettings".equals(name)) return securitySettings(ctx, store);
         if ("activityTitle".equals(name)) return activityTitle(ctx, store);
         // ---- Wave 6c: activity task chain (titles light the surface) ----
@@ -2978,6 +2979,27 @@ final class Handlers {
             }
         }
         return envelope("obj", "{\"appType\":\"android\",\"loginTime\":\"\"}");
+    }
+
+    /** GET /user/api/v1/user/set-psd/param/check — client model HttpResponse&lt;Long&gt;.
+     *  Returns the current server time (ms). The Long TYPE is client-asserted
+     *  (IUserLoginApi.paramCheck); the value semantics (a server-side param
+     *  echoed by the set-password flow) are decoded as far as the interface —
+     *  the previous {} default CRASHED Gson on HttpResponse&lt;Long&gt;. */
+    private static String setPsdParamCheck(Ctx ctx, StateStore store) {
+        return envelope("num", String.valueOf(System.currentTimeMillis()));
+    }
+
+    /** POST /user/api/v1/account/invalid/check — client model HttpResponse&lt;Boolean&gt;.
+     *  Called from the LOGIN screen (pre-auth) with account/loginTypeId/type.
+     *  Local accounts are always valid: data=false ("not invalid"). The
+     *  Boolean type is client-asserted (IUserLoginApi.accountCheck); the
+     *  call site's exact true/false branch is pending a UI decode — when the
+     *  client previously got no data field the Boolean stayed null. */
+    private static String accountInvalidCheck(Ctx ctx, StateStore store) {
+        L.i("accountInvalidCheck: account=" + ctx.query("account")
+                + " loginTypeId=" + ctx.query("loginTypeId") + " type=" + ctx.query("type"));
+        return envelope("bool", "false");
     }
 
     /** GET /user/api/v1/users/new/daily/tasks — DailyTaskResponse (7-slot strip). */

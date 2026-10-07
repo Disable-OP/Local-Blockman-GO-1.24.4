@@ -2400,3 +2400,38 @@
   now absorbed by a 3-attempt retry loop (re-open + re-find + verify).
 - Coverage stays 167 (v2/app/login asserted in run 37538041177's
   evidence; the next green run re-validates the O checks).
+
+## Session 26 (sandbox reset recovery + Wave 11 login-surface contract fixes)
+
+- ENV RESET: this sandbox lost all prior artifacts (/home/z/my-project/work/*
+  gone). Rebuilt: repo cloned to /home/z/work/Local-Blockman-GO-1.24.4
+  (branch local-api, head 637cbcb), base APK re-pulled from release
+  v0.6.1-guidefix (232MB), jadx 1.5.6 reinstalled, per-dex decompile
+  restarted (classes3/classes2 done, classes1 in flight). NOTE: jadx on
+  the 8.5MB classes.dex OOMs a concurrent second instance — decompile one
+  dex at a time, JAVA_OPTS -Xmx2000m..2400m, threads-count 1.
+- Dispatched two test-redroid runs on 637cbcb (Phase O ground_main
+  validation, session-25 leftover); runs 37568957965 + 37569020063 in
+  flight during this work.
+- ROUTINGTABLE AUDIT (script over all 335 entries): zero phantom H:
+  mappings. Cross-checked every ackPost/ackPut route against its client
+  model — all contract-true except ONE:
+- WAVE 11 FIX 1: GET /user/api/v1/user/set-psd/param/check returned
+  data:{} — Gson CRASHES parsing HttpResponse<Long> (IUserLoginApi
+  .paramCheck, classes2 com/sandbox/login/web). Now returns a Long
+  (server millis). Value semantics still pending the classes1 call-site
+  decode; type fixed, crash eliminated.
+- WAVE 11 FIX 2: POST /user/api/v1/account/invalid/check was ackPost
+  (no data field → client Boolean stayed null; unboxing = NPE risk in
+  the LoginActivity flow). New handler accountInvalidCheck returns
+  data:false (Boolean), pre-auth, stateless, query logged. True/false
+  branch semantics pending the classes1 call-site decode.
+- Host rig: +4 checks → 426/426 PASS (set-psd Long, invalid-check
+  Boolean, stateless false, probe visitor).
+- Session-25 handoff candidates triaged against coverage: weekTasks/
+  claimTask are ALREADY implemented + host-tested (RoutesTable 314/339);
+  what's missing is client assertion — needs the dvSignUp/week-task UI
+  decode from classes1 (in flight). login/change/record + password/check
+  + login-out stay implemented/host-tested, awaiting the Phase O run
+  evidence (accountRecord remains probe-gated, quote stays removed).
+- NO GameServer work.

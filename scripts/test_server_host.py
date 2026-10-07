@@ -1859,6 +1859,26 @@ def main():
                     sweep_miss.append((verb, concrete, str(resp)[:120]))
         check("sweep %d routes all reachable" % count, not sweep_miss, str(sweep_miss[:5]))
 
+        print("== login-surface contracts (IUserLoginApi decode) ==")
+        # GET /user/api/v1/user/set-psd/param/check — client model HttpResponse<Long>.
+        # The old {} default crashed Gson on the Long parse; data must be a number.
+        psd = call("GET", "/user/api/v1/user/set-psd/param/check?type=set")
+        check("set-psd param check returns Long", psd.get("code") == 1
+              and isinstance(psd.get("data"), (int, float)), str(psd)[:120])
+        # POST /user/api/v1/account/invalid/check — client model HttpResponse<Boolean>.
+        # Fired pre-auth from the login screen; no data field left Boolean null.
+        aic = call("POST", "/user/api/v1/account/invalid/check"
+                   "?account=qa_invalid_probe&loginTypeId=1&type=login")
+        check("account invalid check returns Boolean", aic.get("code") == 1
+              and isinstance(aic.get("data"), bool), str(aic)[:120])
+        aic2 = call("POST", "/user/api/v1/account/invalid/check"
+                    "?account=qa_invalid_probe2&loginTypeId=1&type=login")
+        check("account invalid check stateless false", aic2.get("code") == 1
+              and aic2.get("data") is False, str(aic2)[:120])
+        vis0 = call("POST", "/user/api/v1/visitor", {"imei": "qa_login_surface_probe"})
+        check("probe visitor unaffected", vis0.get("code") == 1
+              and bool(vis0.get("data", {}).get("accessToken")), str(vis0)[:120])
+
         print("== persistence ==")
     finally:
         proc.terminate()

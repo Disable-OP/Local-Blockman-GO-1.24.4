@@ -1315,3 +1315,29 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   check + login-out — decode started, the popup belongs to the login
   screen, not the settings), the tasks surface (dormant dvSignUp gate,
   weekTasks/claimTask), week-quest UI. NO GameServer work.
+
+## Session 26 delta (read first — Wave 11 contract fixes, sandbox-reset recovery notes)
+
+- SANDBOX RESET RECOVERY (this sandbox): artifacts now live under
+  /home/z/work/ (NOT /home/z/my-project/work): repo copy, base APK at
+  /home/z/work/dl/BlockyNexus-localapi.apk, dexes at apk_dex/, jadx_out/
+  src_classes{1..5} (classes1 = the 8.5MB classes.dex — decompile SOLO,
+  JAVA_OPTS=-Xmx2400m, threads-count 1; concurrent instances OOM-kill).
+  PAT: base64 in /home/z/work/.pat_b64 (decode per command — shell env
+  does NOT persist between tool calls; this includes GitHub API calls,
+  workflow dispatch DOES work with this PAT, run cancel does NOT).
+- Wave 11 shipped: set-psd/param/check now returns HttpResponse<Long>
+  (was {}: Gson crash); account/invalid/check returns Boolean false
+  (was ackPost: null Boolean). RoutingTable audit: no phantom mappings.
+  Host rig 426/426. See ENDPOINTS.md Wave 11.
+- Two test-redroid runs dispatched on 637cbcb (Phase O ground_main
+  validation) — check their verdicts BEFORE the next dispatch; on green,
+  regenerate COVERAGE.json (expect 167 client-asserted, O checks
+  re-validated) and verify each assertion against REQ evidence.
+- NEXT DECODES (need classes1 jadx_out — decompile if not finished):
+  1. LoginActivity paramCheck/accountCheck call sites → pin the Long
+     value semantics + the Boolean branch (then hard-check in Phase O).
+  2. dvSignUp / week-task UI chain → client-assert weekTasks/claimTask
+     (GET /user/api/v1/users/dairy/tasks/{type}, PUT .../users/tasks/
+     {type} — implemented + host-tested, client=False today).
+- NO GameServer work.

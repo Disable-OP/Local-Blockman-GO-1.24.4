@@ -186,7 +186,7 @@ public final class RoutingTable {
         "POST /pay/api/v4/pay/users/recharge|H:rechargeVip",
         "POST /shop/api/v1/new/shop/decorations/buy|H:dressBuyV2",
         "POST /shop/api/v1/new/shop/gift/suit/receive|H:suitGiftReceive",
-        "POST /user/api/v1/account/invalid/check|H:ackPost",
+        "POST /user/api/v1/account/invalid/check|H:accountInvalidCheck",
         "POST /user/api/v1/app/login|H:login",
         "POST /user/api/v1/app/renew|H:renew",
         "POST /user/api/v1/app/set-password|H:setPassword",
