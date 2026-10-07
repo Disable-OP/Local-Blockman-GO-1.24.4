@@ -1728,3 +1728,37 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   (2 threads + 2600m heap OOM-killed classes2 in this 4 GB sandbox);
   apktool 2.9.3 d --no-src for resources.arsc string resolution.
 - NO server changes (host rig 564/564 re-verified). NO GameServer work.
+
+## Session 35 FINAL delta (Wave 20a-e — read first next session)
+
+- Run-10 VERDICT: UI AUTOMATION PASS, zero FAILs (34.8 min deep). The
+  LM phase's verdict-backed evidence: Me->Setting scroll+tap GREEN,
+  Security->AccountSafe GREEN, SafeSetting -> question-SETTING flow
+  GREEN (GET users/secret/question, 2 consecutive runs 9+10 — the
+  securitySettings OMIT-fix rerouted the flow), password/check GREEN
+  (run 8). The [qp] dump PROVES the client renders the served CATALOG
+  in the Q1 popup ('What was your childhood nickna...').
+- REMAINING (exact next steps, evidence in hand):
+  1. Popup selection: the Q1 row is a non-clickable TextView inside the
+     SecretQuestionPopupWindow list; a center-tap did not register the
+     selection (the answer EditText stayed hidden — visibility gates on
+     the selection). Next: read SecretQuestionPopupWindow's item-click
+     wiring (view/widget/SecretQuestionPopupWindow.java, classes2) and
+     tap the row root / use the documented item position; the decoded
+     flow is pick Q1 -> answer -> Next (h(): validates k+m, c.set(true)
+     reveals section 2) -> pick Q2 (f = catalog minus Q1) -> answer ->
+     Confirm (f() -> setUserQuestion v1, no authCode).
+  2. After the question block, the drive was stranded one screen deep
+     (fill_q2's failure BACK + the outer back(1) double-stepped) — the
+     no-back fix is committed in 62599e0+; the Email/Phone/Modify rows
+     should now be reachable (they exist — run 8's [as] dump saw
+     'Modify Password').
+  3. Promote POST /users/secret/question/setting to a claim+hard gate
+     once the submit fires (the literal is split today: qs_lit).
+- client_asserted 152; question-GET and the SafeSetting reroute are
+  verdict-backed; the setting POST stays split-literal (no claim) until
+  its on-device verdict.
+- Releases: wip-53..56 all fast-validated GREEN (runs 189-192, 3.7-4.0
+  min — the 5-minute mandate held ALL session). Deep: run 8 FAIL(1 G
+  flake), run 9 FAIL(2 A timing flakes), run 10 PASS.
+- Engine 10068 untouched (mandate honored).

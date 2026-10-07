@@ -1639,8 +1639,9 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
         if target is None:
             print("  [skip] LM: popup row %r not found" % row_text_prefix)
             debug_dump(screen, "lm-popup")
-            adb.key(4)
-            time.sleep(2)
+            # NO back here — run-10 evidence: this path's BACK consumed the
+            # grounding screen and stranded the rest of the phase. The
+            # outer flow owns all grounding keys.
             return False
         screen.tap_node(target)
         time.sleep(2.5)

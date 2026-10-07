@@ -3167,3 +3167,30 @@
   the [LM] lines; fix hops from the [as]/[qs] dumps; promote the
   question-screen answer submit once the authCode round-trip is mapped.
   NO GameServer work; Engine 10068 untouched this session.
+
+### Session 35 cont. FINAL (deep runs 7-10 — Wave 20 verdict loop)
+
+- Run 7 (324ffdb): silent orphan-kill mid-Phase-L at ~29 min (pre-existing
+  flake family; never reached LM). Cancelled the phantom in_progress.
+- Run 8 (b96c25a + wip-53): FAIL(1) = the G inviteFriend flake only. LM
+  RAN: password/check gate GREEN; verdicts — SafeSetting misrouted to
+  unbind (root cause: securitySettings always emitted a non-null
+  secretQuestionList; the client maps non-null -> questions-finished),
+  Email/Phone below the fold, ChangePassword single-EditText.
+- Wave 20c (ad8a0ff): questionGet type-branch (0 = catalog, 1 = saved) +
+  answer-submit drive. Wave 20d (1c34312): securitySettings OMITS
+  secretQuestionList until questions exist + LM scroll + adaptive fill.
+- Run 9 (1c34312 + wip-55): FAIL(2) = A-phase timing flakes only (both
+  endpoints in the final hit list). LM: question-GET gate GREEN (the
+  reroute works); popup row tap did not register the selection (answer
+  fields stayed hidden); stranded state skipped Email/Phone/Modify.
+- Wave 20e (62599e0): [qp] popup dump + clickable-row preference +
+  selection re-verify + no-back-on-miss fix.
+- Run 10 (62599e0 + wip-56): UI AUTOMATION PASS, zero FAILs, 34.8 min.
+  [qp] proves the client renders the served CATALOG in the Q1 popup.
+  The selection mechanism (SecretQuestionPopupWindow item-click) and
+  the Email/Phone/Modify verdicts remain for the next session — the
+  exact next steps are documented in NEXT_SESSION_README.md.
+- Releases wip-53..56 fast-validated GREEN (runs 189-192, 3.7-4.0 min).
+  The 5-minute Redroid mandate held ALL session. Host rig 570/570.
+  client_asserted 152. NO GameServer work; Engine 10068 untouched.
