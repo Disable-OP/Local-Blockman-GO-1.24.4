@@ -1670,6 +1670,21 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
             ok("LM: question picked (%s; edits %d->%d)"
                % (row_text_prefix, pick_question_row.baseline_edits,
                   len(eds_after)))
+            # run-12 evidence: fa.i self-closed within ~4s of the pick (the
+            # follow-up dumps landed on SafeSetting with no POST and no
+            # back from our side). Pin the state IMMEDIATELY so the next
+            # verdict shows whether the screen is still up, what the
+            # anchor now displays, and whether the dialog path fired.
+            nodes_now = screen.dump()
+            print("  [q1-state] listview=%s edits=%d" % (
+                any(n.cls == "android.widget.ListView" for n in nodes_now),
+                len([n for n in nodes_now
+                     if n.cls.endswith("EditText") and n.center])))
+            for n in nodes_now:
+                if n.text:
+                    print("  [q1-state] %s | %r" % (
+                        n.res.rsplit("/", 1)[-1] if n.res else "",
+                        (n.text or "")[:30]))
         return picked
 
     def back(times=1):
