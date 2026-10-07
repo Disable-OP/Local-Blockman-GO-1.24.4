@@ -2011,6 +2011,43 @@ def main():
                     sweep_miss.append((verb, concrete, str(resp)[:120]))
         check("sweep %d routes all reachable" % count, not sweep_miss, str(sweep_miss[:5]))
 
+        print("== malformed request robustness (mandate 30: never 5xx/crash) ==")
+        def raw_call(method, path, body_bytes, ctype="application/json"):
+            req = urllib.request.Request(BASE + path, method=method,
+                                         data=body_bytes)
+            req.add_header("Content-Type", ctype)
+            try:
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    return r.getcode(), r.read()[:200]
+            except urllib.error.HTTPError as e:
+                return e.code, e.read()[:200]
+            except Exception as e:
+                return 0, str(e).encode()[:200]
+
+        c1, b1 = raw_call("POST", "/user/api/v1/register", b"{not json!!")
+        check("invalid JSON body answered (no 5xx/no drop)",
+              c1 in (200, 400) and b1, "%s %r" % (c1, b1[:60]))
+        c2, b2 = raw_call("POST", "/user/api/v1/login", b"", ctype="text/plain")
+        check("empty body wrong ctype answered", c2 in (200, 400) and b2,
+              "%s %r" % (c2, b2[:60]))
+        c3, b3 = raw_call("GET", "/user/api/v1/login", None)
+        check("wrong verb answered (no 5xx)", c3 in (200, 404, 405) and b3,
+              "%s %r" % (c3, b3[:60]))
+        c4, b4 = raw_call("GET", "/no/such/route", None)
+        check("unknown route graceful", c4 in (200, 404) and b4,
+              "%s %r" % (c4, b4[:60]))
+        # file store: the ids are flat uuid names; traversal shapes must
+        # resolve to "file not found", never to a directory or escape
+        for bad in ("..", "..%2F..%2Fetc%2Fpasswd", "%2e%2e"):
+            cb, bb = raw_call("GET", "/files/" + bad, None)
+            body_txt = bb.decode("utf-8", "replace")
+            check("file traversal id %r rejected" % bad,
+                  cb in (200, 400, 403, 404) and "code" in body_txt,
+                  "%s %r" % (cb, body_txt[:60]))
+        v_after = call("GET", "/config/files/blockymods-check-version")
+        check("server healthy after malformed barrage", v_after.get("code") == 1,
+              str(v_after)[:100])
+
         print("== login-surface contracts (IUserLoginApi decode) ==")
         # GET /user/api/v1/user/set-psd/param/check — client model HttpResponse<Long>.
         # The old {} default crashed Gson on the Long parse; data must be a number.

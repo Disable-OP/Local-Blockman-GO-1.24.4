@@ -400,10 +400,23 @@ public final class StateStore {
     }
 
     public synchronized byte[] readFile(String id) {
-        if (id == null || id.isEmpty() || id.contains("/")) return null;
+        // Robustness (malformed-request pass): reject separators AND the
+        // dot names outright — the file dir holds flat uuid-named files,
+        // and a bare ".." id would otherwise resolve to the parent dir
+        // (exists() true, then a directory read exception). Canonical-path
+        // containment is the backstop.
+        if (id == null || id.isEmpty() || id.contains("/")
+                || id.contains("\\") || id.equals(".") || id.equals("..")) {
+            return null;
+        }
         try {
-            File f = new File(new File(file.getParentFile(), "files"), id);
-            if (!f.exists()) return null;
+            File base = new File(file.getParentFile(), "files");
+            File f = new File(base, id);
+            if (!f.getCanonicalPath().startsWith(base.getCanonicalPath()
+                    + File.separator)) {
+                return null;
+            }
+            if (!f.exists() || !f.isFile()) return null;
             byte[] buf = new byte[(int) f.length()];
             FileInputStream in = new FileInputStream(f);
             int off = 0;
