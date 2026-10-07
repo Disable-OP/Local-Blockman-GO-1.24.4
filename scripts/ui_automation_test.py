@@ -1904,6 +1904,14 @@ def main():
                 "imei": "qa-device", "appType": "android", "os": "12"})
     check("C: register %s through the local API" % qa_uid,
           r1.get("code") == 1 and r1.get("data", {}).get("userId", 0) > 0, str(r1)[:120])
+    # Wave 15d — capture the register/set-password LOGCAT EVIDENCE the
+    # moment it exists. The end-of-run register gate reads the whole
+    # buffer; a relaunch storm (run 37611564558: 4 process deaths) rotates
+    # the early lines out and both fallback path-sets can miss. This
+    # snapshot is the rotation-proof carrier.
+    register_seen_early = (
+        "REQ POST /user/api/v1/register" in adb.raw(
+            "logcat", "-d", "-s", "LocalAPI", timeout=60))
     r2 = fcall("POST", "/user/api/v1/login", {"uid": qa_uid, "password": password})
     check("C: login with the new account", r2.get("code") == 1
           and r2.get("data", {}).get("userId") == r1.get("data", {}).get("userId"),
@@ -5148,6 +5156,10 @@ def main():
                           or "REQ POST /user/api/v1/app/set-password" in reg_hit
                           or "REQ POST /user/api/v2/app/set-password" in reg_hit
                           or "REQ POST /user/api/v1/user/register" in reg_hit
+                          # Wave 15d — rotation-proof: the register evidence
+                          # captured at the moment Phase C created the
+                          # account (survives any relaunch storm).
+                          or register_seen_early
                           # buffer-rotation-resilient fallback: the path sets
                           # (early + mid snapshots) are authoritative — the
                           # mid snapshot holds Phase D's registration fcalls

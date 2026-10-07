@@ -2884,3 +2884,22 @@
   recommend + suit page, Phase C worn-list fcall.
 - honest client_asserted = 144; host rig 458/458.
 - NO server changes. NO GameServer work.
+
+### Session 30 cont. 3 (run 37611564558: infra cascade, all Wave-15 gates green)
+
+- The fourth full run had 4 roaming-killer process deaths (A-dressitem,
+  ~D-end, H-entry, M-walk). The 3 FAILs (E-grounded, H reward claim,
+  account-creation gate) are downstream cascade: the D fast-path ran,
+  the app died again mid-E, phases F/G were skipped, and the relaunch
+  storm rotated the register line out of the logcat buffer.
+- ALL Wave-15 gates PASSED where they ran (party auth/open-list, store
+  recommend + suit page, the 4-route dress-mode chain, engine PUT,
+  friend family follow, worn-decoration fcall).
+- VIDEO DISCOVERY (probe evidence): the video template DOES fire traffic
+  on open — GET /video/api/v1/app/video/list/{type} (new + top) — those
+  template routes were already claimed; the 15a more/list attribution
+  was wrong (that route is load-more only). Video verdict closed.
+- Fixes: the final register gate now carries a rotation-proof Phase-C
+  snapshot (register_seen_early). G hand-over retry re-entry (15d)
+  still unverified (G never ran this run).
+- NO server changes. NO GameServer work.
