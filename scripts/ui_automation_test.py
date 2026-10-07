@@ -1339,14 +1339,31 @@ def main():
     # match can never hit. Each row's clickable root carries the
     # bg_content child; the server array order is [weekday, weekend,
     # sign], so the THIRD row (index 2, sorted by y) is the sign banner.
-    p_rows = [n for n in screen.dump()
-              if n.res and n.res.rsplit("/", 1)[-1] == "bg_content"
-              and n.center]
+    # PLACEMENT (run 37577912090 evidence): the hall home (rb_1) carried
+    # ZERO bg_content rows — the strip lives on an unknown tab. Walk
+    # rb_1..rb_4 and search each; the walk doubles as extra tab traffic.
+    p_rows = []
+    p_found_tab = None
+    for p_tab in ["rb_1", "rb_2", "rb_3", "rb_4"]:
+        p_tabn = screen.find(ids=[p_tab])
+        if not (p_tabn and p_tabn.center):
+            continue
+        screen.tap_node(p_tabn)
+        time.sleep(3)
+        p_rows = [n for n in screen.dump()
+                  if n.res and n.res.rsplit("/", 1)[-1] == "bg_content"
+                  and n.center]
+        if len(p_rows) >= 3:
+            p_found_tab = p_tab
+            break
+        if not adb.pid(args.package):
+            alive_or_recover_at(adb, screen, args.package, args.activity,
+                                "P-walk-%s" % p_tab)
     p_rows.sort(key=lambda n: (n.center[1], n.center[0]))
-    if len(p_rows) >= 3:
+    if len(p_rows) >= 3 and p_found_tab:
         p_sign_row = p_rows[2]
-        ok("P: %d banner rows; tapping row 2 at %s (sign)"
-           % (len(p_rows), (p_sign_row.center,)))
+        ok("P: %d banner rows on %s; tapping row 2 at %s (sign)"
+           % (len(p_rows), p_found_tab, (p_sign_row.center,)))
         screen.tap_node(p_sign_row)
         time.sleep(5)
         assert_alive(adb, args.package, "P-sign-open")
@@ -1369,9 +1386,10 @@ def main():
         alive_or_recover_at(adb, screen, args.package, args.activity,
                             "P-exit")
     else:
-        print("  [probe] P: %d bg_content banner rows on the hall (need 3; "
-              "APK predates the Wave-12 server, or the strip is not on this "
-              "screen) - non-fatal until proven" % len(p_rows))
+        print("  [probe] P: no tab carried >=3 bg_content banner rows "
+              "(max seen: %d) - the activity strip is dialog-gated or on "
+              "an undriven screen; non-fatal, evidence for the next "
+              "decode" % len(p_rows))
 
     # ------------------------------------------------- Phase B: profile edit
     # Shared editor helpers live here (Phase D reuses them). HISTORY (read
