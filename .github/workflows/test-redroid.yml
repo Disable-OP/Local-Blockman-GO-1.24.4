@@ -7,6 +7,15 @@ name: test-redroid
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "UI automation mode (fast = ~5 min CI core; full = all deep-drive phases)"
+        required: false
+        default: fast
+        type: choice
+        options:
+          - fast
+          - full
   workflow_run:
     workflows: ["build-release"]
     types: [completed]
@@ -17,7 +26,7 @@ permissions:
 jobs:
   redroid-test:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 55
+    timeout-minutes: 20
     env:
       PACKAGE: com.disabngo.blockynexus
       ACTIVITY: com.disabngo.blockynexus.view.activity.start.StartActivity
@@ -49,10 +58,10 @@ jobs:
 
       - name: Wait for Android boot
         run: |
-          for i in $(seq 1 60); do
+          for i in $(seq 1 48); do
             b=$(adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
             [ "$b" = "1" ] && echo "boot completed" && exit 0
-            echo "waiting for boot ($i/60)"; sleep 10
+            echo "waiting for boot ($i/48)"; sleep 5
           done
           echo "DEVICE FAILED TO BOOT"; exit 1
 
@@ -75,14 +84,18 @@ jobs:
           fi
 
       - name: Run UI automation suite (register, login, navigate all tabs)
-        # session 25: Phase M (VIP privilege center) + Phase N (rank podium
-        # rows 2+3, week+overall) add ~3-5 min to the 28.5-min step
-        timeout-minutes: 40
+        # FAST mode (default, user mandate 2026-10): the whole suite must
+        # stay ~5 minutes — Phase A core (visitor + tabs + boot surfaces),
+        # Phase C (fresh account via the local API), Phase D core (upgrade
+        # + restart) + assertions/crash scan. The deep-drive phases (B,
+        # E-O) are opt-in via workflow_dispatch input mode=full.
+        timeout-minutes: 12
         run: |
           python3 scripts/ui_automation_test.py \
             --serial localhost:5555 \
             --package "$PACKAGE" \
-            --activity "$ACTIVITY"
+            --activity "$ACTIVITY" \
+            --mode "${{ github.event.inputs.mode || 'fast' }}"
 
       - name: Collect diagnostics
         if: always()

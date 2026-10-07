@@ -48,6 +48,7 @@ import re
 import urllib.request
 import subprocess
 import sys
+import os
 import time
 import xml.etree.ElementTree as ET
 
@@ -1188,7 +1189,16 @@ def main():
     ap.add_argument("--package", default="com.disabngo.blockynexus")
     ap.add_argument("--activity",
                     default="com.disabngo.blockynexus.view.activity.start.StartActivity")
+    ap.add_argument("--mode", default=os.environ.get("UI_MODE", "fast"),
+                    choices=["fast", "full"],
+                    help="fast = CI core (~5 min); full = all deep phases")
     args = ap.parse_args()
+    # MODE: "fast" (default) keeps CI at ~5 minutes - boot, visitor,
+    # registration (Phase C), registered upgrade (Phase D core) and the
+    # final assertions. "full" adds every deep-drive phase (B, E-O) for
+    # evidence-gathering sessions (dispatch with UI_MODE=full / --mode full).
+    deep = (args.mode == "full")
+    print("== MODE: %s ==" % args.mode)
 
     adb = Adb(args.serial)
     screen = Screen(adb)
@@ -1226,8 +1236,11 @@ def main():
     # register-endpoint gate failed on a rotated-out buffer)
     paths_mid = []
     navigate_all_tabs(adb, screen, args.package, "A")
-    deep_drive(adb, screen, args.package, args.activity, "A",
-               set(paths_early))
+    if deep:
+        deep_drive(adb, screen, args.package, args.activity, "A",
+                   set(paths_early))
+    else:
+        print("  [skip] deep_drive (fast mode)")
     paths_a = sorted(set(paths_early) | set(localapi_paths(adb)))
     visitor_hits = [p for p in paths_a if any(
         k in p for k in ("/tourist", "/visitor", "/auth-token", "/login"))]
@@ -1369,194 +1382,197 @@ def main():
     print("== PHASE B: profile edit through the Personal Info editor ==")
     nickname = "qa%05d" % (int(time.time()) % 100000)
     guest_edited = False
+    if deep:
 
-    def tap_label(screen, label):
-        """Tap the node carrying `label` (Personal Info rows are llItem
-        containers whose child tvLeftText/tvRightText carry the texts)."""
-        n = screen.find(texts=[label])
-        if n and n.center:
-            screen.tap_node(n)
-            return True
-        return False
-
-    def editor_confirm(screen):
-        """Find and tap the editor dialog's confirm control."""
-        for rid in ["btnSure", "btn_ok", "btn_save", "btnOk", "btn_confirm"]:
-            n = screen.find(ids=[rid])
-            if n and n.center and "cancel" not in (n.res or ""):
+        def tap_label(screen, label):
+            """Tap the node carrying `label` (Personal Info rows are llItem
+            containers whose child tvLeftText/tvRightText carry the texts)."""
+            n = screen.find(texts=[label])
+            if n and n.center:
                 screen.tap_node(n)
                 return True
-        n = screen.find(texts=["OK", "Confirm", "Save", "Done", "Set",
-                               "confirm", "ok"])
-        if n and n.center:
-            screen.tap_node(n)
+            return False
+
+        def editor_confirm(screen):
+            """Find and tap the editor dialog's confirm control."""
+            for rid in ["btnSure", "btn_ok", "btn_save", "btnOk", "btn_confirm"]:
+                n = screen.find(ids=[rid])
+                if n and n.center and "cancel" not in (n.res or ""):
+                    screen.tap_node(n)
+                    return True
+            n = screen.find(texts=["OK", "Confirm", "Save", "Done", "Set",
+                                   "confirm", "ok"])
+            if n and n.center:
+                screen.tap_node(n)
+                return True
+            # the account dialogs' confirm Button has NO resource-id (v0.5.x
+            # register-dialog evidence) — fall back to any clickable Button
+            btn = next((x for x in screen.dump()
+                        if x.cls == "android.widget.Button" and x.clickable
+                        and x.center), None)
+            if btn:
+                screen.tap_node(btn)
+                return True
+            return False
+
+        def fill_focused_edit(adb, screen, value):
+            """Tap the first visible EditText, clear it, type value, hide kbd."""
+            edit = next((x for x in screen.dump()
+                         if x.cls.endswith("EditText") and x.center), None)
+            if not edit:
+                return False
+            screen.tap_node(edit)
+            time.sleep(0.5)
+            adb.key(123)  # KEYCODE_MOVE_END
+            for _ in range(40):
+                adb.key(67)  # DEL
+            adb.text(value)
+            time.sleep(0.5)
+            adb.key(111)  # ESC hides the soft keyboard so buttons are visible
+            time.sleep(1)
             return True
-        # the account dialogs' confirm Button has NO resource-id (v0.5.x
-        # register-dialog evidence) — fall back to any clickable Button
-        btn = next((x for x in screen.dump()
-                    if x.cls == "android.widget.Button" and x.clickable
-                    and x.center), None)
-        if btn:
-            screen.tap_node(btn)
+
+        def guest_tip_detected(screen):
+            """True when the guest register-upgrade Tip appeared. Its teardown is
+            the NATIVE killer (Session 11) — if it shows, stop interacting with
+            the editor at once and let Phase C's preflight recover."""
+            nodes = screen.dump()
+            joined = " ".join((n.text or "") for n in nodes)
+            has_pw = any(n.res.endswith("etPassword") for n in nodes)
+            gated = ("Set your password" in joined or "Set Password" in joined
+                     or "Log in" in joined or "Register" in joined)
+            return has_pw and (gated or any("assword" in (n.text or "") for n in nodes))
+
+        def open_personal_info_editor(adb, screen, package, tag):
+            """Me tab -> profile header -> ibMore. True when the editor is up."""
+            tab = screen.find(ids=["rb_5"])
+            if not (tab and screen.tap_node(tab)):
+                return False
+            time.sleep(4)
+            prof = screen.find(ids=["ll_top", "rl_header"])
+            if not (prof and prof.center):
+                debug_dump(screen, "profile-header-not-found")
+                return False
+            screen.tap_node(prof)
+            time.sleep(5)
+            # SOFT probe (run 37400811634): the roaming native-killer family
+            # SIGKILLs the app right here occasionally (Session 11 forensics)
+            # and the outer retry below recovers fully — a death at editor
+            # ENTRY is evidence, not a run failure. A death after the retry
+            # still fails the run through the editor_up=False path.
+            if not adb.pid(package):
+                print("  [evidence] process died entering %s-Profile (roaming "
+                      "killer family) - the phase-B retry owns recovery" % tag)
+                return False
+            ok("alive at %s-Profile" % tag)
+            ib = screen.find(ids=["ibMore"])
+            if not (ib and ib.center):
+                debug_dump(screen, "ibMore-not-found")
+                adb.key(4)
+                time.sleep(2)
+                return False
+            screen.tap_node(ib)
+            time.sleep(5)
+            # run 37476577270: the killer also strikes HERE (after ibMore, on
+            # the editor entry) — same roaming family as the B-Profile entry
+            # probe above. Evidence + False: the outer retry owns recovery and
+            # re-drives; recording a FAIL here turned a fully-green run (51
+            # endpoints, every phase after B pass) into a red run.
+            if not adb.pid(package):
+                print("  [evidence] process died entering %s-PersonalInfo "
+                      "(roaming killer family) - the phase-B retry owns "
+                      "recovery" % tag)
+                return False
+            ok("alive at %s-PersonalInfo" % tag)
             return True
-        return False
 
-    def fill_focused_edit(adb, screen, value):
-        """Tap the first visible EditText, clear it, type value, hide kbd."""
-        edit = next((x for x in screen.dump()
-                     if x.cls.endswith("EditText") and x.center), None)
-        if not edit:
-            return False
-        screen.tap_node(edit)
-        time.sleep(0.5)
-        adb.key(123)  # KEYCODE_MOVE_END
-        for _ in range(40):
-            adb.key(67)  # DEL
-        adb.text(value)
-        time.sleep(0.5)
-        adb.key(111)  # ESC hides the soft keyboard so buttons are visible
-        time.sleep(1)
-        return True
+        def editor_nickname_drive(adb, screen, package, tag, new_nick):
+            """Open the Nickname row, fill, save through BOTH confirms.
+            jadx decode (ChangeNameViewModel): row confirm -> ChangeNicknameDialog
+            (shown after GET /user/api/v1/user/nickName/free) -> its confirm is
+            what fires PUT /user/api/v2/user/nickName. Returns one of:
+            edited | gated | kicked | nodialog | norow | unknown"""
+            pid_before = adb.pid(package)
+            if not tap_label(screen, "Nickname"):
+                return "norow"
+            time.sleep(3)
+            if guest_tip_detected(screen):
+                print("  [info] guest Tip on the Nickname row — BACK-ing out")
+                adb.key(4)
+                time.sleep(2)
+                return "gated"
+            if not fill_focused_edit(adb, screen, new_nick):
+                adb.key(4)
+                time.sleep(2)
+                return "nodialog"
+            editor_confirm(screen)
+            time.sleep(3)
+            # second confirm: the ChangeNicknameDialog (free/cost notice)
+            editor_confirm(screen)
+            time.sleep(6)
+            pid_after = adb.pid(package)
+            if (pid_before and pid_after and pid_before != pid_after):
+                print("  [evidence] process self-relaunched %s -> %s (native "
+                      "kick fired inside the save window)" % (pid_before, pid_after))
+                return "kicked"
+            if guest_tip_detected(screen):
+                adb.key(4)
+                time.sleep(2)
+                return "gated"
+            assert_alive(adb, package, "%s-NickSaved" % tag)
+            return "edited"
 
-    def guest_tip_detected(screen):
-        """True when the guest register-upgrade Tip appeared. Its teardown is
-        the NATIVE killer (Session 11) — if it shows, stop interacting with
-        the editor at once and let Phase C's preflight recover."""
-        nodes = screen.dump()
-        joined = " ".join((n.text or "") for n in nodes)
-        has_pw = any(n.res.endswith("etPassword") for n in nodes)
-        gated = ("Set your password" in joined or "Set Password" in joined
-                 or "Log in" in joined or "Register" in joined)
-        return has_pw and (gated or any("assword" in (n.text or "") for n in nodes))
+        editor_up = open_personal_info_editor(adb, screen, args.package, "B")
+        if not editor_up:
+            # Evidence 37222222759: the rank/comment probes can strand the app
+            # on FriendInfoActivity (no bottom nav -> rb_5 unfindable). Start
+            # from the known main state and retry once before giving up.
+            print("  [retry] editor not reached - relaunch into the main state")
+            if relaunch_and_wait(adb, screen, args.package, args.activity,
+                                 "B-editor"):
+                editor_up = open_personal_info_editor(adb, screen, args.package,
+                                                      "B")
+        if editor_up:
+            outcome_b = editor_nickname_drive(adb, screen, args.package, "B",
+                                              nickname)
+            print("  [outcome] guest nickname drive: %s" % outcome_b)
+            log = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+            if "/user/api/v2/user/nickName" in log:
+                guest_edited = True
+                ok("B: nickname edit %r hit PUT /user/api/v2/user/nickName"
+                   % nickname)
+                shown = any(nickname in (n.text or "") for n in screen.dump())
+                print("  [%s] editor shows %r after save"
+                      % ("ok" if shown else "info", nickname))
+            elif outcome_b == "edited":
+                if "/user/api/v1/user/nickName/free" in log:
+                    print("  [info] free-check fired but no PUT — the second "
+                          "confirm (ChangeNicknameDialog) was not tapped?")
+                else:
+                    print("  [info] guest save reached no endpoint (dialog "
+                          "shape changed?)")
+            elif outcome_b == "kicked":
+                ok("B: client gate confirmed - the guest rename confirm fires "
+                   "the native kick and PUT /user/api/v2/user/nickName is never "
+                   "allowed (expected outcome; D recovers)")
+            # leave the editor either way (the kick already restarted the app;
+            # if not kicked, back out cleanly)
+            if outcome_b != "kicked":
+                adb.key(4)  # back to Profile
+                time.sleep(2)
+                adb.key(4)  # back to Me
+                time.sleep(2)
+                assert_alive(adb, args.package, "B-BackOnMe")
+        else:
+            print("  [skip] Personal Info editor not reached")
 
-    def open_personal_info_editor(adb, screen, package, tag):
-        """Me tab -> profile header -> ibMore. True when the editor is up."""
-        tab = screen.find(ids=["rb_5"])
-        if not (tab and screen.tap_node(tab)):
-            return False
-        time.sleep(4)
-        prof = screen.find(ids=["ll_top", "rl_header"])
-        if not (prof and prof.center):
-            debug_dump(screen, "profile-header-not-found")
-            return False
-        screen.tap_node(prof)
-        time.sleep(5)
-        # SOFT probe (run 37400811634): the roaming native-killer family
-        # SIGKILLs the app right here occasionally (Session 11 forensics)
-        # and the outer retry below recovers fully — a death at editor
-        # ENTRY is evidence, not a run failure. A death after the retry
-        # still fails the run through the editor_up=False path.
-        if not adb.pid(package):
-            print("  [evidence] process died entering %s-Profile (roaming "
-                  "killer family) - the phase-B retry owns recovery" % tag)
-            return False
-        ok("alive at %s-Profile" % tag)
-        ib = screen.find(ids=["ibMore"])
-        if not (ib and ib.center):
-            debug_dump(screen, "ibMore-not-found")
-            adb.key(4)
-            time.sleep(2)
-            return False
-        screen.tap_node(ib)
-        time.sleep(5)
-        # run 37476577270: the killer also strikes HERE (after ibMore, on
-        # the editor entry) — same roaming family as the B-Profile entry
-        # probe above. Evidence + False: the outer retry owns recovery and
-        # re-drives; recording a FAIL here turned a fully-green run (51
-        # endpoints, every phase after B pass) into a red run.
-        if not adb.pid(package):
-            print("  [evidence] process died entering %s-PersonalInfo "
-                  "(roaming killer family) - the phase-B retry owns "
-                  "recovery" % tag)
-            return False
-        ok("alive at %s-PersonalInfo" % tag)
-        return True
-
-    def editor_nickname_drive(adb, screen, package, tag, new_nick):
-        """Open the Nickname row, fill, save through BOTH confirms.
-        jadx decode (ChangeNameViewModel): row confirm -> ChangeNicknameDialog
-        (shown after GET /user/api/v1/user/nickName/free) -> its confirm is
-        what fires PUT /user/api/v2/user/nickName. Returns one of:
-        edited | gated | kicked | nodialog | norow | unknown"""
-        pid_before = adb.pid(package)
-        if not tap_label(screen, "Nickname"):
-            return "norow"
-        time.sleep(3)
-        if guest_tip_detected(screen):
-            print("  [info] guest Tip on the Nickname row — BACK-ing out")
-            adb.key(4)
-            time.sleep(2)
-            return "gated"
-        if not fill_focused_edit(adb, screen, new_nick):
-            adb.key(4)
-            time.sleep(2)
-            return "nodialog"
-        editor_confirm(screen)
-        time.sleep(3)
-        # second confirm: the ChangeNicknameDialog (free/cost notice)
-        editor_confirm(screen)
-        time.sleep(6)
-        pid_after = adb.pid(package)
-        if (pid_before and pid_after and pid_before != pid_after):
-            print("  [evidence] process self-relaunched %s -> %s (native "
-                  "kick fired inside the save window)" % (pid_before, pid_after))
-            return "kicked"
-        if guest_tip_detected(screen):
-            adb.key(4)
-            time.sleep(2)
-            return "gated"
-        assert_alive(adb, package, "%s-NickSaved" % tag)
-        return "edited"
-
-    editor_up = open_personal_info_editor(adb, screen, args.package, "B")
-    if not editor_up:
-        # Evidence 37222222759: the rank/comment probes can strand the app
-        # on FriendInfoActivity (no bottom nav -> rb_5 unfindable). Start
-        # from the known main state and retry once before giving up.
-        print("  [retry] editor not reached - relaunch into the main state")
-        if relaunch_and_wait(adb, screen, args.package, args.activity,
-                             "B-editor"):
-            editor_up = open_personal_info_editor(adb, screen, args.package,
-                                                  "B")
-    if editor_up:
-        outcome_b = editor_nickname_drive(adb, screen, args.package, "B",
-                                          nickname)
-        print("  [outcome] guest nickname drive: %s" % outcome_b)
-        log = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
-        if "/user/api/v2/user/nickName" in log:
-            guest_edited = True
-            ok("B: nickname edit %r hit PUT /user/api/v2/user/nickName"
-               % nickname)
-            shown = any(nickname in (n.text or "") for n in screen.dump())
-            print("  [%s] editor shows %r after save"
-                  % ("ok" if shown else "info", nickname))
-        elif outcome_b == "edited":
-            if "/user/api/v1/user/nickName/free" in log:
-                print("  [info] free-check fired but no PUT — the second "
-                      "confirm (ChangeNicknameDialog) was not tapped?")
-            else:
-                print("  [info] guest save reached no endpoint (dialog "
-                      "shape changed?)")
-        elif outcome_b == "kicked":
-            ok("B: client gate confirmed - the guest rename confirm fires "
-               "the native kick and PUT /user/api/v2/user/nickName is never "
-               "allowed (expected outcome; D recovers)")
-        # leave the editor either way (the kick already restarted the app;
-        # if not kicked, back out cleanly)
-        if outcome_b != "kicked":
-            adb.key(4)  # back to Profile
-            time.sleep(2)
-            adb.key(4)  # back to Me
-            time.sleep(2)
-            assert_alive(adb, args.package, "B-BackOnMe")
+        if guest_edited:
+            ok("B: guest profile-edit path reached the server")
+        else:
+            print("  [info] guest nickname PUT not observed; Phase D upgrades "
+                  "the session to registered and re-drives if needed")
     else:
-        print("  [skip] Personal Info editor not reached")
-
-    if guest_edited:
-        ok("B: guest profile-edit path reached the server")
-    else:
-        print("  [info] guest nickname PUT not observed; Phase D upgrades "
-              "the session to registered and re-drives if needed")
+        print("  [skip] Phase B editor drive (fast mode)")
 
     # ------------------------------------------------- Phase C: deterministic
     # account creation THROUGH the embedded server (adb port forward to the
@@ -1869,7 +1885,7 @@ def main():
                                     for n in screen.dump())
                         print("  [%s] Me tab shows the new account %r"
                               % ("ok" if shown else "info", qa_uid_d))
-                    if not guest_edited:
+                    if deep and not guest_edited:
                         # B's PUT never fires for a guest - drive the editor
                         # under the registered session now
                         if open_personal_info_editor(adb, screen,
@@ -1984,634 +2000,620 @@ def main():
     # VISITOR submit never POSTs. Phase D makes the registered session
     # reproducible - repeat the identical drive here; a POST now names
     # the visitor silence as a client-side GUEST GATE.
-    print("== PHASE E: registered-session UI clan creation ==")
-    posted_e, clan_name_e = ui_create_clan(adb, screen, args.package,
-                                           "E-clanui")
-    if posted_e:
-        ok("5r: REGISTERED session created a clan through the UI - "
-           "the visitor silence is a client-side GUEST GATE")
-    else:
-        print("  [info] registered create POST not observed (form-level "
-              "gate - headPic? deeper validation?)")
-    for _ in range(3):
-        if screen.find(ids=["rb_3"]):
-            break
-        adb.key(4)
-        time.sleep(2)
-    assert_alive(adb, args.package, "E-grounded")
-
-    # ------------------------------------------------- Phase F: own-clan surfaces
-    # Session 15 (wave 5s): Phase E's created clan persists (Phase C
-    # dissolved its own API-level clan BEFORE Phase E, so the session now
-    # OWNS a clan). Drive the OWNER-state clan surfaces through the real
-    # UI: re-enter the clan screen, find the created clan (dump-derived;
-    # the search input is a hint-text picker - wave 5n), open its
-    # homepage, and record what the client fetches for an owner
-    # (base/member/currency/bulletin are all real handlers). Discovery
-    # first: node dumps + endpoint evidence; the hard requirement is only
-    # that the app stays alive.
-    print("== PHASE F: registered-session OWN-CLAN surfaces ==")
-    # Session 17: the UI create is ICON-GATED (jadx, PATCH_PLAN Phase 7a -
-    # TribeCreateModel requires the gallery+crop icon; the submit never
-    # POSTs for ANY session state). So the own clan now comes from the API
-    # (the same local server the app itself talks to), created for the LIVE
-    # registered session via its Phase-D auth-token. Per-run unique name so
-    # the UI search is exact. The UI create (Phase E) stays as the honest
-    # probe it is; if it EVER posts, its clan name wins (new evidence).
-    own_name = None
-    live_hdr = None
-    own_clan_id = 0
-    if posted_e and clan_name_e:
-        own_name = clan_name_e
-        ok("F: UI create POSTED (%s) - using the UI-created clan" % own_name)
-    elif d_tok and d_uid_live:
-        own_name = "PersClan%d" % (int(time.time()) % 100000)
-        live_hdr = {"Access-Token": d_tok, "userId": str(d_uid_live),
-                    "language": "en"}
-        pc_form = {"name": own_name, "details": "persistent-owner",
-                   "headPic": "", "tags": [], "currency": 2}
-        pc = fcall("POST", "/clan/api/v2/clan/tribe", pc_form, headers=live_hdr)
-        if pc.get("code") != 1:
-            # the client's own fallback: golds short -> the 60-diamond path
-            print("  [info] F: golds-path create failed (%s) - trying the "
-                  "diamonds path" % str(pc)[:100])
-            pc_form["currency"] = 1
-            pc = fcall("POST", "/clan/api/v2/clan/tribe", pc_form,
-                       headers=live_hdr)
-        if pc.get("code") == 1:
-            own_clan_id = pc.get("data", {}).get("clanId", 0)
-            ok("F: persistent clan created via the local API for the live "
-               "session (%s)" % own_name)
-            pid = fcall("GET", "/clan/api/v1/clan/tribe/id", headers=live_hdr)
-            check("F: server confirms ownership (tribe/id != 0)",
-                  pid.get("code") == 1 and str(pid.get("data")) not in ("0", ""),
-                  str(pid)[:100])
+    if deep:
+        print("== PHASE E: registered-session UI clan creation ==")
+        posted_e, clan_name_e = ui_create_clan(adb, screen, args.package,
+                                               "E-clanui")
+        if posted_e:
+            ok("5r: REGISTERED session created a clan through the UI - "
+               "the visitor silence is a client-side GUEST GATE")
         else:
-            print("  [info] F: persistent clan create failed: %s"
-                  % str(pc)[:120])
-            own_name = None
-    if own_name:
-        # Boot the client WITH the clan: the restart re-fetches tribe/id at
-        # boot, so the client-side TribeCenter carries the clan before the
-        # drive (the Session 15 design premise - now actually true).
-        if clean_relaunch("F-restart-owner"):
-            ok("F: app restarted holding the persistent clan (%s)" % own_name)
-        f_before = set(localapi_paths(adb))
+            print("  [info] registered create POST not observed (form-level "
+                  "gate - headPic? deeper validation?)")
+        for _ in range(3):
+            if screen.find(ids=["rb_3"]):
+                break
+            adb.key(4)
+            time.sleep(2)
+        assert_alive(adb, args.package, "E-grounded")
 
-        def f_alive(stage):
-            if adb.pid(args.package):
-                ok("alive at %s (pid %s)" % (stage, adb.pid(args.package)))
-                return True
-            print("  [evidence] process died at %s - relaunching "
-                  "(native-kill family)" % stage)
-            return relaunch_and_wait(adb, screen, args.package, args.activity,
-                                     stage)
-
-        # ---- Session 20 (wave 6a): a REAL friendship for the invite drive.
-        # jadx decode: TribeInviteFriendListModel g.onLoad reads the greendao
-        # Friend table (P) directly — network rows reach that cache only via
-        # ChatModel v.a -> FriendApi.friendList(0, 50) -> P.b() clear +
-        # per-row insert, which fires when the Messages tab's internal
-        # rbFriend sub-tab is selected (ChatViewModel x.a num==1|2). So:
-        # register a friend candidate, owner adds + candidate accepts via
-        # the API, then tap rb_1 -> rbFriend and wait for the row.
-        friend_nick = None
-        # wave 7: the second candidate is seeded AFTER the friends-page
-        # refresh below, but the refresh wait already references it —
-        # bind it here (run 37430306318 UnboundLocalError lesson).
-        friend_nick2 = None
-        fr_uid_num = 0
-        frh = None
-        fr_uid = "fqa%05d" % (int(time.time()) % 100000)
-        fr_pw = "LocalQA%05d" % (int(time.time()) % 100000)
-        fr = fcall("POST", "/user/api/v1/register",
-                   {"uid": fr_uid, "password": fr_pw,
-                    "confirmPassword": fr_pw, "imei": "f-device",
-                    "appType": "android", "os": "12"})
-        fr_uid_num = (fr.get("data") or {}).get("userId", 0)
-        fr_tok = (fr.get("data") or {}).get("accessToken", "")
-        if fr.get("code") == 1 and fr_uid_num > 0 and live_hdr:
-            frh = {"Access-Token": fr_tok, "userId": str(fr_uid_num),
-                   "language": "en"}
-            add = fcall("POST", "/friend/api/v1/friends",
-                        {"friendId": fr_uid_num, "msg": "qa-add"},
-                        headers=live_hdr)
-            agr = fcall("PUT", "/friend/api/v1/friends/%s/agreement"
-                        % d_uid_live, None, headers=frh)
-            if add.get("code") == 1 and agr.get("code") == 1:
-                ok("F: real friendship via the API (%s <-> live session)"
-                   % fr_uid)
-                fl = fcall("GET",
-                           "/friend/api/v1/friends?pageNo=1&pageSize=20",
+        # ------------------------------------------------- Phase F: own-clan surfaces
+        # Session 15 (wave 5s): Phase E's created clan persists (Phase C
+        # dissolved its own API-level clan BEFORE Phase E, so the session now
+        # OWNS a clan). Drive the OWNER-state clan surfaces through the real
+        # UI: re-enter the clan screen, find the created clan (dump-derived;
+        # the search input is a hint-text picker - wave 5n), open its
+        # homepage, and record what the client fetches for an owner
+        # (base/member/currency/bulletin are all real handlers). Discovery
+        # first: node dumps + endpoint evidence; the hard requirement is only
+        # that the app stays alive.
+        print("== PHASE F: registered-session OWN-CLAN surfaces ==")
+        # Session 17: the UI create is ICON-GATED (jadx, PATCH_PLAN Phase 7a -
+        # TribeCreateModel requires the gallery+crop icon; the submit never
+        # POSTs for ANY session state). So the own clan now comes from the API
+        # (the same local server the app itself talks to), created for the LIVE
+        # registered session via its Phase-D auth-token. Per-run unique name so
+        # the UI search is exact. The UI create (Phase E) stays as the honest
+        # probe it is; if it EVER posts, its clan name wins (new evidence).
+        own_name = None
+        live_hdr = None
+        own_clan_id = 0
+        if posted_e and clan_name_e:
+            own_name = clan_name_e
+            ok("F: UI create POSTED (%s) - using the UI-created clan" % own_name)
+        elif d_tok and d_uid_live:
+            own_name = "PersClan%d" % (int(time.time()) % 100000)
+            live_hdr = {"Access-Token": d_tok, "userId": str(d_uid_live),
+                        "language": "en"}
+            pc_form = {"name": own_name, "details": "persistent-owner",
+                       "headPic": "", "tags": [], "currency": 2}
+            pc = fcall("POST", "/clan/api/v2/clan/tribe", pc_form, headers=live_hdr)
+            if pc.get("code") != 1:
+                # the client's own fallback: golds short -> the 60-diamond path
+                print("  [info] F: golds-path create failed (%s) - trying the "
+                      "diamonds path" % str(pc)[:100])
+                pc_form["currency"] = 1
+                pc = fcall("POST", "/clan/api/v2/clan/tribe", pc_form,
                            headers=live_hdr)
-                frow_api = next((m for m in (fl.get("data") or {}).get(
-                    "data", []) if m.get("userId") == fr_uid_num), None)
-                friend_nick = (frow_api or {}).get("nickName")
-                ok("F: friend %s listed by the server (nick=%r)"
-                   % (fr_uid_num, friend_nick)) if friend_nick else print(
-                       "  [info] F: friend %s NOT in the server list: %s"
-                       % (fr_uid_num, str(fl)[:100]))
-                # session 20 run-37409714321 fix: the ChatFragment (with the
-                # internal rbChat/rbFriend radios) is hosted by rb_4, not
-                # rb_1 (nc.java switch: 0x7F090429 = chatFragment). rb_4
-                # also requests storage permissions — dismiss defensively.
-                rb4 = screen.wait_for(ids=["rb_4"], timeout=10, poll=2)
-                if rb4 and screen.tap_node(rb4):
-                    time.sleep(4)
-                    dismiss_permission_dialogs(screen)
-                    handle_campaign_dialogs(adb, screen, "F-rb4")
-                    f_alive("F-chatpage")
-                    rbf = screen.wait_for(ids=["rbFriend"], timeout=10,
-                                          poll=2)
-                    if rbf and screen.tap_node(rbf):
-                        time.sleep(5)
-                        f_alive("F-friends-refresh")
-                        seen = screen.wait_for(
-                            texts=[n for n in (friend_nick, friend_nick2)
-                                   if n], timeout=14, poll=3) \
-                            if (friend_nick or friend_nick2) else None
-                        if seen:
-                            ok("F: friend row %r visible on the Friends "
-                               "page (greendao cache refreshed)"
-                               % seen.text)
-                        else:
-                            print("  [info] F: friend rows %r/%r not on the "
-                                  "Friends page (cache timing)"
-                                  % (friend_nick, friend_nick2))
-                    else:
-                        print("  [info] F: internal rbFriend not found "
-                              "(Messages layout changed?)")
-                else:
-                    print("  [info] F: rb_4 not found (tab bar unavailable)")
+            if pc.get("code") == 1:
+                own_clan_id = pc.get("data", {}).get("clanId", 0)
+                ok("F: persistent clan created via the local API for the live "
+                   "session (%s)" % own_name)
+                pid = fcall("GET", "/clan/api/v1/clan/tribe/id", headers=live_hdr)
+                check("F: server confirms ownership (tribe/id != 0)",
+                      pid.get("code") == 1 and str(pid.get("data")) not in ("0", ""),
+                      str(pid)[:100])
             else:
-                print("  [info] F: API friendship failed: add=%s agr=%s"
-                      % (str(add)[:80], str(agr)[:80]))
-        else:
-            print("  [info] F: friend candidate register failed: %s"
-                  % str(fr)[:100])
+                print("  [info] F: persistent clan create failed: %s"
+                      % str(pc)[:120])
+                own_name = None
+        if own_name:
+            # Boot the client WITH the clan: the restart re-fetches tribe/id at
+            # boot, so the client-side TribeCenter carries the clan before the
+            # drive (the Session 15 design premise - now actually true).
+            if clean_relaunch("F-restart-owner"):
+                ok("F: app restarted holding the persistent clan (%s)" % own_name)
+            f_before = set(localapi_paths(adb))
 
-        # wave 7 (session 21): a SECOND friend candidate - the invite
-        # screen renders one row per greendao Friend row, so a denser list
-        # gives the row-find a fallback (the standing session-20 next-step
-        # list suggested seeding 2 friends for the single-run POST catch).
-        friend_nick2 = None
-        f2_uid = "fqb%05d" % (int(time.time()) % 100000)
-        f2_pw = "LocalQA%05d" % (int(time.time()) % 100000)
-        f2 = fcall("POST", "/user/api/v1/register",
-                   {"uid": f2_uid, "password": f2_pw,
-                    "confirmPassword": f2_pw, "imei": "f2-device",
-                    "appType": "android", "os": "12"})
-        f2_uid_num = (f2.get("data") or {}).get("userId", 0)
-        f2_tok = (f2.get("data") or {}).get("accessToken", "")
-        if f2.get("code") == 1 and f2_uid_num > 0 and live_hdr:
-            f2h = {"Access-Token": f2_tok, "userId": str(f2_uid_num),
-                   "language": "en"}
-            add2 = fcall("POST", "/friend/api/v1/friends",
-                         {"friendId": f2_uid_num, "msg": "qa-add2"},
-                         headers=live_hdr)
-            agr2 = fcall("PUT", "/friend/api/v1/friends/%s/agreement"
-                         % d_uid_live, None, headers=f2h)
-            if add2.get("code") == 1 and agr2.get("code") == 1:
-                fl2 = fcall("GET",
-                            "/friend/api/v1/friends?pageNo=1&pageSize=20",
+            def f_alive(stage):
+                if adb.pid(args.package):
+                    ok("alive at %s (pid %s)" % (stage, adb.pid(args.package)))
+                    return True
+                print("  [evidence] process died at %s - relaunching "
+                      "(native-kill family)" % stage)
+                return relaunch_and_wait(adb, screen, args.package, args.activity,
+                                         stage)
+
+            # ---- Session 20 (wave 6a): a REAL friendship for the invite drive.
+            # jadx decode: TribeInviteFriendListModel g.onLoad reads the greendao
+            # Friend table (P) directly — network rows reach that cache only via
+            # ChatModel v.a -> FriendApi.friendList(0, 50) -> P.b() clear +
+            # per-row insert, which fires when the Messages tab's internal
+            # rbFriend sub-tab is selected (ChatViewModel x.a num==1|2). So:
+            # register a friend candidate, owner adds + candidate accepts via
+            # the API, then tap rb_1 -> rbFriend and wait for the row.
+            friend_nick = None
+            # wave 7: the second candidate is seeded AFTER the friends-page
+            # refresh below, but the refresh wait already references it —
+            # bind it here (run 37430306318 UnboundLocalError lesson).
+            friend_nick2 = None
+            fr_uid_num = 0
+            frh = None
+            fr_uid = "fqa%05d" % (int(time.time()) % 100000)
+            fr_pw = "LocalQA%05d" % (int(time.time()) % 100000)
+            fr = fcall("POST", "/user/api/v1/register",
+                       {"uid": fr_uid, "password": fr_pw,
+                        "confirmPassword": fr_pw, "imei": "f-device",
+                        "appType": "android", "os": "12"})
+            fr_uid_num = (fr.get("data") or {}).get("userId", 0)
+            fr_tok = (fr.get("data") or {}).get("accessToken", "")
+            if fr.get("code") == 1 and fr_uid_num > 0 and live_hdr:
+                frh = {"Access-Token": fr_tok, "userId": str(fr_uid_num),
+                       "language": "en"}
+                add = fcall("POST", "/friend/api/v1/friends",
+                            {"friendId": fr_uid_num, "msg": "qa-add"},
                             headers=live_hdr)
-                f2row = next((m for m in (fl2.get("data") or {}).get(
-                    "data", []) if m.get("userId") == f2_uid_num), None)
-                friend_nick2 = (f2row or {}).get("nickName")
-                ok("F: second friendship via the API (%s, nick=%r)"
-                   % (f2_uid, friend_nick2))
-            else:
-                print("  [info] F: second friendship failed: %s %s"
-                      % (str(add2)[:80], str(agr2)[:80]))
-        else:
-            print("  [info] F: second friend candidate register failed: %s"
-                  % str(f2)[:100])
-
-        # tab3 as a CLAN OWNER: dump it (evidence - does the owner state
-        # change the tab3 layout? does the clan name appear here already?)
-        tab3f = screen.find(ids=["rb_3"])
-        if tab3f and screen.tap_node(tab3f):
-            time.sleep(4)
-            for x in screen.dump():
-                if x.res or x.text or x.desc:
-                    print("  F-tab3] %s | text=%r desc=%r" % (
-                        x.res.rsplit("/", 1)[-1] if x.res else "",
-                        x.text[:28], x.desc[:24]))
-            f_alive("F-tab3")
-            # 5t v2 (run 37335622091 F-tab3 dump): for a clan OWNER tab3 IS
-            # the clan dashboard — tvClanName carries the clan name,
-            # rl_donate/Chief/'1/22' widgets render, and rlEnterClan
-            # ('Enter Clan') opens the clan homepage DIRECTLY. The old
-            # ivTribe/ivClanMsg0 ids and the list-search path stay as the
-            # fallback for non-owner layouts.
-            own = None
-            sheet_pre = False
-            guide_left = False
-            if screen.find(ids=["tvClanName"]):
-                ok("F: owner dashboard on tab3 (tvClanName=%s)" % own_name)
-                enter = screen.find(ids=["rlEnterClan"]) \
-                    or screen.find(texts=["Enter Clan"])
-                if enter and screen.tap_node(enter):
-                    time.sleep(6)
-                    if f_alive("F-clanhome-direct"):
-                        for x in screen.dump():
-                            if x.res or x.text or x.desc:
-                                print("  F-clanhome-direct] %s | text=%r" % (
-                                    x.res.rsplit("/", 1)[-1] if x.res
-                                    else "", x.text[:28]))
-                        # 5t v3/v6 (runs 37338438610, 37342075770,
-                        # 37344788918, 37348093722): entering the clan
-                        # homepage queues the one-time TribeSettingGuide
-                        # (self-clears ~20s, may RE-SHOW after the Notice
-                        # Board close — v5 evidence) and the "Notice Board"
-                        # bulletin dialog (btnSure CLOSE). uiautomator dumps
-                        # only the ACTIVE window. Settle loop: CLOSE the
-                        # Notice Board whenever up, WAIT OUT the guide
-                        # (tapping it re-shows it — Ta label -> f() ->
-                        # H()+Ta(true).show()), until a homepage marker or
-                        # the budget ends.
-                        settle_deadline = time.time() + 100
-                        guide_polls = 0
-                        label_tapped = False
-                        while time.time() < settle_deadline:
-                            d_settle = screen.dump()
-                            texts_now = [(x.text or "") for x in d_settle]
-                            if "Notice Board" in texts_now:
-                                close = next(
-                                    (x for x in d_settle
-                                     if x.res.rsplit("/", 1)[-1] == "btnSure"
-                                     and x.center), None)
-                                if close:
-                                    screen.tap_node(close)
-                                    ok("F: Notice Board dialog closed")
-                                guide_polls = 0
-                                time.sleep(3)
-                                continue
-                            if any("Authentication-free mode" in t
-                                   for t in texts_now):
-                                # 5t v9 decode: the I()-shown guide (a=false)
-                                # has ONLY the top-right label - its a() opens
-                                # the sheet AND f()-shows the a=true guide,
-                                # which (hypothesis from the Ta.a variant +
-                                # the binding) carries the bottom 'Clan
-                                # Settings' bar whose b() dismisses guide +
-                                # sheet and opens sa.b. Dance: label first,
-                                # then the bar, then BACK from sa.b.
-                                guide_polls += 1
-                                if guide_polls > 14:
-                                    print("  [evidence] F: guide dance gave "
-                                          "up after %d polls" % guide_polls)
-                                    break
-                                if not label_tapped:
-                                    label = next(
-                                        (x for x in d_settle
-                                         if "Authentication-free mode"
-                                         in (x.text or "") and x.center), None)
-                                    if label and screen.tap_node(label):
-                                        label_tapped = True
-                                        ok("F: guide label tapped (sheet + "
-                                           "a=true guide expected)")
-                                    time.sleep(4)
-                                    continue
-                                bar = next(
-                                    (x for x in d_settle
-                                     if (x.text or "") == "Clan Settings"
-                                     and x.center), None)
-                                if bar and screen.tap_node(bar):
-                                    guide_left = True
-                                    ok("F: guide left via its 'Clan "
-                                       "Settings' bar (b()) - BACKing "
-                                       "from sa.b")
-                                    break
-                                print("  [evidence] F: no 'Clan Settings' "
-                                      "bar on the a=true guide (poll %d)"
-                                      % guide_polls)
-                                time.sleep(4)
-                                continue
-                            break
-                        if guide_left:
-                            adb.key(4)  # leave sa.b - back to the homepage
-                            time.sleep(4)
-                        if sheet_pre:
-                            own = None  # the sheet window hides the homepage
-                        else:
-                            own = screen.wait_for(texts=[own_name],
-                                                  timeout=14, poll=3)
-                        if not own:
-                            # 5t v4: the name text may not render where the
-                            # post-close dump expects; the top-right id-less
-                            # ic_more ImageButton is the homepage's
-                            # distinctive control (and the F2 entry anyway -
-                            # the homepage block's tap on it opens the
-                            # settings sheet directly).
-                            for x in screen.dump():
-                                if x.center and x.cls.endswith("ImageButton"):
-                                    cx, cy = x.center
-                                    if cy < 140 and cx > 360:
-                                        own = x
-                                        ok("F: homepage detected via the "
-                                           "top-right ic_more")
-                                        break
-                        if not own:
-                            print("  [evidence] F: screen after the Notice "
-                                  "Board close:")
-                            for x in screen.dump():
-                                if x.res or x.text or x.desc:
-                                    print("  F-afterclose] %s | text=%r" % (
-                                        x.res.rsplit("/", 1)[-1] if x.res
-                                        else "", x.text[:28]))
-                        if own:
-                            ok("F: clan homepage reached directly via "
-                               "rlEnterClan")
-            for entry, stage in (tuple() if own else
-                                 (("ivTribe", "F-tribeentry"),
-                                  ("ivClanMsg0", "F-clanmsg"))):
-                node = screen.find(ids=[entry])
-                if not (node and screen.tap_node(node)):
-                    print("  [skip] F: %s not found on tab3" % entry)
-                    continue
-                time.sleep(5)
-                if not f_alive(stage):
-                    break
-                for x in screen.dump():
-                    if x.res or x.text or x.desc:
-                        print("  %s] %s | text=%r" % (
-                            stage, x.res.rsplit("/", 1)[-1] if x.res
-                            else "", x.text[:28]))
-                own = screen.find(texts=[own_name])
-                if own and own.center:
-                    ok("F: own clan %s reachable via %s" % (own_name,
-                                                            entry))
-                    break
-                # not here. BACK only if we actually LEFT the main screen
-                # (the bottom nav is gone) — a no-op entry tap followed by
-                # BACK would exit the app (5s v4 guard)
-                if screen.find(ids=["rb_3"]):
-                    print("  [info] F: %s tap was a no-op (still on tab3)"
-                          % entry)
-                    continue
-                adb.key(4)
-                time.sleep(2)
-                f_alive("%s-back" % stage)
-                own = None
-            if not own:
-                # re-enter the clan screen (rlSearchClan - established id)
-                clanrow = screen.find(ids=["rlSearchClan"])
-                if not (clanrow and screen.tap_node(clanrow)):
-                    clanrow = screen.find(texts=["Find Clans"])
-                    clanrow = (clanrow and screen.tap_node(clanrow)
-                               and clanrow) or None
-                if clanrow:
-                    time.sleep(5)
-                    f_alive("F-clanscreen")
-                    for x in screen.dump():
-                        if x.res or x.text or x.desc:
-                            print("  F-clanscreen] %s | text=%r" % (
-                                x.res.rsplit("/", 1)[-1] if x.res else "",
-                                x.text[:28]))
-                    own = screen.find(texts=[own_name])
-                    if not own:
-                        # 5s v2 evidence (run 37255687401 + localapi.txt):
-                        # tribeRecommendation returns ALL tribes — the own
-                        # clan IS in the list, usually below the fold.
-                        # Swipe rvData up once and look again (no typing).
-                        rv = screen.find(ids=["rvData"])
-                        if rv and rv.bounds:
-                            l, t, r, b = rv.bounds
-                            adb.sh("input swipe %d %d %d %d 400"
-                                   % ((l + r) // 2, b - 80,
-                                      (l + r) // 2, t + 80))
-                            time.sleep(3)
-                            f_alive("F-clanscreen-swiped")
-                            for x in screen.dump():
-                                if x.res or x.text or x.desc:
-                                    print("  F-clanscreen-swiped] %s | "
-                                          "text=%r" % (
-                                              x.res.rsplit("/", 1)[-1]
-                                              if x.res else "",
-                                              x.text[:28]))
-                        own = screen.find(texts=[own_name])
-                    if not own:
-                        # exact-name search. 5s v3 decode (jadx
-                        # activity_tribe_search.xml): the input IS a real
-                        # EditText (tvTitle, hint tribe_search_hint) in the
-                        # toolbar + an ID-LESS search Button right of it.
-                        # 5s v2 evidence: the search fired twice yet
-                        # returned 97b EMPTY — the typed name was mangled
-                        # (wave-5q IME-autocorrect trap). So: type,
-                        # VERIFY the EditText content, then tap the search
-                        # Button (fallback key(66)).
-                        edit = None
-                        for attempt in range(3):
-                            edit = next((x for x in screen.dump()
-                                         if x.center
-                                         and x.cls.endswith("EditText")
-                                         and (x.text or "")
-                                         .startswith("Enter clan")), None)
-                            if edit:
-                                break
-                            print("  [evidence] F: search-input lookup "
-                                  "miss #%d (uiautomator dump raced the "
-                                  "banner carousel?)" % (attempt + 1))
-                            time.sleep(3)
-                        if edit:
-                            screen.tap_node(edit)
-                            time.sleep(1)
-                            adb.text(own_name)
-                            time.sleep(1)
-                            typed = None
-                            for x in screen.dump():
-                                if x.cls.endswith("EditText") and x.center:
-                                    typed = x.text or ""
-                                    break
-                            ok("F: tvTitle now holds %r (wanted %r)"
-                               % (typed, own_name))
-                            if typed != own_name:
-                                # retype once: clear (select-all+del is
-                                # unreliable over adb) — retype appends on
-                                # some IMEs, so BACK-space the difference
-                                if typed:
-                                    adb.key(67)  # DEL
-                                    for _ in range(len(typed) + 2):
-                                        adb.key(67)
-                                        time.sleep(0.1)
-                                adb.text(own_name)
-                                time.sleep(1)
-                                for x in screen.dump():
-                                    if x.cls.endswith("EditText") \
-                                            and x.center:
-                                        typed = x.text or ""
-                                        break
-                                ok("F: tvTitle after retype %r" % typed)
-                            # the id-less search Button sits RIGHT of
-                            # tvTitle on the same toolbar row
-                            btn = None
-                            if edit.bounds:
-                                el, et, er, eb = edit.bounds
-                                for x in screen.dump():
-                                    if not (x.clickable and x.bounds
-                                            and x.cls.endswith("Button")):
-                                        continue
-                                    bl, bt, br, bb = x.bounds
-                                    if abs((bt + bb) // 2
-                                           - (et + eb) // 2) < 30 \
-                                            and bl >= er - 10:
-                                        btn = x
-                                        break
-                            if btn:
-                                print("  [info] F: search Button %s "
-                                      "bounds=%s" % (
-                                          btn.res.rsplit("/", 1)[-1]
-                                          if btn.res else "<idless>",
-                                          btn.bounds))
-                                screen.tap_node(btn)
-                            else:
-                                print("  [evidence] F: no search Button "
-                                      "found - falling back to key(66)")
-                                adb.key(66)  # IME action
+                agr = fcall("PUT", "/friend/api/v1/friends/%s/agreement"
+                            % d_uid_live, None, headers=frh)
+                if add.get("code") == 1 and agr.get("code") == 1:
+                    ok("F: real friendship via the API (%s <-> live session)"
+                       % fr_uid)
+                    fl = fcall("GET",
+                               "/friend/api/v1/friends?pageNo=1&pageSize=20",
+                               headers=live_hdr)
+                    frow_api = next((m for m in (fl.get("data") or {}).get(
+                        "data", []) if m.get("userId") == fr_uid_num), None)
+                    friend_nick = (frow_api or {}).get("nickName")
+                    ok("F: friend %s listed by the server (nick=%r)"
+                       % (fr_uid_num, friend_nick)) if friend_nick else print(
+                           "  [info] F: friend %s NOT in the server list: %s"
+                           % (fr_uid_num, str(fl)[:100]))
+                    # session 20 run-37409714321 fix: the ChatFragment (with the
+                    # internal rbChat/rbFriend radios) is hosted by rb_4, not
+                    # rb_1 (nc.java switch: 0x7F090429 = chatFragment). rb_4
+                    # also requests storage permissions — dismiss defensively.
+                    rb4 = screen.wait_for(ids=["rb_4"], timeout=10, poll=2)
+                    if rb4 and screen.tap_node(rb4):
+                        time.sleep(4)
+                        dismiss_permission_dialogs(screen)
+                        handle_campaign_dialogs(adb, screen, "F-rb4")
+                        f_alive("F-chatpage")
+                        rbf = screen.wait_for(ids=["rbFriend"], timeout=10,
+                                              poll=2)
+                        if rbf and screen.tap_node(rbf):
                             time.sleep(5)
-                            f_alive("F-clanscreen-search")
-                            # 5n/5p evidence: the first BACK after a search
-                            # only closes the IME — dismiss it so the result
-                            # row's center is not covered by the keyboard
-                            adb.key(4)
-                            time.sleep(2)
-                            f_alive("F-clanscreen-imeclosed")
-                            for x in screen.dump():
-                                if x.res or x.text or x.desc:
-                                    print("  F-results] %s | text=%r" % (
-                                        x.res.rsplit("/", 1)[-1]
-                                        if x.res else "", x.text[:28]))
-                            own = screen.find(texts=[own_name])
-                            if not own:
-                                # one honest re-look: the results may need
-                                # another beat to render after the IME closes
-                                time.sleep(4)
-                                own = screen.find(texts=[own_name])
+                            f_alive("F-friends-refresh")
+                            seen = screen.wait_for(
+                                texts=[n for n in (friend_nick, friend_nick2)
+                                       if n], timeout=14, poll=3) \
+                                if (friend_nick or friend_nick2) else None
+                            if seen:
+                                ok("F: friend row %r visible on the Friends "
+                                   "page (greendao cache refreshed)"
+                                   % seen.text)
+                            else:
+                                print("  [info] F: friend rows %r/%r not on the "
+                                      "Friends page (cache timing)"
+                                      % (friend_nick, friend_nick2))
                         else:
-                            print("  [evidence] F: no search-input node in "
-                                  "3 dumps - cannot exact-name search")
-                    elif own and not own.center:
-                        print("  [evidence] F: own-clan node present but "
-                              "bounds-less (dump race) - retapping dump")
-                        own = screen.wait_for(texts=[own_name],
-                                              timeout=15, poll=3)
-            if (own and own.center) or sheet_pre:
-                if own and own.center:
-                    ok("F: own clan %s surfaced on the clan screens" % own_name)
-                    screen.tap_node(own)
-                    time.sleep(6)
+                            print("  [info] F: internal rbFriend not found "
+                                  "(Messages layout changed?)")
+                    else:
+                        print("  [info] F: rb_4 not found (tab bar unavailable)")
                 else:
-                    ok("F: settings sheet pre-opened through the guide "
-                       "label (homepage never fully settled)")
-                    time.sleep(2)
-                f_alive("F-clanhome")
+                    print("  [info] F: API friendship failed: add=%s agr=%s"
+                          % (str(add)[:80], str(agr)[:80]))
+            else:
+                print("  [info] F: friend candidate register failed: %s"
+                      % str(fr)[:100])
+
+            # wave 7 (session 21): a SECOND friend candidate - the invite
+            # screen renders one row per greendao Friend row, so a denser list
+            # gives the row-find a fallback (the standing session-20 next-step
+            # list suggested seeding 2 friends for the single-run POST catch).
+            friend_nick2 = None
+            f2_uid = "fqb%05d" % (int(time.time()) % 100000)
+            f2_pw = "LocalQA%05d" % (int(time.time()) % 100000)
+            f2 = fcall("POST", "/user/api/v1/register",
+                       {"uid": f2_uid, "password": f2_pw,
+                        "confirmPassword": f2_pw, "imei": "f2-device",
+                        "appType": "android", "os": "12"})
+            f2_uid_num = (f2.get("data") or {}).get("userId", 0)
+            f2_tok = (f2.get("data") or {}).get("accessToken", "")
+            if f2.get("code") == 1 and f2_uid_num > 0 and live_hdr:
+                f2h = {"Access-Token": f2_tok, "userId": str(f2_uid_num),
+                       "language": "en"}
+                add2 = fcall("POST", "/friend/api/v1/friends",
+                             {"friendId": f2_uid_num, "msg": "qa-add2"},
+                             headers=live_hdr)
+                agr2 = fcall("PUT", "/friend/api/v1/friends/%s/agreement"
+                             % d_uid_live, None, headers=f2h)
+                if add2.get("code") == 1 and agr2.get("code") == 1:
+                    fl2 = fcall("GET",
+                                "/friend/api/v1/friends?pageNo=1&pageSize=20",
+                                headers=live_hdr)
+                    f2row = next((m for m in (fl2.get("data") or {}).get(
+                        "data", []) if m.get("userId") == f2_uid_num), None)
+                    friend_nick2 = (f2row or {}).get("nickName")
+                    ok("F: second friendship via the API (%s, nick=%r)"
+                       % (f2_uid, friend_nick2))
+                else:
+                    print("  [info] F: second friendship failed: %s %s"
+                          % (str(add2)[:80], str(agr2)[:80]))
+            else:
+                print("  [info] F: second friend candidate register failed: %s"
+                      % str(f2)[:100])
+
+            # tab3 as a CLAN OWNER: dump it (evidence - does the owner state
+            # change the tab3 layout? does the clan name appear here already?)
+            tab3f = screen.find(ids=["rb_3"])
+            if tab3f and screen.tap_node(tab3f):
+                time.sleep(4)
                 for x in screen.dump():
                     if x.res or x.text or x.desc:
-                        print("  F-clanhome] %s | text=%r desc=%r" % (
+                        print("  F-tab3] %s | text=%r desc=%r" % (
                             x.res.rsplit("/", 1)[-1] if x.res else "",
                             x.text[:28], x.desc[:24]))
-                f_new = sorted(set(localapi_paths(adb)) - f_before)
-                f_clan = [p for p in f_new if "/clan/" in p]
-                if f_clan:
-                    ok("F: own-clan surfaces hit %s" % f_clan)
-                else:
-                    print("  [info] F: no NEW /clan/ endpoints from the "
-                          "own-clan drive (homepage may be cached state)")
-                # ------------------------------------------------- F2: the
-                # clan-UPDATE form. Client chain (jadx, classes2, session
-                # 17 decompile): TribeHasFragment (fragment_tribe_has - the
-                # top-RIGHT id-less ImageButton, ic_more, tag binding_2 =
-                # command o) -> TribeHasViewModel H() BottomDialog (items:
-                # Clan Settings [chief], Edit Profile, Manage Members,
-                # Cancel) -> "Edit Profile" opens the CREATE template in
-                # EDIT mode (bundle is.create=false; name/details/ico.url
-                # pre-filled). Submit = the "Modify" Button (binding_7 =
-                # command o = i() -> TribeApi.clanUpdate; no icon, no
-                # golds gate). Update validation REQUIRES 1..4 tags and a
-                # non-empty introduction - our clan ships tags=[] so the
-                # drive adds one through the same Add Tag dialog as the
-                # create flow. A one-time TribeSettingGuideDialog may cover
-                # the homepage: its top-right label tap opens the SAME
-                # sheet (and consumes the guide).
-
-                def put_tribe_count():
-                    log = adb.raw("logcat", "-d", "-s", "LocalAPI",
-                                  timeout=60)
-                    return sum(1 for line in log.splitlines()
-                               if "REQ PUT /clan/api/v1/clan/tribe" in line
-                               and "/clan/api/v1/clan/tribe/member"
-                               not in line)
-
-                puts_before = put_tribe_count()
-                guide = next((x for x in screen.dump()
-                              if "join clan" in (x.text or "") and x.center),
-                             None)
-                if guide:
-                    print("  [evidence] F2: one-time TribeSettingGuideDialog "
-                          "is up - its top-right label tap opens the "
-                          "settings sheet (and re-shows the guide: wait "
-                          "it out)")
-                    screen.tap_node(guide)
-                    # f() = H() (sheet) + Ta(true).show() — the guide covers
-                    # the sheet again and self-clears (~20s, run evidence)
-                    sheet = screen.wait_for(texts=["Edit Profile"],
-                                            timeout=30, poll=4)
-                else:
-                    sheet = screen.find(texts=["Edit Profile"])
-                if not sheet:
-                    more = None
-                    for x in screen.dump():
-                        if not (x.center and x.cls.endswith("ImageButton")):
-                            continue
-                        cx, cy = x.center
-                        if cy < 140 and cx > 360:
-                            more = x
-                            break
-                    if more and screen.tap_node(more):
-                        print("  [evidence] F2: ic_more (top-right id-less "
-                              "ImageButton) tapped")
-                        sheet = screen.wait_for(texts=["Edit Profile"],
-                                                timeout=12, poll=3)
-                    else:
-                        print("  [info] F2: no top-right ImageButton found "
-                              "- cannot open the settings sheet")
-                if sheet and sheet.center:
-                    ok("F2: settings sheet shows 'Edit Profile'")
-                    screen.tap_node(sheet)
-                    time.sleep(5)
-                    f_alive("F2-editform")
-                    title = screen.find(ids=["tv_title"]) \
-                        or screen.find(ids=["tvTemplateTitle"])
-                    ok("F2: edit form title=%r (want 'Edit Clan')"
-                       % (title.text if title else None))
-                    name_in = screen.find(ids=["etTribeName"])
-                    new_name = "EditClan%05d" % (int(time.time()) % 100000)
-                    typed = None
-                    if name_in and name_in.center:
-                        screen.tap_node(name_in)
-                        time.sleep(1)
-                        for _ in range(len(own_name) + 4):
-                            adb.key(67)  # DEL the pre-filled name
-                        time.sleep(0.5)
-                        adb.text(new_name)
-                        time.sleep(1)
-                        adb.key(4)  # close the IME
-                        time.sleep(1)
-                        for x in screen.dump():
-                            if x.cls.endswith("EditText") and x.center \
-                                    and x.res.rsplit("/", 1)[-1] == \
-                                    "etTribeName":
-                                typed = x.text or ""
+                f_alive("F-tab3")
+                # 5t v2 (run 37335622091 F-tab3 dump): for a clan OWNER tab3 IS
+                # the clan dashboard — tvClanName carries the clan name,
+                # rl_donate/Chief/'1/22' widgets render, and rlEnterClan
+                # ('Enter Clan') opens the clan homepage DIRECTLY. The old
+                # ivTribe/ivClanMsg0 ids and the list-search path stay as the
+                # fallback for non-owner layouts.
+                own = None
+                sheet_pre = False
+                guide_left = False
+                if screen.find(ids=["tvClanName"]):
+                    ok("F: owner dashboard on tab3 (tvClanName=%s)" % own_name)
+                    enter = screen.find(ids=["rlEnterClan"]) \
+                        or screen.find(texts=["Enter Clan"])
+                    if enter and screen.tap_node(enter):
+                        time.sleep(6)
+                        if f_alive("F-clanhome-direct"):
+                            for x in screen.dump():
+                                if x.res or x.text or x.desc:
+                                    print("  F-clanhome-direct] %s | text=%r" % (
+                                        x.res.rsplit("/", 1)[-1] if x.res
+                                        else "", x.text[:28]))
+                            # 5t v3/v6 (runs 37338438610, 37342075770,
+                            # 37344788918, 37348093722): entering the clan
+                            # homepage queues the one-time TribeSettingGuide
+                            # (self-clears ~20s, may RE-SHOW after the Notice
+                            # Board close — v5 evidence) and the "Notice Board"
+                            # bulletin dialog (btnSure CLOSE). uiautomator dumps
+                            # only the ACTIVE window. Settle loop: CLOSE the
+                            # Notice Board whenever up, WAIT OUT the guide
+                            # (tapping it re-shows it — Ta label -> f() ->
+                            # H()+Ta(true).show()), until a homepage marker or
+                            # the budget ends.
+                            settle_deadline = time.time() + 100
+                            guide_polls = 0
+                            label_tapped = False
+                            while time.time() < settle_deadline:
+                                d_settle = screen.dump()
+                                texts_now = [(x.text or "") for x in d_settle]
+                                if "Notice Board" in texts_now:
+                                    close = next(
+                                        (x for x in d_settle
+                                         if x.res.rsplit("/", 1)[-1] == "btnSure"
+                                         and x.center), None)
+                                    if close:
+                                        screen.tap_node(close)
+                                        ok("F: Notice Board dialog closed")
+                                    guide_polls = 0
+                                    time.sleep(3)
+                                    continue
+                                if any("Authentication-free mode" in t
+                                       for t in texts_now):
+                                    # 5t v9 decode: the I()-shown guide (a=false)
+                                    # has ONLY the top-right label - its a() opens
+                                    # the sheet AND f()-shows the a=true guide,
+                                    # which (hypothesis from the Ta.a variant +
+                                    # the binding) carries the bottom 'Clan
+                                    # Settings' bar whose b() dismisses guide +
+                                    # sheet and opens sa.b. Dance: label first,
+                                    # then the bar, then BACK from sa.b.
+                                    guide_polls += 1
+                                    if guide_polls > 14:
+                                        print("  [evidence] F: guide dance gave "
+                                              "up after %d polls" % guide_polls)
+                                        break
+                                    if not label_tapped:
+                                        label = next(
+                                            (x for x in d_settle
+                                             if "Authentication-free mode"
+                                             in (x.text or "") and x.center), None)
+                                        if label and screen.tap_node(label):
+                                            label_tapped = True
+                                            ok("F: guide label tapped (sheet + "
+                                               "a=true guide expected)")
+                                        time.sleep(4)
+                                        continue
+                                    bar = next(
+                                        (x for x in d_settle
+                                         if (x.text or "") == "Clan Settings"
+                                         and x.center), None)
+                                    if bar and screen.tap_node(bar):
+                                        guide_left = True
+                                        ok("F: guide left via its 'Clan "
+                                           "Settings' bar (b()) - BACKing "
+                                           "from sa.b")
+                                        break
+                                    print("  [evidence] F: no 'Clan Settings' "
+                                          "bar on the a=true guide (poll %d)"
+                                          % guide_polls)
+                                    time.sleep(4)
+                                    continue
                                 break
-                        ok("F2: name field now %r (wanted %r)"
-                           % (typed, new_name))
-                        if typed != new_name:
-                            for _ in range(len((typed or "")) + 4):
-                                adb.key(67)
+                            if guide_left:
+                                adb.key(4)  # leave sa.b - back to the homepage
+                                time.sleep(4)
+                            if sheet_pre:
+                                own = None  # the sheet window hides the homepage
+                            else:
+                                own = screen.wait_for(texts=[own_name],
+                                                      timeout=14, poll=3)
+                            if not own:
+                                # 5t v4: the name text may not render where the
+                                # post-close dump expects; the top-right id-less
+                                # ic_more ImageButton is the homepage's
+                                # distinctive control (and the F2 entry anyway -
+                                # the homepage block's tap on it opens the
+                                # settings sheet directly).
+                                for x in screen.dump():
+                                    if x.center and x.cls.endswith("ImageButton"):
+                                        cx, cy = x.center
+                                        if cy < 140 and cx > 360:
+                                            own = x
+                                            ok("F: homepage detected via the "
+                                               "top-right ic_more")
+                                            break
+                            if not own:
+                                print("  [evidence] F: screen after the Notice "
+                                      "Board close:")
+                                for x in screen.dump():
+                                    if x.res or x.text or x.desc:
+                                        print("  F-afterclose] %s | text=%r" % (
+                                            x.res.rsplit("/", 1)[-1] if x.res
+                                            else "", x.text[:28]))
+                            if own:
+                                ok("F: clan homepage reached directly via "
+                                   "rlEnterClan")
+                for entry, stage in (tuple() if own else
+                                     (("ivTribe", "F-tribeentry"),
+                                      ("ivClanMsg0", "F-clanmsg"))):
+                    node = screen.find(ids=[entry])
+                    if not (node and screen.tap_node(node)):
+                        print("  [skip] F: %s not found on tab3" % entry)
+                        continue
+                    time.sleep(5)
+                    if not f_alive(stage):
+                        break
+                    for x in screen.dump():
+                        if x.res or x.text or x.desc:
+                            print("  %s] %s | text=%r" % (
+                                stage, x.res.rsplit("/", 1)[-1] if x.res
+                                else "", x.text[:28]))
+                    own = screen.find(texts=[own_name])
+                    if own and own.center:
+                        ok("F: own clan %s reachable via %s" % (own_name,
+                                                                entry))
+                        break
+                    # not here. BACK only if we actually LEFT the main screen
+                    # (the bottom nav is gone) — a no-op entry tap followed by
+                    # BACK would exit the app (5s v4 guard)
+                    if screen.find(ids=["rb_3"]):
+                        print("  [info] F: %s tap was a no-op (still on tab3)"
+                              % entry)
+                        continue
+                    adb.key(4)
+                    time.sleep(2)
+                    f_alive("%s-back" % stage)
+                    own = None
+                if not own:
+                    # re-enter the clan screen (rlSearchClan - established id)
+                    clanrow = screen.find(ids=["rlSearchClan"])
+                    if not (clanrow and screen.tap_node(clanrow)):
+                        clanrow = screen.find(texts=["Find Clans"])
+                        clanrow = (clanrow and screen.tap_node(clanrow)
+                                   and clanrow) or None
+                    if clanrow:
+                        time.sleep(5)
+                        f_alive("F-clanscreen")
+                        for x in screen.dump():
+                            if x.res or x.text or x.desc:
+                                print("  F-clanscreen] %s | text=%r" % (
+                                    x.res.rsplit("/", 1)[-1] if x.res else "",
+                                    x.text[:28]))
+                        own = screen.find(texts=[own_name])
+                        if not own:
+                            # 5s v2 evidence (run 37255687401 + localapi.txt):
+                            # tribeRecommendation returns ALL tribes — the own
+                            # clan IS in the list, usually below the fold.
+                            # Swipe rvData up once and look again (no typing).
+                            rv = screen.find(ids=["rvData"])
+                            if rv and rv.bounds:
+                                l, t, r, b = rv.bounds
+                                adb.sh("input swipe %d %d %d %d 400"
+                                       % ((l + r) // 2, b - 80,
+                                          (l + r) // 2, t + 80))
+                                time.sleep(3)
+                                f_alive("F-clanscreen-swiped")
+                                for x in screen.dump():
+                                    if x.res or x.text or x.desc:
+                                        print("  F-clanscreen-swiped] %s | "
+                                              "text=%r" % (
+                                                  x.res.rsplit("/", 1)[-1]
+                                                  if x.res else "",
+                                                  x.text[:28]))
+                            own = screen.find(texts=[own_name])
+                        if not own:
+                            # exact-name search. 5s v3 decode (jadx
+                            # activity_tribe_search.xml): the input IS a real
+                            # EditText (tvTitle, hint tribe_search_hint) in the
+                            # toolbar + an ID-LESS search Button right of it.
+                            # 5s v2 evidence: the search fired twice yet
+                            # returned 97b EMPTY — the typed name was mangled
+                            # (wave-5q IME-autocorrect trap). So: type,
+                            # VERIFY the EditText content, then tap the search
+                            # Button (fallback key(66)).
+                            edit = None
+                            for attempt in range(3):
+                                edit = next((x for x in screen.dump()
+                                             if x.center
+                                             and x.cls.endswith("EditText")
+                                             and (x.text or "")
+                                             .startswith("Enter clan")), None)
+                                if edit:
+                                    break
+                                print("  [evidence] F: search-input lookup "
+                                      "miss #%d (uiautomator dump raced the "
+                                      "banner carousel?)" % (attempt + 1))
+                                time.sleep(3)
+                            if edit:
+                                screen.tap_node(edit)
+                                time.sleep(1)
+                                adb.text(own_name)
+                                time.sleep(1)
+                                typed = None
+                                for x in screen.dump():
+                                    if x.cls.endswith("EditText") and x.center:
+                                        typed = x.text or ""
+                                        break
+                                ok("F: tvTitle now holds %r (wanted %r)"
+                                   % (typed, own_name))
+                                if typed != own_name:
+                                    # retype once: clear (select-all+del is
+                                    # unreliable over adb) — retype appends on
+                                    # some IMEs, so BACK-space the difference
+                                    if typed:
+                                        adb.key(67)  # DEL
+                                        for _ in range(len(typed) + 2):
+                                            adb.key(67)
+                                            time.sleep(0.1)
+                                    adb.text(own_name)
+                                    time.sleep(1)
+                                    for x in screen.dump():
+                                        if x.cls.endswith("EditText") \
+                                                and x.center:
+                                            typed = x.text or ""
+                                            break
+                                    ok("F: tvTitle after retype %r" % typed)
+                                # the id-less search Button sits RIGHT of
+                                # tvTitle on the same toolbar row
+                                btn = None
+                                if edit.bounds:
+                                    el, et, er, eb = edit.bounds
+                                    for x in screen.dump():
+                                        if not (x.clickable and x.bounds
+                                                and x.cls.endswith("Button")):
+                                            continue
+                                        bl, bt, br, bb = x.bounds
+                                        if abs((bt + bb) // 2
+                                               - (et + eb) // 2) < 30 \
+                                                and bl >= er - 10:
+                                            btn = x
+                                            break
+                                if btn:
+                                    print("  [info] F: search Button %s "
+                                          "bounds=%s" % (
+                                              btn.res.rsplit("/", 1)[-1]
+                                              if btn.res else "<idless>",
+                                              btn.bounds))
+                                    screen.tap_node(btn)
+                                else:
+                                    print("  [evidence] F: no search Button "
+                                          "found - falling back to key(66)")
+                                    adb.key(66)  # IME action
+                                time.sleep(5)
+                                f_alive("F-clanscreen-search")
+                                # 5n/5p evidence: the first BACK after a search
+                                # only closes the IME — dismiss it so the result
+                                # row's center is not covered by the keyboard
+                                adb.key(4)
+                                time.sleep(2)
+                                f_alive("F-clanscreen-imeclosed")
+                                for x in screen.dump():
+                                    if x.res or x.text or x.desc:
+                                        print("  F-results] %s | text=%r" % (
+                                            x.res.rsplit("/", 1)[-1]
+                                            if x.res else "", x.text[:28]))
+                                own = screen.find(texts=[own_name])
+                                if not own:
+                                    # one honest re-look: the results may need
+                                    # another beat to render after the IME closes
+                                    time.sleep(4)
+                                    own = screen.find(texts=[own_name])
+                            else:
+                                print("  [evidence] F: no search-input node in "
+                                      "3 dumps - cannot exact-name search")
+                        elif own and not own.center:
+                            print("  [evidence] F: own-clan node present but "
+                                  "bounds-less (dump race) - retapping dump")
+                            own = screen.wait_for(texts=[own_name],
+                                                  timeout=15, poll=3)
+                if (own and own.center) or sheet_pre:
+                    if own and own.center:
+                        ok("F: own clan %s surfaced on the clan screens" % own_name)
+                        screen.tap_node(own)
+                        time.sleep(6)
+                    else:
+                        ok("F: settings sheet pre-opened through the guide "
+                           "label (homepage never fully settled)")
+                        time.sleep(2)
+                    f_alive("F-clanhome")
+                    for x in screen.dump():
+                        if x.res or x.text or x.desc:
+                            print("  F-clanhome] %s | text=%r desc=%r" % (
+                                x.res.rsplit("/", 1)[-1] if x.res else "",
+                                x.text[:28], x.desc[:24]))
+                    f_new = sorted(set(localapi_paths(adb)) - f_before)
+                    f_clan = [p for p in f_new if "/clan/" in p]
+                    if f_clan:
+                        ok("F: own-clan surfaces hit %s" % f_clan)
+                    else:
+                        print("  [info] F: no NEW /clan/ endpoints from the "
+                              "own-clan drive (homepage may be cached state)")
+                    # ------------------------------------------------- F2: the
+                    # clan-UPDATE form. Client chain (jadx, classes2, session
+                    # 17 decompile): TribeHasFragment (fragment_tribe_has - the
+                    # top-RIGHT id-less ImageButton, ic_more, tag binding_2 =
+                    # command o) -> TribeHasViewModel H() BottomDialog (items:
+                    # Clan Settings [chief], Edit Profile, Manage Members,
+                    # Cancel) -> "Edit Profile" opens the CREATE template in
+                    # EDIT mode (bundle is.create=false; name/details/ico.url
+                    # pre-filled). Submit = the "Modify" Button (binding_7 =
+                    # command o = i() -> TribeApi.clanUpdate; no icon, no
+                    # golds gate). Update validation REQUIRES 1..4 tags and a
+                    # non-empty introduction - our clan ships tags=[] so the
+                    # drive adds one through the same Add Tag dialog as the
+                    # create flow. A one-time TribeSettingGuideDialog may cover
+                    # the homepage: its top-right label tap opens the SAME
+                    # sheet (and consumes the guide).
+
+                    def put_tribe_count():
+                        log = adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                      timeout=60)
+                        return sum(1 for line in log.splitlines()
+                                   if "REQ PUT /clan/api/v1/clan/tribe" in line
+                                   and "/clan/api/v1/clan/tribe/member"
+                                   not in line)
+
+                    puts_before = put_tribe_count()
+                    guide = next((x for x in screen.dump()
+                                  if "join clan" in (x.text or "") and x.center),
+                                 None)
+                    if guide:
+                        print("  [evidence] F2: one-time TribeSettingGuideDialog "
+                              "is up - its top-right label tap opens the "
+                              "settings sheet (and re-shows the guide: wait "
+                              "it out)")
+                        screen.tap_node(guide)
+                        # f() = H() (sheet) + Ta(true).show() — the guide covers
+                        # the sheet again and self-clears (~20s, run evidence)
+                        sheet = screen.wait_for(texts=["Edit Profile"],
+                                                timeout=30, poll=4)
+                    else:
+                        sheet = screen.find(texts=["Edit Profile"])
+                    if not sheet:
+                        more = None
+                        for x in screen.dump():
+                            if not (x.center and x.cls.endswith("ImageButton")):
+                                continue
+                            cx, cy = x.center
+                            if cy < 140 and cx > 360:
+                                more = x
+                                break
+                        if more and screen.tap_node(more):
+                            print("  [evidence] F2: ic_more (top-right id-less "
+                                  "ImageButton) tapped")
+                            sheet = screen.wait_for(texts=["Edit Profile"],
+                                                    timeout=12, poll=3)
+                        else:
+                            print("  [info] F2: no top-right ImageButton found "
+                                  "- cannot open the settings sheet")
+                    if sheet and sheet.center:
+                        ok("F2: settings sheet shows 'Edit Profile'")
+                        screen.tap_node(sheet)
+                        time.sleep(5)
+                        f_alive("F2-editform")
+                        title = screen.find(ids=["tv_title"]) \
+                            or screen.find(ids=["tvTemplateTitle"])
+                        ok("F2: edit form title=%r (want 'Edit Clan')"
+                           % (title.text if title else None))
+                        name_in = screen.find(ids=["etTribeName"])
+                        new_name = "EditClan%05d" % (int(time.time()) % 100000)
+                        typed = None
+                        if name_in and name_in.center:
+                            screen.tap_node(name_in)
+                            time.sleep(1)
+                            for _ in range(len(own_name) + 4):
+                                adb.key(67)  # DEL the pre-filled name
+                            time.sleep(0.5)
                             adb.text(new_name)
                             time.sleep(1)
-                            adb.key(4)
+                            adb.key(4)  # close the IME
                             time.sleep(1)
                             for x in screen.dump():
                                 if x.cls.endswith("EditText") and x.center \
@@ -2619,2148 +2621,2165 @@ def main():
                                         "etTribeName":
                                     typed = x.text or ""
                                     break
-                            ok("F2: name field after retype %r" % typed)
-                    else:
-                        print("  [info] F2: etTribeName not found on the "
-                              "edit form")
-                    # tags: required by the update validation - add one if
-                    # the form has none (the create flow's proven pattern)
-                    d_form = screen.dump()
-                    tag_label = next((x for x in d_form
-                                      if (x.text or "") == "Clan tag"
-                                      and x.center), None)
-                    if tag_label:
-                        idx = d_form.index(tag_label)
-                        tag_btn = next((x for x in d_form[idx + 1: idx + 4]
-                                        if x.clickable and x.center
-                                        and not x.cls.endswith("EditText")),
-                                       None)
-                        if tag_btn:
-                            screen.tap_node(tag_btn)
+                            ok("F2: name field now %r (wanted %r)"
+                               % (typed, new_name))
+                            if typed != new_name:
+                                for _ in range(len((typed or "")) + 4):
+                                    adb.key(67)
+                                adb.text(new_name)
+                                time.sleep(1)
+                                adb.key(4)
+                                time.sleep(1)
+                                for x in screen.dump():
+                                    if x.cls.endswith("EditText") and x.center \
+                                            and x.res.rsplit("/", 1)[-1] == \
+                                            "etTribeName":
+                                        typed = x.text or ""
+                                        break
+                                ok("F2: name field after retype %r" % typed)
+                        else:
+                            print("  [info] F2: etTribeName not found on the "
+                                  "edit form")
+                        # tags: required by the update validation - add one if
+                        # the form has none (the create flow's proven pattern)
+                        d_form = screen.dump()
+                        tag_label = next((x for x in d_form
+                                          if (x.text or "") == "Clan tag"
+                                          and x.center), None)
+                        if tag_label:
+                            idx = d_form.index(tag_label)
+                            tag_btn = next((x for x in d_form[idx + 1: idx + 4]
+                                            if x.clickable and x.center
+                                            and not x.cls.endswith("EditText")),
+                                           None)
+                            if tag_btn:
+                                screen.tap_node(tag_btn)
+                                time.sleep(4)
+                                if f_alive("F2-clantag"):
+                                    msg = screen.find(ids=["et_msg"])
+                                    if msg and msg.center:
+                                        screen.tap_node(msg)
+                                        time.sleep(1)
+                                        adb.text("QA2")
+                                        time.sleep(1)
+                                        adb.key(4)
+                                        time.sleep(1)
+                                    conf = screen.find(ids=["btn_confirm"])
+                                    if conf and conf.center:
+                                        screen.tap_node(conf)
+                                        time.sleep(3)
+                                        still = screen.find(ids=["tv_title"])
+                                        if still and (still.text or "") == \
+                                                "Add Tag":
+                                            print("  [info] F2: tag dialog "
+                                                  "still open (tag rejected?)")
+                                            adb.key(4)  # dismiss the stuck dialog
+                                            time.sleep(2)
+                                        else:
+                                            ok("F2: tag added (dialog closed)")
+                        else:
+                            print("  [info] F2: 'Clan tag' label not found - "
+                                  "tags may already exist")
+                        # run-37418335203: the tag input leaves the soft
+                        # keyboard up - BACK once drops it (the form stays);
+                        # otherwise the MODIFY taps land on the keyboard
+                        adb.key(4)
+                        time.sleep(2)
+                        # 5t v10 (run 37374604536): the layout applies
+                        # textAllCaps - the button renders 'MODIFY'
+                        modify = next((x for x in screen.dump()
+                                       if (x.text or "") in ("Modify", "MODIFY")
+                                       and x.center), None)
+                        if modify:
+                            screen.tap_node(modify)
                             time.sleep(4)
-                            if f_alive("F2-clantag"):
-                                msg = screen.find(ids=["et_msg"])
-                                if msg and msg.center:
-                                    screen.tap_node(msg)
-                                    time.sleep(1)
-                                    adb.text("QA2")
-                                    time.sleep(1)
-                                    adb.key(4)
-                                    time.sleep(1)
-                                conf = screen.find(ids=["btn_confirm"])
-                                if conf and conf.center:
-                                    screen.tap_node(conf)
-                                    time.sleep(3)
-                                    still = screen.find(ids=["tv_title"])
-                                    if still and (still.text or "") == \
-                                            "Add Tag":
-                                        print("  [info] F2: tag dialog "
-                                              "still open (tag rejected?)")
-                                        adb.key(4)  # dismiss the stuck dialog
-                                        time.sleep(2)
-                                    else:
-                                        ok("F2: tag added (dialog closed)")
+                            f_alive("F2-edit-submit")
+                            puts_after = put_tribe_count()
+                            # session 20: ONE bounded re-tap when the first
+                            # MODIFY tap missed (run 37409714321: puts 0->0
+                            # with everything else green - tap timing, not
+                            # a contract break)
+                            if puts_after <= puts_before:
+                                modify2 = next(
+                                    (x for x in screen.dump()
+                                     if (x.text or "") in ("Modify", "MODIFY")
+                                     and x.center), None)
+                                if modify2:
+                                    screen.tap_node(modify2)
+                                    time.sleep(4)
+                                    f_alive("F2-edit-submit-retry")
+                                    puts_after = put_tribe_count()
+                            print("  [evidence] F2: PUT count %d -> %d"
+                                  % (puts_before, puts_after))
+                            if live_hdr:
+                                base2 = fcall("GET",
+                                              "/clan/api/v1/clan/tribe/base",
+                                              headers=live_hdr)
+                                srv_name = (base2.get("data") or {}).get("name")
+                                check("F2: clan-UPDATE client-asserted through "
+                                      "the real UI (PUT fired, server name=%r)"
+                                      % srv_name,
+                                      puts_after > puts_before
+                                      and srv_name == new_name,
+                                      "puts %d->%d server=%r typed=%r"
+                                      % (puts_before, puts_after, srv_name,
+                                         typed))
+                            else:
+                                check("F2: clan-UPDATE PUT fired",
+                                      puts_after > puts_before,
+                                      "puts %d->%d" % (puts_before, puts_after))
+                        else:
+                            print("  [info] F2: 'Modify' button not found - "
+                                  "form dump:")
+                            for x in screen.dump():
+                                if x.res or x.text:
+                                    print("  F2-form] %s | text=%r" % (
+                                        x.res.rsplit("/", 1)[-1] if x.res
+                                        else "", x.text[:28]))
                     else:
-                        print("  [info] F2: 'Clan tag' label not found - "
-                              "tags may already exist")
-                    # run-37418335203: the tag input leaves the soft
-                    # keyboard up - BACK once drops it (the form stays);
-                    # otherwise the MODIFY taps land on the keyboard
+                        print("  [info] F2: settings sheet never showed 'Edit "
+                              "Profile' (dump evidence above)")
+                    # BACK out of the edit form (when F2 opened it) -> homepage
                     adb.key(4)
                     time.sleep(2)
-                    # 5t v10 (run 37374604536): the layout applies
-                    # textAllCaps - the button renders 'MODIFY'
-                    modify = next((x for x in screen.dump()
-                                   if (x.text or "") in ("Modify", "MODIFY")
-                                   and x.center), None)
-                    if modify:
-                        screen.tap_node(modify)
-                        time.sleep(4)
-                        f_alive("F2-edit-submit")
-                        puts_after = put_tribe_count()
-                        # session 20: ONE bounded re-tap when the first
-                        # MODIFY tap missed (run 37409714321: puts 0->0
-                        # with everything else green - tap timing, not
-                        # a contract break)
-                        if puts_after <= puts_before:
-                            modify2 = next(
-                                (x for x in screen.dump()
-                                 if (x.text or "") in ("Modify", "MODIFY")
-                                 and x.center), None)
-                            if modify2:
-                                screen.tap_node(modify2)
-                                time.sleep(4)
-                                f_alive("F2-edit-submit-retry")
-                                puts_after = put_tribe_count()
-                        print("  [evidence] F2: PUT count %d -> %d"
-                              % (puts_before, puts_after))
-                        if live_hdr:
-                            base2 = fcall("GET",
-                                          "/clan/api/v1/clan/tribe/base",
-                                          headers=live_hdr)
-                            srv_name = (base2.get("data") or {}).get("name")
-                            check("F2: clan-UPDATE client-asserted through "
-                                  "the real UI (PUT fired, server name=%r)"
-                                  % srv_name,
-                                  puts_after > puts_before
-                                  and srv_name == new_name,
-                                  "puts %d->%d server=%r typed=%r"
-                                  % (puts_before, puts_after, srv_name,
-                                     typed))
-                        else:
-                            check("F2: clan-UPDATE PUT fired",
-                                  puts_after > puts_before,
-                                  "puts %d->%d" % (puts_before, puts_after))
-                    else:
-                        print("  [info] F2: 'Modify' button not found - "
-                              "form dump:")
-                        for x in screen.dump():
-                            if x.res or x.text:
-                                print("  F2-form] %s | text=%r" % (
-                                    x.res.rsplit("/", 1)[-1] if x.res
-                                    else "", x.text[:28]))
-                else:
-                    print("  [info] F2: settings sheet never showed 'Edit "
-                          "Profile' (dump evidence above)")
-                # BACK out of the edit form (when F2 opened it) -> homepage
-                adb.key(4)
-                time.sleep(2)
-                # ------------------------- Phase G: member management + clan
-                # settings (session 18, wave 5u). jadx decode:
-                # TribeMemberManage (oa.a, right button = invite) rows are
-                # TribeHasItemViewModel J: row tap (manage mode, not-self)
-                # -> BottomDialog [Hand over Chief | Set as Elder | Remove
-                # Member | Cancel] -> TwoButtonDialog (btnSure confirms) ->
-                # PUT /clan/api/v1/clan/tribe/member?otherId=&type={1,2,3}
-                # (1=elder, 2=member, 3=hand over - server now speaks the
-                # client codes) or DELETE .../member/remove?otherId=.
-                # Clan Settings (sa.b) is the auto-enter CheckBox ->
-                # PUT /clan/api/v1/clan/free/verification?freeVerify={0,1};
-                # sa.e initializes the toggle TRUE regardless of server
-                # state, so the drive taps twice (PUT 0 then PUT 1), asserts
-                # base.freeVerify == 1, taps once more (PUT 0) and restores.
-                if live_hdr and d_uid_live:
-                    # NOTE: the server REQ log prints the PATH ONLY
-                    # (NanoHTTPD getUri(), no query) - count by verb+path
-                    # and exclude the sibling routes.
-                    puts_g = lambda: sum(
-                        1 for line in adb.raw("logcat", "-d", "-s",
-                                              "LocalAPI",
-                                              timeout=60).splitlines()
-                        if "REQ PUT /clan/api/v1/clan/tribe/member" in line
-                        and "/member/agreement" not in line
-                        and "/member/remove" not in line)
-                    fv_req_count = lambda: sum(
-                        1 for line in adb.raw("logcat", "-d", "-s",
-                                              "LocalAPI",
-                                              timeout=60).splitlines()
-                        if "REQ PUT /clan/api/v1/clan/free/"
-                        "verification" in line)
-                    # (a) a second member through the local API
-                    gj_uid = "gqa%05d" % (int(time.time()) % 100000)
-                    gj_pw = "LocalQA%05d" % (int(time.time()) % 100000)
-                    gj = fcall("POST", "/user/api/v1/register",
-                               {"uid": gj_uid, "password": gj_pw,
-                                "confirmPassword": gj_pw, "imei": "g-device",
-                                "appType": "android", "os": "12"})
-                    gj_uid_num = (gj.get("data") or {}).get("userId", 0)
-                    gj_tok = (gj.get("data") or {}).get("accessToken", "")
-                    gj_ok = gj.get("code") == 1 and gj_uid_num > 0
-                    if gj_ok:
-                        gjh = {"Access-Token": gj_tok,
-                               "userId": str(gj_uid_num), "language": "en"}
-                        gjr = fcall("POST", "/clan/api/v1/clan/tribe/member",
-                                    {"clanId": own_clan_id,
-                                     "msg": "g-join"}, headers=gjh)
-                        gja = fcall("PUT",
-                                    "/clan/api/v1/clan/tribe/member/agreement"
-                                    "?otherId=%d" % gj_uid_num, None,
-                                    headers=live_hdr)
-                        gj_ok = gjr.get("code") == 1 and gja.get("code") == 1
-                        ok("G: second member joined via the API (%s)"
-                           % gj_uid) if gj_ok else print(
-                               "  [info] G: API join failed: %s %s"
-                               % (str(gjr)[:80], str(gja)[:80]))
-                    gml = fcall("GET", "/clan/api/v1/clan/tribe/member",
-                                headers=live_hdr) if gj_ok else {"data": []}
-                    g_nick = next((m.get("nickName") for m in
-                                   gml.get("data", [])
-                                   if m.get("userId") == gj_uid_num), None)
-                    if g_nick:
-                        # wave 7: normalize the screen FIRST - the F phase
-                        # can end on rb_4 (friends refresh), and the sheet
-                        # entry needs the CLAN HOME (the recurring sheet
-                        # misses tapped whatever top-right ImageButton the
-                        # CURRENT screen owned). Same walk the proven
-                        # hand-over path uses: rb_3 -> Enter Clan -> clan
-                        # home -> settle Notice Board.
-                        gm_rb3 = screen.wait_for(ids=["rb_3"], timeout=10,
-                                                 poll=2)
-                        if gm_rb3 and screen.tap_node(gm_rb3):
-                            time.sleep(4)
-                        gm_ent = screen.find(ids=["rlEnterClan"]) \
-                            or screen.find(texts=["Enter Clan"])
-                        if gm_ent and gm_ent.center \
-                                and screen.tap_node(gm_ent):
-                            time.sleep(6)
-                            for _ in range(4):
-                                d_g = screen.dump()
-                                if any((x.text or "") == "Notice Board"
-                                       for x in d_g):
-                                    cls_g = next(
-                                        (x for x in d_g
-                                         if x.res.rsplit("/", 1)[-1]
-                                         == "btnSure" and x.center), None)
-                                    if cls_g:
-                                        screen.tap_node(cls_g)
-                                    time.sleep(3)
-                                else:
-                                    break
-                        more = None
-                        for x in screen.dump():
-                            if not (x.center
-                                    and x.cls.endswith("ImageButton")):
-                                continue
-                            cx, cy = x.center
-                            if cy < 140 and cx > 360:
-                                more = x
-                                break
-                        if more and screen.tap_node(more):
-                            time.sleep(3)
-                        # session 20 (run 37409714321): the FIRST sheet tap
-                        # can miss (timing) — one bounded re-tap of ic_more
-                        # before giving up (the hand-over walk proved the
-                        # sheet + items still render).
-                        # run-37421024074: single-shot find raced the
-                        # sheet animation - poll instead
-                        mm = screen.wait_for(texts=["Manage Members"],
-                                             timeout=6, poll=2)
-                        if not (mm and mm.center) and more:
-                            # only re-tap when the sheet is NOT actually
-                            # open (a blind re-tap would toggle it closed)
-                            sheet_open = any(
-                                (x.text or "") in ("Manage Members",
-                                                   "Edit Profile",
-                                                   "Clan Settings")
-                                for x in screen.dump())
-                            if not sheet_open:
-                                screen.tap_node(more)
-                                time.sleep(3)
-                                mm = screen.wait_for(
-                                    texts=["Manage Members"], timeout=8,
-                                    poll=2)
-                        if mm and mm.center:
-                            ok("G: settings sheet shows 'Manage Members'")
-                            screen.tap_node(mm)
-                            time.sleep(5)
-                            f_alive("G-managescreen")
-                            for x in screen.dump():
-                                if x.res or x.text or x.desc:
-                                    print("  G-manage] %s | text=%r" % (
-                                        x.res.rsplit("/", 1)[-1]
-                                        if x.res else "", x.text[:28]))
-                            loader = screen.find(texts=["Loading…"])
-                            if loader:
-                                time.sleep(6)  # let the member list finish
-                            row = screen.wait_for(texts=[g_nick], timeout=20,
-                                                  poll=3)
-                            puts_before_g = puts_g()
-                            if row and row.center:
-                                # promote: Set as Elder -> btnSure.
-                                # 5u run evidence: the manage screen hint is
-                                # 'Long press to edit member' - the sheet is
-                                # the LONG-CLICK command, not a tap.
-                                l, t, r, b = row.bounds
-                                adb.sh("input swipe %d %d %d %d 1000"
-                                       % ((l + r) // 2, (t + b) // 2,
-                                          (l + r) // 2, (t + b) // 2))
-                                time.sleep(3)
-                                elder = screen.find(texts=["Set as Elder"])
-                                if elder and elder.center:
-                                    screen.tap_node(elder)
-                                    time.sleep(3)
-                                    sure = screen.find(ids=["btnSure"])
-                                    if sure and sure.center:
-                                        screen.tap_node(sure)
-                                        time.sleep(4)
-                                        f_alive("G-promote")
-                                        puts_after_g = puts_g()
-                                        ml_g = fcall(
-                                            "GET",
-                                            "/clan/api/v1/clan/tribe/member",
-                                            headers=live_hdr)
-                                        g_role = next(
-                                            (m.get("role") for m in
-                                             ml_g.get("data", [])
-                                             if m.get("userId")
-                                             == gj_uid_num), None)
-                                        check(
-                                            "G: setIdentity client-asserted "
-                                            "(type 1 elder, server role=%s)"
-                                            % g_role,
-                                            puts_after_g > puts_before_g
-                                            and g_role == 10,
-                                            "puts %d->%d role=%s"
-                                            % (puts_before_g, puts_after_g,
-                                               g_role))
-                                else:
-                                    print("  [info] G: 'Set as Elder' not "
-                                          "on the member sheet")
-                                # remove: Remove Member -> btnSure
-                                row2 = screen.wait_for(texts=[g_nick],
-                                                       timeout=10, poll=3)
-                                if row2 and row2.center:
-                                    l2, t2, r2, b2 = row2.bounds
-                                    adb.sh("input swipe %d %d %d %d 1000"
-                                           % ((l2 + r2) // 2, (t2 + b2) // 2,
-                                              (l2 + r2) // 2, (t2 + b2) // 2))
-                                    time.sleep(3)
-                                    rm = screen.find(texts=["Remove Member"])
-                                    if rm and rm.center:
-                                        screen.tap_node(rm)
-                                        time.sleep(3)
-                                        sure2 = screen.find(ids=["btnSure"])
-                                        if sure2 and sure2.center:
-                                            screen.tap_node(sure2)
-                                            time.sleep(4)
-                                            f_alive("G-remove")
-                                            ml_h = fcall(
-                                                "GET",
-                                                "/clan/api/v1/clan/tribe/"
-                                                "member", headers=live_hdr)
-                                            gone = all(
-                                                m.get("userId")
-                                                != gj_uid_num
-                                                for m in ml_h.get("data", []))
-                                            check("G: removeMember "
-                                                  "client-asserted (member "
-                                                  "gone)", gone,
-                                                  str(ml_h)[:120])
-                            else:
-                                print("  [info] G: member row %r not on "
-                                      "the manage screen" % g_nick)
-                            # ---- Session 20 (wave 6a): the INVITE flow,
-                            # still ON the manage screen. jadx decode:
-                            # TribeMemberManage (oa.a) is hosted by
-                            # TemplateActivity with RIGHT_RESOURCE_ID =
-                            # ic_add_friend (T.c -> startTemplate), so the
-                            # title bar's ibTemplateRight is visible; its
-                            # onRightButtonClick starts TribeInviteFriend
-                            # (na.c). Rows = greendao friends with a
-                            # right-aligned CheckBox (tick adds
-                            # String(userId) to the selection); the bottom
-                            # green 'Invite Friend' button (binding_2)
-                            # opens EditTextDialog (et_msg + btn_confirm)
-                            # -> POST /clan/api/v1/clan/tribe/member/invite
-                            # ?friendIds=&msg= (ITribeApi @POST). Success
-                            # -> tribe_invite_success toast.
-                            if friend_nick and fr_uid_num and frh:
-                                inv_count = lambda: sum(
-                                    1 for line in adb.raw(
-                                        "logcat", "-d", "-s", "LocalAPI",
-                                        timeout=60).splitlines()
-                                    if "REQ POST /clan/api/v1/clan/tribe/"
-                                       "member/invite" in line)
-                                right = screen.wait_for(ids=["ibTemplateRight"],
-                                                        timeout=8, poll=2)
-                                if right and right.center:
-                                    screen.tap_node(right)
-                                    time.sleep(5)
-                                    f_alive("G-invitescreen")
-                                    # wait for the BOTTOM button: the
-                                    # title carries the SAME text and the
-                                    # first dump can race the transition
-                                    # (run 37412479967 tapped the title at
-                                    # y=95). The button is anchored
-                                    # bottom (y > 900 on 720x1280).
-                                    # wave 7: one bounded RE-ENTRY - runs
-                                    # 37421024074/37423815542 missed the
-                                    # FIRST ibTemplateRight tap (transition
-                                    # race). ibTemplateRight lives only on
-                                    # the manage screen, so a find hit there
-                                    # mid-wait means we never left: tap it
-                                    # once more and keep waiting.
-                                    low = None
-                                    btn_deadline = time.time() + 16
-                                    h_reentered = False
-                                    while time.time() < btn_deadline:
-                                        cand = [x for x in screen.dump()
-                                                if x.center
-                                                and (x.text or "").upper()
-                                                == "INVITE FRIEND"
-                                                and x.bounds
-                                                and x.bounds[1] > 900]
-                                        if cand:
-                                            low = cand[0]
-                                            break
-                                        if not h_reentered \
-                                                and time.time() > btn_deadline - 10:
-                                            r2 = screen.find(
-                                                ids=["ibTemplateRight"])
-                                            if r2 and r2.center:
-                                                screen.tap_node(r2)
-                                                h_reentered = True
-                                                print("  [info] G: invite "
-                                                      "screen re-entry tap")
-                                        time.sleep(2)
-                                    if low:
-                                        ok("G: TribeInviteFriend open "
-                                           "(bottom 'Invite Friend' button "
-                                           "at %s)" % (low.center,))
-                                        pre_inv = inv_count()
-                                        frow = screen.wait_for(
-                                            texts=[n for n in
-                                                   (friend_nick, friend_nick2)
-                                                   if n], timeout=12,
-                                            poll=3)
-                                        if frow and frow.center:
-                                            icb = next(
-                                                (x for x in screen.dump()
-                                                 if x.center and
-                                                 x.cls.endswith("CheckBox")),
-                                                None)
-                                            if icb and icb.center:
-                                                screen.tap_node(icb)
-                                            else:
-                                                l4, t4, r4, b4 = frow.bounds
-                                                adb.tap(r4 - 30,
-                                                        (t4 + b4) // 2)
-                                            time.sleep(2)
-                                            ok("G: friend row %r ticked "
-                                               "(selection=String(userId))"
-                                               % frow.text)
-                                            screen.tap_node(low)
-                                            time.sleep(3)
-                                            et = screen.wait_for(
-                                                ids=["et_msg"], timeout=8,
-                                                poll=2)
-                                            if et and et.center:
-                                                screen.tap_node(et)
-                                                time.sleep(1)
-                                                adb.text("JoinUsQA")
-                                                time.sleep(1)
-                                                # run-37418335203: the soft
-                                                # keyboard covers the confirm
-                                                # button - BACK once drops the
-                                                # keyboard and keeps the dialog
-                                                adb.key(4)
-                                                time.sleep(2)
-                                                conf = screen.wait_for(
-                                                    ids=["btn_confirm"],
-                                                    timeout=8, poll=2)
-                                                if conf and conf.center:
-                                                    screen.tap_node(conf)
-                                                    time.sleep(5)
-                                                    if inv_count() == pre_inv:
-                                                        conf2 = screen.find(
-                                                            ids=["btn_confirm"])
-                                                        if conf2 and conf2.center:
-                                                            screen.tap_node(conf2)
-                                                            time.sleep(5)
-                                                    f_alive("G-invite-sent")
-                                                    post_inv = inv_count()
-                                                    msgs_f = fcall(
-                                                        "GET",
-                                                        "/clan/api/v2/clan/"
-                                                        "tribe/member/message",
-                                                        headers=frh)
-                                                    inv_msg = next(
-                                                        (m for m in
-                                                         (msgs_f.get("data")
-                                                          or [])
-                                                         if m.get("type") == 2
-                                                         and m.get("clanId")
-                                                         == own_clan_id),
-                                                        None)
-                                                    check(
-                                                        "G: inviteFriend "
-                                                        "client-asserted "
-                                                        "(POST %d->%d, "
-                                                        "invitee sees the "
-                                                        "type-2 message=%s)"
-                                                        % (pre_inv, post_inv,
-                                                           bool(inv_msg)),
-                                                        post_inv > pre_inv
-                                                        and inv_msg is not None,
-                                                        "msgs=%s" % str(msgs_f)[:140])
-                                                else:
-                                                    print("  [info] G: "
-                                                          "EditTextDialog "
-                                                          "btn_confirm not "
-                                                          "found")
-                                            else:
-                                                print("  [info] G: "
-                                                      "EditTextDialog did "
-                                                      "not open (selection "
-                                                      "not registered?)")
-                                        else:
-                                            print("  [info] G: friend row "
-                                                  "%r not on the invite "
-                                                  "screen (greendao cache)"
-                                                  % friend_nick)
-                                    else:
-                                        print("  [info] G: 'Invite Friend' "
-                                              "button not on the invite "
-                                              "screen")
-                                    adb.key(4)  # invite screen -> manage
-                                    time.sleep(3)
-                                else:
-                                    print("  [info] G: ibTemplateRight not "
-                                          "on the manage screen (invite "
-                                          "entry unavailable)")
-                            else:
-                                print("  [info] G: no friend candidate "
-                                      "(invite drive skipped)")
-                            adb.key(4)
-                            time.sleep(3)
-                        else:
-                            print("  [info] G: 'Manage Members' not on the "
-                                  "sheet (dump evidence above)")
-                        # ---------------- Clan Settings (auto-enter toggle)
-                        more2 = None
-                        for x in screen.dump():
-                            if not (x.center
-                                    and x.cls.endswith("ImageButton")):
-                                continue
-                            cx, cy = x.center
-                            if cy < 140 and cx > 360:
-                                more2 = x
-                                break
-                        if more2 and screen.tap_node(more2):
-                            time.sleep(3)
-                        cs = screen.wait_for(texts=["Clan Settings"],
-                                             timeout=6, poll=2)
-                        if cs and cs.center:
-                            screen.tap_node(cs)
-                            time.sleep(5)
-                            f_alive("G-settings")
-                            cb = next((x for x in screen.dump()
-                                       if x.center
-                                       and x.cls.endswith("CheckBox")), None)
-                            if cb and cb.center:
-                                # sa.e hardcodes the toggle TRUE and the
-                                # response re-binds it after every PUT, so
-                                # the sent value per tap is read from the
-                                # REQ line itself (?freeVerify=). Assertion:
-                                # the server state always follows the last
-                                # value the client sent.
-                                # 5u run decode: the client PUTs the value
-                                # as a FORM body (NanoHTTPD merges it into
-                                # getParameters - the URI carries no query),
-                                # and the state follows each tap. Assert the
-                                # state sequence CHANGED (the server followed
-                                # the client's toggling) with bounded PUTs.
-                                fv0 = fv_req_count()
-                                states = []
-                                fv_owner_alive = True
-                                for tap_n in range(1, 4):
-                                    # session 20 (run 37412479967) + run
-                                    # 37505691180: the roaming native-killer
-                                    # can strike INSIDE this loop — in
-                                    # 37505691180 the app died between the
-                                    # settings dump and tap 1, the recovery
-                                    # landed on the hall, and the old
-                                    # once-captured pid guard was None
-                                    # (captured while dead) so it never
-                                    # fired: the remaining taps hit wrong
-                                    # UI and the hard check failed on a
-                                    # state that never moved. Track the
-                                    # pid PER TAP and abandon honestly on
-                                    # any death (the check stays hard on
-                                    # the normal no-death path).
-                                    pid_pre = adb.pid(args.package)
-                                    cb_now = next(
-                                        (x for x in screen.dump()
-                                         if x.center
-                                         and x.cls.endswith("CheckBox")),
-                                        None) or cb
-                                    screen.tap_node(cb_now)
-                                    time.sleep(3)
-                                    f_alive("G-fv-tap%d" % tap_n)
-                                    pid_post = adb.pid(args.package)
-                                    if not pid_pre or not pid_post \
-                                            or pid_post != pid_pre:
-                                        print("  [evidence] process died "
-                                              "around freeVerify tap %d "
-                                              "(pid %s -> %s) - taps "
-                                              "abandoned honestly"
-                                              % (tap_n, pid_pre, pid_post))
-                                        fv_owner_alive = False
-                                        break
-                                    base_g = fcall(
-                                        "GET", "/clan/api/v1/clan/tribe/base",
-                                        headers=live_hdr)
-                                    state = (base_g.get("data") or {}).get(
-                                        "freeVerify")
-                                    states.append(state)
-                                    print("  [evidence] G: freeVerify tap %d "
-                                          "-> server state %s"
-                                          % (tap_n, state))
-                                fv2 = fv_req_count()
-                                if fv_owner_alive:
-                                    check(
-                                        "G: freeVerify toggle client-asserted "
-                                        "(server followed the taps: %s, PUTs "
-                                        "%d->%d)" % (states, fv0, fv2),
-                                        fv2 >= fv0 + 2 and len(set(states)) >= 2
-                                        and states[-1] in (0, 1),
-                                        "states=%s puts %d->%d"
-                                        % (states, fv0, fv2))
-                                # restore the deterministic world: 0
-                                # (only meaningful when no death occurred —
-                                # otherwise cb is stale and the state never
-                                # moved from 0)
-                                for _ in range(4 if fv_owner_alive else 0):
-                                    base_r = fcall(
-                                        "GET", "/clan/api/v1/clan/tribe/base",
-                                        headers=live_hdr)
-                                    if (base_r.get("data") or {}).get(
-                                            "freeVerify") in (0, None):
-                                        break
-                                    screen.tap_node(cb)
-                                    time.sleep(3)
-                            else:
-                                print("  [info] G: auto-enter CheckBox not "
-                                      "found on the settings screen")
-                            adb.key(4)
-                            time.sleep(3)
-                        else:
-                            print("  [info] G: 'Clan Settings' not on the "
-                                  "sheet (chief-only item; dump above)")
-                        for _ in range(3):
-                            if screen.find(ids=["rb_3"]):
-                                break
-                            adb.key(4)
-                            time.sleep(2)
-                        # ---- Session 20 (wave 6b): HAND OVER CHIEF through
-                        # the UI, deliberately LAST (after this the live
-                        # session is a plain member — no chief-gated drive
-                        # may follow). jadx decode (TribeHasItemViewModel
-                        # J.h/f): chief long-presses a MEMBER row -> sheet
-                        # [Hand over Chief | Set as Elder | Remove Member |
-                        # Cancel] -> item 2131823573 'Hand over Chief' ->
-                        # e(3) TwoButtonDialog ('Are you sure to hand over?')
-                        # -> btnSure -> PUT /clan/api/v1/clan/tribe/member
-                        # ?otherId=&type=3 (client code 3 = chief handover;
-                        # server: old chief -> member, chiefId follows).
-                        gk_uid = "hqa%05d" % (int(time.time()) % 100000)
-                        gk_pw = "LocalQA%05d" % (int(time.time()) % 100000)
-                        gk = fcall("POST", "/user/api/v1/register",
-                                   {"uid": gk_uid, "password": gk_pw,
-                                    "confirmPassword": gk_pw,
-                                    "imei": "h-device", "appType": "android",
-                                    "os": "12"})
-                        gk_uid_num = (gk.get("data") or {}).get("userId", 0)
-                        gk_tok = (gk.get("data") or {}).get("accessToken", "")
-                        gk_ok = gk.get("code") == 1 and gk_uid_num > 0
-                        gk_nick = None
-                        if gk_ok:
-                            gkh = {"Access-Token": gk_tok,
-                                   "userId": str(gk_uid_num), "language": "en"}
-                            gkr = fcall("POST",
-                                        "/clan/api/v1/clan/tribe/member",
+                    # ------------------------- Phase G: member management + clan
+                    # settings (session 18, wave 5u). jadx decode:
+                    # TribeMemberManage (oa.a, right button = invite) rows are
+                    # TribeHasItemViewModel J: row tap (manage mode, not-self)
+                    # -> BottomDialog [Hand over Chief | Set as Elder | Remove
+                    # Member | Cancel] -> TwoButtonDialog (btnSure confirms) ->
+                    # PUT /clan/api/v1/clan/tribe/member?otherId=&type={1,2,3}
+                    # (1=elder, 2=member, 3=hand over - server now speaks the
+                    # client codes) or DELETE .../member/remove?otherId=.
+                    # Clan Settings (sa.b) is the auto-enter CheckBox ->
+                    # PUT /clan/api/v1/clan/free/verification?freeVerify={0,1};
+                    # sa.e initializes the toggle TRUE regardless of server
+                    # state, so the drive taps twice (PUT 0 then PUT 1), asserts
+                    # base.freeVerify == 1, taps once more (PUT 0) and restores.
+                    if live_hdr and d_uid_live:
+                        # NOTE: the server REQ log prints the PATH ONLY
+                        # (NanoHTTPD getUri(), no query) - count by verb+path
+                        # and exclude the sibling routes.
+                        puts_g = lambda: sum(
+                            1 for line in adb.raw("logcat", "-d", "-s",
+                                                  "LocalAPI",
+                                                  timeout=60).splitlines()
+                            if "REQ PUT /clan/api/v1/clan/tribe/member" in line
+                            and "/member/agreement" not in line
+                            and "/member/remove" not in line)
+                        fv_req_count = lambda: sum(
+                            1 for line in adb.raw("logcat", "-d", "-s",
+                                                  "LocalAPI",
+                                                  timeout=60).splitlines()
+                            if "REQ PUT /clan/api/v1/clan/free/"
+                            "verification" in line)
+                        # (a) a second member through the local API
+                        gj_uid = "gqa%05d" % (int(time.time()) % 100000)
+                        gj_pw = "LocalQA%05d" % (int(time.time()) % 100000)
+                        gj = fcall("POST", "/user/api/v1/register",
+                                   {"uid": gj_uid, "password": gj_pw,
+                                    "confirmPassword": gj_pw, "imei": "g-device",
+                                    "appType": "android", "os": "12"})
+                        gj_uid_num = (gj.get("data") or {}).get("userId", 0)
+                        gj_tok = (gj.get("data") or {}).get("accessToken", "")
+                        gj_ok = gj.get("code") == 1 and gj_uid_num > 0
+                        if gj_ok:
+                            gjh = {"Access-Token": gj_tok,
+                                   "userId": str(gj_uid_num), "language": "en"}
+                            gjr = fcall("POST", "/clan/api/v1/clan/tribe/member",
                                         {"clanId": own_clan_id,
-                                         "msg": "h-join"}, headers=gkh)
-                            gka = fcall("PUT",
-                                        "/clan/api/v1/clan/tribe/member/"
-                                        "agreement?otherId=%d" % gk_uid_num,
-                                        None, headers=live_hdr)
-                            gk_ok = gkr.get("code") == 1 \
-                                and gka.get("code") == 1
-                            gml2 = fcall("GET",
-                                         "/clan/api/v1/clan/tribe/member",
-                                         headers=live_hdr)
-                            gk_nick = next(
-                                (m.get("nickName") for m in
-                                 gml2.get("data", [])
-                                 if m.get("userId") == gk_uid_num), None)
-                            ok("G: third member joined via the API (%s, "
-                               "nick=%r)" % (gk_uid, gk_nick)) if gk_ok \
-                                else print(
-                                    "  [info] G: third-member API join "
-                                    "failed: %s %s" % (str(gkr)[:80],
-                                                       str(gka)[:80]))
-                        ho_done = False
-                        if gk_ok and gk_nick:
-                            # re-enter: rb_3 -> Enter Clan -> clan home ->
-                            # ic_more -> Manage Members
-                            rb3h = screen.wait_for(ids=["rb_3"], timeout=10,
-                                                   poll=2)
-                            if rb3h and screen.tap_node(rb3h):
+                                         "msg": "g-join"}, headers=gjh)
+                            gja = fcall("PUT",
+                                        "/clan/api/v1/clan/tribe/member/agreement"
+                                        "?otherId=%d" % gj_uid_num, None,
+                                        headers=live_hdr)
+                            gj_ok = gjr.get("code") == 1 and gja.get("code") == 1
+                            ok("G: second member joined via the API (%s)"
+                               % gj_uid) if gj_ok else print(
+                                   "  [info] G: API join failed: %s %s"
+                                   % (str(gjr)[:80], str(gja)[:80]))
+                        gml = fcall("GET", "/clan/api/v1/clan/tribe/member",
+                                    headers=live_hdr) if gj_ok else {"data": []}
+                        g_nick = next((m.get("nickName") for m in
+                                       gml.get("data", [])
+                                       if m.get("userId") == gj_uid_num), None)
+                        if g_nick:
+                            # wave 7: normalize the screen FIRST - the F phase
+                            # can end on rb_4 (friends refresh), and the sheet
+                            # entry needs the CLAN HOME (the recurring sheet
+                            # misses tapped whatever top-right ImageButton the
+                            # CURRENT screen owned). Same walk the proven
+                            # hand-over path uses: rb_3 -> Enter Clan -> clan
+                            # home -> settle Notice Board.
+                            gm_rb3 = screen.wait_for(ids=["rb_3"], timeout=10,
+                                                     poll=2)
+                            if gm_rb3 and screen.tap_node(gm_rb3):
                                 time.sleep(4)
-                                ent2 = screen.find(ids=["rlEnterClan"]) \
-                                    or screen.find(texts=["Enter Clan"])
-                                if ent2 and screen.tap_node(ent2):
-                                    time.sleep(6)
-                                    for _ in range(4):
-                                        d_h = screen.dump()
-                                        if any(
-                                                (x.text or "")
-                                                == "Notice Board"
-                                                for x in d_h):
-                                            cls_h = next(
-                                                (x for x in d_h
-                                                 if x.res.rsplit("/", 1)[-1]
-                                                 == "btnSure" and x.center),
-                                                None)
-                                            if cls_h:
-                                                screen.tap_node(cls_h)
-                                            time.sleep(3)
-                                        else:
-                                            break
-                                    more3 = None
-                                    for x in screen.dump():
-                                        if not (x.center
-                                                and x.cls.endswith(
-                                                    "ImageButton")):
-                                            continue
-                                        cx, cy = x.center
-                                        if cy < 140 and cx > 360:
-                                            more3 = x
-                                            break
-                                    if more3 and screen.tap_node(more3):
+                            gm_ent = screen.find(ids=["rlEnterClan"]) \
+                                or screen.find(texts=["Enter Clan"])
+                            if gm_ent and gm_ent.center \
+                                    and screen.tap_node(gm_ent):
+                                time.sleep(6)
+                                for _ in range(4):
+                                    d_g = screen.dump()
+                                    if any((x.text or "") == "Notice Board"
+                                           for x in d_g):
+                                        cls_g = next(
+                                            (x for x in d_g
+                                             if x.res.rsplit("/", 1)[-1]
+                                             == "btnSure" and x.center), None)
+                                        if cls_g:
+                                            screen.tap_node(cls_g)
                                         time.sleep(3)
-                                    mm3 = screen.wait_for(
+                                    else:
+                                        break
+                            more = None
+                            for x in screen.dump():
+                                if not (x.center
+                                        and x.cls.endswith("ImageButton")):
+                                    continue
+                                cx, cy = x.center
+                                if cy < 140 and cx > 360:
+                                    more = x
+                                    break
+                            if more and screen.tap_node(more):
+                                time.sleep(3)
+                            # session 20 (run 37409714321): the FIRST sheet tap
+                            # can miss (timing) — one bounded re-tap of ic_more
+                            # before giving up (the hand-over walk proved the
+                            # sheet + items still render).
+                            # run-37421024074: single-shot find raced the
+                            # sheet animation - poll instead
+                            mm = screen.wait_for(texts=["Manage Members"],
+                                                 timeout=6, poll=2)
+                            if not (mm and mm.center) and more:
+                                # only re-tap when the sheet is NOT actually
+                                # open (a blind re-tap would toggle it closed)
+                                sheet_open = any(
+                                    (x.text or "") in ("Manage Members",
+                                                       "Edit Profile",
+                                                       "Clan Settings")
+                                    for x in screen.dump())
+                                if not sheet_open:
+                                    screen.tap_node(more)
+                                    time.sleep(3)
+                                    mm = screen.wait_for(
                                         texts=["Manage Members"], timeout=8,
                                         poll=2)
-                                    if mm3 and mm3.center:
-                                        screen.tap_node(mm3)
-                                        time.sleep(5)
-                                        f_alive("G-managescreen-ho")
-
-                                        def ho_attempt(tag):
-                                            # One full hand-over
-                                            # interaction: long-press the
-                                            # third member's row -> sheet
-                                            # -> 'Hand over Chief' ->
-                                            # TwoButtonDialog btnSure ->
-                                            # PUT member type=3. Returns
-                                            # (ok, evidence).
-                                            row = screen.wait_for(
-                                                texts=[gk_nick], timeout=12,
-                                                poll=3)
-                                            if not (row and row.center):
-                                                return (False, "third member "
-                                                        "row %r not on the "
-                                                        "manage screen"
-                                                        % gk_nick)
-                                            pid_at_ho = adb.pid(args.package)
-                                            pre_ho = puts_g()
-                                            l5, t5, r5, b5 = row.bounds
-                                            hx = (l5 + r5) // 2
-                                            hy = (t5 + b5) // 2
-                                            adb.sh(
-                                                "input swipe %d %d %d %d 1000"
-                                                % (hx, hy, hx, hy))
+                            if mm and mm.center:
+                                ok("G: settings sheet shows 'Manage Members'")
+                                screen.tap_node(mm)
+                                time.sleep(5)
+                                f_alive("G-managescreen")
+                                for x in screen.dump():
+                                    if x.res or x.text or x.desc:
+                                        print("  G-manage] %s | text=%r" % (
+                                            x.res.rsplit("/", 1)[-1]
+                                            if x.res else "", x.text[:28]))
+                                loader = screen.find(texts=["Loading…"])
+                                if loader:
+                                    time.sleep(6)  # let the member list finish
+                                row = screen.wait_for(texts=[g_nick], timeout=20,
+                                                      poll=3)
+                                puts_before_g = puts_g()
+                                if row and row.center:
+                                    # promote: Set as Elder -> btnSure.
+                                    # 5u run evidence: the manage screen hint is
+                                    # 'Long press to edit member' - the sheet is
+                                    # the LONG-CLICK command, not a tap.
+                                    l, t, r, b = row.bounds
+                                    adb.sh("input swipe %d %d %d %d 1000"
+                                           % ((l + r) // 2, (t + b) // 2,
+                                              (l + r) // 2, (t + b) // 2))
+                                    time.sleep(3)
+                                    elder = screen.find(texts=["Set as Elder"])
+                                    if elder and elder.center:
+                                        screen.tap_node(elder)
+                                        time.sleep(3)
+                                        sure = screen.find(ids=["btnSure"])
+                                        if sure and sure.center:
+                                            screen.tap_node(sure)
+                                            time.sleep(4)
+                                            f_alive("G-promote")
+                                            puts_after_g = puts_g()
+                                            ml_g = fcall(
+                                                "GET",
+                                                "/clan/api/v1/clan/tribe/member",
+                                                headers=live_hdr)
+                                            g_role = next(
+                                                (m.get("role") for m in
+                                                 ml_g.get("data", [])
+                                                 if m.get("userId")
+                                                 == gj_uid_num), None)
+                                            check(
+                                                "G: setIdentity client-asserted "
+                                                "(type 1 elder, server role=%s)"
+                                                % g_role,
+                                                puts_after_g > puts_before_g
+                                                and g_role == 10,
+                                                "puts %d->%d role=%s"
+                                                % (puts_before_g, puts_after_g,
+                                                   g_role))
+                                    else:
+                                        print("  [info] G: 'Set as Elder' not "
+                                              "on the member sheet")
+                                    # remove: Remove Member -> btnSure
+                                    row2 = screen.wait_for(texts=[g_nick],
+                                                           timeout=10, poll=3)
+                                    if row2 and row2.center:
+                                        l2, t2, r2, b2 = row2.bounds
+                                        adb.sh("input swipe %d %d %d %d 1000"
+                                               % ((l2 + r2) // 2, (t2 + b2) // 2,
+                                                  (l2 + r2) // 2, (t2 + b2) // 2))
+                                        time.sleep(3)
+                                        rm = screen.find(texts=["Remove Member"])
+                                        if rm and rm.center:
+                                            screen.tap_node(rm)
                                             time.sleep(3)
-                                            hov = screen.find(
-                                                texts=["Hand over Chief"])
-                                            if not (hov and hov.center) \
-                                                    and adb.pid(args.package) \
-                                                    == pid_at_ho:
-                                                # one bounded re-long-press
-                                                # (sheet timing / a missed
-                                                # press)
+                                            sure2 = screen.find(ids=["btnSure"])
+                                            if sure2 and sure2.center:
+                                                screen.tap_node(sure2)
+                                                time.sleep(4)
+                                                f_alive("G-remove")
+                                                ml_h = fcall(
+                                                    "GET",
+                                                    "/clan/api/v1/clan/tribe/"
+                                                    "member", headers=live_hdr)
+                                                gone = all(
+                                                    m.get("userId")
+                                                    != gj_uid_num
+                                                    for m in ml_h.get("data", []))
+                                                check("G: removeMember "
+                                                      "client-asserted (member "
+                                                      "gone)", gone,
+                                                      str(ml_h)[:120])
+                                else:
+                                    print("  [info] G: member row %r not on "
+                                          "the manage screen" % g_nick)
+                                # ---- Session 20 (wave 6a): the INVITE flow,
+                                # still ON the manage screen. jadx decode:
+                                # TribeMemberManage (oa.a) is hosted by
+                                # TemplateActivity with RIGHT_RESOURCE_ID =
+                                # ic_add_friend (T.c -> startTemplate), so the
+                                # title bar's ibTemplateRight is visible; its
+                                # onRightButtonClick starts TribeInviteFriend
+                                # (na.c). Rows = greendao friends with a
+                                # right-aligned CheckBox (tick adds
+                                # String(userId) to the selection); the bottom
+                                # green 'Invite Friend' button (binding_2)
+                                # opens EditTextDialog (et_msg + btn_confirm)
+                                # -> POST /clan/api/v1/clan/tribe/member/invite
+                                # ?friendIds=&msg= (ITribeApi @POST). Success
+                                # -> tribe_invite_success toast.
+                                if friend_nick and fr_uid_num and frh:
+                                    inv_count = lambda: sum(
+                                        1 for line in adb.raw(
+                                            "logcat", "-d", "-s", "LocalAPI",
+                                            timeout=60).splitlines()
+                                        if "REQ POST /clan/api/v1/clan/tribe/"
+                                           "member/invite" in line)
+                                    right = screen.wait_for(ids=["ibTemplateRight"],
+                                                            timeout=8, poll=2)
+                                    if right and right.center:
+                                        screen.tap_node(right)
+                                        time.sleep(5)
+                                        f_alive("G-invitescreen")
+                                        # wait for the BOTTOM button: the
+                                        # title carries the SAME text and the
+                                        # first dump can race the transition
+                                        # (run 37412479967 tapped the title at
+                                        # y=95). The button is anchored
+                                        # bottom (y > 900 on 720x1280).
+                                        # wave 7: one bounded RE-ENTRY - runs
+                                        # 37421024074/37423815542 missed the
+                                        # FIRST ibTemplateRight tap (transition
+                                        # race). ibTemplateRight lives only on
+                                        # the manage screen, so a find hit there
+                                        # mid-wait means we never left: tap it
+                                        # once more and keep waiting.
+                                        low = None
+                                        btn_deadline = time.time() + 16
+                                        h_reentered = False
+                                        while time.time() < btn_deadline:
+                                            cand = [x for x in screen.dump()
+                                                    if x.center
+                                                    and (x.text or "").upper()
+                                                    == "INVITE FRIEND"
+                                                    and x.bounds
+                                                    and x.bounds[1] > 900]
+                                            if cand:
+                                                low = cand[0]
+                                                break
+                                            if not h_reentered \
+                                                    and time.time() > btn_deadline - 10:
+                                                r2 = screen.find(
+                                                    ids=["ibTemplateRight"])
+                                                if r2 and r2.center:
+                                                    screen.tap_node(r2)
+                                                    h_reentered = True
+                                                    print("  [info] G: invite "
+                                                          "screen re-entry tap")
+                                            time.sleep(2)
+                                        if low:
+                                            ok("G: TribeInviteFriend open "
+                                               "(bottom 'Invite Friend' button "
+                                               "at %s)" % (low.center,))
+                                            pre_inv = inv_count()
+                                            frow = screen.wait_for(
+                                                texts=[n for n in
+                                                       (friend_nick, friend_nick2)
+                                                       if n], timeout=12,
+                                                poll=3)
+                                            if frow and frow.center:
+                                                icb = next(
+                                                    (x for x in screen.dump()
+                                                     if x.center and
+                                                     x.cls.endswith("CheckBox")),
+                                                    None)
+                                                if icb and icb.center:
+                                                    screen.tap_node(icb)
+                                                else:
+                                                    l4, t4, r4, b4 = frow.bounds
+                                                    adb.tap(r4 - 30,
+                                                            (t4 + b4) // 2)
+                                                time.sleep(2)
+                                                ok("G: friend row %r ticked "
+                                                   "(selection=String(userId))"
+                                                   % frow.text)
+                                                screen.tap_node(low)
+                                                time.sleep(3)
+                                                et = screen.wait_for(
+                                                    ids=["et_msg"], timeout=8,
+                                                    poll=2)
+                                                if et and et.center:
+                                                    screen.tap_node(et)
+                                                    time.sleep(1)
+                                                    adb.text("JoinUsQA")
+                                                    time.sleep(1)
+                                                    # run-37418335203: the soft
+                                                    # keyboard covers the confirm
+                                                    # button - BACK once drops the
+                                                    # keyboard and keeps the dialog
+                                                    adb.key(4)
+                                                    time.sleep(2)
+                                                    conf = screen.wait_for(
+                                                        ids=["btn_confirm"],
+                                                        timeout=8, poll=2)
+                                                    if conf and conf.center:
+                                                        screen.tap_node(conf)
+                                                        time.sleep(5)
+                                                        if inv_count() == pre_inv:
+                                                            conf2 = screen.find(
+                                                                ids=["btn_confirm"])
+                                                            if conf2 and conf2.center:
+                                                                screen.tap_node(conf2)
+                                                                time.sleep(5)
+                                                        f_alive("G-invite-sent")
+                                                        post_inv = inv_count()
+                                                        msgs_f = fcall(
+                                                            "GET",
+                                                            "/clan/api/v2/clan/"
+                                                            "tribe/member/message",
+                                                            headers=frh)
+                                                        inv_msg = next(
+                                                            (m for m in
+                                                             (msgs_f.get("data")
+                                                              or [])
+                                                             if m.get("type") == 2
+                                                             and m.get("clanId")
+                                                             == own_clan_id),
+                                                            None)
+                                                        check(
+                                                            "G: inviteFriend "
+                                                            "client-asserted "
+                                                            "(POST %d->%d, "
+                                                            "invitee sees the "
+                                                            "type-2 message=%s)"
+                                                            % (pre_inv, post_inv,
+                                                               bool(inv_msg)),
+                                                            post_inv > pre_inv
+                                                            and inv_msg is not None,
+                                                            "msgs=%s" % str(msgs_f)[:140])
+                                                    else:
+                                                        print("  [info] G: "
+                                                              "EditTextDialog "
+                                                              "btn_confirm not "
+                                                              "found")
+                                                else:
+                                                    print("  [info] G: "
+                                                          "EditTextDialog did "
+                                                          "not open (selection "
+                                                          "not registered?)")
+                                            else:
+                                                print("  [info] G: friend row "
+                                                      "%r not on the invite "
+                                                      "screen (greendao cache)"
+                                                      % friend_nick)
+                                        else:
+                                            print("  [info] G: 'Invite Friend' "
+                                                  "button not on the invite "
+                                                  "screen")
+                                        adb.key(4)  # invite screen -> manage
+                                        time.sleep(3)
+                                    else:
+                                        print("  [info] G: ibTemplateRight not "
+                                              "on the manage screen (invite "
+                                              "entry unavailable)")
+                                else:
+                                    print("  [info] G: no friend candidate "
+                                          "(invite drive skipped)")
+                                adb.key(4)
+                                time.sleep(3)
+                            else:
+                                print("  [info] G: 'Manage Members' not on the "
+                                      "sheet (dump evidence above)")
+                            # ---------------- Clan Settings (auto-enter toggle)
+                            more2 = None
+                            for x in screen.dump():
+                                if not (x.center
+                                        and x.cls.endswith("ImageButton")):
+                                    continue
+                                cx, cy = x.center
+                                if cy < 140 and cx > 360:
+                                    more2 = x
+                                    break
+                            if more2 and screen.tap_node(more2):
+                                time.sleep(3)
+                            cs = screen.wait_for(texts=["Clan Settings"],
+                                                 timeout=6, poll=2)
+                            if cs and cs.center:
+                                screen.tap_node(cs)
+                                time.sleep(5)
+                                f_alive("G-settings")
+                                cb = next((x for x in screen.dump()
+                                           if x.center
+                                           and x.cls.endswith("CheckBox")), None)
+                                if cb and cb.center:
+                                    # sa.e hardcodes the toggle TRUE and the
+                                    # response re-binds it after every PUT, so
+                                    # the sent value per tap is read from the
+                                    # REQ line itself (?freeVerify=). Assertion:
+                                    # the server state always follows the last
+                                    # value the client sent.
+                                    # 5u run decode: the client PUTs the value
+                                    # as a FORM body (NanoHTTPD merges it into
+                                    # getParameters - the URI carries no query),
+                                    # and the state follows each tap. Assert the
+                                    # state sequence CHANGED (the server followed
+                                    # the client's toggling) with bounded PUTs.
+                                    fv0 = fv_req_count()
+                                    states = []
+                                    fv_owner_alive = True
+                                    for tap_n in range(1, 4):
+                                        # session 20 (run 37412479967) + run
+                                        # 37505691180: the roaming native-killer
+                                        # can strike INSIDE this loop — in
+                                        # 37505691180 the app died between the
+                                        # settings dump and tap 1, the recovery
+                                        # landed on the hall, and the old
+                                        # once-captured pid guard was None
+                                        # (captured while dead) so it never
+                                        # fired: the remaining taps hit wrong
+                                        # UI and the hard check failed on a
+                                        # state that never moved. Track the
+                                        # pid PER TAP and abandon honestly on
+                                        # any death (the check stays hard on
+                                        # the normal no-death path).
+                                        pid_pre = adb.pid(args.package)
+                                        cb_now = next(
+                                            (x for x in screen.dump()
+                                             if x.center
+                                             and x.cls.endswith("CheckBox")),
+                                            None) or cb
+                                        screen.tap_node(cb_now)
+                                        time.sleep(3)
+                                        f_alive("G-fv-tap%d" % tap_n)
+                                        pid_post = adb.pid(args.package)
+                                        if not pid_pre or not pid_post \
+                                                or pid_post != pid_pre:
+                                            print("  [evidence] process died "
+                                                  "around freeVerify tap %d "
+                                                  "(pid %s -> %s) - taps "
+                                                  "abandoned honestly"
+                                                  % (tap_n, pid_pre, pid_post))
+                                            fv_owner_alive = False
+                                            break
+                                        base_g = fcall(
+                                            "GET", "/clan/api/v1/clan/tribe/base",
+                                            headers=live_hdr)
+                                        state = (base_g.get("data") or {}).get(
+                                            "freeVerify")
+                                        states.append(state)
+                                        print("  [evidence] G: freeVerify tap %d "
+                                              "-> server state %s"
+                                              % (tap_n, state))
+                                    fv2 = fv_req_count()
+                                    if fv_owner_alive:
+                                        check(
+                                            "G: freeVerify toggle client-asserted "
+                                            "(server followed the taps: %s, PUTs "
+                                            "%d->%d)" % (states, fv0, fv2),
+                                            fv2 >= fv0 + 2 and len(set(states)) >= 2
+                                            and states[-1] in (0, 1),
+                                            "states=%s puts %d->%d"
+                                            % (states, fv0, fv2))
+                                    # restore the deterministic world: 0
+                                    # (only meaningful when no death occurred —
+                                    # otherwise cb is stale and the state never
+                                    # moved from 0)
+                                    for _ in range(4 if fv_owner_alive else 0):
+                                        base_r = fcall(
+                                            "GET", "/clan/api/v1/clan/tribe/base",
+                                            headers=live_hdr)
+                                        if (base_r.get("data") or {}).get(
+                                                "freeVerify") in (0, None):
+                                            break
+                                        screen.tap_node(cb)
+                                        time.sleep(3)
+                                else:
+                                    print("  [info] G: auto-enter CheckBox not "
+                                          "found on the settings screen")
+                                adb.key(4)
+                                time.sleep(3)
+                            else:
+                                print("  [info] G: 'Clan Settings' not on the "
+                                      "sheet (chief-only item; dump above)")
+                            for _ in range(3):
+                                if screen.find(ids=["rb_3"]):
+                                    break
+                                adb.key(4)
+                                time.sleep(2)
+                            # ---- Session 20 (wave 6b): HAND OVER CHIEF through
+                            # the UI, deliberately LAST (after this the live
+                            # session is a plain member — no chief-gated drive
+                            # may follow). jadx decode (TribeHasItemViewModel
+                            # J.h/f): chief long-presses a MEMBER row -> sheet
+                            # [Hand over Chief | Set as Elder | Remove Member |
+                            # Cancel] -> item 2131823573 'Hand over Chief' ->
+                            # e(3) TwoButtonDialog ('Are you sure to hand over?')
+                            # -> btnSure -> PUT /clan/api/v1/clan/tribe/member
+                            # ?otherId=&type=3 (client code 3 = chief handover;
+                            # server: old chief -> member, chiefId follows).
+                            gk_uid = "hqa%05d" % (int(time.time()) % 100000)
+                            gk_pw = "LocalQA%05d" % (int(time.time()) % 100000)
+                            gk = fcall("POST", "/user/api/v1/register",
+                                       {"uid": gk_uid, "password": gk_pw,
+                                        "confirmPassword": gk_pw,
+                                        "imei": "h-device", "appType": "android",
+                                        "os": "12"})
+                            gk_uid_num = (gk.get("data") or {}).get("userId", 0)
+                            gk_tok = (gk.get("data") or {}).get("accessToken", "")
+                            gk_ok = gk.get("code") == 1 and gk_uid_num > 0
+                            gk_nick = None
+                            if gk_ok:
+                                gkh = {"Access-Token": gk_tok,
+                                       "userId": str(gk_uid_num), "language": "en"}
+                                gkr = fcall("POST",
+                                            "/clan/api/v1/clan/tribe/member",
+                                            {"clanId": own_clan_id,
+                                             "msg": "h-join"}, headers=gkh)
+                                gka = fcall("PUT",
+                                            "/clan/api/v1/clan/tribe/member/"
+                                            "agreement?otherId=%d" % gk_uid_num,
+                                            None, headers=live_hdr)
+                                gk_ok = gkr.get("code") == 1 \
+                                    and gka.get("code") == 1
+                                gml2 = fcall("GET",
+                                             "/clan/api/v1/clan/tribe/member",
+                                             headers=live_hdr)
+                                gk_nick = next(
+                                    (m.get("nickName") for m in
+                                     gml2.get("data", [])
+                                     if m.get("userId") == gk_uid_num), None)
+                                ok("G: third member joined via the API (%s, "
+                                   "nick=%r)" % (gk_uid, gk_nick)) if gk_ok \
+                                    else print(
+                                        "  [info] G: third-member API join "
+                                        "failed: %s %s" % (str(gkr)[:80],
+                                                           str(gka)[:80]))
+                            ho_done = False
+                            if gk_ok and gk_nick:
+                                # re-enter: rb_3 -> Enter Clan -> clan home ->
+                                # ic_more -> Manage Members
+                                rb3h = screen.wait_for(ids=["rb_3"], timeout=10,
+                                                       poll=2)
+                                if rb3h and screen.tap_node(rb3h):
+                                    time.sleep(4)
+                                    ent2 = screen.find(ids=["rlEnterClan"]) \
+                                        or screen.find(texts=["Enter Clan"])
+                                    if ent2 and screen.tap_node(ent2):
+                                        time.sleep(6)
+                                        for _ in range(4):
+                                            d_h = screen.dump()
+                                            if any(
+                                                    (x.text or "")
+                                                    == "Notice Board"
+                                                    for x in d_h):
+                                                cls_h = next(
+                                                    (x for x in d_h
+                                                     if x.res.rsplit("/", 1)[-1]
+                                                     == "btnSure" and x.center),
+                                                    None)
+                                                if cls_h:
+                                                    screen.tap_node(cls_h)
+                                                time.sleep(3)
+                                            else:
+                                                break
+                                        more3 = None
+                                        for x in screen.dump():
+                                            if not (x.center
+                                                    and x.cls.endswith(
+                                                        "ImageButton")):
+                                                continue
+                                            cx, cy = x.center
+                                            if cy < 140 and cx > 360:
+                                                more3 = x
+                                                break
+                                        if more3 and screen.tap_node(more3):
+                                            time.sleep(3)
+                                        mm3 = screen.wait_for(
+                                            texts=["Manage Members"], timeout=8,
+                                            poll=2)
+                                        if mm3 and mm3.center:
+                                            screen.tap_node(mm3)
+                                            time.sleep(5)
+                                            f_alive("G-managescreen-ho")
+
+                                            def ho_attempt(tag):
+                                                # One full hand-over
+                                                # interaction: long-press the
+                                                # third member's row -> sheet
+                                                # -> 'Hand over Chief' ->
+                                                # TwoButtonDialog btnSure ->
+                                                # PUT member type=3. Returns
+                                                # (ok, evidence).
+                                                row = screen.wait_for(
+                                                    texts=[gk_nick], timeout=12,
+                                                    poll=3)
+                                                if not (row and row.center):
+                                                    return (False, "third member "
+                                                            "row %r not on the "
+                                                            "manage screen"
+                                                            % gk_nick)
+                                                pid_at_ho = adb.pid(args.package)
+                                                pre_ho = puts_g()
+                                                l5, t5, r5, b5 = row.bounds
+                                                hx = (l5 + r5) // 2
+                                                hy = (t5 + b5) // 2
                                                 adb.sh(
                                                     "input swipe %d %d %d %d 1000"
                                                     % (hx, hy, hx, hy))
                                                 time.sleep(3)
                                                 hov = screen.find(
                                                     texts=["Hand over Chief"])
-                                            if not (hov and hov.center):
-                                                return (False, "'Hand over "
-                                                        "Chief' not on the "
-                                                        "member sheet")
-                                            screen.tap_node(hov)
-                                            time.sleep(3)
-                                            sure3 = screen.wait_for(
-                                                ids=["btnSure"], timeout=8,
-                                                poll=2)
-                                            if not (sure3 and sure3.center):
-                                                return (False, "hand-over "
-                                                        "TwoButtonDialog not "
-                                                        "confirmed")
-                                            screen.tap_node(sure3)
-                                            time.sleep(5)
-                                            f_alive("G-handover-" + tag)
-                                            post_ho = puts_g()
-                                            ml_ho = fcall(
-                                                "GET",
-                                                "/clan/api/v1/clan/"
-                                                "tribe/member",
-                                                headers=live_hdr)
-                                            gk_role = next(
-                                                (m.get("role")
-                                                 for m in
-                                                 ml_ho.get("data", [])
-                                                 if m.get("userId")
-                                                 == gk_uid_num), None)
-                                            me_role = next(
-                                                (m.get("role")
-                                                 for m in
-                                                 ml_ho.get("data", [])
-                                                 if str(m.get("userId"))
-                                                 == str(d_uid_live)), None)
-                                            base_ho = fcall(
-                                                "GET",
-                                                "/clan/api/v1/clan/"
-                                                "tribe/base",
-                                                headers=live_hdr)
-                                            # tribe/base carries the
-                                            # roster (clanMembers), not a
-                                            # chiefId field — the chief is
-                                            # the role-20 row (fix from run
-                                            # 37409714321: chiefId=None
-                                            # read the wrong field)
-                                            chief_from_base = next(
-                                                (m.get("userId")
-                                                 for m in
-                                                 (base_ho.get("data")
-                                                  or {}).get(
-                                                      "clanMembers", [])
-                                                 if m.get("role") == 20),
-                                                None)
-                                            ev = ("PUT %d->%d, gk role=%s, "
-                                                  "old chief role=%s, chief "
-                                                  "from base=%s"
-                                                  % (pre_ho, post_ho,
-                                                     gk_role, me_role,
-                                                     chief_from_base))
-                                            ho_res = post_ho > pre_ho \
-                                                and gk_role == 20 \
-                                                and me_role == 0 \
-                                                and str(chief_from_base) \
-                                                == str(gk_uid_num)
-                                            return (ho_res, ev)
+                                                if not (hov and hov.center) \
+                                                        and adb.pid(args.package) \
+                                                        == pid_at_ho:
+                                                    # one bounded re-long-press
+                                                    # (sheet timing / a missed
+                                                    # press)
+                                                    adb.sh(
+                                                        "input swipe %d %d %d %d 1000"
+                                                        % (hx, hy, hx, hy))
+                                                    time.sleep(3)
+                                                    hov = screen.find(
+                                                        texts=["Hand over Chief"])
+                                                if not (hov and hov.center):
+                                                    return (False, "'Hand over "
+                                                            "Chief' not on the "
+                                                            "member sheet")
+                                                screen.tap_node(hov)
+                                                time.sleep(3)
+                                                sure3 = screen.wait_for(
+                                                    ids=["btnSure"], timeout=8,
+                                                    poll=2)
+                                                if not (sure3 and sure3.center):
+                                                    return (False, "hand-over "
+                                                            "TwoButtonDialog not "
+                                                            "confirmed")
+                                                screen.tap_node(sure3)
+                                                time.sleep(5)
+                                                f_alive("G-handover-" + tag)
+                                                post_ho = puts_g()
+                                                ml_ho = fcall(
+                                                    "GET",
+                                                    "/clan/api/v1/clan/"
+                                                    "tribe/member",
+                                                    headers=live_hdr)
+                                                gk_role = next(
+                                                    (m.get("role")
+                                                     for m in
+                                                     ml_ho.get("data", [])
+                                                     if m.get("userId")
+                                                     == gk_uid_num), None)
+                                                me_role = next(
+                                                    (m.get("role")
+                                                     for m in
+                                                     ml_ho.get("data", [])
+                                                     if str(m.get("userId"))
+                                                     == str(d_uid_live)), None)
+                                                base_ho = fcall(
+                                                    "GET",
+                                                    "/clan/api/v1/clan/"
+                                                    "tribe/base",
+                                                    headers=live_hdr)
+                                                # tribe/base carries the
+                                                # roster (clanMembers), not a
+                                                # chiefId field — the chief is
+                                                # the role-20 row (fix from run
+                                                # 37409714321: chiefId=None
+                                                # read the wrong field)
+                                                chief_from_base = next(
+                                                    (m.get("userId")
+                                                     for m in
+                                                     (base_ho.get("data")
+                                                      or {}).get(
+                                                          "clanMembers", [])
+                                                     if m.get("role") == 20),
+                                                    None)
+                                                ev = ("PUT %d->%d, gk role=%s, "
+                                                      "old chief role=%s, chief "
+                                                      "from base=%s"
+                                                      % (pre_ho, post_ho,
+                                                         gk_role, me_role,
+                                                         chief_from_base))
+                                                ho_res = post_ho > pre_ho \
+                                                    and gk_role == 20 \
+                                                    and me_role == 0 \
+                                                    and str(chief_from_base) \
+                                                    == str(gk_uid_num)
+                                                return (ho_res, ev)
 
-                                        # RUN 37546126594 triage: every
-                                        # tap landed but the client never
-                                        # fired the PUT (silent client-side
-                                        # drop; invite-sent runs had passed
-                                        # before, so it is a race, not a
-                                        # gate). Retry the WHOLE
-                                        # interaction once and dump the UI
-                                        # as evidence before the hard
-                                        # verdict.
-                                        ho_ev = "not attempted"
-                                        for ho_i in range(2):
-                                            if ho_i:
-                                                # dismiss any leftover
-                                                # sheet/dialog from
-                                                # attempt 1, re-ground
-                                                adb.key(4)
-                                                time.sleep(2)
-                                            ho_ok, ho_ev = ho_attempt(
-                                                "attempt%d" % (ho_i + 1))
-                                            if ho_ok:
+                                            # RUN 37546126594 triage: every
+                                            # tap landed but the client never
+                                            # fired the PUT (silent client-side
+                                            # drop; invite-sent runs had passed
+                                            # before, so it is a race, not a
+                                            # gate). Retry the WHOLE
+                                            # interaction once and dump the UI
+                                            # as evidence before the hard
+                                            # verdict.
+                                            ho_ev = "not attempted"
+                                            for ho_i in range(2):
+                                                if ho_i:
+                                                    # dismiss any leftover
+                                                    # sheet/dialog from
+                                                    # attempt 1, re-ground
+                                                    adb.key(4)
+                                                    time.sleep(2)
+                                                ho_ok, ho_ev = ho_attempt(
+                                                    "attempt%d" % (ho_i + 1))
+                                                if ho_ok:
+                                                    check(
+                                                        "G: HAND OVER CHIEF "
+                                                        "client-asserted (%s)"
+                                                        % ho_ev, True)
+                                                    ho_done = True
+                                                    break
+                                                if ho_i == 0:
+                                                    print("  [retry] G: "
+                                                          "hand-over attempt 1 "
+                                                          "no PUT (%s) - "
+                                                          "retrying once"
+                                                          % ho_ev)
+                                                    for n in screen.dump():
+                                                        if n.res or n.text:
+                                                            print(
+                                                                "  G-ho-dump] %s |"
+                                                                " text=%r"
+                                                                % (n.res.rsplit(
+                                                                    "/", 1)[-1]
+                                                                    if n.res
+                                                                    else "",
+                                                                    n.text[:28]))
+                                            if not ho_done:
                                                 check(
                                                     "G: HAND OVER CHIEF "
                                                     "client-asserted (%s)"
-                                                    % ho_ev, True)
-                                                ho_done = True
-                                                break
-                                            if ho_i == 0:
-                                                print("  [retry] G: "
-                                                      "hand-over attempt 1 "
-                                                      "no PUT (%s) - "
-                                                      "retrying once"
-                                                      % ho_ev)
-                                                for n in screen.dump():
-                                                    if n.res or n.text:
-                                                        print(
-                                                            "  G-ho-dump] %s |"
-                                                            " text=%r"
-                                                            % (n.res.rsplit(
-                                                                "/", 1)[-1]
-                                                                if n.res
-                                                                else "",
-                                                                n.text[:28]))
-                                        if not ho_done:
-                                            check(
-                                                "G: HAND OVER CHIEF "
-                                                "client-asserted (%s)"
-                                                % ho_ev, False,
-                                                "no PUT reached the server "
-                                                "after 2 full attempts")
-                                    else:
-                                        print("  [info] G: 'Manage Members' "
-                                              "not on the sheet (hand-over "
-                                              "re-entry)")
-                            if not ho_done and not rb3h:
-                                print("  [info] G: rb_3 not found for the "
-                                      "hand-over re-entry")
+                                                    % ho_ev, False,
+                                                    "no PUT reached the server "
+                                                    "after 2 full attempts")
+                                        else:
+                                            print("  [info] G: 'Manage Members' "
+                                                  "not on the sheet (hand-over "
+                                                  "re-entry)")
+                                if not ho_done and not rb3h:
+                                    print("  [info] G: rb_3 not found for the "
+                                          "hand-over re-entry")
+                            else:
+                                print("  [info] G: no third member (hand-over "
+                                      "drive skipped)")
+                            alive_or_recover_at(adb, screen, args.package,
+                                                args.activity, "G-grounded")
                         else:
-                            print("  [info] G: no third member (hand-over "
-                                  "drive skipped)")
-                        alive_or_recover_at(adb, screen, args.package,
-                                            args.activity, "G-grounded")
+                            print("  [skip] G: no second member (API join "
+                                  "failed) - member/settings drives skipped")
                     else:
-                        print("  [skip] G: no second member (API join "
-                              "failed) - member/settings drives skipped")
+                        print("  [skip] G: no live session token")
                 else:
-                    print("  [skip] G: no live session token")
+                    print("  [info] F: own clan %s NOT surfaced (tab3 dump + "
+                          "clanscreen dump recorded above for the next wave)"
+                          % own_name)
+                # ground: leave the drive somewhere with the bottom nav
+                for _ in range(4):
+                    if screen.find(ids=["rb_3"]):
+                        break
+                    adb.key(4)
+                    time.sleep(2)
+                alive_or_recover_at(adb, screen, args.package, args.activity,
+                                    "F-grounded")
             else:
-                print("  [info] F: own clan %s NOT surfaced (tab3 dump + "
-                      "clanscreen dump recorded above for the next wave)"
-                      % own_name)
-            # ground: leave the drive somewhere with the bottom nav
-            for _ in range(4):
-                if screen.find(ids=["rb_3"]):
-                    break
-                adb.key(4)
-                time.sleep(2)
-            alive_or_recover_at(adb, screen, args.package, args.activity,
-                                "F-grounded")
+                print("  [skip] F: rb_3 not found after Phase E")
         else:
-            print("  [skip] F: rb_3 not found after Phase E")
-    else:
-        print("  [info] Phase F skipped - no own clan (no session token from "
-              "Phase D, API create failed, or rb_3 unavailable)")
+            print("  [info] Phase F skipped - no own clan (no session token from "
+                  "Phase D, API create failed, or rb_3 unavailable)")
 
-    # ------------------------------------------------- Phase H: the
-    # activity-task claim through the REAL UI (session 21, wave 7).
-    # jadx decode: the hall's icon_activity entry (content_header1 item1,
-    # bound by ka.java to MainFragmentViewModel.onActivity) -> bc.j -> D.b
-    # -> TemplateUtils.startTemplate(ActivityFragment (e.b.c.b), title
-    # string game_g1008) -> ActivityViewModel g -> ActivityListModel f ->
-    # CampaignApi.getActivityTaskTitleList (GET /activity/api/v2/activity/
-    # title, the wave-6c surface) -> title cards (item_activity_list).
-    # Clicking the "weekend" card (ActivityItemViewModel c.f titleType
-    # switch: weekend/recharge -> ActivityNewDialog) opens m (FullScreen
-    # dialog, layout activity_content_temp_weekend) -> ActivityTaskContent
-    # ListModel q -> GET .../activity/action?titleType=weekend fetched
-    # FRESH on dialog open -> rows (item_activity_task_content); each
-    # row's Button (text = string/receive "Get", NO resource-id) fires
-    # ActivityTaskContentItemViewModel o.h -> POST /activity/api/v1/
-    # receive/reward?titleType=&actionId=; n.onSuccess sets status 2 and
-    # shows CampaignGetIntegralRewardDialog (Confirm button = base_sure).
-    # The 10-min online_time task turns claimable once the server has
-    # tracked >= 10 DISTINCT authenticated online minutes for this user
-    # (wave-6c handler); this drive runs after the F/G walks, late in the
-    # run, so the budget has already accrued. NO GameServer work.
-    print("== Phase H: activity-task claim (weekend task dialog) ==")
-    # the quoted literal keeps docs/COVERAGE.json's client_asserted
-    # detection honest (the assertion really is in this script)
-    h_rr_path = "/activity/api/v1/receive/reward"
-    h_post = lambda: sum(
-        1 for line in adb.raw("logcat", "-d", "-s", "LocalAPI",
-                              timeout=60).splitlines()
-        if ("REQ POST " + h_rr_path) in line)
-    h_golds_before = None
+        # ------------------------------------------------- Phase H: the
+        # activity-task claim through the REAL UI (session 21, wave 7).
+        # jadx decode: the hall's icon_activity entry (content_header1 item1,
+        # bound by ka.java to MainFragmentViewModel.onActivity) -> bc.j -> D.b
+        # -> TemplateUtils.startTemplate(ActivityFragment (e.b.c.b), title
+        # string game_g1008) -> ActivityViewModel g -> ActivityListModel f ->
+        # CampaignApi.getActivityTaskTitleList (GET /activity/api/v2/activity/
+        # title, the wave-6c surface) -> title cards (item_activity_list).
+        # Clicking the "weekend" card (ActivityItemViewModel c.f titleType
+        # switch: weekend/recharge -> ActivityNewDialog) opens m (FullScreen
+        # dialog, layout activity_content_temp_weekend) -> ActivityTaskContent
+        # ListModel q -> GET .../activity/action?titleType=weekend fetched
+        # FRESH on dialog open -> rows (item_activity_task_content); each
+        # row's Button (text = string/receive "Get", NO resource-id) fires
+        # ActivityTaskContentItemViewModel o.h -> POST /activity/api/v1/
+        # receive/reward?titleType=&actionId=; n.onSuccess sets status 2 and
+        # shows CampaignGetIntegralRewardDialog (Confirm button = base_sure).
+        # The 10-min online_time task turns claimable once the server has
+        # tracked >= 10 DISTINCT authenticated online minutes for this user
+        # (wave-6c handler); this drive runs after the F/G walks, late in the
+        # run, so the budget has already accrued. NO GameServer work.
+        print("== Phase H: activity-task claim (weekend task dialog) ==")
+        # the quoted literal keeps docs/COVERAGE.json's client_asserted
+        # detection honest (the assertion really is in this script)
+        h_rr_path = "/activity/api/v1/receive/reward"
+        h_post = lambda: sum(
+            1 for line in adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                  timeout=60).splitlines()
+            if ("REQ POST " + h_rr_path) in line)
+        h_golds_before = None
 
-    def h_wallet_preread():
-        # the embedded server IS the app process: a dead app (the roaming
-        # killer) means NO server -> this read resolves to None. Called
-        # AFTER the H ground/recovery so the read rides a live server.
-        if not live_hdr:
-            return None
-        h_act = fcall("GET",
-                      "/activity/api/v1/activity/action?titleType=weekend",
-                      headers=live_hdr)
-        h_rows = h_act.get("data") if isinstance(h_act.get("data"), list) \
-            else []
-        h_first = next((r for r in h_rows
-                        if r.get("actionFlag") == "online_time"), None)
-        h_wallet = fcall("GET", "/pay/api/v1/wealth/user", headers=live_hdr)
-        h_golds = (h_wallet.get("data") or {}).get("golds")
-        print("  [evidence] H: weekend online_time status=%s golds=%s"
-              % ((h_first or {}).get("status"), h_golds))
-        return h_golds
+        def h_wallet_preread():
+            # the embedded server IS the app process: a dead app (the roaming
+            # killer) means NO server -> this read resolves to None. Called
+            # AFTER the H ground/recovery so the read rides a live server.
+            if not live_hdr:
+                return None
+            h_act = fcall("GET",
+                          "/activity/api/v1/activity/action?titleType=weekend",
+                          headers=live_hdr)
+            h_rows = h_act.get("data") if isinstance(h_act.get("data"), list) \
+                else []
+            h_first = next((r for r in h_rows
+                            if r.get("actionFlag") == "online_time"), None)
+            h_wallet = fcall("GET", "/pay/api/v1/wealth/user", headers=live_hdr)
+            h_golds = (h_wallet.get("data") or {}).get("golds")
+            print("  [evidence] H: weekend online_time status=%s golds=%s"
+                  % ((h_first or {}).get("status"), h_golds))
+            return h_golds
 
-    h_ground = False
-    for h_try in range(2):
-        # the killer struck BETWEEN G and H (run 37441604561): recover at
-        # the H ENTRY or the whole claim drive starves (rb_1 is never
-        # found on a dead app and the drive was skipped to its tail)
-        if not adb.pid(args.package):
-            alive_or_recover_at(adb, screen, args.package, args.activity,
-                                "H-entry")
-        for _ in range(4):
-            if screen.find(ids=["rb_1"]):
-                h_ground = True
-                break
-            adb.key(4)
-            time.sleep(2)
-        if h_ground:
-            break
-    if h_ground:
-        h_golds_before = h_wallet_preread()
-        rb1h = screen.find(ids=["rb_1"])
-        if rb1h and rb1h.center:
-            screen.tap_node(rb1h)
-            time.sleep(4)
-        dismiss_permission_dialogs(screen)
-        handle_campaign_dialogs(adb, screen, "H-hall")
-        h_entry = None
-        for _ in range(3):
-            # swipe down to expand the collapsing hall header (parallax);
-            # the BIG header (content_header1) owns item1, the COLLAPSED
-            # small header (content_header2) owns littleItem1 — both fire
-            # MainFragmentViewModel.onActivity (ka.java / ma.java)
-            adb.sh("input swipe 360 300 360 800 300")
-            time.sleep(2)
-            h_entry = screen.find(ids=["item1"]) \
-                or screen.find(ids=["littleItem1"])
-            if h_entry and h_entry.center:
-                break
-        if h_entry and h_entry.center:
-            ok("H: hall activity entry found (%s at %s)"
-               % ("item1" if (h_entry.res or "").endswith("item1")
-                  else "littleItem1", h_entry.center))
-            pre_h = h_post()
-            screen.tap_node(h_entry)
-            time.sleep(5)
-            alive_or_recover_at(adb, screen, args.package, args.activity,
-                                "H-activitycenter")
-
-            def h_get_buttons():
-                # bounded poll: the dialog fetches the weekend actions
-                # fresh on open (q.onLoad) before the rows render
-                end = time.time() + 10
-                while time.time() < end:
-                    btns = [x for x in screen.dump()
-                            if x.center and x.cls.endswith("Button")
-                            and (x.text or "").strip().upper() == "GET"]
-                    if btns:
-                        return btns
-                    time.sleep(2)
-                return []
-
-            h_btns = []
-            for h_attempt, h_idx in ((1, 1), (2, 0)):
-                # cards = bg_content nodes (one per title card); the client
-                # renders [weekday, weekend] and ONLY the weekend card
-                # opens the task dialog (c.f titleType switch; weekday
-                # falls into the content switch and our content is inert).
-                # The template fetches titles on open (f.onLoad), so poll
-                # for the cards before tapping (bounded).
-                h_cards = []
-                h_card_deadline = time.time() + 12
-                while time.time() < h_card_deadline:
-                    h_cards = [x for x in screen.dump()
-                               if x.center and x.res.rsplit("/", 1)[-1]
-                               == "bg_content"]
-                    h_cards = list({x.bounds: x for x in h_cards}.values())
-                    if len(h_cards) > h_idx:
-                        break
-                    time.sleep(2)
-                if len(h_cards) > h_idx:
-                    h_card = sorted(h_cards,
-                                    key=lambda n: n.bounds[1])[h_idx]
-                    screen.tap_node(h_card)
-                    time.sleep(6)
-                    h_btns = h_get_buttons()
-                    if h_btns:
-                        break
-                print("  [info] H: no GET buttons after card index %d "
-                      "(attempt %d, cards=%d)"
-                      % (h_idx, h_attempt, len(h_cards)))
-            if h_btns:
-                ok("H: weekend task dialog open (%d GET buttons)"
-                   % len(h_btns))
-                screen.tap_node(h_btns[0])  # first row = online_time 10 min
-                time.sleep(6)
-                post_h = h_post()
-                # n.onSuccess shows CampaignGetIntegralRewardDialog on a
-                # REAL claim; an incomplete task gets a non-fatal error tip
-                # (the POST still fires). Session-21 lesson: the dialog was
-                # missed in the old 6s EXACT-text wait — the client's
-                # textAllCaps renders base_sure as "CONFIRM", and find()
-                # matches texts= exactly. Match case-insensitively
-                # (contains=["confirm"]), widen to 16s, and PROMOTE to a
-                # hard check gated on the wallet delta (a real claim credits
-                # golds, so a grown wallet + no dialog is a genuine miss).
-                h_conf = screen.wait_for(contains=["confirm"], timeout=16,
-                                         poll=2)
-                h_dialog_seen = False
-                if h_conf and h_conf.center:
-                    screen.tap_node(h_conf)
-                    time.sleep(3)
-                    h_dialog_seen = True
-                    ok("H: reward dialog seen (real claim path)")
-                else:
-                    screen.snap("H_reward_dialog_missing")
-                    debug_dump(screen, "H-reward-dialog")
-                h_delta = None
-                if live_hdr:
-                    h_wallet2 = fcall("GET", "/pay/api/v1/wealth/user",
-                                      headers=live_hdr)
-                    h_golds_after = (h_wallet2.get("data") or {}).get("golds")
-                    print("  [evidence] H: golds after claim=%s (before=%s)"
-                          % (h_golds_after, h_golds_before))
-                    try:
-                        h_delta = (int(h_golds_after)
-                                   - int(h_golds_before or 0))
-                    except (TypeError, ValueError):
-                        h_delta = None
-                check("H: reward dialog on real claim (wallet delta=%s, "
-                      "POST receive/reward %d->%d)"
-                      % (h_delta, pre_h, post_h),
-                      (not h_delta or h_delta <= 0) or h_dialog_seen,
-                      "wallet grew but CampaignGetIntegralRewardDialog "
-                      "was never seen (snap_H_reward_dialog_missing.png)")
-                check("H: activity-task claim client-asserted (POST "
-                      "receive/reward %d->%d)" % (pre_h, post_h),
-                      post_h > pre_h, "no POST observed")
-            else:
-                print("  [info] H: task dialog not reached from the title "
-                      "cards (dump evidence above)")
-            # ground: leave the dialog + template back at the hall
+        h_ground = False
+        for h_try in range(2):
+            # the killer struck BETWEEN G and H (run 37441604561): recover at
+            # the H ENTRY or the whole claim drive starves (rb_1 is never
+            # found on a dead app and the drive was skipped to its tail)
+            if not adb.pid(args.package):
+                alive_or_recover_at(adb, screen, args.package, args.activity,
+                                    "H-entry")
             for _ in range(4):
                 if screen.find(ids=["rb_1"]):
+                    h_ground = True
                     break
                 adb.key(4)
                 time.sleep(2)
-        else:
-            print("  [info] H: hall activity entry not found "
-                  "(item1/littleItem1) - visible nodes:")
-            for n in screen.dump():
-                if n.res or n.text or n.desc:
-                    print("  H-dump] %s | text=%r" % (
-                        n.res.rsplit("/", 1)[-1] if n.res else "",
-                        n.text[:28]))
-    else:
-        print("  [info] H: rb_1 not found (hall unavailable)")
-
-    # ------------------------------------------------- Phase I: the scrap
-    # screen through the REAL UI (session 22, error-driven UI expansion).
-    # jadx decode: the hall's icon_scrap entry (content_header1 item3 /
-    # content_header2 littleItem3) fires MainFragmentViewModel.onScrap ->
-    # onEnterScrap -> TemplateUtils.startTemplate(e.b.da.h =
-    # ScrapMainFragment, string 2131820785). The model (o =
-    # ScrapMainViewModel) calls m() -> ScrapApi.getRewardValue on CONSTRUCT
-    # (GET /activity/api/v1/collect/exchange/reward/value), and renders 5
-    # tabs (l(): ObservableList<p> from the icon int-array); each tab is a
-    # ListItemViewModel whose DefaultListModel (l.java) fetches
-    # ScrapApi.getScrapRewardList (GET /activity/api/{version}/collect/
-    # exchange/card/list?type=N) on render. The bag entry (command o ->
-    # f()) opens ScrapBagDialog -> ScrapBagListModel -> getBackpackInfo
-    # (GET /activity/api/{version}/collect/exchange/user/scrap) +
-    # getScrapBagValue. ALL 16 IScrapApi routes are real state-backed
-    # handlers (ScrapBag.java) host-tested since Phase 3 — but this
-    # surface has never been exercised by the client; the drive asserts
-    # the on-open pair and records every /collect/exchange/ path the
-    # client actually fires (error-driven evidence for the next wave).
-    print("== Phase I: scrap screen (collect & exchange) ==")
-    i_rv_path = "/activity/api/v1/collect/exchange/reward/value"
-    i_cl_marker = "/collect/exchange/card/list"
-    # gen_coverage mapping: the ROUTE is the {version} template — quote
-    # the template form so the concrete v2 the client fires maps to it
-    # (the session-23 j_bag_route_lit pattern)
-    i_cl_route_lit = "/activity/api/{version}/collect/exchange/card/list"
-    # the scrap tabs ALSO fetch the per-card combine counts (v2 observed
-    # in runs 37505691180 + 37516781819 I-windows)
-    i_combine_route_lit = "/activity/api/{version}/collect/exchange/card/combine"
-    i_reqs = lambda: [ln.split("REQ ", 1)[1].split(" ")[1]
-                      for ln in adb.raw("logcat", "-d", "-s", "LocalAPI",
-                                        timeout=60).splitlines()
-                      if "REQ " in ln and "/collect/exchange/" in ln]
-    i_ground = False
-    for i_try in range(2):
-        if not adb.pid(args.package):
-            alive_or_recover_at(adb, screen, args.package, args.activity,
-                                "I-entry")
-        for _ in range(4):
-            if screen.find(ids=["rb_1"]):
-                i_ground = True
+            if h_ground:
                 break
-            adb.key(4)
-            time.sleep(2)
-        if i_ground:
-            break
-    if i_ground:
-        rb1i = screen.find(ids=["rb_1"])
-        if rb1i and rb1i.center:
-            screen.tap_node(rb1i)
-            time.sleep(4)
-        dismiss_permission_dialogs(screen)
-        handle_campaign_dialogs(adb, screen, "I-hall")
-        i_entry = None
-        for _ in range(3):
-            # The H-tail relaunch can leave the QS shade dragged open:
-            # a swipe-down on a not-yet-rendered window pulls the SYSTEM
-            # shade, not the collapsing header (run 37454273455's I-dump
-            # was pure quick_settings_panel). Collapse it, re-verify the
-            # app, THEN swipe — every attempt, idempotently.
-            adb.sh("cmd statusbar collapse")
-            time.sleep(1)
-            if not adb.pid(args.package):
-                alive_or_recover_at(adb, screen, args.package,
-                                    args.activity, "I-walk")
-            # same collapsing-header dance as H: BIG header item3 vs
-            # COLLAPSED littleItem3 — both fire MainFragmentViewModel
-            # .onScrap (ka.java / ma.java)
-            adb.sh("input swipe 360 300 360 800 300")
-            time.sleep(2)
-            i_entry = screen.find(ids=["item3"]) \
-                or screen.find(ids=["littleItem3"])
-            if i_entry and i_entry.center:
-                break
-        if i_entry and i_entry.center:
-            ok("I: scrap entry found (%s at %s)"
-               % ("item3" if (i_entry.res or "").endswith("item3")
-                  else "littleItem3", i_entry.center))
-            screen.tap_node(i_entry)
-            time.sleep(6)
-            assert_alive(adb, args.package, "I-scrapcenter")
-            # the on-open pair: reward/value (model m()) + card/list
-            # (first tab's DefaultListModel render)
-            i_rv = sum(1 for ln in adb.raw("logcat", "-d", "-s", "LocalAPI",
-                                           timeout=60).splitlines()
-                       if ("REQ GET " + i_rv_path) in ln)
-            check("I: scrap on-open getRewardValue client-asserted "
-                  "(GET %s 0->%d)" % (i_rv_path, i_rv), i_rv > 0,
-                  "reward/value was never requested")
-            # bounded poll: the ViewPager may render the first tab a beat
-            # after the template settles
-            i_seen = []
-            i_cl = False
-            i_deadline = time.time() + 12
-            while time.time() < i_deadline:
-                i_seen = sorted(set(i_reqs()))
-                i_cl = any(i_cl_marker in p for p in i_seen)
-                if i_cl:
-                    break
+        if h_ground:
+            h_golds_before = h_wallet_preread()
+            rb1h = screen.find(ids=["rb_1"])
+            if rb1h and rb1h.center:
+                screen.tap_node(rb1h)
+                time.sleep(4)
+            dismiss_permission_dialogs(screen)
+            handle_campaign_dialogs(adb, screen, "H-hall")
+            h_entry = None
+            for _ in range(3):
+                # swipe down to expand the collapsing hall header (parallax);
+                # the BIG header (content_header1) owns item1, the COLLAPSED
+                # small header (content_header2) owns littleItem1 — both fire
+                # MainFragmentViewModel.onActivity (ka.java / ma.java)
+                adb.sh("input swipe 360 300 360 800 300")
                 time.sleep(2)
-            check("I: scrap card list fetched by a tab (%s in %s)"
-                  % (i_cl_marker, i_seen), i_cl,
-                  "no tab fetched card/list (tabs may render lazily)")
-            print("  [evidence] I: route template %s (v2 observed "
-                  "on-device)" % i_cl_route_lit)
-            i_comb = any("/card/combine" in p for p in i_seen)
-            check("I: scrap card combine counts fetched (%s in %s)"
-                  % ("/card/combine", i_seen), i_comb,
-                  "no tab fetched card/combine")
-            print("  [evidence] I: route template %s" % i_combine_route_lit)
-            for p in i_seen:
-                print("  [evidence] I: client fired %s" % p)
-            # ------------------------------------------------- Phase J:
-            # the scrap BAG dialog (session 23, error-driven UI
-            # expansion). jadx decode: the scrap main bottom-right menu
-            # has three buttons — ll_library ("Inventory"/背包, command
-            # o -> f()), ll_record ("Record"), ll_rule ("Rule").
-            # f() opens ScrapBagDialog(context, isFromMain=true, 0L,
-            # isPrivate=true); the dialog's ScrapBagViewModel CONSTRUCTOR
-            # calls ScrapApi.getScrapBagValue (GET /activity/api/v1/
-            # collect/exchange/user/scrap/value — EXACTLY ONE call site
-            # across classes1-5, so a phase-local 0->N is sound), and
-            # each of the 5 ViewPager pages (ScrapBagPageViewModel ->
-            # ScrapBagListModel.onLoad) fetches ScrapApi.getBackpackInfo
-            # (GET /activity/api/{version}/collect/exchange/user/scrap?
-            # type=N&pageNo=&pageSize=; tab order types 0,2,4,1,3 from
-            # R.array.scrap_bag_tab_array_type — Phase I evidence shows
-            # the client resolves {version} to v2 at runtime). Both
-            # routes are real ScrapBag.java handlers host-tested since
-            # Phase 3; the bag DIALOG has never been client-exercised.
-            print("== Phase J: scrap bag dialog ==")
-            # bare path literals keep gen_coverage's client_asserted
-            # detection exact (prefix matching against the RoutingTable)
-            j_value_lit = "/activity/api/v1/collect/exchange/user/scrap/value"
-            j_value_marker = "REQ GET " + j_value_lit
-            j_bag_route_lit = "/activity/api/{version}/collect/exchange/user/scrap"
-            # the bag pager pages also fetch the per-card combine counts
-            # (GET /activity/api/{version}/collect/exchange/card/combine,
-            # v2 observed on-device in runs 37492582973 + 37505691180)
-            # NOTE: card/combine is asserted in PHASE I (the scrap tabs
-            # fetch it there; the bag dialog reuses the cached counts —
-            # run 37516781819: J-window delta was 2->2).
-
-            def j_count(marker):
-                return sum(1 for ln in adb.raw("logcat", "-d", "-s",
-                                               "LocalAPI",
-                                               timeout=60).splitlines()
-                           if marker in ln)
-
-            def j_bag_paths():
-                # NOTE (run 37456710154 logcat evidence): the client
-                # sends this fetch WITHOUT a query string (null @Query
-                # params are omitted by Retrofit) — the REQ line is
-                # exactly "REQ GET /activity/api/v2/collect/exchange/
-                # user/scrap". Exclude the value route by suffix.
-                return [ln.split("REQ ", 1)[1].split(" ")[1]
-                        for ln in adb.raw("logcat", "-d", "-s", "LocalAPI",
-                                          timeout=60).splitlines()
-                        if "REQ " in ln
-                        and "/collect/exchange/user/scrap" in ln
-                        and "/user/scrap/value" not in ln]
-            j_pre_value = j_count(j_value_marker)
-            j_pre_bag = len(j_bag_paths())
-            j_bag = screen.find(ids=["ll_library"])
-            if not (j_bag and j_bag.center):
-                # run 37461423454: the app drifted back to the hall
-                # between the I checks and the J search (template self-
-                # closed; live hall dump, no FATAL). Re-enter and retry
-                # once before giving up.
-                print("  [info] J: ll_library missing - re-entering the "
-                      "scrap template")
-                if reenter_scrap(adb, screen, args.package, args.activity,
-                                 "J"):
-                    j_bag = screen.find(ids=["ll_library"])
-            if j_bag and j_bag.center:
-                ok("J: bag entry found (ll_library at %s)" % (j_bag.center,))
-                screen.tap_node(j_bag)
+                h_entry = screen.find(ids=["item1"]) \
+                    or screen.find(ids=["littleItem1"])
+                if h_entry and h_entry.center:
+                    break
+            if h_entry and h_entry.center:
+                ok("H: hall activity entry found (%s at %s)"
+                   % ("item1" if (h_entry.res or "").endswith("item1")
+                      else "littleItem1", h_entry.center))
+                pre_h = h_post()
+                screen.tap_node(h_entry)
                 time.sleep(5)
-                assert_alive(adb, args.package, "J-bagdialog")
-                # bounded poll: the dialog construct fires user/scrap/
-                # value immediately; the first ViewPager page's
-                # backpack fetch settled AFTER a 14s window in run
-                # 37453703969 (the PageRecyclerView fetches late), so
-                # poll 20s and, if still empty, FLIP A TAB (a real
-                # swipe on the ViewPager forces the next page's
-                # onLoad -> another user/scrap?type=N fetch).
-                j_seen_value = j_pre_value
-                j_seen_bag = j_pre_bag
-                j_deadline = time.time() + 20
-                while time.time() < j_deadline:
-                    j_seen_value = j_count(j_value_marker)
-                    j_seen_bag = len(j_bag_paths())
-                    if j_seen_value > j_pre_value \
-                            and j_seen_bag > j_pre_bag:
-                        break
-                    time.sleep(2)
-                if j_seen_bag <= j_pre_bag:
-                    adb.sh("input swipe 560 620 160 620 250")
+                alive_or_recover_at(adb, screen, args.package, args.activity,
+                                    "H-activitycenter")
+
+                def h_get_buttons():
+                    # bounded poll: the dialog fetches the weekend actions
+                    # fresh on open (q.onLoad) before the rows render
+                    end = time.time() + 10
+                    while time.time() < end:
+                        btns = [x for x in screen.dump()
+                                if x.center and x.cls.endswith("Button")
+                                and (x.text or "").strip().upper() == "GET"]
+                        if btns:
+                            return btns
+                        time.sleep(2)
+                    return []
+
+                h_btns = []
+                for h_attempt, h_idx in ((1, 1), (2, 0)):
+                    # cards = bg_content nodes (one per title card); the client
+                    # renders [weekday, weekend] and ONLY the weekend card
+                    # opens the task dialog (c.f titleType switch; weekday
+                    # falls into the content switch and our content is inert).
+                    # The template fetches titles on open (f.onLoad), so poll
+                    # for the cards before tapping (bounded).
+                    h_cards = []
+                    h_card_deadline = time.time() + 12
+                    while time.time() < h_card_deadline:
+                        h_cards = [x for x in screen.dump()
+                                   if x.center and x.res.rsplit("/", 1)[-1]
+                                   == "bg_content"]
+                        h_cards = list({x.bounds: x for x in h_cards}.values())
+                        if len(h_cards) > h_idx:
+                            break
+                        time.sleep(2)
+                    if len(h_cards) > h_idx:
+                        h_card = sorted(h_cards,
+                                        key=lambda n: n.bounds[1])[h_idx]
+                        screen.tap_node(h_card)
+                        time.sleep(6)
+                        h_btns = h_get_buttons()
+                        if h_btns:
+                            break
+                    print("  [info] H: no GET buttons after card index %d "
+                          "(attempt %d, cards=%d)"
+                          % (h_idx, h_attempt, len(h_cards)))
+                if h_btns:
+                    ok("H: weekend task dialog open (%d GET buttons)"
+                       % len(h_btns))
+                    screen.tap_node(h_btns[0])  # first row = online_time 10 min
                     time.sleep(6)
-                    j_seen_bag = len(j_bag_paths())
-                if j_seen_bag <= j_pre_bag:
-                    adb.sh("input swipe 560 620 160 620 250")
-                    time.sleep(6)
-                    j_seen_bag = len(j_bag_paths())
-                check("J: scrap bag value client-asserted (GET "
-                      "user/scrap/value %d->%d)"
-                      % (j_pre_value, j_seen_value),
-                      j_seen_value > j_pre_value,
-                      "getScrapBagValue never fired (dialog may not "
-                      "have opened)")
-                check("J: backpack pages fetched (GET user/scrap "
-                      "%d->%d)" % (j_pre_bag, j_seen_bag),
-                      j_seen_bag > j_pre_bag,
-                      "no backpack page request (the ViewPager prefetch "
-                      "fires on dialog open — marker may be wrong)")
-                for p in sorted(set(j_bag_paths())):
-                    print("  [evidence] J: client fired %s" % p)
-                print("  [evidence] J: route template %s (v2 observed "
-                      "on-device)" % j_bag_route_lit)
-                # close the dialog (iv_close in base_dialog_scrap_bag;
-                # BACK is the fallback — FullScreenDialog dismiss) and
-                # let the existing ground walk return to the hall
-                j_close = screen.find(ids=["iv_close"])
-                if j_close and j_close.center:
-                    screen.tap_node(j_close)
-                    time.sleep(2)
+                    post_h = h_post()
+                    # n.onSuccess shows CampaignGetIntegralRewardDialog on a
+                    # REAL claim; an incomplete task gets a non-fatal error tip
+                    # (the POST still fires). Session-21 lesson: the dialog was
+                    # missed in the old 6s EXACT-text wait — the client's
+                    # textAllCaps renders base_sure as "CONFIRM", and find()
+                    # matches texts= exactly. Match case-insensitively
+                    # (contains=["confirm"]), widen to 16s, and PROMOTE to a
+                    # hard check gated on the wallet delta (a real claim credits
+                    # golds, so a grown wallet + no dialog is a genuine miss).
+                    h_conf = screen.wait_for(contains=["confirm"], timeout=16,
+                                             poll=2)
+                    h_dialog_seen = False
+                    if h_conf and h_conf.center:
+                        screen.tap_node(h_conf)
+                        time.sleep(3)
+                        h_dialog_seen = True
+                        ok("H: reward dialog seen (real claim path)")
+                    else:
+                        screen.snap("H_reward_dialog_missing")
+                        debug_dump(screen, "H-reward-dialog")
+                    h_delta = None
+                    if live_hdr:
+                        h_wallet2 = fcall("GET", "/pay/api/v1/wealth/user",
+                                          headers=live_hdr)
+                        h_golds_after = (h_wallet2.get("data") or {}).get("golds")
+                        print("  [evidence] H: golds after claim=%s (before=%s)"
+                              % (h_golds_after, h_golds_before))
+                        try:
+                            h_delta = (int(h_golds_after)
+                                       - int(h_golds_before or 0))
+                        except (TypeError, ValueError):
+                            h_delta = None
+                    check("H: reward dialog on real claim (wallet delta=%s, "
+                          "POST receive/reward %d->%d)"
+                          % (h_delta, pre_h, post_h),
+                          (not h_delta or h_delta <= 0) or h_dialog_seen,
+                          "wallet grew but CampaignGetIntegralRewardDialog "
+                          "was never seen (snap_H_reward_dialog_missing.png)")
+                    check("H: activity-task claim client-asserted (POST "
+                          "receive/reward %d->%d)" % (pre_h, post_h),
+                          post_h > pre_h, "no POST observed")
                 else:
+                    print("  [info] H: task dialog not reached from the title "
+                          "cards (dump evidence above)")
+                # ground: leave the dialog + template back at the hall
+                for _ in range(4):
+                    if screen.find(ids=["rb_1"]):
+                        break
                     adb.key(4)
                     time.sleep(2)
             else:
-                print("  [info] J: bag entry (ll_library) not found - "
-                      "visible nodes:")
+                print("  [info] H: hall activity entry not found "
+                      "(item1/littleItem1) - visible nodes:")
                 for n in screen.dump():
                     if n.res or n.text or n.desc:
-                        print("  J-dump] %s | text=%r" % (
+                        print("  H-dump] %s | text=%r" % (
                             n.res.rsplit("/", 1)[-1] if n.res else "",
                             n.text[:28]))
-            # ------------------------------------------------- Phase K:
-            # scrap record + rule dialogs (session 23, same decode wave).
-            # jadx decode: the scrap main menu's ll_record ("Record")
-            # fires command p -> i() -> ScrapHistoryDialog (view.dialog
-            # .f.b) whose ScrapHistoryListModel.onLoad is the ONLY call
-            # site of ScrapApi.getCombineHistory (GET /activity/api/v1/
-            # collect/exchange/user/combine/record — real server-side
-            # handler scrapHistory, never client-exercised); ll_rule
-            # ("Rule") fires command q -> j() -> ScrapRuleDialog
-            # (view.dialog.h.b) whose ScrapRuleListModel.onLoad is the
-            # ONLY call site of ScrapApi.getScrapRule (GET /activity/
-            # api/v1/collect/exchange/description — handler scrapRule).
-            # Both dialogs close via iv_close (dialog_scrap_history /
-            # dialog_scrap_rule layouts).
-            print("== Phase K: scrap record + rule dialogs ==")
-            # The three menu buttons (ll_library/ll_record/ll_rule) are
-            # 50dp ConstraintLayouts ALL constrained to parent-end — they
-            # STACK, ll_library last (= topmost). bg_menu (the 22dp pill)
-            # carries the toggle command n -> o.h() whose AnimatorSet
-            # fans them out (binder hf.java: f5444a <- o.n, e <- o.o,
-            # f <- o.p, g <- o.q). J works from the stack (ll_library is
-            # on top); ll_record/ll_rule need the fan OPEN. Detect the
-            # stack (identical centers) and expand before each tap.
-            def k_menu_open():
-                lib = screen.find(ids=["ll_library"])
-                rec = screen.find(ids=["ll_record"])
-                if lib and rec and lib.center and rec.center \
-                        and abs(lib.center[0] - rec.center[0]) < 8 \
-                        and abs(lib.center[1] - rec.center[1]) < 8:
-                    bm = screen.find(ids=["bg_menu"])
-                    if bm and bm.center:
-                        screen.tap_node(bm)
-                        time.sleep(2)
+        else:
+            print("  [info] H: rb_1 not found (hall unavailable)")
 
-            k_record_lit = "/activity/api/v1/collect/exchange/user/combine/record"
-            k_rule_lit = "/activity/api/v1/collect/exchange/description"
-            k_record_marker = "REQ GET " + k_record_lit
-            k_rule_marker = "REQ GET " + k_rule_lit
-            k_pre_record = j_count(k_record_marker)
-            k_pre_rule = j_count(k_rule_marker)
-            k_menu_open()
-            k_rec = screen.find(ids=["ll_record"])
-            if not (k_rec and k_rec.center):
-                print("  [info] K: ll_record missing - re-entering the "
-                      "scrap template")
-                if reenter_scrap(adb, screen, args.package, args.activity,
-                                 "K-record"):
-                    k_menu_open()
-                    k_rec = screen.find(ids=["ll_record"])
-            if k_rec and k_rec.center:
-                ok("K: record entry found (ll_record at %s)"
-                   % (k_rec.center,))
-                screen.tap_node(k_rec)
-                time.sleep(5)
-                assert_alive(adb, args.package, "K-record")
-                k_seen = j_count(k_record_marker)
-                k_deadline = time.time() + 12
-                while time.time() < k_deadline and k_seen <= k_pre_record:
+        # ------------------------------------------------- Phase I: the scrap
+        # screen through the REAL UI (session 22, error-driven UI expansion).
+        # jadx decode: the hall's icon_scrap entry (content_header1 item3 /
+        # content_header2 littleItem3) fires MainFragmentViewModel.onScrap ->
+        # onEnterScrap -> TemplateUtils.startTemplate(e.b.da.h =
+        # ScrapMainFragment, string 2131820785). The model (o =
+        # ScrapMainViewModel) calls m() -> ScrapApi.getRewardValue on CONSTRUCT
+        # (GET /activity/api/v1/collect/exchange/reward/value), and renders 5
+        # tabs (l(): ObservableList<p> from the icon int-array); each tab is a
+        # ListItemViewModel whose DefaultListModel (l.java) fetches
+        # ScrapApi.getScrapRewardList (GET /activity/api/{version}/collect/
+        # exchange/card/list?type=N) on render. The bag entry (command o ->
+        # f()) opens ScrapBagDialog -> ScrapBagListModel -> getBackpackInfo
+        # (GET /activity/api/{version}/collect/exchange/user/scrap) +
+        # getScrapBagValue. ALL 16 IScrapApi routes are real state-backed
+        # handlers (ScrapBag.java) host-tested since Phase 3 — but this
+        # surface has never been exercised by the client; the drive asserts
+        # the on-open pair and records every /collect/exchange/ path the
+        # client actually fires (error-driven evidence for the next wave).
+        print("== Phase I: scrap screen (collect & exchange) ==")
+        i_rv_path = "/activity/api/v1/collect/exchange/reward/value"
+        i_cl_marker = "/collect/exchange/card/list"
+        # gen_coverage mapping: the ROUTE is the {version} template — quote
+        # the template form so the concrete v2 the client fires maps to it
+        # (the session-23 j_bag_route_lit pattern)
+        i_cl_route_lit = "/activity/api/{version}/collect/exchange/card/list"
+        # the scrap tabs ALSO fetch the per-card combine counts (v2 observed
+        # in runs 37505691180 + 37516781819 I-windows)
+        i_combine_route_lit = "/activity/api/{version}/collect/exchange/card/combine"
+        i_reqs = lambda: [ln.split("REQ ", 1)[1].split(" ")[1]
+                          for ln in adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                            timeout=60).splitlines()
+                          if "REQ " in ln and "/collect/exchange/" in ln]
+        i_ground = False
+        for i_try in range(2):
+            if not adb.pid(args.package):
+                alive_or_recover_at(adb, screen, args.package, args.activity,
+                                    "I-entry")
+            for _ in range(4):
+                if screen.find(ids=["rb_1"]):
+                    i_ground = True
+                    break
+                adb.key(4)
+                time.sleep(2)
+            if i_ground:
+                break
+        if i_ground:
+            rb1i = screen.find(ids=["rb_1"])
+            if rb1i and rb1i.center:
+                screen.tap_node(rb1i)
+                time.sleep(4)
+            dismiss_permission_dialogs(screen)
+            handle_campaign_dialogs(adb, screen, "I-hall")
+            i_entry = None
+            for _ in range(3):
+                # The H-tail relaunch can leave the QS shade dragged open:
+                # a swipe-down on a not-yet-rendered window pulls the SYSTEM
+                # shade, not the collapsing header (run 37454273455's I-dump
+                # was pure quick_settings_panel). Collapse it, re-verify the
+                # app, THEN swipe — every attempt, idempotently.
+                adb.sh("cmd statusbar collapse")
+                time.sleep(1)
+                if not adb.pid(args.package):
+                    alive_or_recover_at(adb, screen, args.package,
+                                        args.activity, "I-walk")
+                # same collapsing-header dance as H: BIG header item3 vs
+                # COLLAPSED littleItem3 — both fire MainFragmentViewModel
+                # .onScrap (ka.java / ma.java)
+                adb.sh("input swipe 360 300 360 800 300")
+                time.sleep(2)
+                i_entry = screen.find(ids=["item3"]) \
+                    or screen.find(ids=["littleItem3"])
+                if i_entry and i_entry.center:
+                    break
+            if i_entry and i_entry.center:
+                ok("I: scrap entry found (%s at %s)"
+                   % ("item3" if (i_entry.res or "").endswith("item3")
+                      else "littleItem3", i_entry.center))
+                screen.tap_node(i_entry)
+                time.sleep(6)
+                assert_alive(adb, args.package, "I-scrapcenter")
+                # the on-open pair: reward/value (model m()) + card/list
+                # (first tab's DefaultListModel render)
+                i_rv = sum(1 for ln in adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                               timeout=60).splitlines()
+                           if ("REQ GET " + i_rv_path) in ln)
+                check("I: scrap on-open getRewardValue client-asserted "
+                      "(GET %s 0->%d)" % (i_rv_path, i_rv), i_rv > 0,
+                      "reward/value was never requested")
+                # bounded poll: the ViewPager may render the first tab a beat
+                # after the template settles
+                i_seen = []
+                i_cl = False
+                i_deadline = time.time() + 12
+                while time.time() < i_deadline:
+                    i_seen = sorted(set(i_reqs()))
+                    i_cl = any(i_cl_marker in p for p in i_seen)
+                    if i_cl:
+                        break
+                    time.sleep(2)
+                check("I: scrap card list fetched by a tab (%s in %s)"
+                      % (i_cl_marker, i_seen), i_cl,
+                      "no tab fetched card/list (tabs may render lazily)")
+                print("  [evidence] I: route template %s (v2 observed "
+                      "on-device)" % i_cl_route_lit)
+                i_comb = any("/card/combine" in p for p in i_seen)
+                check("I: scrap card combine counts fetched (%s in %s)"
+                      % ("/card/combine", i_seen), i_comb,
+                      "no tab fetched card/combine")
+                print("  [evidence] I: route template %s" % i_combine_route_lit)
+                for p in i_seen:
+                    print("  [evidence] I: client fired %s" % p)
+                # ------------------------------------------------- Phase J:
+                # the scrap BAG dialog (session 23, error-driven UI
+                # expansion). jadx decode: the scrap main bottom-right menu
+                # has three buttons — ll_library ("Inventory"/背包, command
+                # o -> f()), ll_record ("Record"), ll_rule ("Rule").
+                # f() opens ScrapBagDialog(context, isFromMain=true, 0L,
+                # isPrivate=true); the dialog's ScrapBagViewModel CONSTRUCTOR
+                # calls ScrapApi.getScrapBagValue (GET /activity/api/v1/
+                # collect/exchange/user/scrap/value — EXACTLY ONE call site
+                # across classes1-5, so a phase-local 0->N is sound), and
+                # each of the 5 ViewPager pages (ScrapBagPageViewModel ->
+                # ScrapBagListModel.onLoad) fetches ScrapApi.getBackpackInfo
+                # (GET /activity/api/{version}/collect/exchange/user/scrap?
+                # type=N&pageNo=&pageSize=; tab order types 0,2,4,1,3 from
+                # R.array.scrap_bag_tab_array_type — Phase I evidence shows
+                # the client resolves {version} to v2 at runtime). Both
+                # routes are real ScrapBag.java handlers host-tested since
+                # Phase 3; the bag DIALOG has never been client-exercised.
+                print("== Phase J: scrap bag dialog ==")
+                # bare path literals keep gen_coverage's client_asserted
+                # detection exact (prefix matching against the RoutingTable)
+                j_value_lit = "/activity/api/v1/collect/exchange/user/scrap/value"
+                j_value_marker = "REQ GET " + j_value_lit
+                j_bag_route_lit = "/activity/api/{version}/collect/exchange/user/scrap"
+                # the bag pager pages also fetch the per-card combine counts
+                # (GET /activity/api/{version}/collect/exchange/card/combine,
+                # v2 observed on-device in runs 37492582973 + 37505691180)
+                # NOTE: card/combine is asserted in PHASE I (the scrap tabs
+                # fetch it there; the bag dialog reuses the cached counts —
+                # run 37516781819: J-window delta was 2->2).
+
+                def j_count(marker):
+                    return sum(1 for ln in adb.raw("logcat", "-d", "-s",
+                                                   "LocalAPI",
+                                                   timeout=60).splitlines()
+                               if marker in ln)
+
+                def j_bag_paths():
+                    # NOTE (run 37456710154 logcat evidence): the client
+                    # sends this fetch WITHOUT a query string (null @Query
+                    # params are omitted by Retrofit) — the REQ line is
+                    # exactly "REQ GET /activity/api/v2/collect/exchange/
+                    # user/scrap". Exclude the value route by suffix.
+                    return [ln.split("REQ ", 1)[1].split(" ")[1]
+                            for ln in adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                              timeout=60).splitlines()
+                            if "REQ " in ln
+                            and "/collect/exchange/user/scrap" in ln
+                            and "/user/scrap/value" not in ln]
+                j_pre_value = j_count(j_value_marker)
+                j_pre_bag = len(j_bag_paths())
+                j_bag = screen.find(ids=["ll_library"])
+                if not (j_bag and j_bag.center):
+                    # run 37461423454: the app drifted back to the hall
+                    # between the I checks and the J search (template self-
+                    # closed; live hall dump, no FATAL). Re-enter and retry
+                    # once before giving up.
+                    print("  [info] J: ll_library missing - re-entering the "
+                          "scrap template")
+                    if reenter_scrap(adb, screen, args.package, args.activity,
+                                     "J"):
+                        j_bag = screen.find(ids=["ll_library"])
+                if j_bag and j_bag.center:
+                    ok("J: bag entry found (ll_library at %s)" % (j_bag.center,))
+                    screen.tap_node(j_bag)
+                    time.sleep(5)
+                    assert_alive(adb, args.package, "J-bagdialog")
+                    # bounded poll: the dialog construct fires user/scrap/
+                    # value immediately; the first ViewPager page's
+                    # backpack fetch settled AFTER a 14s window in run
+                    # 37453703969 (the PageRecyclerView fetches late), so
+                    # poll 20s and, if still empty, FLIP A TAB (a real
+                    # swipe on the ViewPager forces the next page's
+                    # onLoad -> another user/scrap?type=N fetch).
+                    j_seen_value = j_pre_value
+                    j_seen_bag = j_pre_bag
+                    j_deadline = time.time() + 20
+                    while time.time() < j_deadline:
+                        j_seen_value = j_count(j_value_marker)
+                        j_seen_bag = len(j_bag_paths())
+                        if j_seen_value > j_pre_value \
+                                and j_seen_bag > j_pre_bag:
+                            break
+                        time.sleep(2)
+                    if j_seen_bag <= j_pre_bag:
+                        adb.sh("input swipe 560 620 160 620 250")
+                        time.sleep(6)
+                        j_seen_bag = len(j_bag_paths())
+                    if j_seen_bag <= j_pre_bag:
+                        adb.sh("input swipe 560 620 160 620 250")
+                        time.sleep(6)
+                        j_seen_bag = len(j_bag_paths())
+                    check("J: scrap bag value client-asserted (GET "
+                          "user/scrap/value %d->%d)"
+                          % (j_pre_value, j_seen_value),
+                          j_seen_value > j_pre_value,
+                          "getScrapBagValue never fired (dialog may not "
+                          "have opened)")
+                    check("J: backpack pages fetched (GET user/scrap "
+                          "%d->%d)" % (j_pre_bag, j_seen_bag),
+                          j_seen_bag > j_pre_bag,
+                          "no backpack page request (the ViewPager prefetch "
+                          "fires on dialog open — marker may be wrong)")
+                    for p in sorted(set(j_bag_paths())):
+                        print("  [evidence] J: client fired %s" % p)
+                    print("  [evidence] J: route template %s (v2 observed "
+                          "on-device)" % j_bag_route_lit)
+                    # close the dialog (iv_close in base_dialog_scrap_bag;
+                    # BACK is the fallback — FullScreenDialog dismiss) and
+                    # let the existing ground walk return to the hall
+                    j_close = screen.find(ids=["iv_close"])
+                    if j_close and j_close.center:
+                        screen.tap_node(j_close)
+                        time.sleep(2)
+                    else:
+                        adb.key(4)
+                        time.sleep(2)
+                else:
+                    print("  [info] J: bag entry (ll_library) not found - "
+                          "visible nodes:")
+                    for n in screen.dump():
+                        if n.res or n.text or n.desc:
+                            print("  J-dump] %s | text=%r" % (
+                                n.res.rsplit("/", 1)[-1] if n.res else "",
+                                n.text[:28]))
+                # ------------------------------------------------- Phase K:
+                # scrap record + rule dialogs (session 23, same decode wave).
+                # jadx decode: the scrap main menu's ll_record ("Record")
+                # fires command p -> i() -> ScrapHistoryDialog (view.dialog
+                # .f.b) whose ScrapHistoryListModel.onLoad is the ONLY call
+                # site of ScrapApi.getCombineHistory (GET /activity/api/v1/
+                # collect/exchange/user/combine/record — real server-side
+                # handler scrapHistory, never client-exercised); ll_rule
+                # ("Rule") fires command q -> j() -> ScrapRuleDialog
+                # (view.dialog.h.b) whose ScrapRuleListModel.onLoad is the
+                # ONLY call site of ScrapApi.getScrapRule (GET /activity/
+                # api/v1/collect/exchange/description — handler scrapRule).
+                # Both dialogs close via iv_close (dialog_scrap_history /
+                # dialog_scrap_rule layouts).
+                print("== Phase K: scrap record + rule dialogs ==")
+                # The three menu buttons (ll_library/ll_record/ll_rule) are
+                # 50dp ConstraintLayouts ALL constrained to parent-end — they
+                # STACK, ll_library last (= topmost). bg_menu (the 22dp pill)
+                # carries the toggle command n -> o.h() whose AnimatorSet
+                # fans them out (binder hf.java: f5444a <- o.n, e <- o.o,
+                # f <- o.p, g <- o.q). J works from the stack (ll_library is
+                # on top); ll_record/ll_rule need the fan OPEN. Detect the
+                # stack (identical centers) and expand before each tap.
+                def k_menu_open():
+                    lib = screen.find(ids=["ll_library"])
+                    rec = screen.find(ids=["ll_record"])
+                    if lib and rec and lib.center and rec.center \
+                            and abs(lib.center[0] - rec.center[0]) < 8 \
+                            and abs(lib.center[1] - rec.center[1]) < 8:
+                        bm = screen.find(ids=["bg_menu"])
+                        if bm and bm.center:
+                            screen.tap_node(bm)
+                            time.sleep(2)
+
+                k_record_lit = "/activity/api/v1/collect/exchange/user/combine/record"
+                k_rule_lit = "/activity/api/v1/collect/exchange/description"
+                k_record_marker = "REQ GET " + k_record_lit
+                k_rule_marker = "REQ GET " + k_rule_lit
+                k_pre_record = j_count(k_record_marker)
+                k_pre_rule = j_count(k_rule_marker)
+                k_menu_open()
+                k_rec = screen.find(ids=["ll_record"])
+                if not (k_rec and k_rec.center):
+                    print("  [info] K: ll_record missing - re-entering the "
+                          "scrap template")
+                    if reenter_scrap(adb, screen, args.package, args.activity,
+                                     "K-record"):
+                        k_menu_open()
+                        k_rec = screen.find(ids=["ll_record"])
+                if k_rec and k_rec.center:
+                    ok("K: record entry found (ll_record at %s)"
+                       % (k_rec.center,))
+                    screen.tap_node(k_rec)
+                    time.sleep(5)
+                    assert_alive(adb, args.package, "K-record")
                     k_seen = j_count(k_record_marker)
-                    time.sleep(2)
-                check("K: combine record fetched (GET user/combine/record "
-                      "%d->%d)" % (k_pre_record, k_seen),
-                      k_seen > k_pre_record,
-                      "getCombineHistory never fired (dialog may not "
-                      "have opened)")
-                k_close = screen.find(ids=["iv_close"])
-                if k_close and k_close.center:
-                    screen.tap_node(k_close)
-                    time.sleep(2)
+                    k_deadline = time.time() + 12
+                    while time.time() < k_deadline and k_seen <= k_pre_record:
+                        k_seen = j_count(k_record_marker)
+                        time.sleep(2)
+                    check("K: combine record fetched (GET user/combine/record "
+                          "%d->%d)" % (k_pre_record, k_seen),
+                          k_seen > k_pre_record,
+                          "getCombineHistory never fired (dialog may not "
+                          "have opened)")
+                    k_close = screen.find(ids=["iv_close"])
+                    if k_close and k_close.center:
+                        screen.tap_node(k_close)
+                        time.sleep(2)
+                    else:
+                        adb.key(4)
+                        time.sleep(2)
                 else:
-                    adb.key(4)
-                    time.sleep(2)
-            else:
-                print("  [info] K: record entry (ll_record) not found")
-            k_menu_open()
-            k_rule = screen.find(ids=["ll_rule"])
-            if not (k_rule and k_rule.center):
-                print("  [info] K: ll_rule missing - re-entering the "
-                      "scrap template")
-                if reenter_scrap(adb, screen, args.package, args.activity,
-                                 "K-rule"):
-                    k_menu_open()
-                    k_rule = screen.find(ids=["ll_rule"])
-            if k_rule and k_rule.center:
-                ok("K: rule entry found (ll_rule at %s)"
-                   % (k_rule.center,))
-                screen.tap_node(k_rule)
-                time.sleep(5)
-                assert_alive(adb, args.package, "K-rule")
-                k_seen = j_count(k_rule_marker)
-                k_deadline = time.time() + 12
-                while time.time() < k_deadline and k_seen <= k_pre_rule:
+                    print("  [info] K: record entry (ll_record) not found")
+                k_menu_open()
+                k_rule = screen.find(ids=["ll_rule"])
+                if not (k_rule and k_rule.center):
+                    print("  [info] K: ll_rule missing - re-entering the "
+                          "scrap template")
+                    if reenter_scrap(adb, screen, args.package, args.activity,
+                                     "K-rule"):
+                        k_menu_open()
+                        k_rule = screen.find(ids=["ll_rule"])
+                if k_rule and k_rule.center:
+                    ok("K: rule entry found (ll_rule at %s)"
+                       % (k_rule.center,))
+                    screen.tap_node(k_rule)
+                    time.sleep(5)
+                    assert_alive(adb, args.package, "K-rule")
                     k_seen = j_count(k_rule_marker)
-                    time.sleep(2)
-                check("K: scrap rule fetched (GET description %d->%d)"
-                      % (k_pre_rule, k_seen), k_seen > k_pre_rule,
-                      "getScrapRule never fired (dialog may not have "
-                      "opened)")
-                k_close = screen.find(ids=["iv_close"])
-                if k_close and k_close.center:
-                    screen.tap_node(k_close)
-                    time.sleep(2)
+                    k_deadline = time.time() + 12
+                    while time.time() < k_deadline and k_seen <= k_pre_rule:
+                        k_seen = j_count(k_rule_marker)
+                        time.sleep(2)
+                    check("K: scrap rule fetched (GET description %d->%d)"
+                          % (k_pre_rule, k_seen), k_seen > k_pre_rule,
+                          "getScrapRule never fired (dialog may not have "
+                          "opened)")
+                    k_close = screen.find(ids=["iv_close"])
+                    if k_close and k_close.center:
+                        screen.tap_node(k_close)
+                        time.sleep(2)
+                    else:
+                        adb.key(4)
+                        time.sleep(2)
                 else:
+                    print("  [info] K: rule entry (ll_rule) not found")
+                # leave the template back at the hall
+                for _ in range(4):
+                    if screen.find(ids=["rb_1"]):
+                        break
                     adb.key(4)
                     time.sleep(2)
             else:
-                print("  [info] K: rule entry (ll_rule) not found")
-            # leave the template back at the hall
+                print("  [info] I: scrap entry not found (item3/littleItem3) "
+                      "- visible nodes:")
+                for n in screen.dump():
+                    if n.res or n.text or n.desc:
+                        print("  I-dump] %s | text=%r" % (
+                            n.res.rsplit("/", 1)[-1] if n.res else "",
+                            n.text[:28]))
+        else:
+            print("  [info] I: rb_1 not found (hall unavailable)")
+        # tail resilience (wave 7): the documented roaming killer has now
+        # struck at the very TAIL of consecutive runs (run 37433234002: died
+        # during the H entry search AFTER every check had gone green). A
+        # tail death is absorbed like deep_drive's: relaunch, and if the app
+        # comes back the run continues (the death itself is recorded as
+        # evidence; a genuine server-induced crash would still show in the
+        # crash scan above it).
+        if not adb.pid(args.package):
+            print("  [evidence] process died at the H tail - relaunching "
+                  "(native-kill family signature)")
+            if not relaunch_and_wait(adb, screen, args.package,
+                                     args.activity, "H-tail"):
+                print("  [info] H-tail relaunch failed (kept as evidence)")
+        assert_alive(adb, args.package, "H-grounded")
+
+        def ground_main(tag):
+            """Wait for the MAIN screen (rb_1) after any recovery. RUN
+            37542145915: a relaunch right before L left the app on the
+            SPLASH (pid alive, no bottom bar) — L/M/N/O's rb_5 finds all
+            raced it and three phases silently skipped inside a green run.
+            Waits up to 30s, relaunching once if the process died."""
+            deadline = time.time() + 30
+            relaunched = False
+            while time.time() < deadline:
+                if screen.find(ids=["rb_1"]):
+                    return True
+                if not adb.pid(args.package) and not relaunched:
+                    relaunch_and_wait(adb, screen, args.package,
+                                      args.activity, tag)
+                    relaunched = True
+                time.sleep(3)
+            return bool(screen.find(ids=["rb_1"]))
+
+        # ------------------------------------------------- Phase L: the rank
+        # surface (session 24, error-driven UI expansion). jadx decode:
+        # the Me-tab "Ranking" row opens OverViewRankActivity (k) whose TWO
+        # ViewPager pages (week/overall, rb_week_tab checked by default)
+        # each load OverViewRankListModel -> GET /ranking/api/v1/ranking/
+        # region/home/page/info?rankType=week|overall (the top-3 podium).
+        # Each podium row (TopRankInfo) carries a `type` that the item VM
+        # (overviewrank/f.java) maps to the matching rank template:
+        # "gDiamond" -> W.c.h, "active" -> W.a.h, "clan" -> W.b.h — ANY
+        # other value (e.g. the old server's "gold") makes the tap a
+        # SILENT NO-OP. The server now emits one row per category; the
+        # first row is therefore the gDiamond board's #1. Tapping it opens
+        # the gDiamond template whose W.c.n list model fires GET /ranking/
+        # api/v1/gold/diamond/{region|global}/{weekly|overall}/rank and
+        # GET /ranking/api/v1/ranking/user/info (rankType inherited from
+        # the podium's page: week here; the template's TWO pager pages
+        # (period, area) + (period, global) both fetch on open).
+        print("== Phase L: rank home podium + gDiamond template ==")
+        l_home_lit = "/ranking/api/v1/ranking/region/home/page/info"
+        l_user_lit = "/ranking/api/v1/ranking/user/info"
+        l_gd_region_lit = "/ranking/api/v1/gold/diamond/region/weekly/rank"
+        l_gd_global_lit = "/ranking/api/v1/gold/diamond/global/weekly/rank"
+
+        def l_count(marker):
+            return sum(1 for ln in adb.raw("logcat", "-d", "-s",
+                                           "LocalAPI",
+                                           timeout=60).splitlines()
+                       if marker in ln)
+
+        def l_rank_paths():
+            # the evidence filter's literal is SPLIT in source below so
+            # gen_coverage's quote-anchored regex extracts only "/ran" (len 4,
+            # below its >4 threshold) and cannot prefix-match the 10 ranking
+            # routes the client never fired (session 24: an unsplit single-
+            # string filter here flagged all 14 ranking routes and inflated
+            # client_asserted to 155).
+            rank_frag = "/ran" + "king/"
+            return sorted(set(ln.split("REQ ", 1)[1].split(" ")[1]
+                              for ln in adb.raw("logcat", "-d", "-s",
+                                                "LocalAPI",
+                                                timeout=60).splitlines()
+                              if "REQ " in ln and rank_frag in ln))
+
+        l_me = screen.find(ids=["rb_5"])
+        l_entered = False
+        # pre-counts BEFORE the tap: the OverViewRankActivity fires the podium
+        # fetch during its first seconds — counting after the open sleep would
+        # swallow the delta (the classic 0->N honesty rule).
+        l_pre_home = l_count("REQ GET " + l_home_lit)
+        l_pre_user = l_count("REQ GET " + l_user_lit)
+        l_pre_gdr = l_count("REQ GET " + l_gd_region_lit)
+        l_pre_gdg = l_count("REQ GET " + l_gd_global_lit)
+        # run 37492582973: right after the K-phase relaunch the Me tab was
+        # still settling — the "Ranking" row was found and tapped but the tap
+        # landed on a shifted list, the activity never opened, and L (and the
+        # M header walk that trusted the same screen) drifted. The walk now
+        # VERIFIES the open with the podium fetch delta and retries once.
+        # run 37542145915: ground on the MAIN screen first (the splash has
+        # no rb_5).
+        l_grounded = ground_main("L-ground")
+        for l_try in range(2) if l_grounded else range(0):
+            l_me = screen.find(ids=["rb_5"])
+            if not (l_me and l_me.center and screen.tap_node(l_me)):
+                break
+            time.sleep(4 + 2 * l_try)
+            l_row = screen.find(texts=["Ranking"])
+            if l_row and l_row.center:
+                screen.tap_node(l_row)
+                time.sleep(6)
+                l_seen_open = l_pre_home
+                l_open_deadline = time.time() + 6
+                while time.time() < l_open_deadline \
+                        and l_seen_open <= l_pre_home:
+                    time.sleep(2)
+                    l_seen_open = l_count("REQ GET " + l_home_lit)
+                if l_seen_open > l_pre_home:
+                    l_entered = True
+                    break
+        if not l_entered:
+            alive_or_recover_at(adb, screen, args.package,
+                                args.activity, "L-rank-open")
+        if l_entered:
+            # L1: the podium fetch fires on page 0 (week) — bounded poll.
+            l_seen_home = l_pre_home
+            l_deadline = time.time() + 14
+            while time.time() < l_deadline and l_seen_home <= l_pre_home:
+                time.sleep(2)
+                l_seen_home = l_count("REQ GET " + l_home_lit)
+            check("L: rank home podium fetched (GET region/home/page/info "
+                  "%d->%d)" % (l_pre_home, l_seen_home),
+                  l_seen_home > l_pre_home,
+                  "getRegionRankHomePageInfoResponse never fired (the "
+                  "Ranking screen may not have opened)")
+            # podium rows: item_rank_left/right_type carry tv_rank_type_
+            # top1_name; row order mirrors the server's [gDiamond, active,
+            # clan]. Tap the FIRST row = gDiamond template (W.c.h).
+            l_podium = screen.find(ids=["tv_rank_type_top1_name"])
+            if l_podium and l_podium.center:
+                ok("L: podium row found (top1 name at %s)" % (l_podium.center,))
+                screen.tap_node(l_podium)
+                time.sleep(6)
+                assert_alive(adb, args.package, "L-template")
+                # L2: the template's list fetch (page 0 = area, period =
+                # week inherited from the podium page).
+                l_seen_gdr = l_pre_gdr
+                l_deadline = time.time() + 16
+                while time.time() < l_deadline and l_seen_gdr <= l_pre_gdr:
+                    time.sleep(2)
+                    l_seen_gdr = l_count("REQ GET " + l_gd_region_lit)
+                check("L: gDiamond board fetched (GET gold/diamond/region/"
+                      "weekly/rank %d->%d)" % (l_pre_gdr, l_seen_gdr),
+                      l_seen_gdr > l_pre_gdr,
+                      "getGDiamondRegionWeeklyRanks never fired (the podium "
+                      "tap may have been a no-op — check TopRankInfo.type)")
+                # L3: my-row fetch fires alongside every list load
+                # (W.c.n.onLoad -> a() -> getUserRankInfoResponse).
+                l_seen_user = l_pre_user
+                l_deadline = time.time() + 8
+                while time.time() < l_deadline and l_seen_user <= l_pre_user:
+                    time.sleep(2)
+                    l_seen_user = l_count("REQ GET " + l_user_lit)
+                check("L: my rank row fetched (GET ranking/user/info "
+                      "%d->%d)" % (l_pre_user, l_seen_user),
+                      l_seen_user > l_pre_user,
+                      "getUserRankInfoResponse never fired")
+                # L4: the template's SECOND pager page (period, global)
+                # prefetches on open; a real rb_global_tab tap is the
+                # fallback if the prefetch lags.
+                l_seen_gdg = l_pre_gdg
+                l_deadline = time.time() + 8
+                while time.time() < l_deadline and l_seen_gdg <= l_pre_gdg:
+                    time.sleep(2)
+                    l_seen_gdg = l_count("REQ GET " + l_gd_global_lit)
+                if l_seen_gdg <= l_pre_gdg:
+                    g_tab = screen.find(ids=["rb_global_tab"])
+                    if g_tab and g_tab.center:
+                        screen.tap_node(g_tab)
+                        l_deadline = time.time() + 12
+                        while time.time() < l_deadline \
+                                and l_seen_gdg <= l_pre_gdg:
+                            time.sleep(2)
+                            l_seen_gdg = l_count("REQ GET " + l_gd_global_lit)
+                check("L: gDiamond global board fetched (GET gold/diamond/"
+                      "global/weekly/rank %d->%d)" % (l_pre_gdg, l_seen_gdg),
+                      l_seen_gdg > l_pre_gdg,
+                      "getGDiamondGlobalWeeklyRanks never fired (prefetch "
+                      "and rb_global_tab both missed)")
+            else:
+                print("  [info] L: podium rows not found - visible nodes:")
+                for n in screen.dump():
+                    if n.res or n.text or n.desc:
+                        print("  L-dump] %s | text=%r" % (
+                            n.res.rsplit("/", 1)[-1] if n.res else "",
+                            n.text[:28]))
+            for p in l_rank_paths():
+                print("  [evidence] L: client fired %s" % p)
+            # exit: BACK to the rank activity (if the template opened) and
+            # BACK again to the hall; absorb a drift by grounding on rb_1.
             for _ in range(4):
                 if screen.find(ids=["rb_1"]):
                     break
                 adb.key(4)
                 time.sleep(2)
+            alive_or_recover_at(adb, screen, args.package, args.activity,
+                                "L-exit")
         else:
-            print("  [info] I: scrap entry not found (item3/littleItem3) "
-                  "- visible nodes:")
-            for n in screen.dump():
-                if n.res or n.text or n.desc:
-                    print("  I-dump] %s | text=%r" % (
-                        n.res.rsplit("/", 1)[-1] if n.res else "",
-                        n.text[:28]))
-    else:
-        print("  [info] I: rb_1 not found (hall unavailable)")
-    # tail resilience (wave 7): the documented roaming killer has now
-    # struck at the very TAIL of consecutive runs (run 37433234002: died
-    # during the H entry search AFTER every check had gone green). A
-    # tail death is absorbed like deep_drive's: relaunch, and if the app
-    # comes back the run continues (the death itself is recorded as
-    # evidence; a genuine server-induced crash would still show in the
-    # crash scan above it).
-    if not adb.pid(args.package):
-        print("  [evidence] process died at the H tail - relaunching "
-              "(native-kill family signature)")
-        if not relaunch_and_wait(adb, screen, args.package,
-                                 args.activity, "H-tail"):
-            print("  [info] H-tail relaunch failed (kept as evidence)")
-    assert_alive(adb, args.package, "H-grounded")
+            print("  [info] L: Ranking row not found (Me tab walk failed)")
 
-    def ground_main(tag):
-        """Wait for the MAIN screen (rb_1) after any recovery. RUN
-        37542145915: a relaunch right before L left the app on the
-        SPLASH (pid alive, no bottom bar) — L/M/N/O's rb_5 finds all
-        raced it and three phases silently skipped inside a green run.
-        Waits up to 30s, relaunching once if the process died."""
-        deadline = time.time() + 30
-        relaunched = False
-        while time.time() < deadline:
-            if screen.find(ids=["rb_1"]):
-                return True
-            if not adb.pid(args.package) and not relaunched:
-                relaunch_and_wait(adb, screen, args.package,
-                                  args.activity, tag)
-                relaunched = True
-            time.sleep(3)
-        return bool(screen.find(ids=["rb_1"]))
+        # ------------------------------------------------- Phase M: the VIP
+        # privilege center (session 25, the last undriven hall entry -
+        # item2). jadx decode: the hall header's item2 (content_header1) /
+        # littleItem2 (collapsed content_header2) fires
+        # MainFragmentViewModel.onEnterVip -> VipManager.enterVipFragment
+        # -> ARouter "/subs/service" -> com.sandboxol.vip.service.VipService
+        # (a REGISTERED ARouter provider - ARouter$$Providers$$vip - the
+        # "service-gated" worry from session 24 is DECODED: the static
+        # VipManager.<clinit> resolves it via RouteServiceManager.provide
+        # and the route table is present, so it is not a no-op locally) ->
+        # TemplateUtils.startTemplate(PrivilegeCenterFragment) whose
+        # PrivilegeCenterViewModel.initData() calls VipApi.getSubscribeInfo
+        # -> GET /pay/api/v1/sub/info/get (exactly one call site in the
+        # whole vip package, so a phase-local 0->N is sound).
+        print("== Phase M: VIP privilege center (item2) ==")
+        m_vip_lit = "/pay/api/v1/sub/info/get"
+        # run 37499606354 evidence: the privilege-center flow ALSO fetches
+        # the vip products list (BillingManager.vipSubsProductsList <-
+        # vip/view/fragment/main/p) — GET /pay/api/v2/pay/products/vip
+        m_vp_lit = "/pay/api/v2/pay/products/vip"
 
-    # ------------------------------------------------- Phase L: the rank
-    # surface (session 24, error-driven UI expansion). jadx decode:
-    # the Me-tab "Ranking" row opens OverViewRankActivity (k) whose TWO
-    # ViewPager pages (week/overall, rb_week_tab checked by default)
-    # each load OverViewRankListModel -> GET /ranking/api/v1/ranking/
-    # region/home/page/info?rankType=week|overall (the top-3 podium).
-    # Each podium row (TopRankInfo) carries a `type` that the item VM
-    # (overviewrank/f.java) maps to the matching rank template:
-    # "gDiamond" -> W.c.h, "active" -> W.a.h, "clan" -> W.b.h — ANY
-    # other value (e.g. the old server's "gold") makes the tap a
-    # SILENT NO-OP. The server now emits one row per category; the
-    # first row is therefore the gDiamond board's #1. Tapping it opens
-    # the gDiamond template whose W.c.n list model fires GET /ranking/
-    # api/v1/gold/diamond/{region|global}/{weekly|overall}/rank and
-    # GET /ranking/api/v1/ranking/user/info (rankType inherited from
-    # the podium's page: week here; the template's TWO pager pages
-    # (period, area) + (period, global) both fetch on open).
-    print("== Phase L: rank home podium + gDiamond template ==")
-    l_home_lit = "/ranking/api/v1/ranking/region/home/page/info"
-    l_user_lit = "/ranking/api/v1/ranking/user/info"
-    l_gd_region_lit = "/ranking/api/v1/gold/diamond/region/weekly/rank"
-    l_gd_global_lit = "/ranking/api/v1/gold/diamond/global/weekly/rank"
+        def m_count(marker):
+            return sum(1 for ln in adb.raw("logcat", "-d", "-s",
+                                           "LocalAPI",
+                                           timeout=60).splitlines()
+                       if marker in ln)
 
-    def l_count(marker):
-        return sum(1 for ln in adb.raw("logcat", "-d", "-s",
-                                       "LocalAPI",
-                                       timeout=60).splitlines()
-                   if marker in ln)
-
-    def l_rank_paths():
-        # the evidence filter's literal is SPLIT in source below so
-        # gen_coverage's quote-anchored regex extracts only "/ran" (len 4,
-        # below its >4 threshold) and cannot prefix-match the 10 ranking
-        # routes the client never fired (session 24: an unsplit single-
-        # string filter here flagged all 14 ranking routes and inflated
-        # client_asserted to 155).
-        rank_frag = "/ran" + "king/"
-        return sorted(set(ln.split("REQ ", 1)[1].split(" ")[1]
-                          for ln in adb.raw("logcat", "-d", "-s",
-                                            "LocalAPI",
-                                            timeout=60).splitlines()
-                          if "REQ " in ln and rank_frag in ln))
-
-    l_me = screen.find(ids=["rb_5"])
-    l_entered = False
-    # pre-counts BEFORE the tap: the OverViewRankActivity fires the podium
-    # fetch during its first seconds — counting after the open sleep would
-    # swallow the delta (the classic 0->N honesty rule).
-    l_pre_home = l_count("REQ GET " + l_home_lit)
-    l_pre_user = l_count("REQ GET " + l_user_lit)
-    l_pre_gdr = l_count("REQ GET " + l_gd_region_lit)
-    l_pre_gdg = l_count("REQ GET " + l_gd_global_lit)
-    # run 37492582973: right after the K-phase relaunch the Me tab was
-    # still settling — the "Ranking" row was found and tapped but the tap
-    # landed on a shifted list, the activity never opened, and L (and the
-    # M header walk that trusted the same screen) drifted. The walk now
-    # VERIFIES the open with the podium fetch delta and retries once.
-    # run 37542145915: ground on the MAIN screen first (the splash has
-    # no rb_5).
-    l_grounded = ground_main("L-ground")
-    for l_try in range(2) if l_grounded else range(0):
-        l_me = screen.find(ids=["rb_5"])
-        if not (l_me and l_me.center and screen.tap_node(l_me)):
-            break
-        time.sleep(4 + 2 * l_try)
-        l_row = screen.find(texts=["Ranking"])
-        if l_row and l_row.center:
-            screen.tap_node(l_row)
+        m_pre_vip = m_count("REQ GET " + m_vip_lit)
+        m_pre_vp = m_count("REQ GET " + m_vp_lit)
+        m_paths_before = set(localapi_paths(adb))
+        m_entry = None
+        if ground_main("M-ground"):
+            # ground on the HALL TAB first: rb_1 is the bottom bar's first
+            # radio and exists on EVERY main tab (run 37492582973: L's walk
+            # left the app on the Me tab; the header walk then searched the
+            # wrong screen and item2 was "not found"). Tapping rb_1 switches
+            # back to the hall regardless of the current tab.
+            m_rb1 = screen.find(ids=["rb_1"])
+            if m_rb1 and m_rb1.center:
+                screen.tap_node(m_rb1)
+                time.sleep(4)
+            for _ in range(3):
+                adb.sh("cmd statusbar collapse")
+                time.sleep(1)
+                if not adb.pid(args.package):
+                    alive_or_recover_at(adb, screen, args.package,
+                                        args.activity, "M-walk")
+                # same collapsing-header dance as H/I: BIG header item2 vs
+                # COLLAPSED littleItem2 - both fire onEnterVip
+                adb.sh("input swipe 360 300 360 800 300")
+                time.sleep(2)
+                m_entry = screen.find(ids=["item2"]) \
+                    or screen.find(ids=["littleItem2"])
+                if m_entry and m_entry.center:
+                    break
+        if m_entry and m_entry.center:
+            ok("M: vip entry found (%s at %s)"
+               % ("item2" if (m_entry.res or "").endswith("item2")
+                  else "littleItem2", m_entry.center))
+            screen.tap_node(m_entry)
             time.sleep(6)
-            l_seen_open = l_pre_home
-            l_open_deadline = time.time() + 6
-            while time.time() < l_open_deadline \
-                    and l_seen_open <= l_pre_home:
+            assert_alive(adb, args.package, "M-privilegecenter")
+            m_seen = m_pre_vip
+            m_deadline = time.time() + 14
+            while time.time() < m_deadline and m_seen <= m_pre_vip:
                 time.sleep(2)
-                l_seen_open = l_count("REQ GET " + l_home_lit)
-            if l_seen_open > l_pre_home:
-                l_entered = True
-                break
-    if not l_entered:
-        alive_or_recover_at(adb, screen, args.package,
-                            args.activity, "L-rank-open")
-    if l_entered:
-        # L1: the podium fetch fires on page 0 (week) — bounded poll.
-        l_seen_home = l_pre_home
-        l_deadline = time.time() + 14
-        while time.time() < l_deadline and l_seen_home <= l_pre_home:
-            time.sleep(2)
-            l_seen_home = l_count("REQ GET " + l_home_lit)
-        check("L: rank home podium fetched (GET region/home/page/info "
-              "%d->%d)" % (l_pre_home, l_seen_home),
-              l_seen_home > l_pre_home,
-              "getRegionRankHomePageInfoResponse never fired (the "
-              "Ranking screen may not have opened)")
-        # podium rows: item_rank_left/right_type carry tv_rank_type_
-        # top1_name; row order mirrors the server's [gDiamond, active,
-        # clan]. Tap the FIRST row = gDiamond template (W.c.h).
-        l_podium = screen.find(ids=["tv_rank_type_top1_name"])
-        if l_podium and l_podium.center:
-            ok("L: podium row found (top1 name at %s)" % (l_podium.center,))
-            screen.tap_node(l_podium)
-            time.sleep(6)
-            assert_alive(adb, args.package, "L-template")
-            # L2: the template's list fetch (page 0 = area, period =
-            # week inherited from the podium page).
-            l_seen_gdr = l_pre_gdr
-            l_deadline = time.time() + 16
-            while time.time() < l_deadline and l_seen_gdr <= l_pre_gdr:
+                m_seen = m_count("REQ GET " + m_vip_lit)
+            check("M: vip subscribe info fetched (GET %s %d->%d)"
+                  % (m_vip_lit, m_pre_vip, m_seen),
+                  m_seen > m_pre_vip,
+                  "getSubscribeInfo never fired (the privilege center may "
+                  "not have opened)")
+            m_seen_vp = m_pre_vp
+            m_vp_deadline = time.time() + 10
+            while time.time() < m_vp_deadline and m_seen_vp <= m_pre_vp:
                 time.sleep(2)
-                l_seen_gdr = l_count("REQ GET " + l_gd_region_lit)
-            check("L: gDiamond board fetched (GET gold/diamond/region/"
-                  "weekly/rank %d->%d)" % (l_pre_gdr, l_seen_gdr),
-                  l_seen_gdr > l_pre_gdr,
-                  "getGDiamondRegionWeeklyRanks never fired (the podium "
-                  "tap may have been a no-op — check TopRankInfo.type)")
-            # L3: my-row fetch fires alongside every list load
-            # (W.c.n.onLoad -> a() -> getUserRankInfoResponse).
-            l_seen_user = l_pre_user
-            l_deadline = time.time() + 8
-            while time.time() < l_deadline and l_seen_user <= l_pre_user:
+                m_seen_vp = m_count("REQ GET " + m_vp_lit)
+            check("M: vip products list fetched (GET %s %d->%d)"
+                  % (m_vp_lit, m_pre_vp, m_seen_vp),
+                  m_seen_vp > m_pre_vp,
+                  "vipSubsProductsList never fired (the privilege center "
+                  "may not have loaded its products)")
+            for p in sorted(set(localapi_paths(adb)) - m_paths_before):
+                print("  [evidence] M: client fired %s" % p)
+            # exit: BACK to the hall; absorb a drift by grounding on rb_1
+            for _ in range(4):
+                if screen.find(ids=["rb_1"]):
+                    break
+                adb.key(4)
                 time.sleep(2)
-                l_seen_user = l_count("REQ GET " + l_user_lit)
-            check("L: my rank row fetched (GET ranking/user/info "
-                  "%d->%d)" % (l_pre_user, l_seen_user),
-                  l_seen_user > l_pre_user,
-                  "getUserRankInfoResponse never fired")
-            # L4: the template's SECOND pager page (period, global)
-            # prefetches on open; a real rb_global_tab tap is the
-            # fallback if the prefetch lags.
-            l_seen_gdg = l_pre_gdg
-            l_deadline = time.time() + 8
-            while time.time() < l_deadline and l_seen_gdg <= l_pre_gdg:
-                time.sleep(2)
-                l_seen_gdg = l_count("REQ GET " + l_gd_global_lit)
-            if l_seen_gdg <= l_pre_gdg:
-                g_tab = screen.find(ids=["rb_global_tab"])
-                if g_tab and g_tab.center:
-                    screen.tap_node(g_tab)
-                    l_deadline = time.time() + 12
-                    while time.time() < l_deadline \
-                            and l_seen_gdg <= l_pre_gdg:
-                        time.sleep(2)
-                        l_seen_gdg = l_count("REQ GET " + l_gd_global_lit)
-            check("L: gDiamond global board fetched (GET gold/diamond/"
-                  "global/weekly/rank %d->%d)" % (l_pre_gdg, l_seen_gdg),
-                  l_seen_gdg > l_pre_gdg,
-                  "getGDiamondGlobalWeeklyRanks never fired (prefetch "
-                  "and rb_global_tab both missed)")
+            alive_or_recover_at(adb, screen, args.package, args.activity,
+                                "M-exit")
         else:
-            print("  [info] L: podium rows not found - visible nodes:")
-            for n in screen.dump():
-                if n.res or n.text or n.desc:
-                    print("  L-dump] %s | text=%r" % (
-                        n.res.rsplit("/", 1)[-1] if n.res else "",
-                        n.text[:28]))
-        for p in l_rank_paths():
-            print("  [evidence] L: client fired %s" % p)
-        # exit: BACK to the rank activity (if the template opened) and
-        # BACK again to the hall; absorb a drift by grounding on rb_1.
-        for _ in range(4):
-            if screen.find(ids=["rb_1"]):
-                break
-            adb.key(4)
-            time.sleep(2)
-        alive_or_recover_at(adb, screen, args.package, args.activity,
-                            "L-exit")
-    else:
-        print("  [info] L: Ranking row not found (Me tab walk failed)")
+            print("  [info] M: vip entry not found (item2/littleItem2)")
 
-    # ------------------------------------------------- Phase M: the VIP
-    # privilege center (session 25, the last undriven hall entry -
-    # item2). jadx decode: the hall header's item2 (content_header1) /
-    # littleItem2 (collapsed content_header2) fires
-    # MainFragmentViewModel.onEnterVip -> VipManager.enterVipFragment
-    # -> ARouter "/subs/service" -> com.sandboxol.vip.service.VipService
-    # (a REGISTERED ARouter provider - ARouter$$Providers$$vip - the
-    # "service-gated" worry from session 24 is DECODED: the static
-    # VipManager.<clinit> resolves it via RouteServiceManager.provide
-    # and the route table is present, so it is not a no-op locally) ->
-    # TemplateUtils.startTemplate(PrivilegeCenterFragment) whose
-    # PrivilegeCenterViewModel.initData() calls VipApi.getSubscribeInfo
-    # -> GET /pay/api/v1/sub/info/get (exactly one call site in the
-    # whole vip package, so a phase-local 0->N is sound).
-    print("== Phase M: VIP privilege center (item2) ==")
-    m_vip_lit = "/pay/api/v1/sub/info/get"
-    # run 37499606354 evidence: the privilege-center flow ALSO fetches
-    # the vip products list (BillingManager.vipSubsProductsList <-
-    # vip/view/fragment/main/p) — GET /pay/api/v2/pay/products/vip
-    m_vp_lit = "/pay/api/v2/pay/products/vip"
+        # ------------------------------------------------- Phase N: the rank
+        # podium rows 2+3 (session 25, the natural completion of Phase L).
+        # Session 24's podium contract emits ONE row per category
+        # ([gDiamond, active, clan]) and Phase L taps only the FIRST row
+        # (gDiamond -> W.c.h). jadx decode: overviewrank/f.smali maps
+        # type->template ("gDiamond"->W.c.h, "active"->W.a.h,
+        # "clan"->W.b.h) and puts the podium period (rank_period_type) in
+        # the bundle; the template list models W.a.n / W.b.n fire IRankingApi
+        # getActive* / getClan* fetches + the shared ranking/user/info.
+        # CLIENT CONTRACT (run 37492582973 triage + decode):
+        # - ActiveRankViewModel (W/a/p) constructs TWO pager pages — area 0
+        #   (region) + area 1 (global); both fetch on open. The active
+        #   template's fragment has rb_area_tab + rb_global_tab.
+        # - ClanRankViewModel (W/b/p) constructs ONE page only — area 1
+        #   (GLOBAL); fragment_clan_rank.xml carries ONLY rb_global_tab.
+        #   The clan REGION routes (clan/region/weekly + clan/region/
+        #   overall) have NO reachable client call path from the podium —
+        #   they stay implemented + host-tested but are NOT client-
+        #   assertable, so Phase N hard-checks the clan GLOBAL boards only.
+        # The podium activity also carries rb_overall_tab
+        # (activity_overview_rank.xml): flipping it re-fetches region/home/
+        # page/info?rankType=overall and the inherited period drives the
+        # templates' overall variants.
+        print("== Phase N: rank podium rows 2+3 (active, clan) ==")
+        n_lits = [
+            "/ranking/api/v1/active/region/weekly/rank",
+            "/ranking/api/v1/active/global/weekly/rank",
+            "/ranking/api/v1/clan/global/weekly/rank",
+            "/ranking/api/v1/active/region/overall/rank",
+            "/ranking/api/v1/active/global/overall/rank",
+            "/ranking/api/v1/clan/global/overall/rank",
+        ]
+        n_home_lit = "/ranking/api/v1/ranking/region/home/page/info"
+        n_user_lit = "/ranking/api/v1/ranking/user/info"
 
-    def m_count(marker):
-        return sum(1 for ln in adb.raw("logcat", "-d", "-s",
-                                       "LocalAPI",
-                                       timeout=60).splitlines()
-                   if marker in ln)
+        def n_count(marker):
+            return sum(1 for ln in adb.raw("logcat", "-d", "-s",
+                                           "LocalAPI",
+                                           timeout=60).splitlines()
+                       if marker in ln)
 
-    m_pre_vip = m_count("REQ GET " + m_vip_lit)
-    m_pre_vp = m_count("REQ GET " + m_vp_lit)
-    m_paths_before = set(localapi_paths(adb))
-    m_entry = None
-    if ground_main("M-ground"):
-        # ground on the HALL TAB first: rb_1 is the bottom bar's first
-        # radio and exists on EVERY main tab (run 37492582973: L's walk
-        # left the app on the Me tab; the header walk then searched the
-        # wrong screen and item2 was "not found"). Tapping rb_1 switches
-        # back to the hall regardless of the current tab.
-        m_rb1 = screen.find(ids=["rb_1"])
-        if m_rb1 and m_rb1.center:
-            screen.tap_node(m_rb1)
-            time.sleep(4)
-        for _ in range(3):
-            adb.sh("cmd statusbar collapse")
-            time.sleep(1)
-            if not adb.pid(args.package):
-                alive_or_recover_at(adb, screen, args.package,
-                                    args.activity, "M-walk")
-            # same collapsing-header dance as H/I: BIG header item2 vs
-            # COLLAPSED littleItem2 - both fire onEnterVip
-            adb.sh("input swipe 360 300 360 800 300")
-            time.sleep(2)
-            m_entry = screen.find(ids=["item2"]) \
-                or screen.find(ids=["littleItem2"])
-            if m_entry and m_entry.center:
-                break
-    if m_entry and m_entry.center:
-        ok("M: vip entry found (%s at %s)"
-           % ("item2" if (m_entry.res or "").endswith("item2")
-              else "littleItem2", m_entry.center))
-        screen.tap_node(m_entry)
-        time.sleep(6)
-        assert_alive(adb, args.package, "M-privilegecenter")
-        m_seen = m_pre_vip
-        m_deadline = time.time() + 14
-        while time.time() < m_deadline and m_seen <= m_pre_vip:
-            time.sleep(2)
-            m_seen = m_count("REQ GET " + m_vip_lit)
-        check("M: vip subscribe info fetched (GET %s %d->%d)"
-              % (m_vip_lit, m_pre_vip, m_seen),
-              m_seen > m_pre_vip,
-              "getSubscribeInfo never fired (the privilege center may "
-              "not have opened)")
-        m_seen_vp = m_pre_vp
-        m_vp_deadline = time.time() + 10
-        while time.time() < m_vp_deadline and m_seen_vp <= m_pre_vp:
-            time.sleep(2)
-            m_seen_vp = m_count("REQ GET " + m_vp_lit)
-        check("M: vip products list fetched (GET %s %d->%d)"
-              % (m_vp_lit, m_pre_vp, m_seen_vp),
-              m_seen_vp > m_pre_vp,
-              "vipSubsProductsList never fired (the privilege center "
-              "may not have loaded its products)")
-        for p in sorted(set(localapi_paths(adb)) - m_paths_before):
-            print("  [evidence] M: client fired %s" % p)
-        # exit: BACK to the hall; absorb a drift by grounding on rb_1
-        for _ in range(4):
-            if screen.find(ids=["rb_1"]):
-                break
-            adb.key(4)
-            time.sleep(2)
-        alive_or_recover_at(adb, screen, args.package, args.activity,
-                            "M-exit")
-    else:
-        print("  [info] M: vip entry not found (item2/littleItem2)")
+        def n_rows():
+            rows = [n for n in screen.dump()
+                    if n.res and n.res.rsplit("/", 1)[-1]
+                    == "tv_rank_type_top1_name" and n.center]
+            rows.sort(key=lambda n: (n.center[1], n.center[0]))
+            return rows
 
-    # ------------------------------------------------- Phase N: the rank
-    # podium rows 2+3 (session 25, the natural completion of Phase L).
-    # Session 24's podium contract emits ONE row per category
-    # ([gDiamond, active, clan]) and Phase L taps only the FIRST row
-    # (gDiamond -> W.c.h). jadx decode: overviewrank/f.smali maps
-    # type->template ("gDiamond"->W.c.h, "active"->W.a.h,
-    # "clan"->W.b.h) and puts the podium period (rank_period_type) in
-    # the bundle; the template list models W.a.n / W.b.n fire IRankingApi
-    # getActive* / getClan* fetches + the shared ranking/user/info.
-    # CLIENT CONTRACT (run 37492582973 triage + decode):
-    # - ActiveRankViewModel (W/a/p) constructs TWO pager pages — area 0
-    #   (region) + area 1 (global); both fetch on open. The active
-    #   template's fragment has rb_area_tab + rb_global_tab.
-    # - ClanRankViewModel (W/b/p) constructs ONE page only — area 1
-    #   (GLOBAL); fragment_clan_rank.xml carries ONLY rb_global_tab.
-    #   The clan REGION routes (clan/region/weekly + clan/region/
-    #   overall) have NO reachable client call path from the podium —
-    #   they stay implemented + host-tested but are NOT client-
-    #   assertable, so Phase N hard-checks the clan GLOBAL boards only.
-    # The podium activity also carries rb_overall_tab
-    # (activity_overview_rank.xml): flipping it re-fetches region/home/
-    # page/info?rankType=overall and the inherited period drives the
-    # templates' overall variants.
-    print("== Phase N: rank podium rows 2+3 (active, clan) ==")
-    n_lits = [
-        "/ranking/api/v1/active/region/weekly/rank",
-        "/ranking/api/v1/active/global/weekly/rank",
-        "/ranking/api/v1/clan/global/weekly/rank",
-        "/ranking/api/v1/active/region/overall/rank",
-        "/ranking/api/v1/active/global/overall/rank",
-        "/ranking/api/v1/clan/global/overall/rank",
-    ]
-    n_home_lit = "/ranking/api/v1/ranking/region/home/page/info"
-    n_user_lit = "/ranking/api/v1/ranking/user/info"
+        def n_wait(lit, pre, seconds=16):
+            seen = pre
+            deadline = time.time() + seconds
+            while time.time() < deadline and seen <= pre:
+                time.sleep(2)
+                seen = n_count("REQ GET " + lit)
+            return seen
 
-    def n_count(marker):
-        return sum(1 for ln in adb.raw("logcat", "-d", "-s",
-                                       "LocalAPI",
-                                       timeout=60).splitlines()
-                   if marker in ln)
+        # pre-counts BEFORE the Me-tab walk (the 0->N honesty rule)
+        n_pre = {}
+        for lit in n_lits:
+            n_pre[lit] = n_count("REQ GET " + lit)
+        n_pre_user = n_count("REQ GET " + n_user_lit)
 
-    def n_rows():
-        rows = [n for n in screen.dump()
-                if n.res and n.res.rsplit("/", 1)[-1]
-                == "tv_rank_type_top1_name" and n.center]
-        rows.sort(key=lambda n: (n.center[1], n.center[0]))
-        return rows
-
-    def n_wait(lit, pre, seconds=16):
-        seen = pre
-        deadline = time.time() + seconds
-        while time.time() < deadline and seen <= pre:
-            time.sleep(2)
-            seen = n_count("REQ GET " + lit)
-        return seen
-
-    # pre-counts BEFORE the Me-tab walk (the 0->N honesty rule)
-    n_pre = {}
-    for lit in n_lits:
-        n_pre[lit] = n_count("REQ GET " + lit)
-    n_pre_user = n_count("REQ GET " + n_user_lit)
-
-    def n_open_ranking():
-        # VERIFIED open (the L-walk lesson, run 37492582973): the walk
-        # only reports success when the podium rows are actually visible;
-        # the row tap is retried once on a stale-position miss, and an
-        # already-open podium short-circuits (the ranking activity has no
-        # rb_5 — a second walk attempt from ON the podium would fail).
-        if not ground_main("N-ground"):
-            return False
-        for _ in range(2):
-            if n_rows():
-                return True
-            me = screen.find(ids=["rb_5"])
-            if not (me and me.center):
+        def n_open_ranking():
+            # VERIFIED open (the L-walk lesson, run 37492582973): the walk
+            # only reports success when the podium rows are actually visible;
+            # the row tap is retried once on a stale-position miss, and an
+            # already-open podium short-circuits (the ranking activity has no
+            # rb_5 — a second walk attempt from ON the podium would fail).
+            if not ground_main("N-ground"):
                 return False
-            if not screen.tap_node(me):
-                return False
-            time.sleep(4)
-            row = screen.find(texts=["Ranking"])
-            if row and row.center:
-                screen.tap_node(row)
-                time.sleep(6)
-                rows = n_rows()
-                deadline = time.time() + 8
-                while not rows and time.time() < deadline:
-                    time.sleep(2)
-                    rows = n_rows()
-                if rows:
+            for _ in range(2):
+                if n_rows():
                     return True
-        return alive_or_recover_at(adb, screen, args.package,
-                                   args.activity, "N-rank-open") and bool(n_rows())
+                me = screen.find(ids=["rb_5"])
+                if not (me and me.center):
+                    return False
+                if not screen.tap_node(me):
+                    return False
+                time.sleep(4)
+                row = screen.find(texts=["Ranking"])
+                if row and row.center:
+                    screen.tap_node(row)
+                    time.sleep(6)
+                    rows = n_rows()
+                    deadline = time.time() + 8
+                    while not rows and time.time() < deadline:
+                        time.sleep(2)
+                        rows = n_rows()
+                    if rows:
+                        return True
+            return alive_or_recover_at(adb, screen, args.package,
+                                       args.activity, "N-rank-open") and bool(n_rows())
 
-    def n_back_to_podium():
-        for _ in range(4):
-            if n_rows():
-                return True
-            adb.key(4)
-            time.sleep(2)
-        return bool(n_rows())
+        def n_back_to_podium():
+            for _ in range(4):
+                if n_rows():
+                    return True
+                adb.key(4)
+                time.sleep(2)
+            return bool(n_rows())
 
-    def n_drive_row(idx, label, board_checks):
-        # board_checks: [(literal, fallback_tab_id)] — each literal is
-        # hard-checked 0->N; when the on-open prefetch lags, the given
-        # template tab is tapped as the fallback (Phase L pattern).
-        rows = n_rows()
-        deadline = time.time() + 8
-        while not rows and time.time() < deadline:
-            time.sleep(2)
+        def n_drive_row(idx, label, board_checks):
+            # board_checks: [(literal, fallback_tab_id)] — each literal is
+            # hard-checked 0->N; when the on-open prefetch lags, the given
+            # template tab is tapped as the fallback (Phase L pattern).
             rows = n_rows()
-        if idx >= len(rows):
-            fail("N: %s podium row missing (found %d row(s) with "
-                 "tv_rank_type_top1_name; server emits 3 categories)"
-                 % (label, len(rows)))
-            for n in screen.dump():
-                if n.res or n.text or n.desc:
-                    print("  N-dump] %s | text=%r" % (
-                        n.res.rsplit("/", 1)[-1] if n.res else "",
-                        n.text[:28]))
-            return
-        screen.tap_node(rows[idx])
-        time.sleep(6)
-        assert_alive(adb, args.package, "N-%s-template" % label)
-        for lit, tab in board_checks:
-            seen = n_wait(lit, n_pre[lit], 8)
-            if seen <= n_pre[lit] and tab:
-                t = screen.find(ids=[tab])
-                if t and t.center:
-                    screen.tap_node(t)
-                    seen = n_wait(lit, n_pre[lit], 12)
-            check("N: %s board fetched (GET %s %d->%d)"
-                  % (label, lit, n_pre[lit], seen),
-                  seen > n_pre[lit],
-                  "%s fetch never fired (prefetch and the %s tab both "
-                  "missed - the podium tap may have been a silent "
-                  "no-op)" % (label, tab or "template"))
-        n_back_to_podium()
-
-    if n_open_ranking():
-        # week podium (default tab): sorted rows[1] = active, rows[2] =
-        # clan (row 0 = gDiamond, already asserted by Phase L). Active
-        # gets both areas (region page + global page / rb_area_tab +
-        # rb_global_tab); clan is GLOBAL-ONLY per the client contract.
-        n_drive_row(1, "active/week", [
-            (n_lits[0], "rb_area_tab"), (n_lits[1], "rb_global_tab")])
-        n_drive_row(2, "clan/week", [(n_lits[2], "rb_global_tab")])
-        # the documented drift (run 37492582973: the template self-closed
-        # to the hall between drives) — re-ground before the overall leg
-        if not n_rows():
-            print("  [info] N: podium gone after the week drives "
-                  "(documented drift) - re-opening")
-            if not n_open_ranking():
-                fail("N: ranking screen unreachable for the overall leg")
-        # flip the podium to OVERALL and repeat; the flip itself
-        # re-fetches region/home/page/info with rankType=overall.
-        # RACE (runs 37511675438 + 37533194661): the ranking activity
-        # can self-close to the hall around the flip (before the tab
-        # find, or within seconds AFTER tapping it) — the whole overall
-        # leg is retried up to 3 times: re-open the podium when the
-        # rows vanish, re-find the tab, flip, and VERIFY the podium
-        # survived the flip before driving the rows.
-        o_done = False
-        for o_attempt in range(3):
-            if not n_rows() and not n_open_ranking():
-                continue
-            o_tab = screen.find(ids=["rb_overall_tab"])
-            if not (o_tab and o_tab.center):
-                time.sleep(3)
-                continue
-            screen.tap_node(o_tab)
-            time.sleep(5)
-            if not n_rows():
-                print("  [info] N: podium self-closed right after the "
-                      "overall flip (attempt %d) - re-grounding"
-                      % (o_attempt + 1))
-                continue
-            n_drive_row(1, "active/overall", [
-                (n_lits[3], "rb_area_tab"), (n_lits[4], "rb_global_tab")])
-            n_drive_row(2, "clan/overall", [(n_lits[5], "rb_global_tab")])
-            o_done = True
-            break
-        if not o_done:
-            fail("N: the overall leg could not be driven in 3 attempts "
-                 "(the documented self-close drift struck every time - "
-                 "dump below)")
-            for n in screen.dump():
-                if n.res or n.text or n.desc:
-                    print("  N-dump] %s | text=%r" % (
-                        n.res.rsplit("/", 1)[-1] if n.res else "",
-                        n.text[:28]))
-        seen_user = n_count("REQ GET " + n_user_lit)
-        if seen_user > n_pre_user:
-            ok("N: my-rank rows kept fetching (user/info %d->%d)"
-               % (n_pre_user, seen_user))
-        for p in l_rank_paths():
-            print("  [evidence] N: client fired %s" % p)
-        # exit: BACK to the hall; absorb a drift by grounding on rb_1
-        for _ in range(4):
-            if screen.find(ids=["rb_1"]):
-                break
-            adb.key(4)
-            time.sleep(2)
-        alive_or_recover_at(adb, screen, args.package, args.activity,
-                            "N-exit")
-    else:
-        print("  [info] N: Ranking walk failed (Me tab)")
-
-    # ------------------------------------------------- Phase O: account
-    # switch + the CLIENT's own login (session 25). jadx decode:
-    # SettingViewModel.u() -> LoginManager.onSwitchAccount(activity) ->
-    # LoginService (ARouter /login/service): fetches the account records
-    # then starts com.sandbox.login.view.activity.login.LoginActivity
-    # (extras key.is.with.back.btn / key.is.with.register). The login
-    # screen's model fires GET /user/api/v1/user/login/change/record
-    # (IUserLoginApi.accountRecord, LoginModel y.smali) and the
-    # btn_sign submit fires IUserLoginApi.login ->
-    # POST /user/api/v1/login (LoginRegisterAccountForm) — the client's
-    # OWN login submit has never been client-asserted (the C/D phases
-    # log in via runner-side fcalls). The form: editName + edit_password
-    # (login_activity_login.xml). The registered D-phase credentials
-    # (qa_uid_d / password_d) are reused so the session stays valid.
-    print("== Phase O: account switch + client-UI login ==")
-    o_login_lit = "/user/api/v1/login"
-
-    def o_count(marker):
-        return sum(1 for ln in adb.raw("logcat", "-d", "-s",
-                                       "LocalAPI",
-                                       timeout=60).splitlines()
-                   if marker in ln)
-
-    # RUN 37538041177 evidence: the client-UI login submits POST
-    # /user/api/v2/app/login (the modern unified login), NOT v1 — watch
-    # both; accountRecord has NEVER fired on-device (likely gated on
-    # saved-account records) so its marker is source-split (the /use
-    # fragment is at the regex's len>4 threshold and the tail has no
-    # leading slash) to avoid claiming an unproven route.
-    o_v2_lit = "/user/api/v2/app/login"
-    o_rec_marker = "REQ GET /use" + "r/api/v1/user/login/change/record"
-
-    def o_rec_count():
-        return o_count(o_rec_marker)
-
-    # RES lines now carry the envelope code (LocalHttpd Wave 11): the
-    # client-UI login must be ACCEPTED (code=1), not merely submitted.
-    def o_ok_login_count():
-        return sum(
-            1 for ln in adb.raw("logcat", "-d", "-s", "LocalAPI",
-                                timeout=60).splitlines()
-            if ("RES POST " + o_v2_lit in ln
-                or "RES POST " + o_login_lit in ln)
-            and "code=1" in ln)
-
-    o_pre_rec = o_rec_count()
-    o_pre_login = o_count("REQ POST " + o_login_lit) \
-        + o_count("REQ POST " + o_v2_lit)
-    o_pre_ok = o_ok_login_count()
-    o_paths_before = set(localapi_paths(adb))
-    o_form = False
-    if ground_main("O-ground"):
-        # walk: Me tab -> the "Setting" row (me_setting; runs the
-        # SettingFragment template via MoreViewModel.N / "more_setup")
-        # -> the "Account Switch" row (setting_change_account).
-        # RUN 37533194661 triage: profile -> ibMore opens the Personal
-        # Info EDITOR, not the settings - the row walk below is the
-        # decoded path.
-        tab_o = screen.find(ids=["rb_5"])
-        if tab_o and tab_o.center:
-            screen.tap_node(tab_o)
-            time.sleep(4)
-        set_o = None
-        o_deadline = time.time() + 12
-        while time.time() < o_deadline and not set_o:
-            set_o = screen.find(texts=["Setting"])
-            if not set_o:
-                adb.sh("input swipe 360 700 360 400 300")
+            deadline = time.time() + 8
+            while not rows and time.time() < deadline:
                 time.sleep(2)
-        if set_o and set_o.center:
-            ok("O: Setting row found at %s" % (set_o.center,))
-            screen.tap_node(set_o)
+                rows = n_rows()
+            if idx >= len(rows):
+                fail("N: %s podium row missing (found %d row(s) with "
+                     "tv_rank_type_top1_name; server emits 3 categories)"
+                     % (label, len(rows)))
+                for n in screen.dump():
+                    if n.res or n.text or n.desc:
+                        print("  N-dump] %s | text=%r" % (
+                            n.res.rsplit("/", 1)[-1] if n.res else "",
+                            n.text[:28]))
+                return
+            screen.tap_node(rows[idx])
             time.sleep(6)
-        else:
-            print("  [info] O: Setting row not found on the Me tab")
-        # the Account Switch row (setting_change_account = "Account
-        # Switch"); a bounded wait absorbs the template render
-        sw_o = None
-        o_deadline = time.time() + 10
-        while time.time() < o_deadline and not sw_o:
-            sw_o = screen.find(texts=["Account Switch"])
-            if not sw_o:
+            assert_alive(adb, args.package, "N-%s-template" % label)
+            for lit, tab in board_checks:
+                seen = n_wait(lit, n_pre[lit], 8)
+                if seen <= n_pre[lit] and tab:
+                    t = screen.find(ids=[tab])
+                    if t and t.center:
+                        screen.tap_node(t)
+                        seen = n_wait(lit, n_pre[lit], 12)
+                check("N: %s board fetched (GET %s %d->%d)"
+                      % (label, lit, n_pre[lit], seen),
+                      seen > n_pre[lit],
+                      "%s fetch never fired (prefetch and the %s tab both "
+                      "missed - the podium tap may have been a silent "
+                      "no-op)" % (label, tab or "template"))
+            n_back_to_podium()
+
+        if n_open_ranking():
+            # week podium (default tab): sorted rows[1] = active, rows[2] =
+            # clan (row 0 = gDiamond, already asserted by Phase L). Active
+            # gets both areas (region page + global page / rb_area_tab +
+            # rb_global_tab); clan is GLOBAL-ONLY per the client contract.
+            n_drive_row(1, "active/week", [
+                (n_lits[0], "rb_area_tab"), (n_lits[1], "rb_global_tab")])
+            n_drive_row(2, "clan/week", [(n_lits[2], "rb_global_tab")])
+            # the documented drift (run 37492582973: the template self-closed
+            # to the hall between drives) — re-ground before the overall leg
+            if not n_rows():
+                print("  [info] N: podium gone after the week drives "
+                      "(documented drift) - re-opening")
+                if not n_open_ranking():
+                    fail("N: ranking screen unreachable for the overall leg")
+            # flip the podium to OVERALL and repeat; the flip itself
+            # re-fetches region/home/page/info with rankType=overall.
+            # RACE (runs 37511675438 + 37533194661): the ranking activity
+            # can self-close to the hall around the flip (before the tab
+            # find, or within seconds AFTER tapping it) — the whole overall
+            # leg is retried up to 3 times: re-open the podium when the
+            # rows vanish, re-find the tab, flip, and VERIFY the podium
+            # survived the flip before driving the rows.
+            o_done = False
+            for o_attempt in range(3):
+                if not n_rows() and not n_open_ranking():
+                    continue
+                o_tab = screen.find(ids=["rb_overall_tab"])
+                if not (o_tab and o_tab.center):
+                    time.sleep(3)
+                    continue
+                screen.tap_node(o_tab)
+                time.sleep(5)
+                if not n_rows():
+                    print("  [info] N: podium self-closed right after the "
+                          "overall flip (attempt %d) - re-grounding"
+                          % (o_attempt + 1))
+                    continue
+                n_drive_row(1, "active/overall", [
+                    (n_lits[3], "rb_area_tab"), (n_lits[4], "rb_global_tab")])
+                n_drive_row(2, "clan/overall", [(n_lits[5], "rb_global_tab")])
+                o_done = True
+                break
+            if not o_done:
+                fail("N: the overall leg could not be driven in 3 attempts "
+                     "(the documented self-close drift struck every time - "
+                     "dump below)")
+                for n in screen.dump():
+                    if n.res or n.text or n.desc:
+                        print("  N-dump] %s | text=%r" % (
+                            n.res.rsplit("/", 1)[-1] if n.res else "",
+                            n.text[:28]))
+            seen_user = n_count("REQ GET " + n_user_lit)
+            if seen_user > n_pre_user:
+                ok("N: my-rank rows kept fetching (user/info %d->%d)"
+                   % (n_pre_user, seen_user))
+            for p in l_rank_paths():
+                print("  [evidence] N: client fired %s" % p)
+            # exit: BACK to the hall; absorb a drift by grounding on rb_1
+            for _ in range(4):
+                if screen.find(ids=["rb_1"]):
+                    break
+                adb.key(4)
                 time.sleep(2)
-        if sw_o and sw_o.center:
-            ok("O: Account Switch row found at %s" % (sw_o.center,))
-            screen.tap_node(sw_o)
-            time.sleep(8)
-            # the LoginActivity (or a confirm dialog first)
-            handle_campaign_dialogs(adb, screen, "O-switch")
-            name_o = next((x for x in screen.dump()
-                           if x.res and x.res.rsplit("/", 1)[-1]
-                           == "editName" and x.center), None)
-            if name_o:
-                o_form = True
+            alive_or_recover_at(adb, screen, args.package, args.activity,
+                                "N-exit")
+        else:
+            print("  [info] N: Ranking walk failed (Me tab)")
+
+        # ------------------------------------------------- Phase O: account
+        # switch + the CLIENT's own login (session 25). jadx decode:
+        # SettingViewModel.u() -> LoginManager.onSwitchAccount(activity) ->
+        # LoginService (ARouter /login/service): fetches the account records
+        # then starts com.sandbox.login.view.activity.login.LoginActivity
+        # (extras key.is.with.back.btn / key.is.with.register). The login
+        # screen's model fires GET /user/api/v1/user/login/change/record
+        # (IUserLoginApi.accountRecord, LoginModel y.smali) and the
+        # btn_sign submit fires IUserLoginApi.login ->
+        # POST /user/api/v1/login (LoginRegisterAccountForm) — the client's
+        # OWN login submit has never been client-asserted (the C/D phases
+        # log in via runner-side fcalls). The form: editName + edit_password
+        # (login_activity_login.xml). The registered D-phase credentials
+        # (qa_uid_d / password_d) are reused so the session stays valid.
+        print("== Phase O: account switch + client-UI login ==")
+        o_login_lit = "/user/api/v1/login"
+
+        def o_count(marker):
+            return sum(1 for ln in adb.raw("logcat", "-d", "-s",
+                                           "LocalAPI",
+                                           timeout=60).splitlines()
+                       if marker in ln)
+
+        # RUN 37538041177 evidence: the client-UI login submits POST
+        # /user/api/v2/app/login (the modern unified login), NOT v1 — watch
+        # both; accountRecord has NEVER fired on-device (likely gated on
+        # saved-account records) so its marker is source-split (the /use
+        # fragment is at the regex's len>4 threshold and the tail has no
+        # leading slash) to avoid claiming an unproven route.
+        o_v2_lit = "/user/api/v2/app/login"
+        o_rec_marker = "REQ GET /use" + "r/api/v1/user/login/change/record"
+
+        def o_rec_count():
+            return o_count(o_rec_marker)
+
+        # RES lines now carry the envelope code (LocalHttpd Wave 11): the
+        # client-UI login must be ACCEPTED (code=1), not merely submitted.
+        def o_ok_login_count():
+            return sum(
+                1 for ln in adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                    timeout=60).splitlines()
+                if ("RES POST " + o_v2_lit in ln
+                    or "RES POST " + o_login_lit in ln)
+                and "code=1" in ln)
+
+        o_pre_rec = o_rec_count()
+        o_pre_login = o_count("REQ POST " + o_login_lit) \
+            + o_count("REQ POST " + o_v2_lit)
+        o_pre_ok = o_ok_login_count()
+        o_paths_before = set(localapi_paths(adb))
+        o_form = False
+        if ground_main("O-ground"):
+            # walk: Me tab -> the "Setting" row (me_setting; runs the
+            # SettingFragment template via MoreViewModel.N / "more_setup")
+            # -> the "Account Switch" row (setting_change_account).
+            # RUN 37533194661 triage: profile -> ibMore opens the Personal
+            # Info EDITOR, not the settings - the row walk below is the
+            # decoded path.
+            tab_o = screen.find(ids=["rb_5"])
+            if tab_o and tab_o.center:
+                screen.tap_node(tab_o)
+                time.sleep(4)
+            set_o = None
+            o_deadline = time.time() + 12
+            while time.time() < o_deadline and not set_o:
+                set_o = screen.find(texts=["Setting"])
+                if not set_o:
+                    adb.sh("input swipe 360 700 360 400 300")
+                    time.sleep(2)
+            if set_o and set_o.center:
+                ok("O: Setting row found at %s" % (set_o.center,))
+                screen.tap_node(set_o)
+                time.sleep(6)
             else:
-                print("  [info] O: login form not shown after the "
-                      "switch tap - visible nodes:")
+                print("  [info] O: Setting row not found on the Me tab")
+            # the Account Switch row (setting_change_account = "Account
+            # Switch"); a bounded wait absorbs the template render
+            sw_o = None
+            o_deadline = time.time() + 10
+            while time.time() < o_deadline and not sw_o:
+                sw_o = screen.find(texts=["Account Switch"])
+                if not sw_o:
+                    time.sleep(2)
+            if sw_o and sw_o.center:
+                ok("O: Account Switch row found at %s" % (sw_o.center,))
+                screen.tap_node(sw_o)
+                time.sleep(8)
+                # the LoginActivity (or a confirm dialog first)
+                handle_campaign_dialogs(adb, screen, "O-switch")
+                name_o = next((x for x in screen.dump()
+                               if x.res and x.res.rsplit("/", 1)[-1]
+                               == "editName" and x.center), None)
+                if name_o:
+                    o_form = True
+                else:
+                    print("  [info] O: login form not shown after the "
+                          "switch tap - visible nodes:")
+                    for n in screen.dump():
+                        if n.res or n.text or n.desc:
+                            print("  O-dump] %s | text=%r" % (
+                                n.res.rsplit("/", 1)[-1] if n.res else "",
+                                n.text[:28]))
+            else:
+                print("  [info] O: Account Switch row not found (settings "
+                      "sheet layout drifted) - visible nodes:")
                 for n in screen.dump():
                     if n.res or n.text or n.desc:
                         print("  O-dump] %s | text=%r" % (
                             n.res.rsplit("/", 1)[-1] if n.res else "",
                             n.text[:28]))
-        else:
-            print("  [info] O: Account Switch row not found (settings "
-                  "sheet layout drifted) - visible nodes:")
-            for n in screen.dump():
-                if n.res or n.text or n.desc:
-                    print("  O-dump] %s | text=%r" % (
-                        n.res.rsplit("/", 1)[-1] if n.res else "",
-                        n.text[:28]))
-    if o_form:
-        # the account-record fetch: NON-FATAL probe (never observed
-        # on-device; likely gated on saved-account records)
-        o_seen_rec = o_rec_count()
-        if o_seen_rec > o_pre_rec:
-            ok("O: login-screen account records fetched (%d->%d)"
-               % (o_pre_rec, o_seen_rec))
-        else:
-            print("  [probe] O: no accountRecord fetch (gated on saved "
-                  "records - non-fatal)")
-        # fill the form with the registered credentials and submit
-        fill_focused_edit(adb, screen, qa_uid_d)
-        pw_o = next((x for x in screen.dump()
-                     if x.res and x.res.rsplit("/", 1)[-1]
-                     == "edit_password" and x.center), None)
-        if pw_o and pw_o.center:
-            screen.tap_node(pw_o)
-            time.sleep(1)
-            adb.key(123)
-            for _ in range(40):
-                adb.key(67)
-            adb.text(password_d)
-            time.sleep(1)
-            adb.key(111)
-        sign_o = screen.find(ids=["btn_sign"])
-        if sign_o and sign_o.center:
-            screen.tap_node(sign_o)
-            time.sleep(8)
-        o_seen_login = o_count("REQ POST " + o_login_lit) \
-            + o_count("REQ POST " + o_v2_lit)
-        o_deadline = time.time() + 16
-        while time.time() < o_deadline and o_seen_login <= o_pre_login:
-            time.sleep(2)
+        if o_form:
+            # the account-record fetch: NON-FATAL probe (never observed
+            # on-device; likely gated on saved-account records)
+            o_seen_rec = o_rec_count()
+            if o_seen_rec > o_pre_rec:
+                ok("O: login-screen account records fetched (%d->%d)"
+                   % (o_pre_rec, o_seen_rec))
+            else:
+                print("  [probe] O: no accountRecord fetch (gated on saved "
+                      "records - non-fatal)")
+            # fill the form with the registered credentials and submit
+            fill_focused_edit(adb, screen, qa_uid_d)
+            pw_o = next((x for x in screen.dump()
+                         if x.res and x.res.rsplit("/", 1)[-1]
+                         == "edit_password" and x.center), None)
+            if pw_o and pw_o.center:
+                screen.tap_node(pw_o)
+                time.sleep(1)
+                adb.key(123)
+                for _ in range(40):
+                    adb.key(67)
+                adb.text(password_d)
+                time.sleep(1)
+                adb.key(111)
+            sign_o = screen.find(ids=["btn_sign"])
+            if sign_o and sign_o.center:
+                screen.tap_node(sign_o)
+                time.sleep(8)
             o_seen_login = o_count("REQ POST " + o_login_lit) \
                 + o_count("REQ POST " + o_v2_lit)
-        check("O: client-UI login submitted (POST %s %d->%d)"
-              % (o_v2_lit, o_pre_login, o_seen_login),
-              o_seen_login > o_pre_login,
-              "the login screen never submitted a login POST (v1 or "
-              "v2)")
-        # Wave 11: the submitted login must ALSO be accepted — the
-        # pre-fix server answered the client-UI RSA login with a 37b
-        # code=0 error (run 37546126594 diagnostics). The RSA contract
-        # is now served for real (RsaCipher + patch_rsa_key.py).
-        time.sleep(2)
-        o_post_ok = o_ok_login_count()
-        for ln in adb.raw("logcat", "-d", "-s", "LocalAPI",
-                          timeout=60).splitlines():
-            if ("RES POST " + o_v2_lit in ln
-                    or "RES POST " + o_login_lit in ln):
-                print("  [evidence] O: %s" % ln.split("LocalAPI:")[-1].strip())
-        check("O: client-UI login accepted by the server (RES code=1 %d->%d)"
-              % (o_pre_ok, o_post_ok),
-              o_post_ok > o_pre_ok,
-              "the login POST was rejected server-side (wrong password "
-              "/ unknown account) — RSA contract regression?")
-        for p in sorted(set(localapi_paths(adb)) - o_paths_before):
-            print("  [evidence] O: client fired %s" % p)
-        # recover: BACK out of whatever landed (hall or login result)
-        for _ in range(4):
-            if screen.find(ids=["rb_1"]):
-                break
-            adb.key(4)
+            o_deadline = time.time() + 16
+            while time.time() < o_deadline and o_seen_login <= o_pre_login:
+                time.sleep(2)
+                o_seen_login = o_count("REQ POST " + o_login_lit) \
+                    + o_count("REQ POST " + o_v2_lit)
+            check("O: client-UI login submitted (POST %s %d->%d)"
+                  % (o_v2_lit, o_pre_login, o_seen_login),
+                  o_seen_login > o_pre_login,
+                  "the login screen never submitted a login POST (v1 or "
+                  "v2)")
+            # Wave 11: the submitted login must ALSO be accepted — the
+            # pre-fix server answered the client-UI RSA login with a 37b
+            # code=0 error (run 37546126594 diagnostics). The RSA contract
+            # is now served for real (RsaCipher + patch_rsa_key.py).
             time.sleep(2)
-        alive_or_recover_at(adb, screen, args.package, args.activity,
-                            "O-exit")
+            o_post_ok = o_ok_login_count()
+            for ln in adb.raw("logcat", "-d", "-s", "LocalAPI",
+                              timeout=60).splitlines():
+                if ("RES POST " + o_v2_lit in ln
+                        or "RES POST " + o_login_lit in ln):
+                    print("  [evidence] O: %s" % ln.split("LocalAPI:")[-1].strip())
+            check("O: client-UI login accepted by the server (RES code=1 %d->%d)"
+                  % (o_pre_ok, o_post_ok),
+                  o_post_ok > o_pre_ok,
+                  "the login POST was rejected server-side (wrong password "
+                  "/ unknown account) — RSA contract regression?")
+            for p in sorted(set(localapi_paths(adb)) - o_paths_before):
+                print("  [evidence] O: client fired %s" % p)
+            # recover: BACK out of whatever landed (hall or login result)
+            for _ in range(4):
+                if screen.find(ids=["rb_1"]):
+                    break
+                adb.key(4)
+                time.sleep(2)
+            alive_or_recover_at(adb, screen, args.package, args.activity,
+                                "O-exit")
+    else:
+        print("  [skip] Phases E-O deep drives (fast mode)")
 
     # ------------------------------------------------- assertions
     print("== assertions ==")

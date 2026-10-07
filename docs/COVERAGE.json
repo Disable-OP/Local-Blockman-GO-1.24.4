@@ -4,7 +4,7 @@
   "discovered": 335,
   "implemented": 295,
   "default": 40,
-  "host_tested": 234,
+  "host_tested": 236,
   "client_asserted": 167
  },
  "endpoints": [
@@ -1101,7 +1101,7 @@
    "path": "/user/api/v1/user/set-psd/param/check",
    "status": "implemented",
    "handler": "setPsdParamCheck",
-   "host_tested": false,
+   "host_tested": true,
    "client_asserted": false
   },
   {
@@ -1468,8 +1468,8 @@
    "verb": "POST",
    "path": "/user/api/v1/account/invalid/check",
    "status": "implemented",
-   "handler": "ackPost",
-   "host_tested": false,
+   "handler": "accountInvalidCheck",
+   "host_tested": true,
    "client_asserted": false
   },
   {
