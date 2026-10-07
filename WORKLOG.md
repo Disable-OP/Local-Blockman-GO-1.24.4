@@ -2763,3 +2763,16 @@
 - Full-mode run dispatched to validate the G hand-over cache-refresh
   (G-ho-cache relaunch). Verdict lands in the next session log.
 - NO GameServer work.
+
+### Session 28 cont. 5 (RES observability shipped; 5th 5:00 fast run)
+
+- LocalHttpd RES lines now carry latency + auth-state:
+  "RES <verb> <uri> <size>b code=<n> <ms>ms auth=<tok|anon>" — the
+  spec's traffic-record contract (method/route/status/latency/auth/
+  size/result). Fields APPENDED: every automation RES assertion is a
+  substring prefix check, verified compatible (rig 458/458).
+- New APK built + released (run 37588434226); its workflow_run fast
+  validation 37588644532 = SUCCESS, 0 FAIL, suite 181s — 5th
+  consecutive ~5:00 fast run, now on the RES-line APK.
+- Full run 37588191029 (G-ho-cache verdict) still in flight.
+- NO GameServer work.
