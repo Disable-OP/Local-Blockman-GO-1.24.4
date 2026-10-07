@@ -3040,10 +3040,38 @@ final class Handlers {
         return envelope("str", "\"" + masked + "\"");
     }
 
-    /** GET /user/api/v1/users/secret/question — List&lt;SecretQuestionInfo&gt;. */
+    /**
+     * GET /user/api/v1/users/secret/question?type= — two contracts by
+     * caller (jadx ca.g.b -> ca.d.a -> ca.e.onSuccess): type=0 (the
+     * Security-Questions row on an email-less account) fetches the
+     * QUESTION CATALOG — the client requires >= 2 entries and feeds
+     * them to the question-setting screen's picker; type=1 fetches the
+     * account's SAVED questions. The catalog is a server-defined list
+     * (the client renders the strings verbatim); local policy serves a
+     * standard English set.
+     */
     private static String questionGet(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        int type = parseLong(ctx.query("type"), 1) == 0 ? 0 : 1;
+        if (type == 0) {
+            String[] catalog = {
+                    "What was your childhood nickname?",
+                    "What is the name of your first pet?",
+                    "What was the name of your first school?",
+                    "What is your mother's maiden name?",
+                    "What was the make of your first car?",
+                    "What city were you born in?"};
+            JSONArray out = new JSONArray();
+            for (int i = 0; i < catalog.length; i++) {
+                JSONObject qi = new JSONObject();
+                qi.put("id", i + 1);
+                qi.put("question", catalog[i]);
+                qi.put("answer", "");
+                out.put(qi);
+            }
+            return envelope("list", out.toString());
+        }
         JSONArray q = store.userState(u).optJSONArray("secretQuestions");
         return envelope("list", (q == null ? new JSONArray() : q).toString());
     }

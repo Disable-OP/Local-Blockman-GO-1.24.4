@@ -1607,10 +1607,37 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
     def req_seen(marker):
         return marker in adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
 
+    def pick_question_row(anchor_ids, row_text_prefix):
+        """Tap a question picker anchor, then the first popup row that
+        starts with row_text_prefix (the rows render the CATALOG strings
+        the server served). True when a row was selected."""
+        anchor = screen.find(ids=anchor_ids)
+        if not (anchor and anchor.center):
+            print("  [skip] LM: picker %s not found" % (anchor_ids,))
+            return False
+        screen.tap_node(anchor)
+        time.sleep(3)
+        row = screen.find(contains=[row_text_prefix])
+        if not (row and row.center):
+            print("  [skip] LM: popup row %r not found" % row_text_prefix)
+            debug_dump(screen, "lm-popup")
+            adb.key(4)
+            time.sleep(2)
+            return False
+        screen.tap_node(row)
+        time.sleep(2)
+        return True
+
     def back(times=1):
         for _ in range(times):
             adb.key(4)
             time.sleep(2)
+
+    def fill_q1(screen, adb):
+        return pick_question_row(["ll_question_one"], "childhood nickname")
+
+    def fill_q2(screen, adb):
+        return pick_question_row(["ll_question_two"], "first pet")
 
     # -- ground on the Me tab ------------------------------------------------
     me = screen.find(ids=["rb_5"])
@@ -1692,11 +1719,37 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                     ok("LM: question list fetched (GET users/secret/question)")
                 else:
                     print("  [info] no question-list GET (row state changed?)")
-                # best-effort: the question screen pickers/answers are not
-                # mapped for deterministic driving — dump for the next wave
+                # Wave 20c — the answer-submit drive. Server side is now
+                # complete (Wave 20b: type=0 catalog, v1 setting without an
+                # authCode), so the whole flow is drivable: pick Q1 (popup
+                # on ll_question_one), fill answer 1, Next, pick Q2, fill
+                # answer 2, Confirm -> POST /user/api/v1/users/secret/
+                # question/setting (v1: Retrofit omits the null authCode
+                # @Query). The popup rows render the CATALOG strings the
+                # server just served, so a row tap targets the first
+                # catalog entry's text prefix.
+                qs_lit = "/user/api/v1/users/secret/question/set" + "ting"
+                if fill_q1(screen, adb):
+                    # answer 1 = first visible EditText under the picker
+                    fill_edit(0, "LocalQA-One")
+                    nxt = screen.find(ids=["btn_next"], texts=["Next"])
+                    if nxt and nxt.center:
+                        screen.tap_node(nxt)
+                        time.sleep(3)
+                    if fill_q2(screen, adb):
+                        fill_edit(0, "LocalQA-Two")
+                        if confirm_button():  # btn_confirm 'Confirm'
+                            time.sleep(6)
+                            alive_or_recover("%s-qset" % tag)
+                            if req_seen("REQ POST " + qs_lit):
+                                ok("LM: question setting served (POST "
+                                   "users/secret/question/setting, v1)")
+                            else:
+                                print("  [info] no question/setting POST "
+                                      "(picker shape changed? see [qs])")
                 for n in screen.dump():
                     if n.text or n.res.endswith("EditText"):
-                        print("  [qs] %s | %r" % (
+                        print("  [qs-end] %s | %r" % (
                             n.res.rsplit("/", 1)[-1] if n.res else "",
                             (n.text or "")[:24]))
                 back(1)

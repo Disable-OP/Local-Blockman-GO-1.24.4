@@ -2339,6 +2339,14 @@ def main():
               qset_v1.get("code") == 1
               and any(q.get("question") == "QW20V1" for q in qset_v1_chk.get("data", [])),
               "%s %s" % (str(qset_v1)[:80], str(qset_v1_chk)[:120]))
+        # type=0 = the question CATALOG (client requires >= 2 entries —
+        # ca.e.onSuccess toasts and aborts below that); type=1 = saved state.
+        qcat = call("GET", "/user/api/v1/users/secret/question?type=0",
+                    headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("w20 question catalog (type=0) serves >= 2 pickable entries",
+              qcat.get("code") == 1 and len(qcat.get("data", [])) >= 2
+              and all(q.get("id") and q.get("question") for q in qcat["data"]),
+              str(qcat)[:150])
 
         print("== Wave 17: default-route elimination (star code / vip / password / events) ==")
         # fresh user: immune to earlier rig spending; default wallet 50000 golds

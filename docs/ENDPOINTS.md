@@ -1568,3 +1568,20 @@ after a clean ECJ rebuild). NO GameServer work; Engine 10068 untouched.
    accepted and persisted; verify-email without a code rejected.
 
 COVERAGE: 334/334/0-defaults; host rig 569/569; client_asserted 152.
+
+### Wave 20c (session 35 cont.) — question catalog + answer-submit drive
+
+1. SERVER FIX 3: GET /users/secret/question now branches on type —
+   type=0 (the Security-Questions row's fetch, jadx ca.g.b(0) ->
+   ca.e.onSuccess which REQUIRES >= 2 entries) serves the question
+   CATALOG the picker renders; type=1 keeps serving the account's
+   saved questions. The previous one-contract handler would have
+   starved the picker (empty list -> client toast abort).
+2. Drive: the LM phase now drives the full answer-submit — pick Q1
+   (ll_question_one popup row = a served catalog string), fill answer,
+   Next, pick Q2, fill answer, Confirm -> POST
+   /user/api/v1/users/secret/question/setting (v1, no authCode).
+   Evidence-gated (no claim until an on-device verdict).
+3. Host rig +1 check (type=0 catalog >= 2 pickable entries): 570/570.
+
+COVERAGE: 334/334/0-defaults; host rig 570/570; client_asserted 152.
