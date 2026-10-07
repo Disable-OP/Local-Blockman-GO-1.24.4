@@ -1625,3 +1625,20 @@ COVERAGE: 334/334/0-defaults; host rig 570/570; client_asserted 152.
 3. NO server changes; host rig 570/570 (untouched).
 
 COVERAGE: 334/334/0-defaults; host rig 570/570; client_asserted 152.
+
+### Wave 21a (session 36) — DPAD popup selection + scroll-aware hunts
+
+1. Popup root cause (run-10 evidence + SecretQuestionPopupWindow decode):
+   the picker is a FOCUSABLE PopupWindow with a ListView; the dump-
+   coordinate tap missed it (popup-window dump bounds are not screen
+   coordinates) and the outside-touch dismissed it. Fix: DPAD DOWN
+   selects row 0 of the focused popup, ENTER fires the ListView's
+   onItemClickListener (dismiss + selection) — coordinate-space immune.
+   Failure path: one BACK closes the popup, keeping the outer back
+   count anchored on fa.i.
+2. AccountSafe hunts made scroll-aware in BOTH directions: the
+   Email/Phone rows sit below the fold (swipe up) and Modify Password
+   returns above the fold after those hunts (swipe down) — run-10
+   missed it after the hunts.
+3. NO server changes; NO new APK needed (the deep run checks out the
+   newest scripts and fetches wip-56).

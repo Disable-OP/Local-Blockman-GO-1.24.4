@@ -1608,49 +1608,46 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
         return marker in adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
 
     def pick_question_row(anchor_ids, row_text_prefix):
-        """Tap a question picker anchor, then the popup row whose text
-        starts with row_text_prefix (rows render the CATALOG strings the
-        server served). Run 9 evidence: the row tap must land on a
-        CLICKABLE node or the selection never registers and the answer
-        field stays invisible (the binding gates it on the selection).
-        True when a row was selected."""
+        """Tap a question picker anchor, then select the popup's first row
+        via DPAD (DOWN + ENTER). Run-10 evidence: the popup is a FOCUSABLE
+        PopupWindow with a ListView; a dump-coordinate tap missed it (the
+        popup window's dump bounds are not screen coordinates) and the
+        outside-touch dismissed it. DPAD events go to the focused popup
+        window, so DOWN selects row 0 and ENTER fires the ListView's
+        onItemClickListener — dismiss + selection in one deterministic
+        step, independent of coordinate spaces. The [qp] dump still
+        records the popup rows as evidence. True when the selection
+        registered (the anchor TextView now carries the row text)."""
         anchor = screen.find(ids=anchor_ids)
         if not (anchor and anchor.center):
             print("  [skip] LM: picker %s not found" % (anchor_ids,))
             return False
         screen.tap_node(anchor)
         time.sleep(3)
-        # popup dump first (evidence for the next iteration), then tap the
-        # first CLICKABLE node whose text contains the prefix — prefer the
-        # deepest match (the text node itself is rarely clickable)
-        nodes = screen.dump()
-        for n in nodes:
+        # popup evidence: the rows render the CATALOG strings the server
+        # served (run-10 [qp] verdict)
+        for n in screen.dump():
             if n.text and row_text_prefix.split()[0] in n.text:
                 print("  [qp] popup row: %r clickable=%s cls=%s"
                       % (n.text[:30], n.clickable, n.cls))
-        cands = [n for n in nodes
-                 if n.text and row_text_prefix.split()[0] in n.text
-                 and n.center]
-        target = next((n for n in cands if n.clickable), None)
-        if target is None and cands:
-            # fall back to the text node's PARENT hit via a raw tap at its
-            # center (uiautomator may not flag the list row clickable)
-            target = cands[0]
-        if target is None:
-            print("  [skip] LM: popup row %r not found" % row_text_prefix)
-            debug_dump(screen, "lm-popup")
-            # NO back here — run-10 evidence: this path's BACK consumed the
-            # grounding screen and stranded the rest of the phase. The
-            # outer flow owns all grounding keys.
-            return False
-        screen.tap_node(target)
+        adb.key(20)   # DPAD_DOWN — select the first ListView row
+        time.sleep(1)
+        adb.key(23)   # DPAD_CENTER/ENTER — click the selected row
         time.sleep(2.5)
-        # the answer field visibility is gated on the selection — verify
-        selected = any(row_text_prefix.split()[0] in (n.text or "")
-                       for n in screen.dump())
-        if not selected:
-            print("  [info] LM: popup row tap may not have registered")
-        return True
+        # selection verification: with the popup dismissed, the activity
+        # shows the picked question text (the binding mirrors m/n)
+        picked = any(row_text_prefix.split()[0] in (n.text or "")
+                     for n in screen.dump())
+        if not picked:
+            print("  [info] LM: DPAD row pick did not register "
+                  "(%s)" % row_text_prefix)
+            debug_dump(screen, "lm-qpick")
+            # the focusable popup is still open — BACK dismisses it (popups
+            # take the back key before the activity), so the outer flow's
+            # back count stays anchored on fa.i
+            adb.key(4)
+            time.sleep(2)
+        return picked
 
     def back(times=1):
         for _ in range(times):
@@ -1883,6 +1880,14 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
         print("  [skip] LM: 'Phone number' row not found on Account Security")
 
     # -- 4) Modify Password (LAST — rotates the credential) ------------------
+    # the email/phone hunts scrolled the list DOWN — Modify Password sits
+    # near the TOP of AccountSafe; scroll back up before hunting (run-10:
+    # the row was missed after the hunts)
+    for swipe in range(3):
+        if screen.find(texts=["Modify Password"]):
+            break
+        adb.sh("input swipe 360 380 360 900 300")
+        time.sleep(2)
     mrow = screen.find(texts=["Modify Password"])
     if mrow and mrow.center:
         screen.tap_node(mrow)
