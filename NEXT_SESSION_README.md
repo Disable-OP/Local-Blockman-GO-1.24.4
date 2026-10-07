@@ -1676,3 +1676,26 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   growth is deep login-module flows (bind email/phone, set-password,
   secret questions — all implemented + host-tested) or error-driven
   upgrades from future traffic. NO GameServer work.
+
+## Session 34 delta (Wave 19 — read first next session)
+
+- 5-min mandate re-verified on the fresh state: fast run 37663387823
+  (b622dba) GREEN in 3.9 min. Fast-only discipline intact on both
+  branches (no mode input, 12min/8min caps).
+- Traffic forensics method upgrade: segment-pattern diff (each
+  {placeholder} consumes one literal segment) of the fast+deep runs'
+  hit routes vs COVERAGE.json — the previous session-34-style raw-diff
+  false-positives (placeholder naming) are gone. Result: ONE unclaimed
+  exercised route total (set-psd/param/check); deep run had ZERO.
+- Wave 19: set-psd/param/check promoted to a HARD Phase C gate
+  (fcall GET .../set-psd/param/check?type=set, code=1 AND data==0).
+  client_asserted 147. No server changes; host rig re-verified 564/564
+  from a clean ECJ rebuild (build_server_dex.sh, .javatools reused).
+- Boot EADDRINUSE retry lines in diagnostics = benign dual-process
+  watchdog (holder serves, loser stands down; host rig has 4 dedicated
+  race checks). Do not treat as a failure.
+- Next targets (unchanged from session 33): deep login-module flows
+  (bind email/phone, set-password, secret questions — implemented +
+  host-tested, need drive evidence), users/{userId}/suit reachable
+  surface (rbSuit chip absent on-device), error-driven upgrades from
+  future CI traffic. NO GameServer work.

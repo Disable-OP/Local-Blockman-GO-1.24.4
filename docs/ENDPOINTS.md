@@ -1469,3 +1469,28 @@ deep run's evidence pass: recommend/users + users/{userId}/suit (+2
 more). more/list stays un-assertable (its only caller is the video
 detail screen — the local world has no videos, detail is unreachable).
 NO GameServer work; Engine 10068 untouched.
+
+## Wave 19 (session 34) — set-psd/param/check promoted; fresh-traffic forensics
+
+1. Fresh-traffic forensics: fast run 37663387823 (b622dba, 3.9 min
+   GREEN) = 124 REQ, all code=1, crash buffer empty; deep run 37658494566
+   (b622dba, PASS) = 148 REQ, all code=1. Segment-pattern diff of BOTH
+   runs' hit routes vs COVERAGE.json found exactly ONE exercised-but-
+   unclaimed route: GET /user/api/v1/user/set-psd/param/check (the app
+   fires it naturally at boot; contract: HttpResponse<Long>, data=0 —
+   value >100 would open the set-password dialog).
+2. Wave 19 promotion: the fast drive's Phase C now exercises
+   set-psd/param/check?type=set through the forward with a HARD gate
+   (code=1 AND data==0). client_asserted 146 -> 147. Boot EADDRINUSE
+   lines in the diagnostics are the documented benign dual-process
+   watchdog stand-down (loser stands by, holder keeps the port).
+3. Deep-run diff: ZERO unasserted hits — every route the deep drive
+   visits is already claimed. users/{userId}/suit still never fires
+   (Dressing rbSuit chip absent on-device; implemented + host-tested).
+   Remaining honest growth = deep login-module flows (bind email/phone,
+   set-password, secret questions — all implemented + host-tested) or
+   error-driven upgrades from future traffic.
+
+COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 147.
+NO server changes this wave (host rig re-verified 564/564 from a clean
+ECJ rebuild). NO GameServer work; Engine 10068 untouched.

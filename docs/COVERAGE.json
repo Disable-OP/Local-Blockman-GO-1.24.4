@@ -5,7 +5,7 @@
   "implemented": 334,
   "default": 0,
   "host_tested": 334,
-  "client_asserted": 146
+  "client_asserted": 147
  },
  "endpoints": [
   {
@@ -1094,7 +1094,7 @@
    "status": "implemented",
    "handler": "setPsdParamCheck",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",

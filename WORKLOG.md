@@ -3100,3 +3100,30 @@
 - NO GameServer work. Engine 10068 untouched. The 5-minute Redroid
   mandate held all session (fast runs 4.0-4.4 min; deep runs are
   manual-only and ran while other work continued).
+
+### Session 34 (Wave 19 — set-psd promotion; forensics clean)
+
+- Mandate check first (user rule): fast run 37663387823 (b622dba)
+  GREEN in 3.9 min — the 5-minute Redroid CI mandate holds with zero
+  regressions. Fast-only discipline re-confirmed on both branches.
+- Forensics on the two freshest runs: fast = 124 REQ / all code=1 /
+  crash buffer empty; deep #6 = 148 REQ / all code=1 / PASS. Built a
+  segment-pattern differ (template placeholders consume one literal
+  segment each) to kill the placeholder-naming false positives of a
+  raw diff. Verdict: exactly ONE exercised-but-unclaimed route across
+  both runs — GET /user/api/v1/user/set-psd/param/check (the app's
+  natural boot call; fast run fired it at 18:02:22 with no query).
+- Wave 19: the fast drive's Phase C now exercises the route through
+  the forward (fcall GET /user/api/v1/user/set-psd/param/check?type=
+  set) with a HARD gate: code==1 AND data==0 (the GooglePlayPayService
+  threshold contract — >100 opens the set-password dialog; the local
+  backend never prompts). client_asserted 146 -> 147.
+- No server changes. Host rig re-verified from a CLEAN ECJ rebuild of
+  the current source (build_server_dex.sh; .javatools reused from the
+  sandbox): 564 passed / 0 failed — including the 4 boot-race checks
+  that document the benign EADDRINUSE watchdog stand-down seen in the
+  run diagnostics.
+- Docs: ENDPOINTS.md (Wave 19), NEXT_SESSION_README.md (session 34
+  delta incl. the differ method), COVERAGE.json regenerated.
+- NO GameServer work. Engine 10068 untouched. Next: deep login-module
+  flows / users/{userId}/suit reachability / error-driven upgrades.

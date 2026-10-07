@@ -2099,6 +2099,17 @@ def main():
           and r5.get("data", {}).get("accessToken"), str(r5)[:120])
     r6 = fcall("GET", "/config/files/blockymods-check-version")
     check("C: version config served locally", r6.get("code") == 1, str(r6)[:120])
+    # Wave 19 — promote /user/api/v1/user/set-psd/param/check to a HARD
+    # verdict-backed gate. Evidence chain: (1) the app fires it NATURALLY
+    # at boot (run 37572753047 boot call site; fresh fast run 37663387823
+    # at 18:02:22, no query param, code=1); (2) the host contract is
+    # pinned (HttpResponse<Long>, data MUST be 0 — value >100 opens the
+    # set-password dialog and disrupts the drive); (3) the drive now
+    # exercises it through the forward with the type=set query the
+    # Retrofit @Query("type") declares.
+    r6b = fcall("GET", "/user/api/v1/user/set-psd/param/check?type=set")
+    check("C: set-psd param check (prompt gate Long 0)",
+          r6b.get("code") == 1 and r6b.get("data") == 0, str(r6b)[:120])
 
     # Phase 2 surface: catalog / detail / economy / social — all state-backed now
     r7 = fcall("GET", "/game/api/v1/game/revision/list/by/condition"
