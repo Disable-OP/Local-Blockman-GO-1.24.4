@@ -3067,18 +3067,28 @@ final class Handlers {
         if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         int day = (int) parseLong(ctx.pathParam("type"), 1);
         String date = today();
+        long reward = 0;
         if (!store.hasSignedIn(u, date)) {
             int claimed = store.signIns(u) == null ? 0 : store.signIns(u).length();
-            long reward = SIGN_REWARDS[Math.max(0, Math.min(6, (day - 1) % 7))];
+            reward = SIGN_REWARDS[Math.max(0, Math.min(6, (day - 1) % 7))];
             store.markSignedIn(u, date);
             store.award(u, "golds", reward);
             L.i("claimTask: userId=" + u.optLong("userId") + " day=" + day + " +" + reward);
         }
+        // Full RechargeEntity shape (client model decode, classes3: currency,
+        // diamonds, gDiamonds, gDiamondsProfit, golds, money, rewardQuantity,
+        // userId). rewardQuantity carries the granted amount — the claim
+        // popup reads it; missing fields parse as 0 but a zero reward popup
+        // would look broken.
         JSONObject w = new JSONObject();
         w.put("userId", u.optLong("userId"));
+        w.put("currency", 2); // golds (client-verified mapping: 1=diamonds 2=golds)
         w.put("golds", u.optLong("golds"));
         w.put("diamonds", u.optLong("diamonds"));
         w.put("gDiamonds", u.optLong("gDiamonds"));
+        w.put("gDiamondsProfit", 0);
+        w.put("money", 0);
+        w.put("rewardQuantity", reward);
         return envelope("obj", w.toString());
     }
 

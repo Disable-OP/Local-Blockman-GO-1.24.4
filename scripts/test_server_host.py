@@ -1302,6 +1302,15 @@ def main():
                   headers={"Access-Token": tok5, "userId": str(uid5)}).get("data", {})
         check("claim task rewards wallet", ct.get("code") == 1
               and w1.get("golds", 0) == w0.get("golds", 0) + 200, str(ct)[:150])
+        # WeekTaskResponse/RechargeEntity model decode (jadx classes3):
+        # the claim response is HttpResponse<RechargeEntity> and the client
+        # model carries currency/gDiamondsProfit/money/rewardQuantity too —
+        # rewardQuantity carries the granted amount (claim popup).
+        check("claim task response is a full RechargeEntity",
+              ct.get("code") == 1 and ct["data"].get("currency") == 2
+              and ct["data"].get("rewardQuantity") == 200
+              and "money" in ct["data"] and "gDiamondsProfit" in ct["data"],
+              str(ct)[:200])
         ndt2 = call("GET", "/user/api/v1/users/new/daily/tasks",
                     headers={"Access-Token": tok5, "userId": str(uid5)})
         check("task strip reflects claim", ndt2.get("code") == 1
