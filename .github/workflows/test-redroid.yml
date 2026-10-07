@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "UI automation mode (fast = ~5 min CI core; full = all deep-drive phases)"
+        description: "UI automation mode (fast = ~5 min total; full = all deep-drive phases)"
         required: false
         default: fast
         type: choice
@@ -26,9 +26,12 @@ permissions:
 jobs:
   redroid-test:
     runs-on: ubuntu-24.04-arm
-    # mode-aware: fast fits in 20 min; a full deep drive needs ~40+ (run
-    # 37577021081 was killed by the fixed 20-min job cap mid-Phase P)
-    timeout-minutes: ${{ github.event.inputs.mode == 'full' && 60 || 20 }}
+    # mode-aware + user mandate 2026-10-07: the fast run must land at ~5
+    # minutes wall time (it now does: ~75s infra + ~4 min UI suite), and a
+    # hang must never hold the runner for half an hour again - the fast cap
+    # is 12 min (worst case ~2x the expected wall time). A full deep drive
+    # needs ~40+ (run 37577021081 was killed by a fixed 20-min cap mid-P).
+    timeout-minutes: ${{ github.event.inputs.mode == 'full' && 60 || 12 }}
     env:
       PACKAGE: com.disabngo.blockynexus
       ACTIVITY: com.disabngo.blockynexus.view.activity.start.StartActivity
@@ -42,11 +45,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/fetch_release_asset.py BlockyNexus-localapi.apk app.apk
 
+      # Fast path (2026-10-07, ~30s saved): the GH runner image usually
+      # already ships the binder module + adb - only pay for apt update+
+      # install when modprobe actually fails.
       - name: Load binder kernel module
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq linux-modules-extra-$(uname -r) android-tools-adb
-          sudo modprobe binder_linux devices="binder,hwbinder,vndbinder"
+          if ! sudo modprobe binder_linux devices="binder,hwbinder,vndbinder" 2>/dev/null; then
+            echo "modprobe failed - installing kernel modules + adb"
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq linux-modules-extra-$(uname -r) android-tools-adb
+            sudo modprobe binder_linux devices="binder,hwbinder,vndbinder"
+          fi
+          command -v adb >/dev/null 2>&1 || { sudo apt-get update -qq; sudo apt-get install -y -qq android-tools-adb; }
+          adb version | head -1
 
       - name: Start Redroid (arm64 native, Android 12)
         run: |
@@ -86,14 +97,15 @@ jobs:
           fi
 
       - name: Run UI automation suite (register, login, navigate all tabs)
-        # FAST mode (default, user mandate 2026-10): the whole suite must
-        # stay ~5 minutes — Phase A core (visitor + tabs + boot surfaces),
-        # Phase C (fresh account via the local API), Phase D core (upgrade
-        # + restart) + assertions/crash scan. The deep-drive phases (B,
-        # E-O) are opt-in via workflow_dispatch input mode=full and get a
-        # mode-aware timeout (a full drive ran 12 min -> timeout kill at
-        # Phase P in run 37577021081).
-        timeout-minutes: ${{ github.event.inputs.mode == 'full' && 45 || 12 }}
+        # FAST mode (default, user mandate 2026-10-07: "5 minutes only"):
+        # the suite itself must finish in ~4 minutes - Phase A core
+        # (visitor + tabs + boot surfaces), Phase P (sign banner), Phase C
+        # (fresh account via the local API), Phase D core (upgrade +
+        # restart) + assertions/crash scan. The deep-drive phases (B,
+        # E-O) are opt-in via workflow_dispatch input mode=full and keep a
+        # roomy timeout (a full drive ran 12 min -> timeout kill at Phase
+        # P in run 37577021081).
+        timeout-minutes: ${{ github.event.inputs.mode == 'full' && 45 || 8 }}
         run: |
           python3 scripts/ui_automation_test.py \
             --serial localhost:5555 \

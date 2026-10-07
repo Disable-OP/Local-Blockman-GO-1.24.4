@@ -229,14 +229,25 @@ class Screen:
         return True
 
 
-def dismiss_permission_dialogs(screen, rounds=8):
+def dismiss_permission_dialogs(screen, rounds=8, clean_streak=2):
+    # 2026-10-07 fast-mode: stop after `clean_streak` consecutive rounds
+    # with NO dialog on screen - the old fixed 8-round loop burned ~8s per
+    # call even when nothing popped (3+ calls per fast run = ~24s of pure
+    # sleep). Staggered late dialogs are still covered: every relaunch
+    # path re-calls this after its settle sleep, and the main-screen
+    # wait_for would spot a dialog blocking rgBottom.
+    quiet = 0
     for _ in range(rounds):
         n = screen.find(texts=["Allow", "ALLOW", "While using the app",
                                "Only this time", "ALLOW ONLY FOR THIS SESSION"])
         if n and n.center:
             screen.tap_node(n)
             time.sleep(1.5)
+            quiet = 0
         else:
+            quiet += 1
+            if quiet >= clean_streak:
+                return
             time.sleep(1.0)
 
 
@@ -390,10 +401,13 @@ def relaunch_and_wait(adb, screen, package, activity, tag):
             time.sleep(3)
         if not pid:
             return False
-        time.sleep(12)
+        # 2026-10-07 fast-mode: settle 8s (was 12) then poll every 2s -
+        # the boot-to-main wait is dominated by real app boot (~55-70s on
+        # Redroid), the extra settle seconds just added dead time on top.
+        time.sleep(8)
         dismiss_permission_dialogs(screen)
         up = bool(screen.wait_for(ids=["rgBottom", "rb_1", "flHomePage"],
-                                  timeout=90, poll=3))
+                                  timeout=90, poll=2))
         if up:
             return True
         if cycle == 0:
@@ -1152,14 +1166,29 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
     return added
 
 
-def navigate_all_tabs(adb, screen, package, tag):
+def navigate_all_tabs(adb, screen, package, tag, banner=None):
+    """Walk the five bottom tabs (liveness proof + API-traffic soak).
+
+    `banner` (optional dict) collects the hall activity-strip location for
+    Phase P: the first tab (rb_1..rb_4) whose screen carries >=3 clickable
+    bg_content rows. Phase P then taps that tab directly instead of
+    re-walking all four tabs (~18s saved per fast run)."""
     tabs_seen = 0
     for tab in ["rb_1", "rb_2", "rb_3", "rb_4", "rb_5"]:
         n = screen.find(ids=[tab])
         if n and n.center:
             screen.tap_node(n)
             tabs_seen += 1
-            time.sleep(5)  # let the tab fire its API calls
+            time.sleep(3)  # let the tab fire its API calls
+            if banner is not None and "tab" not in banner \
+                    and tab != "rb_5":
+                rows = [x for x in screen.dump()
+                        if x.res and x.res.rsplit("/", 1)[-1] == "bg_content"
+                        and x.center]
+                if len(rows) >= 3:
+                    banner["tab"] = tab
+                    print("  [banner] %s: activity strip found on %s "
+                          "(%d rows)" % (tag, tab, len(rows)))
             if not assert_alive(adb, package, "%s-tab-%s" % (tag, tab)):
                 return tabs_seen
         else:
@@ -1209,12 +1238,14 @@ def main():
     adb.sh("pm clear %s" % args.package)
     adb.raw("logcat", "-c")
     adb.sh("am start -n %s/%s" % (args.package, args.activity))
-    time.sleep(12)
-    if not assert_alive(adb, args.package, "A launch+12s"):
+    # fast-mode 2026-10-07: 8s settle (was 12) - the main-screen wait_for
+    # below owns the real boot wait; the extra 4s just added dead time.
+    time.sleep(8)
+    if not assert_alive(adb, args.package, "A launch+8s"):
         finish()
     dismiss_permission_dialogs(screen)
     main_seen = screen.wait_for(ids=["rgBottom", "rb_1", "flHomePage"],
-                                timeout=90, poll=3)
+                                timeout=90, poll=2)
     if not main_seen:
         fail("A: main screen not reached on fresh data (auto tourist login failed?)")
         finish()
@@ -1235,7 +1266,8 @@ def main():
     # 37492582973: the D-phase upgrade PASSED live but the final
     # register-endpoint gate failed on a rotated-out buffer)
     paths_mid = []
-    navigate_all_tabs(adb, screen, args.package, "A")
+    p_banner = {}   # Phase P reuses this: tab carrying >=3 bg_content rows
+    navigate_all_tabs(adb, screen, args.package, "A", banner=p_banner)
     if deep:
         deep_drive(adb, screen, args.package, args.activity, "A",
                    set(paths_early))
@@ -1344,31 +1376,45 @@ def main():
     # rb_1..rb_4 and search each; the walk doubles as extra tab traffic.
     p_rows = []
     p_found_tab = None
-    for p_tab in ["rb_1", "rb_2", "rb_3", "rb_4"]:
-        p_tabn = screen.find(ids=[p_tab])
-        if not (p_tabn and p_tabn.center):
-            continue
-        screen.tap_node(p_tabn)
-        time.sleep(3)
-        p_rows = [n for n in screen.dump()
-                  if n.res and n.res.rsplit("/", 1)[-1] == "bg_content"
-                  and n.center]
-        if len(p_rows) >= 3:
-            p_found_tab = p_tab
-            break
-        if not adb.pid(args.package):
-            alive_or_recover_at(adb, screen, args.package, args.activity,
-                                "P-walk-%s" % p_tab)
+    p_cached = p_banner.get("tab")
+    if p_cached:
+        # fast-mode 2026-10-07: the A-walk already located the strip -
+        # drive straight to it instead of re-walking rb_1..rb_4 (~18s).
+        p_tabn = screen.find(ids=[p_cached])
+        if p_tabn and p_tabn.center:
+            screen.tap_node(p_tabn)
+            time.sleep(3)
+            p_rows = [n for n in screen.dump()
+                      if n.res and n.res.rsplit("/", 1)[-1] == "bg_content"
+                      and n.center]
+            if len(p_rows) >= 3:
+                p_found_tab = p_cached
+    if not p_found_tab:
+        for p_tab in ["rb_1", "rb_2", "rb_3", "rb_4"]:
+            p_tabn = screen.find(ids=[p_tab])
+            if not (p_tabn and p_tabn.center):
+                continue
+            screen.tap_node(p_tabn)
+            time.sleep(2)
+            p_rows = [n for n in screen.dump()
+                      if n.res and n.res.rsplit("/", 1)[-1] == "bg_content"
+                      and n.center]
+            if len(p_rows) >= 3:
+                p_found_tab = p_tab
+                break
+            if not adb.pid(args.package):
+                alive_or_recover_at(adb, screen, args.package, args.activity,
+                                    "P-walk-%s" % p_tab)
     p_rows.sort(key=lambda n: (n.center[1], n.center[0]))
     if len(p_rows) >= 3 and p_found_tab:
         p_sign_row = p_rows[2]
         ok("P: %d banner rows on %s; tapping row 2 at %s (sign)"
            % (len(p_rows), p_found_tab, (p_sign_row.center,)))
         screen.tap_node(p_sign_row)
-        time.sleep(5)
+        time.sleep(3)
         assert_alive(adb, args.package, "P-sign-open")
         p_seen = p_pre
-        p_deadline = time.time() + 12
+        p_deadline = time.time() + 8
         while time.time() < p_deadline and p_seen <= p_pre:
             time.sleep(2)
             p_seen = p_count("REQ GET " + p_sign_lit)
@@ -1382,7 +1428,7 @@ def main():
             if screen.find(ids=["flHomePage"]):
                 break
             adb.key(4)
-            time.sleep(2)
+            time.sleep(1.5)
         alive_or_recover_at(adb, screen, args.package, args.activity,
                             "P-exit")
     else:
@@ -1932,11 +1978,24 @@ def main():
     # The guest rename in Phase B ends in the native kick whose
     # self-relaunch restores the Personal Info editor (top-activity
     # TemplateActivity) - start D from a known state.
-    if clean_relaunch("D-relaunch"):
+    # fast-mode 2026-10-07: a full relaunch costs ~80s of Redroid boot;
+    # when the app is already alive on the main UI (fast mode: Phase B is
+    # skipped and Phase P exited at the hall) reuse that state instead.
+    # Deep mode still gets the hard reset whenever the editor/kick left a
+    # foreign screen (rgBottom would not be visible there).
+    d_up = False
+    if screen.find(ids=["rgBottom", "rb_1", "flHomePage"]):
+        d_up = assert_alive(adb, args.package, "D-atmain")
+        if d_up:
+            ok("D: app already on the main UI - skipping the D-relaunch "
+               "boot (fast path, ~80s saved)")
+    if not d_up:
+        d_up = clean_relaunch("D-relaunch")
+    if d_up:
         tab5 = screen.find(ids=["rb_5"])
         d_uid = None
         if tab5 and screen.tap_node(tab5):
-            time.sleep(4)
+            time.sleep(2)
             d_uid = current_user_id(screen)
         if d_uid:
             ok("D: current session user id %s (from the live Me tab)" % d_uid)
@@ -1966,7 +2025,7 @@ def main():
                     ok("D: app restarted onto the registered session")
                     tab5b = screen.find(ids=["rb_5"])
                     if tab5b and screen.tap_node(tab5b):
-                        time.sleep(4)
+                        time.sleep(2)
                         shown = any(qa_uid_d in (n.text or "")
                                     for n in screen.dump())
                         print("  [%s] Me tab shows the new account %r"
