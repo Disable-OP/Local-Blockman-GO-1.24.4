@@ -3327,19 +3327,31 @@ def main():
                                         screen.tap_node(mm3)
                                         time.sleep(5)
                                         f_alive("G-managescreen-ho")
-                                        row3 = screen.wait_for(
-                                            texts=[gk_nick], timeout=12,
-                                            poll=3)
-                                        if row3 and row3.center:
+
+                                        def ho_attempt(tag):
+                                            # One full hand-over
+                                            # interaction: long-press the
+                                            # third member's row -> sheet
+                                            # -> 'Hand over Chief' ->
+                                            # TwoButtonDialog btnSure ->
+                                            # PUT member type=3. Returns
+                                            # (ok, evidence).
+                                            row = screen.wait_for(
+                                                texts=[gk_nick], timeout=12,
+                                                poll=3)
+                                            if not (row and row.center):
+                                                return (False, "third member "
+                                                        "row %r not on the "
+                                                        "manage screen"
+                                                        % gk_nick)
                                             pid_at_ho = adb.pid(args.package)
                                             pre_ho = puts_g()
-                                            l5, t5, r5, b5 = row3.bounds
+                                            l5, t5, r5, b5 = row.bounds
+                                            hx = (l5 + r5) // 2
+                                            hy = (t5 + b5) // 2
                                             adb.sh(
                                                 "input swipe %d %d %d %d 1000"
-                                                % ((l5 + r5) // 2,
-                                                   (t5 + b5) // 2,
-                                                   (l5 + r5) // 2,
-                                                   (t5 + b5) // 2))
+                                                % (hx, hy, hx, hy))
                                             time.sleep(3)
                                             hov = screen.find(
                                                 texts=["Hand over Chief"])
@@ -3351,94 +3363,125 @@ def main():
                                                 # press)
                                                 adb.sh(
                                                     "input swipe %d %d %d %d 1000"
-                                                    % ((l5 + r5) // 2,
-                                                       (t5 + b5) // 2,
-                                                       (l5 + r5) // 2,
-                                                       (t5 + b5) // 2))
+                                                    % (hx, hy, hx, hy))
                                                 time.sleep(3)
                                                 hov = screen.find(
                                                     texts=["Hand over Chief"])
-                                            if hov and hov.center:
-                                                screen.tap_node(hov)
-                                                time.sleep(3)
-                                                sure3 = screen.wait_for(
-                                                    ids=["btnSure"], timeout=8,
-                                                    poll=2)
-                                                if sure3 and sure3.center:
-                                                    screen.tap_node(sure3)
-                                                    time.sleep(5)
-                                                    f_alive("G-handover")
-                                                    post_ho = puts_g()
-                                                    ml_ho = fcall(
-                                                        "GET",
-                                                        "/clan/api/v1/clan/"
-                                                        "tribe/member",
-                                                        headers=live_hdr)
-                                                    gk_role = next(
-                                                        (m.get("role")
-                                                         for m in
-                                                         ml_ho.get("data", [])
-                                                         if m.get("userId")
-                                                         == gk_uid_num), None)
-                                                    me_role = next(
-                                                        (m.get("role")
-                                                         for m in
-                                                         ml_ho.get("data", [])
-                                                         if str(m.get("userId"))
-                                                         == str(d_uid_live)), None)
-                                                    base_ho = fcall(
-                                                        "GET",
-                                                        "/clan/api/v1/clan/"
-                                                        "tribe/base",
-                                                        headers=live_hdr)
-                                                    # tribe/base carries the
-                                                    # roster (clanMembers),
-                                                    # not a chiefId field —
-                                                    # the chief is the
-                                                    # role-20 row (fix from
-                                                    # run 37409714321:
-                                                    # chiefId=None read the
-                                                    # wrong field)
-                                                    chief_from_base = next(
-                                                        (m.get("userId")
-                                                         for m in
-                                                         (base_ho.get("data")
-                                                          or {}).get(
-                                                              "clanMembers", [])
-                                                         if m.get("role") == 20),
-                                                        None)
-                                                    check(
-                                                        "G: HAND OVER CHIEF "
-                                                        "client-asserted "
-                                                        "(PUT %d->%d, gk "
-                                                        "role=%s, old chief "
-                                                        "role=%s, chief from "
-                                                        "base=%s)"
-                                                        % (pre_ho, post_ho,
-                                                           gk_role, me_role,
-                                                           chief_from_base),
-                                                        post_ho > pre_ho
-                                                        and gk_role == 20
-                                                        and me_role == 0
-                                                        and str(chief_from_base)
-                                                        == str(gk_uid_num),
-                                                        "members=%s base=%s"
-                                                        % (str(ml_ho)[:140],
-                                                           str(base_ho)[:100]))
-                                                    ho_done = True
-                                                else:
-                                                    print("  [info] G: "
-                                                          "hand-over "
-                                                          "TwoButtonDialog "
-                                                          "not confirmed")
-                                            else:
-                                                print("  [info] G: 'Hand "
-                                                      "over Chief' not on "
-                                                      "the member sheet")
-                                        else:
-                                            print("  [info] G: third member "
-                                                  "row %r not on the manage "
-                                                  "screen" % gk_nick)
+                                            if not (hov and hov.center):
+                                                return (False, "'Hand over "
+                                                        "Chief' not on the "
+                                                        "member sheet")
+                                            screen.tap_node(hov)
+                                            time.sleep(3)
+                                            sure3 = screen.wait_for(
+                                                ids=["btnSure"], timeout=8,
+                                                poll=2)
+                                            if not (sure3 and sure3.center):
+                                                return (False, "hand-over "
+                                                        "TwoButtonDialog not "
+                                                        "confirmed")
+                                            screen.tap_node(sure3)
+                                            time.sleep(5)
+                                            f_alive("G-handover-" + tag)
+                                            post_ho = puts_g()
+                                            ml_ho = fcall(
+                                                "GET",
+                                                "/clan/api/v1/clan/"
+                                                "tribe/member",
+                                                headers=live_hdr)
+                                            gk_role = next(
+                                                (m.get("role")
+                                                 for m in
+                                                 ml_ho.get("data", [])
+                                                 if m.get("userId")
+                                                 == gk_uid_num), None)
+                                            me_role = next(
+                                                (m.get("role")
+                                                 for m in
+                                                 ml_ho.get("data", [])
+                                                 if str(m.get("userId"))
+                                                 == str(d_uid_live)), None)
+                                            base_ho = fcall(
+                                                "GET",
+                                                "/clan/api/v1/clan/"
+                                                "tribe/base",
+                                                headers=live_hdr)
+                                            # tribe/base carries the
+                                            # roster (clanMembers), not a
+                                            # chiefId field — the chief is
+                                            # the role-20 row (fix from run
+                                            # 37409714321: chiefId=None
+                                            # read the wrong field)
+                                            chief_from_base = next(
+                                                (m.get("userId")
+                                                 for m in
+                                                 (base_ho.get("data")
+                                                  or {}).get(
+                                                      "clanMembers", [])
+                                                 if m.get("role") == 20),
+                                                None)
+                                            ev = ("PUT %d->%d, gk role=%s, "
+                                                  "old chief role=%s, chief "
+                                                  "from base=%s"
+                                                  % (pre_ho, post_ho,
+                                                     gk_role, me_role,
+                                                     chief_from_base))
+                                            ho_res = post_ho > pre_ho \
+                                                and gk_role == 20 \
+                                                and me_role == 0 \
+                                                and str(chief_from_base) \
+                                                == str(gk_uid_num)
+                                            return (ho_res, ev)
+
+                                        # RUN 37546126594 triage: every
+                                        # tap landed but the client never
+                                        # fired the PUT (silent client-side
+                                        # drop; invite-sent runs had passed
+                                        # before, so it is a race, not a
+                                        # gate). Retry the WHOLE
+                                        # interaction once and dump the UI
+                                        # as evidence before the hard
+                                        # verdict.
+                                        ho_ev = "not attempted"
+                                        for ho_i in range(2):
+                                            if ho_i:
+                                                # dismiss any leftover
+                                                # sheet/dialog from
+                                                # attempt 1, re-ground
+                                                adb.key(4)
+                                                time.sleep(2)
+                                            ho_ok, ho_ev = ho_attempt(
+                                                "attempt%d" % (ho_i + 1))
+                                            if ho_ok:
+                                                check(
+                                                    "G: HAND OVER CHIEF "
+                                                    "client-asserted (%s)"
+                                                    % ho_ev, True)
+                                                ho_done = True
+                                                break
+                                            if ho_i == 0:
+                                                print("  [retry] G: "
+                                                      "hand-over attempt 1 "
+                                                      "no PUT (%s) - "
+                                                      "retrying once"
+                                                      % ho_ev)
+                                                for n in screen.dump():
+                                                    if n.res or n.text:
+                                                        print(
+                                                            "  G-ho-dump] %s |"
+                                                            " text=%r"
+                                                            % (n.res.rsplit(
+                                                                "/", 1)[-1]
+                                                                if n.res
+                                                                else "",
+                                                                n.text[:28]))
+                                        if not ho_done:
+                                            check(
+                                                "G: HAND OVER CHIEF "
+                                                "client-asserted (%s)"
+                                                % ho_ev, False,
+                                                "no PUT reached the server "
+                                                "after 2 full attempts")
                                     else:
                                         print("  [info] G: 'Manage Members' "
                                               "not on the sheet (hand-over "
@@ -4577,9 +4620,20 @@ def main():
     def o_rec_count():
         return o_count(o_rec_marker)
 
+    # RES lines now carry the envelope code (LocalHttpd Wave 11): the
+    # client-UI login must be ACCEPTED (code=1), not merely submitted.
+    def o_ok_login_count():
+        return sum(
+            1 for ln in adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                timeout=60).splitlines()
+            if ("RES POST " + o_v2_lit in ln
+                or "RES POST " + o_login_lit in ln)
+            and "code=1" in ln)
+
     o_pre_rec = o_rec_count()
     o_pre_login = o_count("REQ POST " + o_login_lit) \
         + o_count("REQ POST " + o_v2_lit)
+    o_pre_ok = o_ok_login_count()
     o_paths_before = set(localapi_paths(adb))
     o_form = False
     if ground_main("O-ground"):
@@ -4681,6 +4735,22 @@ def main():
               o_seen_login > o_pre_login,
               "the login screen never submitted a login POST (v1 or "
               "v2)")
+        # Wave 11: the submitted login must ALSO be accepted — the
+        # pre-fix server answered the client-UI RSA login with a 37b
+        # code=0 error (run 37546126594 diagnostics). The RSA contract
+        # is now served for real (RsaCipher + patch_rsa_key.py).
+        time.sleep(2)
+        o_post_ok = o_ok_login_count()
+        for ln in adb.raw("logcat", "-d", "-s", "LocalAPI",
+                          timeout=60).splitlines():
+            if ("RES POST " + o_v2_lit in ln
+                    or "RES POST " + o_login_lit in ln):
+                print("  [evidence] O: %s" % ln.split("LocalAPI:")[-1].strip())
+        check("O: client-UI login accepted by the server (RES code=1 %d->%d)"
+              % (o_pre_ok, o_post_ok),
+              o_post_ok > o_pre_ok,
+              "the login POST was rejected server-side (wrong password "
+              "/ unknown account) — RSA contract regression?")
         for p in sorted(set(localapi_paths(adb)) - o_paths_before):
             print("  [evidence] O: client fired %s" % p)
         # recover: BACK out of whatever landed (hall or login result)

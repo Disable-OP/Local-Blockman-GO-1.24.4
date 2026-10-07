@@ -1341,3 +1341,32 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
      (GET /user/api/v1/users/dairy/tasks/{type}, PUT .../users/tasks/
      {type} — implemented + host-tested, client=False today).
 - NO GameServer work.
+
+## Session 26 cont. (read first — the client-UI login RSA contract FIXED; wip-46)
+
+- Run 37546126594 triage produced TWO verdicts:
+  1. G hand-over FAIL = a client-side race (all taps landed, ZERO client
+     traffic, killer/restart and invite theories disproven by cross-run
+     comparison). Phase G now retries the whole interaction once and dumps
+     evidence; root cause still open.
+  2. THE REAL BUG (found in the same artifact): the Phase O client-UI
+     login POST /user/api/v2/app/login was answered code=0 by the server
+     (37b error) — the client RSA-encrypts that password (LoginHelper.b ->
+     RSA/ECB/PKCS1Padding, hardcoded pubkey, Base64 NO_WRAP) and the
+     server compared ciphertext to plaintext. The old check counted REQ
+     lines only, so no prior run ever caught it.
+- FIX SHIPPED (Wave 11): RsaCipher.java (fixed local keypair + lenient
+  decryptIfEncrypted) wired into login/setPassword/passwordModify/
+  passwordCheck; scripts/patch_rsa_key.py swaps the client's public-key
+  constant in the smali build (idempotent, wired into build_signed_apk.sh);
+  LocalHttpd RES lines now carry code=<n>; Phase O hard-checks RES code=1.
+  Host rig 431/431 (Wave 11 block: dependency-free python PKCS1v15 that
+  parses the pubkey out of RsaCipher.java). Coverage unchanged
+  (335/295/40, 234 host-tested, 167 client-asserted).
+- SANDBOX REBUILT from scratch this session (fresh environment): repo
+  re-clone, base APK + jadx re-fetched, classes2/classes3 decompiled.
+- Watch the wip-46 test-redroid run: "O: client-UI login accepted by the
+  server (RES code=1 ...)" is the first-ever true client-UI login. If the
+  G hand-over retry fires, read the G-ho-dump evidence in the log.
+- NO GameServer work.
+

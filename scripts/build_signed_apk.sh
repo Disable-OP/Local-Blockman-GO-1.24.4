@@ -61,6 +61,9 @@ python3 "$REPO/scripts/patch_killlog.py"
 echo "== patch_tribeguide.py (one-time clan guide overlay off) =="
 python3 "$REPO/scripts/patch_tribeguide.py"
 
+echo "== patch_rsa_key.py (local RSA login keypair — Wave 11) =="
+python3 "$REPO/scripts/patch_rsa_key.py" "$BUILD/apktool_out"
+
 # --- embedded server dex ---
 echo "== build_server_dex.sh =="
 bash "$REPO/scripts/build_server_dex.sh"

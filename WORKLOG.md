@@ -2435,3 +2435,59 @@
   + login-out stay implemented/host-tested, awaiting the Phase O run
   evidence (accountRecord remains probe-gated, quote stays removed).
 - NO GameServer work.
+
+---
+
+## Session 26 cont. (fresh sandbox rebuild + Wave 11 amendment: the RSA password contract FIXED)
+
+- ENVIRONMENT: the sandbox had been reset — no jadx_out, no tools, no
+  work artifacts. Rebuilt from scratch: repo re-clone (local-api), base
+  APK re-downloaded from the v0.1.0-pipeline release asset, jadx 1.5.6
+  re-fetched, classes2/classes3 decompiled per-dex (-Xmx2600m). The
+  webDevReview cron remains gateway-level (session 25 FINAL note stands).
+- TRIAGE (run 37546126594 FAIL, 1 check): G hand-over PUT 1->1 with every
+  tap landed (sheet + item + btnSure) and pid 12349 alive throughout.
+  Cross-run comparison killed two theories: (a) the killer/restart is NOT
+  the differentiator (run 37528102144 also restarted mid-G and passed);
+  (b) the invite POST is NOT a blocker (37533194661/37538041177/
+  37522116738 all passed WITH the invite sent). The localapi.txt artifact
+  shows ZERO client traffic between the taps and the automation's read-back
+  — the client silently dropped the chain client-side. Verdict: race, not
+  gate; root cause open. Phase G now retries the WHOLE interaction once
+  (BACK + re-long-press) and dumps the UI as evidence before the hard
+  verdict (ho_attempt() helper).
+- THE HEADLINE (found while triaging, in the SAME artifact): Phase O's
+  client-UI login POST /user/api/v2/app/login got a 37-byte code=0 error —
+  the check only counted REQ lines, so the login surface had silently
+  NEVER worked. Decode (classes2 jadx): com.sandbox.login.web.b encrypts
+  passwords with LoginHelper.b -> RSAUtils (RSA/ECB/PKCS1Padding, hardcoded
+  1024-bit public key, 117-byte chunks, Base64 NO_WRAP) for v2/app/login,
+  v2/app/set-password (pw+confirm), v2/user/password/modify (old+new+confirm),
+  and v1/user/password/check (@Query); v1 login + register stay plaintext.
+  LoginHelper.b falls back to plaintext when its cipher throws (lenient).
+- SERVER FIX (real crypto, no fakes): the production private key is gone,
+  so the local world mints its own fixed 1024-bit pair. RsaCipher.java
+  (self-contained Base64 so the JVM rig + device dex share one source)
+  decryptIfEncrypted() = Base64 -> 128-byte blocks -> PKCS1 chunked
+  decrypt, ANY failure returns the raw value (plaintext flows untouched).
+  scripts/patch_rsa_key.py swaps the client's public-key constant in the
+  smali (idempotent, fatal if the original survives) — wired into
+  build_signed_apk.sh. Handlers login/setPassword/passwordModify/
+  passwordCheck now decrypt for real; stored passwords stay plaintext.
+- OBSERVABILITY: LocalHttpd RES lines now carry the envelope code
+  ("RES POST ... 123b code=1"); Phase O's check upgraded from
+  "submitted" to "ACCEPTED" (RES code=1 delta) with evidence lines.
+- HOST RIG 431/431 (422 -> 431): Wave 11 block drives all four encrypted
+  flows via a dependency-free pure-python PKCS1v15 encryptor that parses
+  the public key straight out of RsaCipher.java (single source of truth).
+  Coverage numbers unchanged (335/295/40, 234 host-tested, 167
+  client-asserted) — no new client-asserted literals this session (the
+  RSA work is server-side truth, not new client surfaces).
+- Commit plan: one push with server + patcher + rig + automation + docs;
+  tag wip-46 to build the APK; dispatch test-redroid. Watch for:
+  Phase O "client-UI login accepted (RES code=1)" — the first run where
+  the client's own login screen truly succeeds against the local backend.
+- Next candidates: (1) verify wip-46 on-device; (2) the G hand-over retry
+  evidence (if attempt-1 dumps show a specific dialog/layout, decode it);
+  (3) bmg-sign verification decode (CommonHelper.getSignature) — only if
+  error-driven traffic ever makes it matter; (4) NO GameServer work.

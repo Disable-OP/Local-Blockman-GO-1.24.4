@@ -124,3 +124,27 @@ The mapper tables were decompiled from the 1.24.4 APK (classes3.dex) and the
 toast texts resolved from resources.arsc. The server emits these codes via
 `Handlers.failTribe/failFriend/failGroup` + `failCode` (constants in
 `ErrorCodes.java`); the authoritative table lives in PATCH_PLAN.md "Phase 7".
+
+## 10. The RSA password contract (Wave 11)
+
+The client encrypts every modern password payload before it leaves the app
+(com.sandbox.login.web.b -> LoginHelper.b -> RSAUtils, classes2.dex):
+`RSA/ECB/PKCS1Padding`, a hardcoded 1024-bit X509 public key, 117-byte
+chunks, Base64 NO_WRAP. Encrypted flows: POST /user/api/v2/app/login,
+POST /user/api/v2/app/set-password (password + confirmPassword), POST
+/user/api/v2/user/password/modify (old + new + confirm), POST
+/user/api/v1/user/password/check (@Query password). The v1 login wrapper
+and v1/register send plaintext.
+
+The original production keypair is unrecoverable (the private half lived on
+the real backend), so the local world mints a fixed pair:
+- `RsaCipher.java` (server) decrypts for real — Base64 -> 128-byte blocks ->
+  PKCS1 chunked decrypt; any mismatch returns the raw value, which keeps
+  plaintext v1 flows and host-rig fcalls working (the client's own
+  LoginHelper.b has the same lenient fallback when its cipher throws).
+- `scripts/patch_rsa_key.py` (build_signed_apk.sh) swaps the client's
+  public-key constant in the smali tree for the local server's public key.
+  Idempotent; fails the build if the original key survives anywhere.
+
+The stored password is always the plaintext the flow set. RES log lines
+carry the envelope code ("code=1") for UI-assertable acceptance checks.

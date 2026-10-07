@@ -336,9 +336,14 @@ final class Handlers {
     private static String login(Ctx ctx, StateStore store) {
         JSONObject form = body(ctx);
         String uid = form.optString("uid");
-        String password = form.optString("password");
+        String rawPw = form.optString("password");
+        // v2/app/login arrives RSA-encrypted (client LoginHelper.b); v1 flows
+        // and host-rig fcalls arrive plaintext — decryptIfEncrypted passes
+        // plaintext through unchanged (Wave 11).
+        String password = RsaCipher.decryptIfEncrypted(rawPw);
         String imei = form.optString("imei");
-        L.i("login attempt: uid=" + uid + " imei=" + imei);
+        L.i("login attempt: uid=" + uid + " imei=" + imei
+                + " encrypted=" + (rawPw.length() >= 128));
 
         if (uid != null && !uid.isEmpty()) {
             JSONObject u = store.findByKey(uid);
@@ -2726,11 +2731,11 @@ final class Handlers {
             u = store.findByKey(form.optString("account"));
         }
         if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
-        String pw = form.optString("password");
+        // client-UI set-password arrives RSA-encrypted (Wave 11)
+        String pw = RsaCipher.decryptIfEncrypted(form.optString("password"));
+        String pwConfirm = RsaCipher.decryptIfEncrypted(form.optString("confirmPassword"));
         if (pw.isEmpty()) return fail("password required");
-        if (form.optString("confirmPassword") != null
-                && !form.optString("confirmPassword").isEmpty()
-                && !pw.equals(form.optString("confirmPassword"))) {
+        if (pwConfirm != null && !pwConfirm.isEmpty() && !pw.equals(pwConfirm)) {
             return fail("passwords do not match");
         }
         u.put("password", pw);
@@ -2749,16 +2754,16 @@ final class Handlers {
         JSONObject u = requireUser(ctx, store);
         if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         JSONObject form = body(ctx);
-        String oldPw = form.optString("oldPassword");
-        String newPw = form.optString("newPassword");
+        // client-UI password modify arrives RSA-encrypted (Wave 11)
+        String oldPw = RsaCipher.decryptIfEncrypted(form.optString("oldPassword"));
+        String newPw = RsaCipher.decryptIfEncrypted(form.optString("newPassword"));
+        String cfPw = RsaCipher.decryptIfEncrypted(form.optString("confirmPassword"));
         if (u.optString("password") != null && !u.optString("password").isEmpty()
                 && !u.optString("password").equals(oldPw)) {
             return fail("wrong old password");
         }
         if (newPw.isEmpty()) return fail("new password required");
-        if (form.optString("confirmPassword") != null
-                && !form.optString("confirmPassword").isEmpty()
-                && !newPw.equals(form.optString("confirmPassword"))) {
+        if (cfPw != null && !cfPw.isEmpty() && !newPw.equals(cfPw)) {
             return fail("passwords do not match");
         }
         u.put("password", newPw);
@@ -2771,7 +2776,8 @@ final class Handlers {
     private static String passwordCheck(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
-        String pw = body(ctx).optString("password");
+        // the client encrypts this @Query("password") value too (Wave 11)
+        String pw = RsaCipher.decryptIfEncrypted(body(ctx).optString("password"));
         boolean right = pw != null && !pw.isEmpty() && pw.equals(u.optString("password"));
         return envelope("obj", "{\"authCode\":\"\",\"count\":0,\"right\":" + right + "}");
     }

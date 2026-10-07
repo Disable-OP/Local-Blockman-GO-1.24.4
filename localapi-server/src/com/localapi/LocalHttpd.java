@@ -109,8 +109,20 @@ public class LocalHttpd extends NanoHTTPD {
         String json = route(verb, uri, ctx, pathParams);
         L.i("REQ " + verb + " " + uri
                 + (fBody.isEmpty() ? "" : " body=" + Handlers.abbrev(fBody)));
-        L.i("RES " + verb + " " + uri + " " + json.length() + "b");
+        L.i("RES " + verb + " " + uri + " " + json.length() + "b " + envelopeCode(json));
         return respond(json);
+    }
+
+    /** Leading "code":N from an envelope JSON — traffic observability for UI assertions. */
+    private static String envelopeCode(String json) {
+        if (json == null) return "code=?";
+        int i = json.indexOf("\"code\":");
+        if (i < 0) return "code=?";
+        i += 7;
+        int j = i;
+        while (j < json.length() && (Character.isDigit(json.charAt(j))
+                || (j == i && json.charAt(j) == '-'))) j++;
+        return (j > i) ? "code=" + json.substring(i, j) : "code=?";
     }
 
     /** GET /files/<id> — serve an uploaded file's bytes with its stored type. */

@@ -945,3 +945,33 @@ restart + the on-disk datareport store assertion). NO GameServer work.
 Host rig 397/397 (7 new draw-chain checks). Automation: Phase A gained
 the defensive campaign-sign-dialog handler (claim-or-dismiss, non-fatal)
 and the jackpot poll probe.
+
+## Wave 11 (Session 26): RSA password contract — client-UI login actually works
+
+PRIORITY FINDING (error-driven from run 37546126594's diagnostics): the
+Phase O client-UI login POST /user/api/v2/app/login had NEVER succeeded
+against the local backend — the server answered 37b {"code":0} because the
+client RSA-encrypts the password and the server compared ciphertext to
+plaintext. The old check only counted REQ lines, so every prior "green"
+run hid a broken login surface.
+
+Implementation plan (DONE this session):
+1. RsaCipher.java — fixed local 1024-bit keypair, decryptIfEncrypted()
+   (lenient plaintext passthrough mirrors the client's own fallback),
+   encrypt() for host tests. Self-contained Base64 so the JVM rig and the
+   device dex share one source.
+2. patch_rsa_key.py in build_signed_apk.sh — swap the client's hardcoded
+   public key for the local one (idempotent, fatal on leftovers).
+3. Handlers: login / setPassword / passwordModify / passwordCheck decrypt.
+4. LocalHttpd RES lines carry code=<n> (observability for UI checks).
+5. Host rig 431 checks: all four encrypted flows + wrong-pw + plaintext
+   passthrough + non-RSA Base64 passthrough.
+6. Phase O hard check upgraded: RES code=1 delta after the client-UI
+   submit; evidence lines printed for every login RES.
+7. Phase G hand-over: 2-attempt drive + failure dump (run 37546126594
+   showed all taps landing with no PUT — race, not gate; root cause open).
+
+Deferred/undecoded (documented, not faked): bmg-device-id / bmg-sign
+header verification (CommonHelper.getSignature — algorithm not yet
+decoded; the real backend presumably verified it), and the G hand-over
+client-side drop. NO GameServer work.

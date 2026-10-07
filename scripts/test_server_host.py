@@ -5,6 +5,7 @@ Boots localapi-server HostTest (plain JVM, temp state dir) and drives the
 login/register/visitor/tourist flows + config endpoints + a route-table
 sweep with real HTTP. Fails (exit 1) on any broken contract.
 """
+import base64
 import json
 import os
 import random
@@ -61,6 +62,70 @@ def raw_get(url):
             return r.read()
     except urllib.error.HTTPError:
         return b""
+
+
+# ---- Wave 11: dependency-free RSA PKCS1v15 (client cipher simulation) ----
+
+def _asn1_len(data, pos):
+    ln = data[pos]
+    pos += 1
+    if ln & 0x80:
+        n = ln & 0x7F
+        ln = int.from_bytes(data[pos:pos + n], "big")
+        pos += n
+    return ln, pos
+
+
+def _asn1_tlv(data, pos):
+    """Skip the tag byte, parse the length -> (content_start, content_len)."""
+    pos += 1                                  # tag
+    return _asn1_len(data, pos)
+
+
+def _rsa_pub_from_java(path):
+    """Parse PUBLIC_KEY_B64 (X509/SPKI) out of RsaCipher.java -> (n, e)."""
+    try:
+        src = open(path, encoding="utf-8").read()
+        import re
+        m = re.search(r'PUBLIC_KEY_B64 =\s*\n\s*"([A-Za-z0-9+/=]+)"', src)
+        if not m:
+            return None
+        der = base64.b64decode(m.group(1))
+        # SPKI: SEQUENCE { SEQUENCE { OID, NULL }, BIT STRING { SEQ { INT n, INT e } } }
+        _, p = _asn1_tlv(der, 0)                      # outer SEQUENCE
+        seq2_len, p = _asn1_tlv(der, p)               # algId SEQUENCE
+        p += seq2_len                                 # skip algorithm id
+        bit_len, p = _asn1_tlv(der, p)                # BIT STRING
+        if der[p] != 0:
+            return None                               # unused-bits must be 0
+        p += 1
+        _, p = _asn1_tlv(der, p)                      # inner key SEQUENCE
+        n_len, p = _asn1_tlv(der, p)                  # INTEGER n
+        if der[p] == 0:                               # leading zero (positive int)
+            p += 1
+            n_len -= 1
+        n = int.from_bytes(der[p:p + n_len], "big")
+        p += n_len
+        e_len, p = _asn1_tlv(der, p)                  # INTEGER e
+        e = int.from_bytes(der[p:p + e_len], "big")
+        return (n, e)
+    except Exception:
+        return None
+
+
+def _rsa_pkcs1_encrypt(message, pub):
+    """PKCS1 v1.5: 0x00 0x02 || nonzero padding || 0x00 || message, then m^e mod n."""
+    n, e = pub
+    k = (n.bit_length() + 7) // 8
+    pad_len = k - 3 - len(message)
+    padding = bytearray()
+    while len(padding) < pad_len:
+        b = os.urandom(1)
+        if b != b"\x00":
+            padding += b
+    em = b"\x00\x02" + bytes(padding) + b"\x00" + message
+    return base64.b64encode(pow(int.from_bytes(em, "big"), e, n)
+                            .to_bytes(k, "big")).decode()
 
 
 def check(name, cond, detail=""):
@@ -1600,6 +1665,74 @@ def main():
                       {"oldPassword": "pw1b", "newPassword": "pw1", "confirmPassword": "pw1"},
                       headers={"Access-Token": tok1, "userId": str(uid1)})
         check("v2 password restored", pwback.get("code") == 1, str(pwback)[:80])
+
+        # ---- Wave 11: the RSA password contract --------------------------
+        # The client encrypts v2 login/set-password/password-modify and
+        # password/check payloads with RSA/ECB/PKCS1Padding against the
+        # public key patched into it by scripts/patch_rsa_key.py. The server
+        # decrypts for real (RsaCipher). The test encrypts with the SAME
+        # key — parsed straight out of RsaCipher.java (single source of
+        # truth) — using a dependency-free PKCS1v15 implementation.
+        print("== Wave 11: RSA password contract ==")
+        rsa_pub = _rsa_pub_from_java(os.path.join(REPO, "localapi-server", "src",
+                                                  "com", "localapi", "RsaCipher.java"))
+        check("rsa pubkey parsed from RsaCipher.java", rsa_pub is not None)
+        if rsa_pub:
+            r11 = call("POST", "/user/api/v1/register",
+                       {"uid": "qa_rsa", "password": "plainpw11", "imei": "dev11"})
+            uid11 = r11["data"]["userId"]
+            enc11 = _rsa_pkcs1_encrypt(b"plainpw11", rsa_pub)
+            # (a) v2 client-UI login with an RSA-encrypted password
+            lr11 = call("POST", "/user/api/v2/app/login",
+                        {"uid": "qa_rsa", "password": enc11, "hasPassword": True,
+                         "needReward": 0, "appType": "android", "imei": "dev11",
+                         "os": "12"})
+            check("v2 login with RSA password", lr11.get("code") == 1
+                  and lr11.get("data", {}).get("userId") == uid11, str(lr11)[:120])
+            # (b) wrong RSA password rejected
+            lw11 = call("POST", "/user/api/v2/app/login",
+                        {"uid": "qa_rsa", "password": _rsa_pkcs1_encrypt(b"wrongpw", rsa_pub),
+                         "hasPassword": True, "appType": "android", "imei": "dev11"})
+            check("v2 login wrong RSA password rejected", lw11.get("code") == 0,
+                  str(lw11)[:100])
+            # (c) v1 plaintext login still passes (lenient fallback contract)
+            lp11 = call("POST", "/user/api/v1/login", {"uid": "qa_rsa", "password": "plainpw11"})
+            check("v1 plaintext login still ok", lp11.get("code") == 1, str(lp11)[:100])
+            # (d) v2 set-password with RSA password + confirm, then RSA login
+            sp11 = call("POST", "/user/api/v2/app/set-password",
+                        {"userId": uid11, "password": _rsa_pkcs1_encrypt(b"newrsa11", rsa_pub),
+                         "confirmPassword": _rsa_pkcs1_encrypt(b"newrsa11", rsa_pub)})
+            check("v2 set-password RSA", sp11.get("code") == 1, str(sp11)[:100])
+            sl11 = call("POST", "/user/api/v2/app/login",
+                        {"uid": "qa_rsa", "password": _rsa_pkcs1_encrypt(b"newrsa11", rsa_pub),
+                         "hasPassword": True, "appType": "android", "imei": "dev11"})
+            check("v2 login with RSA-set password", sl11.get("code") == 1, str(sl11)[:100])
+            # (e) v2 password modify with RSA old/new
+            tok11 = sl11.get("data", {}).get("accessToken", "")
+            hm11 = {"Access-Token": tok11, "userId": str(uid11)}
+            pm11 = call("POST", "/user/api/v2/user/password/modify",
+                        {"oldPassword": _rsa_pkcs1_encrypt(b"newrsa11", rsa_pub),
+                         "newPassword": _rsa_pkcs1_encrypt(b"modpw11", rsa_pub),
+                         "confirmPassword": _rsa_pkcs1_encrypt(b"modpw11", rsa_pub)},
+                        headers=hm11)
+            check("v2 password modify RSA", pm11.get("code") == 1, str(pm11)[:100])
+            # (f) password/check with an RSA password (right / wrong)
+            pc11r = call("POST", "/user/api/v1/user/password/check",
+                         {"password": _rsa_pkcs1_encrypt(b"modpw11", rsa_pub)}, headers=hm11)
+            pc11w = call("POST", "/user/api/v1/user/password/check",
+                         {"password": _rsa_pkcs1_encrypt(b"nope", rsa_pub)}, headers=hm11)
+            check("password/check RSA right+wrong", pc11r.get("code") == 1
+                  and pc11r.get("data", {}).get("right") is True
+                  and pc11w.get("data", {}).get("right") is False,
+                  "%s %s" % (str(pc11r)[:80], str(pc11w)[:80]))
+            # (g) a Base64 value that is NOT RSA-shaped passes through
+            #     unchanged (still fails auth, but as wrong-password code 0
+            #     — never a server error)
+            nb11 = call("POST", "/user/api/v2/app/login",
+                        {"uid": "qa_rsa", "password": "cGxhaW50ZXh0", "hasPassword": True,
+                         "appType": "android", "imei": "dev11"})
+            check("non-RSA base64 passthrough rejected as wrong-pw",
+                  nb11.get("code") == 0, str(nb11)[:100])
 
         print("== Phase 7: client-verified error codes ==")
         # 7020 (UserOnError has_illegal_character): sensitive rename via a

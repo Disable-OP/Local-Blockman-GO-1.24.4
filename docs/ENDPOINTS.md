@@ -985,3 +985,65 @@ Gson could not parse, plus a systematic audit that found no others:
   HttpResponse) — generic ack is contract-true for all of them.
 - Host rig: +4 checks (Long-parse, Boolean-parse, stateless-false,
   probe-visitor) → 426/426.
+
+## Wave 11 amendment (run 37546126594 triage): the RSA password contract — real crypto, real server
+
+Discovery (error-driven, from the client's own traffic):
+- Run 37546126594 FAILED on the G hand-over check, but the diagnostics
+  artifact exposed a REAL API bug that every prior run had missed: Phase O's
+  client-UI login submitted POST /user/api/v2/app/login and the server
+  answered with a 37-byte ERROR envelope ({"code":0,...}) — the check only
+  counted the REQ line, never the response, so the client-UI login had
+  silently never worked against the local backend.
+
+Client decode (jadx, classes2.dex):
+- com.sandbox.login.web.b ("UserLoginApi" wrapper) encrypts passwords with
+  LoginHelper.b -> RSAUtils.f.a BEFORE every request:
+  * POST /user/api/v2/app/login            LoginRegisterAccountForm.password
+  * POST /user/api/v2/app/set-password     SetPasswordForm.password + confirmPassword
+  * POST /user/api/v2/user/password/modify ChangePasswordForm.old/newPassword (+confirm)
+  * POST /user/api/v1/user/password/check  @Query("password")
+- Cipher: RSA/ECB/PKCS1Padding, 1024-bit hardcoded X509 public key
+  (com.sandbox.login.e.e), 117-byte chunks, custom Base64 (NO_WRAP).
+- Fallback contract: LoginHelper.b returns the PLAINTEXT when its cipher
+  throws — the v1 login wrapper (POST /user/api/v1/login) sends plaintext
+  and v1/register has always been plaintext.
+- The v2 login also sends @Header bmg-device-id (androidId) + bmg-sign
+  (CommonHelper.getSignature) — currently accepted unverified (documented,
+  not fake-validated).
+
+Server implementation (the production keypair is unrecoverable — the
+private half lived on the real backend and exists nowhere in the client,
+the archives, or the Engine 10068 source):
+- localapi-server RsaCipher.java: a FIXED 1024-bit keypair minted for the
+  local world. decryptIfEncrypted() = Base64 (whitespace-tolerant) -> whole
+  128-byte blocks -> RSA/ECB/PKCS1Padding chunked decrypt -> UTF-8; ANY
+  mismatch returns the raw value, so plaintext v1 flows and host-rig fcalls
+  pass through untouched (mirrors the client's own lenient fallback).
+- scripts/patch_rsa_key.py (wired into build_signed_apk.sh): swaps the
+  client's hardcoded public-key constant in the apktool smali tree for OUR
+  public key — idempotent, fatal if the original key survives. The client
+  code path is unchanged; only the key constant differs (same category as
+  the URL rewiring).
+- Handlers: login / setPassword / passwordModify / passwordCheck now
+  decrypt for real. The stored password remains the PLAINTEXT the flow
+  set (register/set-password/modify all decrypt before storing).
+- LocalHttpd RES log lines now carry the envelope code
+  ("RES POST ... 123b code=1") — traffic observability for UI assertions
+  (requirement 15).
+
+Host rig: 422 -> 431 tests. Wave 11 block drives all four encrypted flows
+with a dependency-free pure-python PKCS1v15 encryptor that parses the
+public key straight out of RsaCipher.java (single source of truth):
+v2 login RSA ok + wrong-pw rejected, v1 plaintext passthrough, v2
+set-password RSA -> RSA login, v2 password modify RSA, password/check
+right+wrong, non-RSA Base64 rejected as wrong-password (never a 5xx).
+
+Phase O automation upgrade: the client-UI login is now hard-checked for
+server ACCEPTANCE (RES code=1 delta), not just submission.
+
+NOTE: the minted private key protects nothing in a purely local single-user
+world; it is committed so builds and host tests stay deterministic. It is
+NOT a repository credential. The G hand-over flake (PUT never fired despite
+every tap landing) is now a 2-attempt drive with a failure dump — evidence
+for the next triage, not yet root-caused.
