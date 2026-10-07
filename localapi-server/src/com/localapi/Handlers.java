@@ -3176,6 +3176,17 @@ final class Handlers {
         JSONArray list = new JSONArray();
         list.put(activityTitleNode("weekday", 0));
         list.put(activityTitleNode("weekend", 1));
+        // Wave 12 decode (ActivityItemViewModel tap handler, e.b.c.c.java):
+        // the hall renders one banner per title; TAPPING an item whose
+        // content contains "activity:sign" runs bc.c -> CampaignApi.
+        // signInList -> GET /activity/api/v1/signIn (the campaign sign-in
+        // surface, then the week-sign chain on cycle completion). titleType
+        // "sign" deliberately avoids the recharge/weekend dialog branch of
+        // the tap switch (hashCode compare on titleType).
+        JSONObject signNode = activityTitleNode("sign", 2);
+        signNode.put("titleName", "Daily Sign-in");
+        signNode.put("content", "activity:sign");
+        list.put(signNode);
         JSONObject out = new JSONObject();
         out.put("activityTitleList", list);
         out.put("cumulativeTime", cum);

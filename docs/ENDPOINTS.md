@@ -1075,3 +1075,52 @@ world; it is committed so builds and host tests stay deterministic. It is
 NOT a repository credential. The G hand-over flake (PUT never fired despite
 every tap landing) is now a 2-attempt drive with a failure dump — evidence
 for the next triage, not yet root-caused.
+
+## Wave 12 (session 27): the sign-in surface decode + the hall banner
+
+CLIENT DECODE (jadx, classes1-3; MainModel = view/activity/main/bc,
+ActivityItemViewModel = e/b/c/c, ActivityListModel = e/b/c/f, the
+campaign service = com/disabngo/blockynexus/service/CampaignService):
+
+- The session-23 "sign-in dormancy" is SOLVED. GET /activity/api/v1/
+  signIn was never fired because the only static boot path
+  (getActivitySignUp) is gated on the LOCAL UserGameRecordInfo DB
+  (greendao ya/wa/_b): the fetch fires only when the user HAS PLAYED
+  (or returns from a game, z=true). A fresh visitor never qualifies.
+  The session-23 note had the polarity backwards.
+- The REAL entry is UI-driven: the hall's activity banner strip (data =
+  GET /activity/api/v2/activity/title) renders one row per title; the
+  tap handler switches on content — "activity:sign" -> bc.c ->
+  CampaignApi.signInList -> GET /activity/api/v1/signIn; the sign
+  dialog claims via POST /activity/api/v1/signIn; signInStatus==2 (or
+  error 8006) chains into the week-sign surface. "activity:wheel" /
+  "slot_machine" / "dragon_ball" / "bgtube" map to the same D.a router.
+- Model audit (server <-> client, all match exactly):
+  UserSignInResponse {remainingTime, signInStatus, userSignInList[8]},
+  UserSignInList {signInId, status, isSpecial, isSelect, rewards[]},
+  SignInReward {rewardName, rewardPic}.
+- VERDICT (legacy pair): GET /user/api/v1/users/dairy/tasks/{type} +
+  PUT /user/api/v1/users/tasks/{type} (IUserApi.signInList/signIn ->
+  WeekTaskResponse / RechargeEntity) have NO call sites in classes1-3
+  outside their own wrapper (legacy com.sandboxol.center.web.UserApi).
+  The ACTIVE sign surfaces are the /activity/api/v1/signIn pair and
+  /user/api/v2/users/{userId}/daily/sign/in. The legacy pair stays
+  implemented + host-tested (schema-true), client=False is likely
+  permanent for this client.
+
+SERVER CHANGES:
+- activity/title now serves a THIRD banner: titleType "sign",
+  titleName "Daily Sign-in", content "activity:sign" — the client's
+  own tap switch opens the sign-in surface from the hall. Real config
+  the client already understands (production sends the same shape).
+- claimTask (PUT /user/api/v1/users/tasks/{type}) returns the FULL
+  RechargeEntity (currency, gDiamondsProfit, money, rewardQuantity —
+  rewardQuantity carries the granted amount for the claim popup).
+- Automation Phase P (fast mode): taps the "Daily Sign-in" banner by
+  text, hard-checks the GET signIn fetch 0->N, then hands the dialog
+  to handle_campaign_dialogs. Soft-probe until the APK carrying the
+  banner ships; the path literal is source-split (session-24 honesty
+  rule) so the sibling POST cannot be prefix-claimed.
+
+Host rig: 441 -> 442 (title list == [sign, weekday, weekend] + the
+banner content contract). NO GameServer work.

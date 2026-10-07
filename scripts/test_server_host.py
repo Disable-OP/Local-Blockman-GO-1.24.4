@@ -1356,10 +1356,10 @@ def main():
               and ss2["data"]["email"] == "qa@example.com", str(ss2)[:150])
         at = call("GET", "/activity/api/v2/activity/title",
                   headers={"Access-Token": tok5, "userId": str(uid5)})
-        # wave 6c: the list is now REAL (weekday + weekend) — the empty-list
-        # era is over; the surface is lit by design (see Wave 6c section).
+        # wave 6c: the list is now REAL (weekday + weekend + sign banner) —
+        # the empty-list era is over; the surface is lit by design.
         check("activity title served + serverTime", at.get("code") == 1
-              and len(at["data"].get("activityTitleList", [])) == 2
+              and len(at["data"].get("activityTitleList", [])) == 3
               and at["data"].get("serverTime", 0) > 0, str(at)[:150])
 
         # ------------------------------------------------ Phase 5: dispatch bridge
@@ -1915,8 +1915,16 @@ def main():
         at_titles = call("GET", "/activity/api/v2/activity/title", None, headers=at_h)
         at_list = at_titles.get("data", {}).get("activityTitleList", [])
         at_types = sorted(x.get("titleType") for x in at_list)
-        check("activity titles weekday+weekend served", at_titles.get("code") == 1
-              and at_types == ["weekday", "weekend"], str(at_titles)[:160])
+        check("activity titles weekday+weekend+sign served", at_titles.get("code") == 1
+              and at_types == ["sign", "weekday", "weekend"], str(at_titles)[:160])
+        # Wave 12 decode (ActivityItemViewModel tap handler, e.b.c.c.java):
+        # an item whose content contains "activity:sign" opens the campaign
+        # sign-in surface from the hall (bc.c -> CampaignApi.signInList ->
+        # GET /activity/api/v1/signIn). titleType "sign" keeps the item out
+        # of the recharge/weekend dialog branch of the tap switch.
+        _sign_node = next((x for x in at_list if x.get("titleType") == "sign"), {})
+        check("sign banner carries activity:sign content (client tap switch)",
+              "activity:sign" in _sign_node.get("content", ""), str(_sign_node)[:140])
         check("activity titles pass the client's country filter (f.a)",
               all(x.get("countryList") == [] for x in at_list), str(at_list)[:120])
         check("activity titles endTime -1 (no expiry, f.b)",
