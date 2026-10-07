@@ -20,6 +20,10 @@ import java.net.SocketTimeoutException;
  *             (the rig's main HostTest server). The fast path must fail
  *             quietly, the watchdog must detect genuine HTTP and stand by
  *             without disturbing the holder.
+ *   race    — (run 37569020063) the holder speaks junk on the FIRST
+ *             connection and HTTP afterwards: probe #1 fails, the first
+ *             bind loses, the post-loss probe must stand the loser down
+ *             immediately (no 5 x 1s main-thread bind burn).
  */
 public final class HostBootTest {
 
@@ -75,6 +79,60 @@ public final class HostBootTest {
                 System.out.println("RESURRECT NO-SERVER");
             }
             Thread.sleep(60000);
+        } else if ("race".equals(mode)) {
+            // Run 37569020063 bind race (pid 12672): the fast-path probe
+            // sees a not-yet-HTTP holder (sibling mid-death), the first
+            // bind LOSES, and the holder speaks HTTP by the time the
+            // loser re-probes. LocalServer.start must stand down after
+            // the FIRST lost bind instead of burning 5 x 1s binds on the
+            // main thread. The holder answers junk on connection 1 and
+            // real HTTP from connection 2 on — connection 1 is the
+            // fast-path probe, connection 2 is the post-bind-loss probe
+            // (a failed bind opens no connection), so the sequence is
+            // deterministic.
+            final ServerSocket holder = new ServerSocket();
+            holder.bind(new InetSocketAddress("127.0.0.1", port), 64);
+            holder.setSoTimeout(200);
+            Thread speaker = new Thread(new Runnable() {
+                @Override public void run() {
+                    int connections = 0;
+                    while (!holder.isClosed()) {
+                        try {
+                            Socket c = holder.accept();
+                            connections++;
+                            try {
+                                if (connections == 1) {
+                                    // probe #1: junk sibling (speaks no HTTP)
+                                    c.close();
+                                } else {
+                                    c.getOutputStream().write(
+                                            ("HTTP/1.0 200 OK\r\n"
+                                                    + "Content-Length: 2\r\n\r\nok")
+                                            .getBytes("UTF-8"));
+                                    c.getOutputStream().flush();
+                                    c.close();
+                                }
+                            } catch (Throwable ignore2) {
+                                // best-effort canned responder
+                            }
+                        } catch (Throwable t) {
+                            // accept timeout — keep holding
+                        }
+                    }
+                }
+            }, "race-holder");
+            speaker.setDaemon(true);
+            speaker.start();
+            System.out.println("RACE HOLDER UP");
+            long t0 = System.currentTimeMillis();
+            LocalServer.start(dir, port);
+            long elapsed = System.currentTimeMillis() - t0;
+            System.out.println("RACE START RETURNED in " + elapsed + "ms");
+            // The loser must have stood down WITHOUT binding: isRunning()
+            // stays false (the canned holder keeps the port).
+            System.out.println("RACE BOUND=" + LocalServer.isRunning());
+            // Stay alive so the watchdog settles into EXTERNAL standby.
+            Thread.sleep(30000);
         } else {
             System.err.println("unknown mode: " + mode);
             System.exit(2);

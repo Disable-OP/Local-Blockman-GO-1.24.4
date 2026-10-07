@@ -9,6 +9,8 @@ import base64
 import json
 import os
 import random
+import re
+import socket
 import subprocess
 import sys
 import tempfile
@@ -2231,6 +2233,56 @@ def main():
             sb.wait(timeout=5)
         except Exception:
             sb.kill()
+
+    print("== boot resilience: bind race stands down fast (run 37569020063) ==")
+    # Device evidence (run 37569020063, pid 12672): the loser of a bind
+    # race against a sibling LocalAPI holder burned 5 x 1s binds ON THE
+    # MAIN THREAD (App.onCreate) before its watchdog detected the holder.
+    # HostBootTest "race" reproduces it deterministically: the holder
+    # speaks junk on connection 1 (fast-path probe fails) and HTTP from
+    # connection 2 (the post-bind-loss probe) — the loser must stand down
+    # after the FIRST lost bind, leave the port to the holder, and return
+    # from start() in well under a second (the old path took ~5s).
+    port4 = random.randint(20000, 40000)
+    while port4 in (PORT, port2):
+        port4 = random.randint(20000, 40000)
+    state_rc = tempfile.mkdtemp(prefix="localapi-race-")
+    race_log_path = os.path.join(state_rc, "race.log")
+    race_log = open(race_log_path, "wb")
+    race = subprocess.Popen(
+        ["java", "-cp", HOST_CP, "com.localapi.HostBootTest", state_rc,
+         str(port4), "race"],
+        stdout=race_log, stderr=subprocess.STDOUT)
+    try:
+        time.sleep(4)  # start() must have returned well inside this window
+        race_log.flush()
+        with open(race_log_path) as f:
+            logtxt = f.read()
+        m = re.search(r"RACE START RETURNED in (\d+)ms", logtxt)
+        check("race: start returned after the stand-down", bool(m),
+              logtxt[-160:])
+        if m:
+            check("race: loser stood down fast (<3s; the old path was ~5s)",
+                  int(m.group(1)) < 3000, "elapsed=%sms" % m.group(1))
+        check("race: loser did NOT bind (holder keeps the port)",
+              "RACE BOUND=false" in logtxt, logtxt[-160:])
+        ok_holder = False
+        try:
+            s = socket.create_connection(("127.0.0.1", port4), timeout=2)
+            s.sendall(b"GET /health HTTP/1.0\r\n\r\n")
+            ok_holder = s.recv(64).startswith(b"HTTP/")
+            s.close()
+        except Exception:
+            pass
+        check("race: sibling holder still serving", ok_holder)
+        check("race: standby process stayed alive (no crash)",
+              race.poll() is None)
+    finally:
+        race.terminate()
+        try:
+            race.wait(timeout=5)
+        except Exception:
+            race.kill()
 
     print("== boot resilience: in-process server death self-heals ==")
     # The watchdog is PERSISTENT (runs for the process's whole life): if the

@@ -55,13 +55,25 @@ public final class LocalServer {
         }
         for (int attempt = 0; attempt < 5 && !isUp(); attempt++) {
             bootOnce(filesDir, port, attempt > 0 ? " (retry " + attempt + ")" : "");
-            if (!isUp()) {
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
+            if (isUp()) {
+                break;
+            }
+            // Evidence (run 37569020063, pid 12672): a sibling process that
+            // wins the bind race left the loser burning 5 x 1s binds ON THE
+            // MAIN THREAD (App.onCreate) before its watchdog found the
+            // holder ~5s later. A lost bind with a genuine LocalAPI holder
+            // already answering is not an error: stand down immediately —
+            // the sibling serves, the watchdog supervises from here.
+            if (probeServing(port)) {
+                L.i("boot: bind lost but a sibling LocalAPI holder answers"
+                        + " — standing by (watchdog supervises)");
+                break;
+            }
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return;
             }
         }
         startWatchdog(filesDir, port);
