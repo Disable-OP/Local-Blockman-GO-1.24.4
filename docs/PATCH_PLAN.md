@@ -975,3 +975,62 @@ Deferred/undecoded (documented, not faked): bmg-device-id / bmg-sign
 header verification (CommonHelper.getSignature — algorithm not yet
 decoded; the real backend presumably verified it), and the G hand-over
 client-side drop. NO GameServer work.
+
+## Wave 17 (session 32): default-route ELIMINATION — 0 schema defaults remain
+
+User mandate status: test-redroid is FAST-ONLY (commit e5f7194, runs
+37619514335 / 37621737114 GREEN at 4.4 / 4.0 minutes — the 5-minute law
+holds; the full-mode dispatch input no longer exists).
+
+Wave 17 upgraded the last 38 schema-default routes (39 in COVERAGE.json
+counted one header-parsing artifact, now fixed) into analyzed, entity-true,
+state-backed handlers. Every shape was pinned from the decompiled 1.24.4
+Gson entities (jadx src_classes1-4), never guessed. New decompilation:
+classes4.dex -> jadx_out/src_classes4 (halloween + videosubmit + imchat
+modules were missing from the previous jadx run).
+
+Cluster contracts decoded and implemented (Handlers.java "Wave 17" section):
+- videostars (IUserApi): VideoStarConfig{answering,introduce,quantity,rate},
+  StarCodeUser{disable,id,nickName,picUrl,starCode,userId} via real
+  StateStore.findByStarCode lookup (codes assigned lazily as BG<userId>),
+  StarCodeUserIncomePageData{data:PageData,todayProfit} echoing paging,
+  CashApplyInfo persisted verbatim + RechargeEntity wallet echo, exchange
+  converts gDiamondsProfit -> diamonds for real.
+- VIP (IVIPApi): local golds-denominated price table (local.vipgold.1m/3m/12m,
+  currency==2 = golds, server-wide convention) + real purchase: charges
+  golds, stacks expireDate on an unexpired term ("yyyy-MM-dd HH:mm:ss",
+  same format as the Phase 3.7 recharge path), lifts vip level, returns
+  BuyVipResponse{diamonds,diamondsNeed,expireDate,golds,goldsNeed,userId,vip}.
+  Note: vipPriceList/buyVip are dead methods in 1.24.4 (VIP flows through
+  Google billing + VipService) — implemented anyway, shape-true.
+- Legacy password: emails/password/reset acks without account enumeration
+  (pending reset recorded on bound accounts); user/password (PhoneBindForm)
+  binds through the local telephone field, RSA-decrypts like set-password
+  (Wave 11 contract), rejects unbound phones and mismatched confirms.
+- Halloween (IHalloweenApi, classes4): HalloweenInfoResponse carries the
+  real per-user candy ledger (halloweenCandy); exchange enforces balance;
+  task/reward echoes real balances; reward/exchange honestly fails while
+  no event is configured. status=0 = no active event (appConfig-gated).
+- bgtube (IVideoSubmitApi, classes4): BGTubeInfoResponse /
+  BGTubeMultiLanguageConfig / BGTubeSignInfoResponse / SignStatusResponse
+  (picURl sic) shapes; youtube sign-up + video links persist per user and
+  flip sign/check status 0 -> 1.
+- worldCup legacy cluster (ICampaignApi, ALL @Deprecated in client):
+  inactive-campaign GET shapes (CampaignGame/History/RedPoint/Task/Rank/
+  RankRewardWithTime/Reward, PageData ranks echoing paging, integral from
+  worldCupIntegral); bet POST and reward claims fail honestly (no campaign).
+- Config files: blockymods-banner [], blockymods-activity-logo
+  CampaignLogo, campaign-precious-reward [], game-detail-to-editor {},
+  indiegame-moregame_introduction [] — external-content surfaces stay off
+  (appConfig policy), shapes exact.
+- ugc/status: dead method (no call sites in 1.24.4) — empty List<String>.
+
+Bookkeeping:
+- RoutingTable: 334 routes, ALL H:-backed (header reworded so the coverage
+  regex no longer reads it as a route row — that phantom "VERB /path"
+  default is gone). gen_router_table.py HANDLERS dict synced for regen.
+- StateStore: findByStarCode added; users() widened to package-private.
+- Host rig: +50 Wave 17 checks (562 passed, 0 failed, was 512).
+- COVERAGE.json: 334 discovered / 334 implemented / 0 default / 334
+  host-tested / client_asserted 144. No implemented route lacks a host test.
+- Engine 10068 GameServer remains FORBIDDEN this phase. NO GameServer work.

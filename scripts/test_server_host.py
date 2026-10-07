@@ -2277,6 +2277,192 @@ def main():
               and any(q.get("question") == "QW16B" for q in qchk16.get("data", [])),
               "%s %s" % (str(qset16)[:80], str(qchk16)[:120]))
 
+        print("== Wave 17: default-route elimination (star code / vip / password / events) ==")
+        # fresh user: immune to earlier rig spending; default wallet 50000 golds
+        r17 = call("POST", "/user/api/v1/register",
+                   {"uid": "qa_user17", "password": "pw17", "confirmPassword": "pw17",
+                    "imei": "dev17", "appType": "android", "os": "12"})
+        check("w17 register qa_user17", r17.get("code") == 1, str(r17)[:100])
+        uid17 = r17.get("data", {}).get("userId")
+        tok17 = r17.get("data", {}).get("accessToken", "")
+        h17 = {"Access-Token": tok17, "userId": str(uid17)}
+        # -- videostars (star-code creator program) --
+        sc = call("GET", "/user/api/v1/videostars/config/get", headers=h17)
+        check("w17 star config shape", sc.get("code") == 1
+              and isinstance(sc.get("data", {}).get("answering"), list)
+              and isinstance(sc.get("data", {}).get("introduce"), list)
+              and "quantity" in sc.get("data", {}) and "rate" in sc.get("data", {}), str(sc)[:140])
+        scb = call("GET", "/user/api/v1/videostars/getbycode?starCode=BG%d" % uid17)
+        check("w17 star getbycode found", scb.get("code") == 1
+              and scb.get("data", {}).get("userId") == uid17
+              and scb.get("data", {}).get("starCode") == "BG%d" % uid17
+              and scb.get("data", {}).get("disable") == 0, str(scb)[:140])
+        scb2 = call("GET", "/user/api/v1/videostars/getbycode?starCode=NOPE123")
+        check("w17 star getbycode missing rejected", scb2.get("code") == 0, str(scb2)[:80])
+        scbill = call("GET", "/user/api/v1/videostars/billing/list/get?pageNo=3&pageSize=10",
+                      headers=h17)
+        check("w17 star billing page shape", scbill.get("code") == 1
+              and scbill.get("data", {}).get("data", {}).get("pageNo") == 3
+              and scbill.get("data", {}).get("data", {}).get("pageSize") == 10
+              and scbill.get("data", {}).get("todayProfit") == 0.0, str(scbill)[:160])
+        cash0 = call("PUT", "/user/api/v1/videostars/cashapply", {"money": 0}, headers=h17)
+        check("w17 cashapply zero rejected", cash0.get("code") == 0, str(cash0)[:80])
+        cash = call("PUT", "/user/api/v1/videostars/cashapply",
+                    {"bankName": "LocalBank", "money": 10.5}, headers=h17)
+        check("w17 cashapply echoes wallet", cash.get("code") == 1
+              and cash.get("data", {}).get("money") == 10.5
+              and cash.get("data", {}).get("userId") == uid17
+              and cash.get("data", {}).get("diamonds", 0) > 0, str(cash)[:160])
+        exc = call("PUT", "/user/api/v1/videostars/exchange", None, headers=h17)
+        check("w17 exchange wallet shape", exc.get("code") == 1
+              and "diamonds" in exc.get("data", {}) and "golds" in exc.get("data", {}), str(exc)[:120])
+        # -- VIP price list + golds purchase --
+        vpl = call("GET", "/shop/api/v1/shop/users/vip", headers=h17)
+        check("w17 vip price list shape", vpl.get("code") == 1
+              and isinstance(vpl.get("data", {}).get("vip"), list)
+              and any(p.get("productId") == "local.vipgold.1m" and p.get("currency") == 2
+                      for p in vpl.get("data", {}).get("vip", [])), str(vpl)[:160])
+        vb_bad = call("PUT", "/shop/api/v1/shop/user/buy/vip?productId=local.unknown",
+                      None, headers=h17)
+        check("w17 vip buy unknown rejected", vb_bad.get("code") == 0, str(vb_bad)[:80])
+        golds_before = call("GET", "/pay/api/v1/wealth/user", headers=h17)\
+            .get("data", {}).get("golds", 0)
+        vb = call("PUT", "/shop/api/v1/shop/user/buy/vip?productId=local.vipgold.1m",
+                  None, headers=h17)
+        check("w17 vip buy deducts golds + sets vip", vb.get("code") == 1
+              and vb.get("data", {}).get("vip") == 1
+              and vb.get("data", {}).get("golds", -1) == golds_before - 30000
+              and bool(vb.get("data", {}).get("expireDate")), str(vb)[:160])
+        vb2 = call("PUT", "/shop/api/v1/shop/user/buy/vip?productId=local.vipgold.12m",
+                   None, headers=h17)
+        check("w17 vip buy insufficient rejected", vb2.get("code") == 0
+              and "golds" in str(vb2.get("message", "")), str(vb2)[:100])
+        # -- legacy password flows --
+        epr = call("POST", "/user/api/v1/emails/password/reset?email=qa_user17", None)
+        check("w17 email reset ack (bound account)", epr.get("code") == 1, str(epr)[:80])
+        epr2 = call("POST", "/user/api/v1/emails/password/reset?email=nobody17@x.y", None)
+        check("w17 email reset ack (unknown, no enumeration)", epr2.get("code") == 1, str(epr2)[:80])
+        pp0 = call("POST", "/user/api/v1/user/password",
+                   {"phone": "5550001111", "verifyCode": "0000",
+                    "password": "npw1", "confirmPassword": "npw1"})
+        check("w17 phone password unbound rejected", pp0.get("code") == 0, str(pp0)[:80])
+        bph = call("POST", "/user/api/v1/user/bind/phone", {"phone": "5550001111"}, headers=h17)
+        check("w17 bind phone ok", bph.get("code") == 1, str(bph)[:80])
+        pp1 = call("POST", "/user/api/v1/user/password",
+                   {"phone": "5550001111", "verifyCode": "0000",
+                    "password": "npw1", "confirmPassword": "npw1"})
+        check("w17 phone password set ok", pp1.get("code") == 1, str(pp1)[:80])
+        pp2 = call("POST", "/user/api/v1/user/password",
+                   {"phone": "5550001111", "verifyCode": "0000",
+                    "password": "npw2", "confirmPassword": "other"})
+        check("w17 phone password mismatch rejected", pp2.get("code") == 0, str(pp2)[:80])
+        # -- halloween (event-gated; real candy ledger, no active event) --
+        hi = call("GET", "/activity/api/v1/halloween/info?activityId=hal1", headers=h17)
+        check("w17 halloween info shape", hi.get("code") == 1
+              and hi.get("data", {}).get("status") == 0
+              and hi.get("data", {}).get("candy") == 0
+              and isinstance(hi.get("data", {}).get("rewardList"), list)
+              and isinstance(hi.get("data", {}).get("taskList"), list), str(hi)[:160])
+        hx0 = call("POST", "/activity/api/v1/halloween/candy/exchange?candy=5&activityId=hal1",
+                   None, headers=h17)
+        check("w17 candy exchange insufficient rejected", hx0.get("code") == 0, str(hx0)[:80])
+        htr = call("POST", "/activity/api/v1/halloween/task/reward/receive?taskType=daily&activityId=hal1",
+                   None, headers=h17)
+        check("w17 halloween task reward echo", htr.get("code") == 1
+              and htr.get("data", {}).get("acquireCandy") == 0
+              and htr.get("data", {}).get("userCandy") == 0, str(htr)[:100])
+        hrx = call("POST", "/activity/api/v1/halloween/reward/exchange?rewardId=9&activityId=hal1",
+                   None, headers=h17)
+        check("w17 halloween reward missing rejected", hrx.get("code") == 0, str(hrx)[:80])
+        hti = call("GET", "/activity/api/v1/halloween/task/info?activityId=hal1", headers=h17)
+        check("w17 halloween task list empty", hti.get("code") == 1 and hti.get("data") == [],
+              str(hti)[:80])
+        # -- bgtube (sign-up + video links persist per user) --
+        bs = call("GET", "/activity/api/v1/bgtube/sign?activityId=bg1", headers=h17)
+        check("w17 bgtube sign info empty", bs.get("code") == 1
+              and bs.get("data", {}).get("youtubeName") == ""
+              and bs.get("data", {}).get("linkCount") == 0, str(bs)[:120])
+        bsc = call("GET", "/activity/api/v1/bgtube/sign/check?activityId=bg1", headers=h17)
+        check("w17 bgtube sign check status 0", bsc.get("code") == 1
+              and bsc.get("data", {}).get("status") == 0
+              and "picURl" in bsc.get("data", {}), str(bsc)[:100])
+        bsu = call("POST", "/activity/api/v1/bgtube/sign?youTubeName=localcreator&language=en&activityId=bg1",
+                   None, headers=h17)
+        check("w17 bgtube signup ok", bsu.get("code") == 1, str(bsu)[:80])
+        bsc2 = call("GET", "/activity/api/v1/bgtube/sign/check?activityId=bg1", headers=h17)
+        check("w17 bgtube sign check flips to 1", bsc2.get("data", {}).get("status") == 1, str(bsc2)[:80])
+        bvl = call("POST", "/activity/api/v1/bgtube/video/link?activityId=bg1",
+                   {"gameCode": "gc", "gameName": "gn", "link": "http://127.0.0.1/v/1",
+                    "videoType": "yt"}, headers=h17)
+        check("w17 bgtube video link ok", bvl.get("code") == 1, str(bvl)[:80])
+        bvl0 = call("POST", "/activity/api/v1/bgtube/video/link?activityId=bg1",
+                    {"gameCode": "gc"}, headers=h17)
+        check("w17 bgtube video link missing rejected", bvl0.get("code") == 0, str(bvl0)[:80])
+        bs2 = call("GET", "/activity/api/v1/bgtube/sign?activityId=bg1", headers=h17)
+        check("w17 bgtube sign info persisted", bs2.get("data", {}).get("youtubeName") == "localcreator"
+              and bs2.get("data", {}).get("linkCount") == 1
+              and bs2.get("data", {}).get("linkList") == ["http://127.0.0.1/v/1"], str(bs2)[:160])
+        bml = call("GET", "/activity/api/v1/bgtube/multilingualism/info?activityId=bg1&language=en")
+        check("w17 bgtube multilang shape", bml.get("code") == 1
+              and isinstance(bml.get("data", {}).get("eventRules"), list)
+              and "profitRules" in bml.get("data", {}), str(bml)[:120])
+        btc = call("GET", "/config/files/bg-tube-activity-config")
+        check("w17 bgtube config inactive", btc.get("code") == 1
+              and btc.get("data", {}).get("activityId") == ""
+              and isinstance(btc.get("data", {}).get("games"), list), str(btc)[:120])
+        # -- worldCup legacy cluster (inactive campaign shapes + honest mutations) --
+        wc = call("GET", "/activity/api/v1/activity/worldCup", headers=h17)
+        check("w17 worldcup games empty", wc.get("code") == 1 and wc.get("data") == [], str(wc)[:80])
+        wch = call("GET", "/activity/api/v1/activity/worldCup/history", headers=h17)
+        check("w17 worldcup history empty", wch.get("code") == 1 and wch.get("data") == [], str(wch)[:80])
+        wci = call("GET", "/activity/api/v1/activity/worldCup/integral", headers=h17)
+        check("w17 worldcup integral zero", wci.get("code") == 1 and wci.get("data") == 0, str(wci)[:80])
+        wcn = call("GET", "/activity/api/v1/activity/worldCup/notice", headers=h17)
+        check("w17 worldcup notice redpoints", wcn.get("code") == 1
+              and wcn.get("data") == {"betUpdateResult": 0, "integralReward": 0, "taskFinished": 0},
+              str(wcn)[:120])
+        wcmr = call("GET", "/activity/api/v1/activity/user/integral/rank", headers=h17)
+        check("w17 worldcup myrank shape", wcmr.get("code") == 1
+              and wcmr.get("data", {}).get("userId") == uid17
+              and wcmr.get("data", {}).get("rank") == 0, str(wcmr)[:140])
+        wctr = call("GET", "/activity/api/v1/activity/integral/rank?pageNo=2&pageSize=5", headers=h17)
+        check("w17 worldcup totalrank paged", wctr.get("code") == 1
+              and wctr.get("data", {}).get("pageNo") == 2
+              and wctr.get("data", {}).get("pageSize") == 5
+              and wctr.get("data", {}).get("data") == [], str(wctr)[:140])
+        wcb = call("POST", "/activity/api/v1/activity/worldCup",
+                   {"bet": "home", "gameId": 1, "integral": 10}, headers=h17)
+        check("w17 worldcup bet rejected (no campaign)", wcb.get("code") == 0, str(wcb)[:80])
+        wtr = call("PUT", "/activity/api/v1/activity/task/reward?id=5", None, headers=h17)
+        check("w17 worldcup task reward rejected", wtr.get("code") == 0, str(wtr)[:80])
+        wir = call("PUT", "/activity/api/v1/activity/user/integral/reward?type=daily&decorationId=1",
+                   None, headers=h17)
+        check("w17 worldcup integral reward rejected", wir.get("code") == 0, str(wir)[:80])
+        wgl = call("GET", "/activity/api/v1/activity/user/integral/reward?type=daily", headers=h17)
+        check("w17 worldcup reward list shape", wgl.get("code") == 1
+              and wgl.get("data", {}).get("status") == 0
+              and wgl.get("data", {}).get("decorationList") == [], str(wgl)[:120])
+        wrr = call("GET", "/activity/api/v1/activity/user/rank/reward", headers=h17)
+        check("w17 worldcup rank reward shape", wrr.get("code") == 1
+              and wrr.get("data", {}).get("rewardList") == []
+              and wrr.get("data", {}).get("timeLeft") == 0, str(wrr)[:120])
+        wct = call("GET", "/activity/api/v1/activity/task", headers=h17)
+        check("w17 worldcup task list empty", wct.get("code") == 1 and wct.get("data") == [], str(wct)[:80])
+        # -- config files (external-content surfaces stay off, shapes exact) --
+        b = call("GET", "/config/files/blockymods-banner")
+        check("w17 banner list empty", b.get("code") == 1 and b.get("data") == [], str(b)[:80])
+        clo = call("GET", "/config/files/blockymods-activity-logo")
+        check("w17 campaign logo shape", clo.get("code") == 1
+              and clo.get("data") == {"normalLogo": "", "redPointLogo": ""}, str(clo)[:100])
+        cpr = call("GET", "/config/files/campaign-precious-reward")
+        check("w17 precious reward empty", cpr.get("code") == 1 and cpr.get("data") == [], str(cpr)[:80])
+        ged = call("GET", "/config/files/game-detail-to-editor")
+        check("w17 editor config empty map", ged.get("code") == 1 and ged.get("data") == {}, str(ged)[:80])
+        mgi = call("GET", "/config/files/indiegame-moregame_introduction")
+        check("w17 moregame intro empty", mgi.get("code") == 1 and mgi.get("data") == [], str(mgi)[:80])
+        ugs = call("GET", "/game/api/v1/games/ugc/status?newEngineVersion=4")
+        check("w17 ugc status empty", ugs.get("code") == 1 and ugs.get("data") == [], str(ugs)[:80])
+
         print("== route-table sweep (all routes answer the envelope) ==")
         sys.path.insert(0, os.path.join(REPO, "scripts"))
         sweep_miss = []

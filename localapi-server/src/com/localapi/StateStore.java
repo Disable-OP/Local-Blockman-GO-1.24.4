@@ -76,7 +76,7 @@ public final class StateStore {
         return root;
     }
 
-    private JSONObject users() {
+    JSONObject users() {
         return root.optJSONObject("users");
     }
 
@@ -129,6 +129,19 @@ public final class StateStore {
         if (token == null || token.isEmpty()) return null;
         long uid = tokens().optLong(token, 0L);
         return uid > 0 ? findByUserId(uid) : null;
+    }
+
+    /** Wave 17: star-code creator lookup (videostars/getbycode).
+     *  Only registered (non-guest) users carry a star code. */
+    public synchronized JSONObject findByStarCode(String starCode) {
+        if (starCode == null || starCode.isEmpty()) return null;
+        JSONArray keys = users().names();
+        if (keys == null) return null;
+        for (int i = 0; i < keys.length(); i++) {
+            JSONObject u = users().optJSONObject(keys.optString(i));
+            if (u != null && starCode.equals(u.optString("starCode"))) return u;
+        }
+        return null;
     }
 
     /** Real presence: does the user hold at least one live (un-dropped) token? */

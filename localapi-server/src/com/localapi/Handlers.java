@@ -309,6 +309,45 @@ final class Handlers {
         if ("turntableProps".equals(name)) return turntableProps(ctx, store);
         if ("turntableDraw".equals(name)) return turntableDraw(ctx, store);
         if ("adsCdConfig".equals(name)) return adsCdConfig(ctx, store);
+        // ---- Wave 17: default-route elimination (39 schema defaults -> analyzed) ----
+        if ("starCodeConfig".equals(name)) return starCodeConfig(ctx, store);
+        if ("starCodeGetByCode".equals(name)) return starCodeGetByCode(ctx, store);
+        if ("starCodeBilling".equals(name)) return starCodeBilling(ctx, store);
+        if ("starCodeCashApply".equals(name)) return starCodeCashApply(ctx, store);
+        if ("starCodeExchange".equals(name)) return starCodeExchange(ctx, store);
+        if ("vipPriceList".equals(name)) return vipPriceList(ctx, store);
+        if ("vipBuy".equals(name)) return vipBuy(ctx, store);
+        if ("emailPasswordReset".equals(name)) return emailPasswordReset(ctx, store);
+        if ("phonePassword".equals(name)) return phonePassword(ctx, store);
+        if ("ugcStatus".equals(name)) return ugcStatus(ctx, store);
+        if ("halloweenInfo".equals(name)) return halloweenInfo(ctx, store);
+        if ("halloweenTaskInfo".equals(name)) return halloweenTaskInfo(ctx, store);
+        if ("halloweenCandyExchange".equals(name)) return halloweenCandyExchange(ctx, store);
+        if ("halloweenRewardExchange".equals(name)) return halloweenRewardExchange(ctx, store);
+        if ("halloweenTaskReward".equals(name)) return halloweenTaskReward(ctx, store);
+        if ("bgtubeConfig".equals(name)) return bgtubeConfig(ctx, store);
+        if ("bgtubeMultiLang".equals(name)) return bgtubeMultiLang(ctx, store);
+        if ("bgtubeSignInfo".equals(name)) return bgtubeSignInfo(ctx, store);
+        if ("bgtubeSignCheck".equals(name)) return bgtubeSignCheck(ctx, store);
+        if ("bgtubeSignUp".equals(name)) return bgtubeSignUp(ctx, store);
+        if ("bgtubeVideoLink".equals(name)) return bgtubeVideoLink(ctx, store);
+        if ("worldCupGames".equals(name)) return worldCupGames(ctx, store);
+        if ("worldCupHistory".equals(name)) return worldCupHistory(ctx, store);
+        if ("worldCupIntegral".equals(name)) return worldCupIntegral(ctx, store);
+        if ("worldCupNotice".equals(name)) return worldCupNotice(ctx, store);
+        if ("worldCupBet".equals(name)) return worldCupBet(ctx, store);
+        if ("worldCupMyRank".equals(name)) return worldCupMyRank(ctx, store);
+        if ("worldCupTotalRank".equals(name)) return worldCupTotalRank(ctx, store);
+        if ("worldCupRewardList".equals(name)) return worldCupRewardList(ctx, store);
+        if ("worldCupRankReward".equals(name)) return worldCupRankReward(ctx, store);
+        if ("worldCupTaskList".equals(name)) return worldCupTaskList(ctx, store);
+        if ("worldCupTaskReward".equals(name)) return worldCupTaskReward(ctx, store);
+        if ("worldCupIntegralReward".equals(name)) return worldCupIntegralReward(ctx, store);
+        if ("bannerList".equals(name)) return bannerList(ctx, store);
+        if ("campaignLogo".equals(name)) return campaignLogo(ctx, store);
+        if ("campaignPreciousReward".equals(name)) return campaignPreciousReward(ctx, store);
+        if ("editorConfig".equals(name)) return editorConfig(ctx, store);
+        if ("moreGameIntro".equals(name)) return moreGameIntro(ctx, store);
         L.e("unknown handler name: " + name);
         return envelope("none", null);
     }
@@ -4603,6 +4642,543 @@ final class Handlers {
         return fail(err);
     }
 
+    // --------------------------------- Wave 17: default-route elimination
+    // The 39 remaining schema-default routes, upgraded to analyzed, entity-true
+    // implementations. Every shape below was pinned from the decompiled 1.24.4
+    // Gson entities (jadx), never guessed. Policy:
+    //   - GET surfaces of inactive/external campaigns serve the exact entity
+    //     shape carrying the real local state (all-zero / empty lists).
+    //   - Mutations that require an active campaign (bets, task claims)
+    //     fail honestly — there is nothing to claim.
+    //   - Per-user facts (bgtube youtube name + video links, cash-apply,
+    //     star code, halloween candy) persist on the user record.
+    //   - VIP price list + purchase are a real local golds-denominated economy
+    //     (currency==2 means golds, same convention as the dress shop).
+
+    // ---- videostars (star-code creator program; IUserApi) ----
+
+    /** Ensure the registered user owns a star code (dynamic, never hardcoded). */
+    private static String ensureStarCode(JSONObject u, StateStore store) {
+        String code = u.optString("starCode");
+        if (code == null || code.isEmpty()) {
+            code = "BG" + u.optLong("userId");
+            u.put("starCode", code);
+            store.save();
+        }
+        return code;
+    }
+
+    /** GET /user/api/v1/videostars/config/get — VideoStarConfig. */
+    private static String starCodeConfig(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        ensureStarCode(u, store);
+        JSONObject d1 = new JSONObject();
+        d1.put("title", "What is a star code?");
+        d1.put("des", "A star code identifies a creator inside BlockyNexus.");
+        JSONObject d2 = new JSONObject();
+        d2.put("title", "How do I use one?");
+        d2.put("des", "Enter a friend's star code to credit their channel.");
+        JSONObject c = new JSONObject();
+        c.put("answering", new JSONArray().put(d1).put(d2));
+        c.put("introduce", new JSONArray().put(d1));
+        c.put("quantity", 0);
+        c.put("rate", 0.0);
+        return envelope("obj", c.toString());
+    }
+
+    /** GET /user/api/v1/videostars/getbycode?starCode= — StarCodeUser. */
+    private static String starCodeGetByCode(Ctx ctx, StateStore store) {
+        JSONObject u = store.findByStarCode(ctx.query("starCode"));
+        if (u == null) return fail("star code not found");
+        JSONObject s = new JSONObject();
+        s.put("disable", 0);
+        s.put("id", u.optLong("userId"));
+        s.put("nickName", u.optString("nickName"));
+        s.put("picUrl", u.optString("picUrl"));
+        s.put("starCode", u.optString("starCode"));
+        s.put("userId", u.optLong("userId"));
+        return envelope("obj", s.toString());
+    }
+
+    /** GET /user/api/v1/videostars/billing/list/get — StarCodeUserIncomePageData
+     *  {data: PageData<StarCodeUserIncomeInfo>, todayProfit: double}. No real
+     *  payouts exist locally, so the page is empty while echoing the paging. */
+    private static String starCodeBilling(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        int pageNo = (int) parseLong(ctx.query("pageNo"), 1);
+        int pageSize = (int) parseLong(ctx.query("pageSize"), 20);
+        JSONObject page = emptyPageObject(pageSize > 0 ? pageSize : 20);
+        page.put("pageNo", pageNo);
+        JSONObject d = new JSONObject();
+        d.put("data", page);
+        d.put("todayProfit", 0.0);
+        return envelope("obj", d.toString());
+    }
+
+    /** RechargeEntity over the user's wallet (Wave 17 videostars surfaces). */
+    private static JSONObject walletEntity(JSONObject u, double money) {
+        JSONObject r = new JSONObject();
+        r.put("currency", 1);
+        r.put("diamonds", u.optLong("diamonds"));
+        r.put("gDiamonds", u.optLong("gDiamonds"));
+        r.put("gDiamondsProfit", u.optLong("gDiamondsProfit", 0));
+        r.put("golds", u.optLong("golds"));
+        r.put("money", money);
+        r.put("rewardQuantity", 0);
+        r.put("userId", u.optLong("userId"));
+        return r;
+    }
+
+    /** PUT /user/api/v1/videostars/cashapply — CashApplyInfo -> RechargeEntity.
+     *  Records the pending payout request verbatim on the user record. */
+    private static String starCodeCashApply(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        JSONObject f = body(ctx);
+        double money = f.optDouble("money", 0.0);
+        if (Double.isNaN(money) || money <= 0) return fail("money required");
+        u.put("cashApply", f);
+        store.save();
+        return envelope("obj", walletEntity(u, money).toString());
+    }
+
+    /** PUT /user/api/v1/videostars/exchange — convert accrued income into
+     *  diamonds; RechargeEntity reflects the resulting wallet. */
+    private static String starCodeExchange(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        long profit = u.optLong("gDiamondsProfit", 0);
+        if (profit > 0) {
+            u.put("diamonds", u.optLong("diamonds") + profit);
+            u.put("gDiamondsProfit", 0);
+            store.save();
+        }
+        return envelope("obj", walletEntity(u, 0.0).toString());
+    }
+
+    // ---- VIP price list + purchase (IVIPApi) ----
+
+    /** Local VIP price table: productId, months, level, currency, price.
+     *  currency 2 = golds (server-wide convention); denominated in golds so
+     *  VIP is reachable through local gameplay, not real money. */
+    private static final Object[][] VIP_PRODUCTS = {
+            {"local.vipgold.1m", 1, 1, 2, 30000L},
+            {"local.vipgold.3m", 3, 1, 2, 80000L},
+            {"local.vipgold.12m", 12, 2, 2, 300000L},
+    };
+
+    /** GET /shop/api/v1/shop/users/vip — Map<String, List<VipInfo>>.
+     *  Dead method in 1.24.4 (VIP purchase flows through Google billing +
+     *  VipService); served shape-true so any lookup still succeeds. */
+    private static String vipPriceList(Ctx ctx, StateStore store) {
+        JSONObject m = new JSONObject();
+        m.put("vip", vipProductArray());
+        return envelope("obj", m.toString());
+    }
+
+    private static JSONArray vipProductArray() {
+        JSONArray arr = new JSONArray();
+        for (Object[] d : VIP_PRODUCTS) {
+            JSONObject p = new JSONObject();
+            p.put("productId", (String) d[0]);
+            p.put("months", (int) d[1]);
+            p.put("level", (int) d[2]);
+            p.put("currency", (int) d[3]);
+            p.put("price", (long) d[4]);
+            arr.put(p);
+        }
+        return arr;
+    }
+
+    /** PUT /shop/api/v1/shop/user/buy/vip?productId= — BuyVipResponse.
+     *  Real purchase: charges the golds price, extends expireDate (stacking on
+     *  an unexpired term), and lifts the vip level. */
+    private static String vipBuy(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        String productId = ctx.query("productId");
+        Object[] found = null;
+        for (Object[] d : VIP_PRODUCTS) {
+            if (((String) d[0]).equals(productId)) {
+                found = d;
+                break;
+            }
+        }
+        if (found == null) return fail("unknown product: " + productId);
+        long price = (long) found[4];
+        if (u.optLong("golds") < price) return fail("golds not enough");
+        u.put("golds", u.optLong("golds") - price);
+        int months = (int) found[1];
+        long now = System.currentTimeMillis();
+        long base = now;
+        String cur = u.optString("expireDate");
+        if (cur != null && !cur.isEmpty()) {
+            try {
+                java.util.Date d = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss",
+                        java.util.Locale.US).parse(cur);
+                if (d != null && d.getTime() > now) base = d.getTime();
+            } catch (java.text.ParseException ignored) {
+            }
+        }
+        String until = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss",
+                java.util.Locale.US).format(
+                new java.util.Date(base + 30L * months * 86_400_000L));
+        u.put("expireDate", until);
+        u.put("vip", Math.max(u.optInt("vip"), (int) found[2]));
+        store.save();
+        JSONObject v = new JSONObject();
+        v.put("diamonds", u.optLong("diamonds"));
+        v.put("diamondsNeed", 0);
+        v.put("expireDate", until);
+        v.put("golds", u.optLong("golds"));
+        v.put("goldsNeed", 0);
+        v.put("userId", u.optLong("userId"));
+        v.put("vip", u.optInt("vip"));
+        return envelope("obj", v.toString());
+    }
+
+    // ---- legacy password flows (IUserApi) ----
+
+    /** POST /user/api/v1/emails/password/reset?email= — HttpResponse (none).
+     *  Acknowledges like a real backend (no account enumeration); when the
+     *  email is bound locally, the pending reset is recorded on the account. */
+    private static String emailPasswordReset(Ctx ctx, StateStore store) {
+        String email = ctx.query("email");
+        JSONObject u = store.findByAccount(email);
+        if (u == null) {
+            JSONArray keys = store.users().names();
+            for (int i = 0; keys != null && i < keys.length(); i++) {
+                JSONObject cand = store.users().optJSONObject(keys.optString(i));
+                if (cand != null && email != null
+                        && email.equalsIgnoreCase(cand.optString("email"))) {
+                    u = cand;
+                    break;
+                }
+            }
+        }
+        if (u != null) {
+            u.put("emailResetRequested", true);
+            store.save();
+        }
+        return envelope("none", null);
+    }
+
+    /** POST /user/api/v1/user/password — PhoneBindForm (legacy phone-based
+     *  password retrieve/set). Body: {phone, verifyCode, password,
+     *  confirmPassword}. Sets the password when the phone is bound locally. */
+    private static String phonePassword(Ctx ctx, StateStore store) {
+        JSONObject f = body(ctx);
+        String phone = f.optString("phone");
+        JSONObject u = null;
+        JSONArray keys = store.users().names();
+        for (int i = 0; keys != null && i < keys.length(); i++) {
+            JSONObject cand = store.users().optJSONObject(keys.optString(i));
+            if (cand != null && !phone.isEmpty()
+                    && phone.equals(cand.optString("telephone"))) {
+                u = cand;
+                break;
+            }
+        }
+        if (u == null) return fail("phone not bound");
+        // client encrypts password fields (same contract as set-password)
+        String pw = RsaCipher.decryptIfEncrypted(f.optString("password"));
+        String cf = RsaCipher.decryptIfEncrypted(f.optString("confirmPassword"));
+        if (pw.isEmpty()) return fail("password required");
+        if (cf != null && !cf.isEmpty() && !pw.equals(cf)) {
+            return fail("passwords do not match");
+        }
+        u.put("password", pw);
+        u.put("hasPassword", true);
+        store.save();
+        return envelope("none", null);
+    }
+
+    // ---- UGC status (IGameApi) ----
+
+    /** GET /game/api/v1/games/ugc/status?newEngineVersion= — List<String>.
+     *  Dead method in 1.24.4 (no call sites); empty = no UGC status flags. */
+    private static String ugcStatus(Ctx ctx, StateStore store) {
+        return envelope("list", "[]");
+    }
+
+    // ---- halloween (IHalloweenApi; event-gated — status 0 = no active event) ----
+
+    private static int halloweenCandy(JSONObject u) {
+        return u.optInt("halloweenCandy", 0);
+    }
+
+    /** GET /activity/api/v1/halloween/info — HalloweenInfoResponse. */
+    private static String halloweenInfo(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        JSONObject h = new JSONObject();
+        h.put("activityDesc", "");
+        h.put("activityTitle", "");
+        h.put("candy", halloweenCandy(u));
+        h.put("candyRate", 0);
+        h.put("rewardList", new JSONArray());
+        h.put("status", 0);
+        h.put("surplusGCube", 0);
+        h.put("surplusSeconds", 0);
+        h.put("surplusTime", 0);
+        h.put("taskList", new JSONArray());
+        h.put("taskRewardIcon", "");
+        return envelope("obj", h.toString());
+    }
+
+    /** GET /activity/api/v1/halloween/task/info — List<HalloweenTask>. */
+    private static String halloweenTaskInfo(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        return envelope("list", "[]");
+    }
+
+    /** POST /activity/api/v1/halloween/candy/exchange?candy=&activityId= —
+     *  HttpResponse<Integer>: the candy balance after the exchange. */
+    private static String halloweenCandyExchange(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        int candy = (int) parseLong(ctx.query("candy"), 0);
+        if (candy <= 0) return fail("candy required");
+        int have = halloweenCandy(u);
+        if (have < candy) return fail("not enough candy");
+        u.put("halloweenCandy", have - candy);
+        store.save();
+        return envelope("num", String.valueOf(have - candy));
+    }
+
+    /** POST /activity/api/v1/halloween/reward/exchange?rewardId=&activityId= —
+     *  ExchangeResponse. No rewards exist while no event is configured. */
+    private static String halloweenRewardExchange(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        return fail("reward not found");
+    }
+
+    /** POST /activity/api/v1/halloween/task/reward/receive?taskType=&activityId= —
+     *  HalloweenTaskResponse {acquireCandy, userCandy}. */
+    private static String halloweenTaskReward(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        JSONObject r = new JSONObject();
+        r.put("acquireCandy", 0);
+        r.put("userCandy", halloweenCandy(u));
+        return envelope("obj", r.toString());
+    }
+
+    // ---- bgtube (IVideoSubmitApi; creator sign-up persists per user) ----
+
+    /** GET /config/files/bg-tube-activity-config — BGTubeInfoResponse. */
+    private static String bgtubeConfig(Ctx ctx, StateStore store) {
+        JSONObject b = new JSONObject();
+        b.put("activityEndTime", "");
+        b.put("activityId", "");
+        b.put("activityStartTime", "");
+        b.put("awardDate", "");
+        b.put("bestEditingAward", 0);
+        b.put("eventRulesHeadUrl", "");
+        b.put("games", new JSONArray());
+        b.put("excellentPotentialAward", 0);
+        b.put("mostCreativeAward", 0);
+        b.put("mostPopularAward", 0);
+        b.put("optionalSubmissionGameUrls", new JSONArray());
+        return envelope("obj", b.toString());
+    }
+
+    /** GET /activity/api/v1/bgtube/multilingualism/info — BGTubeMultiLanguageConfig. */
+    private static String bgtubeMultiLang(Ctx ctx, StateStore store) {
+        JSONObject b = new JSONObject();
+        b.put("eventRules", new JSONArray());
+        b.put("profitRules", "");
+        b.put("tips", new JSONArray());
+        return envelope("obj", b.toString());
+    }
+
+    /** GET /activity/api/v1/bgtube/sign — BGTubeSignInfoResponse. */
+    private static String bgtubeSignInfo(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        JSONArray links = u.optJSONArray("bgtubeLinks");
+        JSONObject b = new JSONObject();
+        b.put("countryCode", "");
+        b.put("countryName", "");
+        b.put("language", "");
+        b.put("languageName", "");
+        b.put("linkCount", links == null ? 0 : links.length());
+        b.put("linkList", links == null ? new JSONArray() : links);
+        b.put("youtubeName", u.optString("bgtubeYoutubeName"));
+        return envelope("obj", b.toString());
+    }
+
+    /** GET /activity/api/v1/bgtube/sign/check — SignStatusResponse
+     *  {picURl (sic), status} — status 0 = not signed up. */
+    private static String bgtubeSignCheck(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        JSONObject b = new JSONObject();
+        b.put("picURl", "");
+        b.put("status", u.optString("bgtubeYoutubeName").isEmpty() ? 0 : 1);
+        return envelope("obj", b.toString());
+    }
+
+    /** POST /activity/api/v1/bgtube/sign?youTubeName=&language=&activityId=. */
+    private static String bgtubeSignUp(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        String yt = ctx.query("youTubeName");
+        if (yt == null || yt.isEmpty()) return fail("youTubeName required");
+        u.put("bgtubeYoutubeName", yt);
+        store.save();
+        return envelope("none", null);
+    }
+
+    /** POST /activity/api/v1/bgtube/video/link (LinkInfo body). */
+    private static String bgtubeVideoLink(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        JSONObject f = body(ctx);
+        if (f.optString("link").isEmpty()) return fail("link required");
+        JSONArray links = u.optJSONArray("bgtubeLinks");
+        if (links == null) links = new JSONArray();
+        links.put(f.optString("link"));
+        u.put("bgtubeLinks", links);
+        store.save();
+        return envelope("none", null);
+    }
+
+    // ---- worldCup / campaign legacy cluster (ICampaignApi; all @Deprecated,
+    //      gated off by appConfig isShowCampaign=false — inactive-campaign
+    //      shapes with real per-user numbers where they exist) ----
+
+    /** GET /activity/api/v1/activity/worldCup — List<CampaignGame>. */
+    private static String worldCupGames(Ctx ctx, StateStore store) {
+        return envelope("list", "[]");
+    }
+
+    /** GET /activity/api/v1/activity/worldCup/history — List<CampaignHistory>. */
+    private static String worldCupHistory(Ctx ctx, StateStore store) {
+        return envelope("list", "[]");
+    }
+
+    /** GET /activity/api/v1/activity/worldCup/integral — HttpResponse<Integer>. */
+    private static String worldCupIntegral(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        return envelope("num", String.valueOf(u.optInt("worldCupIntegral", 0)));
+    }
+
+    /** GET /activity/api/v1/activity/worldCup/notice — CampaignRedPoint. */
+    private static String worldCupNotice(Ctx ctx, StateStore store) {
+        JSONObject n = new JSONObject();
+        n.put("betUpdateResult", 0);
+        n.put("integralReward", 0);
+        n.put("taskFinished", 0);
+        return envelope("obj", n.toString());
+    }
+
+    /** POST /activity/api/v1/activity/worldCup — CampaignBetRequest. */
+    private static String worldCupBet(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        return fail("campaign not open");
+    }
+
+    /** GET /activity/api/v1/activity/user/integral/rank — CampaignRank. */
+    private static String worldCupMyRank(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        JSONObject r = new JSONObject();
+        r.put("headPic", u.optString("picUrl"));
+        r.put("integral", u.optInt("worldCupIntegral", 0));
+        r.put("isFirst", false);
+        r.put("nickName", u.optString("nickName"));
+        r.put("rank", 0);
+        r.put("userId", u.optLong("userId"));
+        r.put("vip", u.optInt("vip"));
+        return envelope("obj", r.toString());
+    }
+
+    /** GET /activity/api/v1/activity/integral/rank — PageData<CampaignRank>. */
+    private static String worldCupTotalRank(Ctx ctx, StateStore store) {
+        int pageNo = (int) parseLong(ctx.query("pageNo"), 1);
+        int pageSize = (int) parseLong(ctx.query("pageSize"), 20);
+        JSONObject page = emptyPageObject(pageSize > 0 ? pageSize : 20);
+        page.put("pageNo", pageNo);
+        return envelope("obj", page.toString());
+    }
+
+    /** GET /activity/api/v1/activity/user/integral/reward?type= — CampaignReward. */
+    private static String worldCupRewardList(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        JSONObject r = new JSONObject();
+        r.put("decorationList", new JSONArray());
+        r.put("goldReward", 0);
+        r.put("integralNeed", 0);
+        r.put("status", 0);
+        return envelope("obj", r.toString());
+    }
+
+    /** GET /activity/api/v1/activity/user/rank/reward — CampaignRankRewardWithTime. */
+    private static String worldCupRankReward(Ctx ctx, StateStore store) {
+        JSONObject r = new JSONObject();
+        r.put("rewardList", new JSONArray());
+        r.put("timeLeft", 0);
+        return envelope("obj", r.toString());
+    }
+
+    /** GET /activity/api/v1/activity/task — List<CampaignTask>. */
+    private static String worldCupTaskList(Ctx ctx, StateStore store) {
+        return envelope("list", "[]");
+    }
+
+    /** PUT /activity/api/v1/activity/task/reward?id= — HttpResponse<Integer>. */
+    private static String worldCupTaskReward(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        return fail("task not found");
+    }
+
+    /** PUT /activity/api/v1/activity/user/integral/reward?type=&decorationId=. */
+    private static String worldCupIntegralReward(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        return fail("reward not available");
+    }
+
+    // ---- config files (shape-true, external-content surfaces stay off) ----
+
+    /** GET /config/files/blockymods-banner — List<BannerEntity>. Empty: no
+     *  external banners/popups exist locally (appConfig keeps them gated). */
+    private static String bannerList(Ctx ctx, StateStore store) {
+        return envelope("list", "[]");
+    }
+
+    /** GET /config/files/blockymods-activity-logo — CampaignLogo. */
+    private static String campaignLogo(Ctx ctx, StateStore store) {
+        JSONObject l = new JSONObject();
+        l.put("normalLogo", "");
+        l.put("redPointLogo", "");
+        return envelope("obj", l.toString());
+    }
+
+    /** GET /config/files/campaign-precious-reward — List<Integer>. */
+    private static String campaignPreciousReward(Ctx ctx, StateStore store) {
+        return envelope("list", "[]");
+    }
+
+    /** GET /config/files/game-detail-to-editor — Map<String, List<String>>. */
+    private static String editorConfig(Ctx ctx, StateStore store) {
+        return envelope("obj", "{}");
+    }
+
+    /** GET /config/files/indiegame-moregame_introduction — List<BannerInfo>. */
+    private static String moreGameIntro(Ctx ctx, StateStore store) {
+        return envelope("list", "[]");
+    }
+
     // ------------------------------------------------- Phase 2 helpers
 
     /** PageData envelope over the catalog; wrapType selects TypePageData{pageInfo,typeId}. */
@@ -4637,6 +5213,17 @@ final class Handlers {
         page.put("totalPage", 0);
         page.put("totalSize", 0);
         return envelope("obj", page.toString());
+    }
+
+    /** Empty-but-valid PageData object (String form: emptyPage). */
+    private static JSONObject emptyPageObject(int pageSize) {
+        JSONObject page = new JSONObject();
+        page.put("data", new JSONArray());
+        page.put("pageNo", 1);
+        page.put("pageSize", pageSize);
+        page.put("totalPage", 0);
+        page.put("totalSize", 0);
+        return page;
     }
 
     private static int totalPages(int total, int size) {
