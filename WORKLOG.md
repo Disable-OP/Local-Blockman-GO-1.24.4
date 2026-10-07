@@ -2956,3 +2956,36 @@
   from sessions), (2) error-driven upgrades if a fresh CI run surfaces new
   client traffic, (3) Engine 10068 remains FORBIDDEN this phase.
 - Host rig 512/512. NO server changes. NO GameServer work.
+
+### Session 32 (Wave 17: default-route ELIMINATION — 334/334 implemented, 0 defaults)
+
+- User mandate verified standing: test-redroid is FAST-ONLY; the two most
+  recent runs (37619514335, 37621737114) went GREEN at 4.4 / 4.0 minutes.
+  Latest run's traffic re-checked (124 REQ, zero assertion snaps, zero
+  crashes); the rongToken retry line remains the known offline-shim
+  behavior (RongCloud decision, session 7) — chat flows through the local
+  msg API surfaces.
+- Wave 17: the last 38 schema-default routes upgraded to analyzed,
+  entity-true, state-backed handlers. Shapes pinned from the decompiled
+  Gson entities — NEW decompilation: classes4.dex -> jadx_out/src_classes4
+  recovered the halloween (IHalloweenApi) + videosubmit (IVideoSubmitApi)
+  modules that previous jadx runs missed entirely.
+- Implemented (Handlers.java "Wave 17" section, 38 dispatch names):
+  videostars star-code config/lookup/paging/cash-apply/exchange (real
+  StateStore.findByStarCode; codes lazily assigned BG<userId>), VIP
+  golds-denominated price table + real purchase with expiry stacking,
+  legacy email/phone password flows (RSA per Wave 11, no account
+  enumeration), halloween per-user candy ledger, bgtube sign-up + video
+  links persisting per user (sign/check 0->1), the whole @Deprecated
+  worldCup cluster as inactive-campaign shapes with honest mutation
+  failures, and the 5 external-content config files as exact shapes.
+- Bookkeeping: RoutingTable 334 routes ALL H:-backed; header reworded so
+  gen_coverage no longer parses the phantom "VERB /path" row (that was
+  the 39th "default"); gen_router_table.py HANDLERS dict synced.
+- Host rig 562/562 (+50 Wave 17 checks; was 512). COVERAGE.json: 334
+  discovered / 334 implemented / 0 default / 334 host-tested /
+  client_asserted 144. No implemented route lacks a host test.
+- Pushed a7e1725; fast-only dispatch fired as an on-device regression run.
+  Next: build-release dispatch to cut a fresh APK carrying the Wave 17 dex,
+  then the auto-chained test-redroid validates it (workflow_run trigger).
+- NO GameServer work. Engine 10068 remains forbidden this phase.
