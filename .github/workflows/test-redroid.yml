@@ -6,16 +6,16 @@ name: test-redroid
 # APK source: latest GitHub Release asset "BlockyNexus-localapi.apk".
 
 on:
+  # USER MANDATE 2026-10-07 (reinforced same day after runs 37598014388 /
+  # 37603763817 / 37607065791 / 37611564558 / 37615459162 ran 22-32 min as
+  # full-mode dispatches): "lower the test redroid time ... just make it
+  # 5 minutes only ... TIME IS PRECIOUS". CI is therefore FAST-ONLY:
+  # no mode input exists any more, every dispatch (even one that tries to
+  # pass inputs) runs the ~5-minute fast suite. The deep-drive phases
+  # remain in scripts/ui_automation_test.py (--mode full) for explicit
+  # local/manual evidence runs ONLY - re-adding a full option to CI is a
+  # deliberate diff decision, never a silent dispatch choice.
   workflow_dispatch:
-    inputs:
-      mode:
-        description: "UI automation mode (fast = ~5 min total; full = all deep-drive phases)"
-        required: false
-        default: fast
-        type: choice
-        options:
-          - fast
-          - full
   workflow_run:
     workflows: ["build-release"]
     types: [completed]
@@ -26,12 +26,10 @@ permissions:
 jobs:
   redroid-test:
     runs-on: ubuntu-24.04-arm
-    # mode-aware + user mandate 2026-10-07: the fast run must land at ~5
-    # minutes wall time (it now does: ~75s infra + ~4 min UI suite), and a
-    # hang must never hold the runner for half an hour again - the fast cap
-    # is 12 min (worst case ~2x the expected wall time). A full deep drive
-    # needs ~40+ (run 37577021081 was killed by a fixed 20-min cap mid-P).
-    timeout-minutes: ${{ github.event.inputs.mode == 'full' && 60 || 12 }}
+    # Fast-only (user mandate 2026-10-07): expected wall ~5 min
+    # (~75s infra + ~4 min UI suite); cap is 12 min so a hang can never
+    # hold the runner for half an hour again.
+    timeout-minutes: 12
     env:
       PACKAGE: com.disabngo.blockynexus
       ACTIVITY: com.disabngo.blockynexus.view.activity.start.StartActivity
@@ -97,21 +95,20 @@ jobs:
           fi
 
       - name: Run UI automation suite (register, login, navigate all tabs)
-        # FAST mode (default, user mandate 2026-10-07: "5 minutes only"):
+        # FAST mode, hard-coded (user mandate 2026-10-07: "5 minutes only"):
         # the suite itself must finish in ~4 minutes - Phase A core
         # (visitor + tabs + boot surfaces), Phase P (sign banner), Phase C
         # (fresh account via the local API), Phase D core (upgrade +
         # restart) + assertions/crash scan. The deep-drive phases (B,
-        # E-O) are opt-in via workflow_dispatch input mode=full and keep a
-        # roomy timeout (a full drive ran 12 min -> timeout kill at Phase
-        # P in run 37577021081).
-        timeout-minutes: ${{ github.event.inputs.mode == 'full' && 45 || 8 }}
+        # E-O) are NOT reachable from CI - pass --mode full by hand on a
+        # local device if deep evidence is ever needed again.
+        timeout-minutes: 8
         run: |
           python3 scripts/ui_automation_test.py \
             --serial localhost:5555 \
             --package "$PACKAGE" \
             --activity "$ACTIVITY" \
-            --mode "${{ github.event.inputs.mode || 'fast' }}"
+            --mode fast
 
       - name: Collect diagnostics
         if: always()
