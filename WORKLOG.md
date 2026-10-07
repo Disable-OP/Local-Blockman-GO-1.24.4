@@ -2708,3 +2708,30 @@
 - FULL-mode evidence run dispatched (37584366843) to validate the b2cef28
   hand-over animation mitigation + bank REQ evidence; regenerate
   COVERAGE.json only on a green FULL run. NO GameServer work.
+
+### Session 28 cont. (Wave 13 SHIPPED: payGame + premium catalog; new APK verified)
+
+- Wave 13 pushed (240cda8): PUT /shop/api/v2/pay/game/{gameId} is now
+  state-backed (H:payGame) with the FULL client contract decoded from
+  V.java/Z.java (gamedetail buy-game chain): errors 5002/5004/5006/5007/
+  5008, BuyGameResponse {userId, diamonds, gDiamonds, golds, orderId},
+  real wallet deduction, persisted root.gamePurchases.
+- GameCatalog.ensurePremium: exactly ONE premium game (5043 Mystic
+  Vault, 800 diamonds, lowest metrics, appended last) — migration runs
+  every boot. GameCatalog.drift now SKIPS it: drift derives
+  onlineNumber from the ARRAY INDEX and gave the appended game the
+  highest count (first in every online-sorted list) — caught by the
+  rig (2 fails), fixed, documented.
+- Game detail v1/v2: per-user owned view (authenticated buyer sees
+  isPay=0 on a store copy; others keep the price).
+- gen_coverage honesty fix: UI substring probes ("/shop/api",
+  "/game/api") prefix-claimed 27 shop/game routes as client_asserted;
+  prefix claims now need >=4-segment literals. 167 -> 140.
+- Host rig 450 -> 458 ALL GREEN. New APK built (run 37585985554,
+  127s) and VERIFIED on-device: fast run 37586200196 (workflow_run on
+  the release) = 0 FAIL, suite 190s, catalog/detail checks green with
+  the premium game present.
+- Fast CI baseline now THREE consecutive green runs at 5:03 / ~5:00 /
+  ~5:00 wall (37583919830 + 37586200196 + earlier). User mandate met.
+- Full-mode evidence run 37584366843 still in flight (hand-over
+  mitigation verdict pending). NO GameServer work.

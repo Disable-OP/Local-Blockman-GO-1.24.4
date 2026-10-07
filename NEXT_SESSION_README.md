@@ -1475,3 +1475,28 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   the TribeCenter.tribeRole cache staleness path (h() guard drops the
   long-press when the cached role is stale after mid-phase restarts).
 - NO GameServer work.
+
+## Session 28 cont. 2 (read first — Wave 13 payGame shipped; new APK green on-device)
+
+- The buy-game purchase chain is REAL now: PUT /shop/api/v2/pay/game/
+  {gameId} is state-backed (H:payGame) — full V.java contract (5002/
+  5004/5006/5007/5008 + BuyGameResponse). The catalog always carries
+  ONE premium game (5043 Mystic Vault, 800 diamonds, appended last,
+  lowest metrics so no sorted list displaces page-1; drift() skips it —
+  the rig caught that drift would otherwise hand it the highest
+  onlineNumber). Ownership lives in root.gamePurchases; detail v1/v2
+  serves a per-user owned view (buyer: isPay=0).
+- Host rig 458/458. New APK (build 37585985554) VERIFIED: fast run
+  37586200196 0 FAIL / suite 190s with the premium game live.
+- COVERAGE.json honesty: client_asserted 167 -> 140 (gen_coverage no
+  longer lets substring probes like "/shop/api" prefix-claim whole
+  families; >=4-segment literals only). pay/game: implemented +
+  host_tested, client=False until a UI run drives the detail-page buy.
+- NEXT: (1) read the full-run 37584366843 verdict for the G hand-over
+  mitigation (b2cef28 settle+re-find); on green regen nothing (already
+  regenerated), on FAIL decode the TribeCenter.tribeRole cache-stale
+  path; (2) a future FULL run can drive the premium detail buy via UI
+  (Phase C extension candidate — keep it OUT of fast mode); (3) the 39
+  remaining defaults stay static (no live call sites — verified this
+  session); error-driven only.
+- NO GameServer work.
