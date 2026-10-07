@@ -1183,3 +1183,85 @@ buy free game -> 5002; buy unknown -> 5002; purchase deducts the wallet
 and returns orderId; owned detail serves isPay=0; unauth detail keeps
 the price; re-buy -> 5008 without double charge).
 NO GameServer work.
+
+# Wave 14 (Session 29): the dead-surface verdicts — ActivityFragment orphaned, campaign family Deprecated, all 39 defaults classified
+
+This wave CLOSES every open decode item from Session 27 with
+code-level evidence (src_classes1-3, jadx 1.5.6). No server changes.
+
+## 1. The hall activity strip = ActivityFragment, and it is ORPHANED
+
+- The strip's only home is ActivityFragment (e/b/c/b.java, extends
+  TemplateFragment<g=ActivityViewModel, Zc>): its layout is a single
+  DataRecyclerView whose list model (e/b/c/f.java,
+  DataListModel<ActivityTaskTitle>) loads CampaignApi.getActivityTitleList
+  and renders ONE item_activity row per title
+  (ActivityItemViewModel e/b/c/c.java — the tap switch).
+- ActivityViewModel (e/b/c/g.java) — the "missing consumer" of the
+  Session-27 jadx errors — RECOVERED: it just binds the list model
+  (f) + the row layout provider (d). Nothing mysterious.
+- REACHABILITY: the fragment is started ONLY from
+  D.b(Context) (d/D.java:184, TemplateUtils.startTemplate). Every
+  actual call site binds to the OTHER overload D.b(Activity) ->
+  OverViewRankActivity: MainFragmentViewModel.onEnterRanking (its
+  `context` field is DECLARED Activity -> static overload resolution)
+  and MoreViewModel.L (explicit (Activity) cast). D.b(Context) has
+  ZERO live callers -> ActivityFragment is dead code in 1.24.4.
+  Session 27's "the strip is inflated inside a dialog/template" is now
+  resolved: the template is this orphaned fragment, and the strip can
+  never appear for ANY user.
+- Downstream chains that ride the fragment's load listener
+  (e/b/c/e.java): the week-sign auto-open (bc.a(context,
+  "weekday"/"weekend")) and the campaign sign row (content
+  "activity:sign" -> bc.c) — all unreachable through it.
+
+## 2. The campaign sign pair is UNREACHABLE without game-play (final)
+
+GET+POST /activity/api/v1/signIn (implemented + host-tested) have
+exactly two client entries:
+1. the strip row tap (bc.c) — dead (Section 1);
+2. the boot gate getActivitySignUp -> bc.a(context, z=true) — fires
+   only when the LOCAL UserGameRecordInfo DB says the user has played
+   (Wave 12) or on game return. Game-play requires the Engine
+   (GameServer) phase. VERDICT: client=False is permanent for this
+   phase; revisit only after real game-play exists.
+
+## 3. The ICampaignApi legacy family is @Deprecated IN THE CLIENT
+
+src_classes3 ICampaignApi.java marks these declarations @Deprecated at
+the Retrofit-interface level (code-level proof, stronger than "no call
+sites found"): activity/worldCup (GET+POST), worldCup/integral,
+worldCup/notice?, user/integral/rank, user/integral/reward,
+activity/integral/rank, activity/task, activity/task/reward,
+activity/user/integral/reward, activity/user/rank/reward.
+The served static defaults are schema-true; client=False is PERMANENT.
+
+## 4. The remaining defaults: strip-only or no callers
+
+- bgtube/* (5 routes + config) + halloween/* (5): their surfaces open
+  ONLY from the strip tap switch (e/b/c/c.java -> D.a(context,
+  content) / HalloweenManager.enterActivity) — the switch has no live
+  caller outside the dead strip. Same verdict family as (1).
+- config/files/{blockymods-activity-logo, campaign-precious-reward,
+  blockymods-banner, game-detail-to-editor,
+  indiegame-moregame_introduction}: wrapper methods (campaignLogo,
+  campaignPreciousReward, loadBannerUrls, loadEditorConfig,
+  moreDialogBanner) have NO callers in classes1-3. Dead.
+- shop/users/vip + shop/user/buy/vip (IVIPApi): no callers; VIPApi
+  targets a hardcoded cloudfront host that BaseUrlInterceptor still
+  redirects to 127.0.0.1:18080 — the routing is ready if a future
+  client build revives it.
+- videostars/* (5): no callers. emails/password/reset +
+  user/password: no callers (the login "forgot password" flow was
+  removed from this build). games/ugc/status: no callers.
+
+## 5. Toolchain note
+
+jadx --show-bad-code does NOT emit classes whose decompilation fully
+failed (bc.java / MainModel stays unrecoverable; only bc$a survives).
+The bc method map was reconstructed from call sites instead:
+a(context,z)=boot sign gate; a(context,type)=week-sign opener;
+c(context)=campaign sign surface; j(context)=hall activity button;
+b=activity/action fetch; i(context)=main-activity init.
+
+Host rig: unchanged (458/458). NO server changes. NO GameServer work.
