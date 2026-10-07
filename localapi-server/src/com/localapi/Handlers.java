@@ -2989,17 +2989,18 @@ final class Handlers {
 
     /** GET /user/api/v1/user/set-psd/param/check — client model HttpResponse&lt;Long&gt;.
      *  DECODE COMPLETE (classes3 GooglePlayPayService recharge onSuccess +
-     *  classes2 LoginService.paramCheck): the client gates on the response
-     *  VALUE — onSuccess(Long l) { if (l &gt; 100)
+     *  classes2 LoginService.paramCheck): the consumer gates on the VALUE —
+     *  onSuccess(Long l) { if (l &gt; 100)
      *  IntentUtils.startPasswordSettingDialog(context, false); } — so the
      *  Long is a "should prompt set-password" threshold, not a timestamp.
-     *  The client only calls it for passwordless accounts (hasPassword
-     *  gate); the local server answers 200 (prompt) for passwordless
-     *  resolved users, 0 otherwise (never prompt a secured account). */
+     *  ON-DEVICE EVIDENCE (run 37572753047): the client ALSO fires this at
+     *  BOOT (a second call site lives in classes1, undecoded), and the
+     *  interim always-&gt;prompt value coincided with a Phase A walk
+     *  disruption. Local policy: the local backend NEVER requests the
+     *  prompt — data=0 (type + threshold contract served; the value that
+     *  suppresses the dialog). */
     private static String setPsdParamCheck(Ctx ctx, StateStore store) {
-        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
-        boolean hasPw = u != null && u.optBoolean("hasPassword", false);
-        return envelope("num", hasPw ? "0" : "200");
+        return envelope("num", "0");
     }
 
     /** POST /user/api/v1/account/invalid/check — client model HttpResponse&lt;Boolean&gt;.

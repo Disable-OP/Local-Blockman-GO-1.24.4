@@ -997,8 +997,11 @@ sites and the handlers refined:
   GooglePlayPayService recharge onSuccess (classes3) for a passwordless
   account — onSuccess(Long l) { if (l > 100)
   IntentUtils.startPasswordSettingDialog(context, false); }. The Long is
-  a PROMPT THRESHOLD, not a timestamp. Local policy: 200 (prompt) for a
-  resolved user without a password, 0 for a secured account.
+  a PROMPT THRESHOLD, not a timestamp. ON-DEVICE (run 37572753047) the
+  client ALSO fires it at BOOT (a second call site lives in classes1,
+  undecoded) and the interim always->prompt value coincided with a
+  Phase A walk disruption. FINAL POLICY: data=0 always — the local
+  backend never requests the prompt.
 - POST /user/api/v1/account/invalid/check (IUserLoginApi.accountCheck ->
   the guest SetAccountViewModel, classes2 f/a/a/h): onSuccess(true) ->
   TwoTextButtonDialog "login_set_account_confirm <name>" -> accountModify

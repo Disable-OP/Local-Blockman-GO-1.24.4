@@ -2572,3 +2572,22 @@
   dl/, dexes -> apk_dex/, jadx 1.5.6 -> tools/, decompilation of
   classes1..5 running in the background for the next decodes.
 - NO GameServer work.
+### Session 26 cont. 3 (wip-46 run triaged: RSA login ACCEPTED on-device; paramCheck policy corrected)
+
+- RUN 37572753047 (wip-46, full mode, FAIL 2):
+  * HEADLINE GREEN: "O: client-UI login accepted by the server (RES
+    code=1 0->1)" — the client's OWN login screen now succeeds against
+    the local backend. The Wave 11 RSA contract is verified end-to-end
+    on-device (patched pubkey -> RSA payload -> RsaCipher decrypt ->
+    code=1).
+  * The paramCheck surface fired at BOOT (new evidence: a second call
+    site in classes1, undecoded). The wip-46 handler answered
+    currentTimeMillis (>100 -> client opens the password-set dialog) —
+    the A-phase game-detail video-list FAIL coincided with it. Policy
+    corrected: data=0 always (never prompt; documented in ENDPOINTS).
+  * N clan/overall podium-row FAIL: the documented ranking-template
+    self-close drift struck again (N-dump shows the HALL layout at the
+    find). Surface stays implemented + previously client-asserted
+    (run 37522116738). No server change.
+- Host rig 435/435 with the corrected param check. These refinements
+  ride the next build (wip-47 via dispatch).

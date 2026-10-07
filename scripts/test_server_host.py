@@ -2007,11 +2007,12 @@ def main():
         # GET /user/api/v1/user/set-psd/param/check — client model HttpResponse<Long>.
         # The old {} default crashed Gson on the Long parse; data must be a number.
         # VALUE semantics (GooglePlayPayService recharge onSuccess decode):
-        # l > 100 -> startPasswordSettingDialog; the local server prompts
-        # (200) for passwordless users, 0 for accounts that have a password.
+        # l > 100 -> startPasswordSettingDialog. The local backend NEVER
+        # requests the prompt (value 0) — a boot call site (classes1,
+        # undecoded) makes any prompt value a random UI disruptor.
         psd = call("GET", "/user/api/v1/user/set-psd/param/check?type=set")
-        check("set-psd param check returns Long", psd.get("code") == 1
-              and isinstance(psd.get("data"), (int, float)), str(psd)[:120])
+        check("set-psd param check returns Long 0 (never prompt)", psd.get("code") == 1
+              and psd.get("data") == 0, str(psd)[:120])
         # POST /user/api/v1/account/invalid/check — client model HttpResponse<Boolean>.
         # VALUE semantics (SetAccountViewModel h.java decode): true = the
         # name is FREE (confirm dialog then accountModify); false = taken
