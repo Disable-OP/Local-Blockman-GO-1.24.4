@@ -2751,3 +2751,15 @@
   reads 10/20 (decode, session 26 cont. 5). The boot re-fetch rebuilds
   the cache. Fast mode untouched.
 - Host rig re-verified 458/458 after the edit. NO GameServer work.
+
+### Session 28 cont. 4 (hall-feed hard gates validated; full run dispatched for G-ho-cache)
+
+- A-phase now hard-gates GET /game/api/v1/game/revision/list/more AND
+  GET /game/api/v1/game/revision/list/recommend per route (the client
+  fires both on EVERY fresh-data boot; the old gate only required
+  "some" game/shop traffic). client_asserted 140 -> 142 (honest).
+- VALIDATED on-device: run 37587512455 (fast, NEW APK) = SUCCESS, both
+  gates [ok], 0 FAIL, suite 192s — 4th consecutive ~5:00 fast run.
+- Full-mode run dispatched to validate the G hand-over cache-refresh
+  (G-ho-cache relaunch). Verdict lands in the next session log.
+- NO GameServer work.
