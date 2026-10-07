@@ -3070,3 +3070,33 @@
   (4.2 min earlier on wip-52; mandate intact). Deep run #3 dispatched on
   cc0dee6 to (a) validate the grounding fix end-to-end, (b) capture the
   shop-mode type-radio evidence for recommend/users + users/{userId}/suit.
+
+### Session 33 FINAL (Wave 18 fully validated — 6 deep runs, all gates green)
+
+- Deep run #4 (37649784800): the 18c recommend gate PASSED on its first
+  on-device validation, but exposed a rotation race in the PRE-EXISTING
+  game-detail video-list check (the end-of-drive `added` diff lost the
+  16:12 video-screen routes to main-buffer rotation by 16:20). Wave 18d
+  fixed it: the gate now reads vlist_seen, captured live in the video
+  section (942959d).
+- Deep run #5 (37654738617): ALL FOUR Wave 18 gates green (tag/list,
+  recommend feed, video-list live capture, using list). One pre-existing
+  flake surfaced: the Phase N rb_area_tab fallback tap was a silent
+  no-op once in 5 runs (4/5 historical passes). Wave 18d fix: retry the
+  fallback tab tap once with a FRESH find + 12s wait (b622dba).
+- Deep run #6 (37658494566, b622dba): ZERO FAILs, UI AUTOMATION: PASS —
+  every gate green: video tag-filter, creator-outfit recommend,
+  game-detail video list, other-user using, N active/overall (0->1 both
+  areas). The complete Wave 18 stack is on-device validated.
+- client_asserted: 144 -> 146 (tag/list + recommend/users/{userId}/
+  type/{typeId}; both verdict-backed). COVERAGE: 334/334/0-defaults/334
+  host-tested / 564 rig checks.
+- Commits this session: 0f75824 (Wave 18a/b), 628a972 + cc0dee6 (drive
+  fixes), d1a7b04 (worklog), 99ec1d3 (18c), 6ef0d7d (docs), 942959d +
+  b622dba (18d fixes). Main got 18c5199 (fast-only sync + deep workflow
+  registration — the mandate is complete on BOTH branches).
+- Releases: wip-51 (session 32), wip-52 (Wave 18 dex, fast-validated
+  4.2 min).
+- NO GameServer work. Engine 10068 untouched. The 5-minute Redroid
+  mandate held all session (fast runs 4.0-4.4 min; deep runs are
+  manual-only and ran while other work continued).
