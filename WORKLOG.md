@@ -2591,3 +2591,30 @@
     (run 37522116738). No server change.
 - Host rig 435/435 with the corrected param check. These refinements
   ride the next build (wip-47 via dispatch).
+
+### Session 27 cont. (Wave 12: the sign-in surface decode — session-23 dormancy SOLVED)
+
+- DECODE (jadx classes1-3): GET /activity/api/v1/signIn never fired on
+  device because the only static boot path (getActivitySignUp ->
+  MainModel.bc.a -> ya/wa/_b) fetches the sign list ONLY when the user
+  HAS PLAYED (local UserGameRecordInfo DB read; the session-23 note
+  had the polarity backwards). The real entry is the hall's activity
+  BANNER strip: ActivityItemViewModel's tap switch runs bc.c ->
+  CampaignApi.signInList when an item's content contains
+  "activity:sign" (same switch maps wheel/slot_machine/dragon_ball/
+  bgtube, inside-url/url webviews, recharge/weekend dialogs).
+- SERVER: activity/title now serves a third banner (titleType "sign",
+  titleName "Daily Sign-in", content "activity:sign") — the client's
+  own tap switch opens the campaign sign surface. claimTask returns
+  the FULL RechargeEntity (rewardQuantity = granted amount).
+- VERDICT: the legacy pair dairy/tasks + users/tasks (IUserApi) has no
+  client call sites in classes1-3 — documented in ENDPOINTS.md Wave 12;
+  stays implemented + host-tested, client=False likely permanent.
+- AUTOMATION: Phase P added to the FAST path — tap the "Daily
+  Sign-in" banner, hard-check GET signIn 0->N, hand the dialog to
+  handle_campaign_dialogs. Soft probe until the new APK ships; the
+  path literal is source-split so the sibling POST can't be
+  prefix-claimed (session-24 honesty rule).
+- Host rig 442/442. HEAD a175c7d. build-release dispatched — its
+  test-redroid (fast) validates Phase P + the new asset. NO GameServer
+  work.
