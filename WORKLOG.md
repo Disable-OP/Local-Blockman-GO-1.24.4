@@ -2847,3 +2847,40 @@
   verb). client_asserted = 139 honest (from the 142/150 bookkeeping),
   + GET /video/api/v1/app/video/more/list as the first new claim.
 - Host rig 458/458. NO server changes. NO GameServer work.
+
+### Session 30 cont. (Wave 15b: on-device verdicts, run 37598014388 FAIL -> fixed)
+
+- The first full validation run FAILED on exactly ONE gate: the video
+  template fires NO LocalAPI route on open (the more/list load chain is
+  interaction-driven). Gate downgraded to a discovery probe with a node
+  dump; the route is client=False until its trigger is mapped.
+- Promoted on observed evidence: party-hall open (GET /game/api/v2/party/
+  auth + GET /game/api/v1/games/all/open/party) and the store dress-mode
+  load chain via the suit radio (using / check-resource / expire /
+  type/{typeId} — expire + type are new claims). Wardrobe suit list gate
+  added (hall rbSuit chip). Friend family probes made deliberate
+  (trailing-slash variables + follow-GET hard gate).
+- gen_coverage hardened: prefix claims require trailing-/ family probes
+  with the >=4-segment depth guard; complete path literals can never
+  claim longer siblings; fcall URLs stay verb-aware. Honest
+  client_asserted = 144.
+- Mail read-marking gate silently skipped this run (no Welcome row) —
+  an else-print was added for visibility; the claim stays (previous-run
+  evidence).
+- Committed 591e8c5, pushed; full-mode validation re-dispatched.
+- Host rig 458/458. NO server changes. NO GameServer work.
+
+### Session 30 cont. 2 (Wave 15c: hall-suit gate verdict, run 37603763817)
+
+- Second full run: ALL Wave-15 gates green EXCEPT the wardrobe-suit
+  gate — the hall rbSuit chip is a LOCAL manager-cache filter; no
+  /decoration/.../users/{userId}/suit GET fires from the hall. Gate
+  removed with a documented verdict (route stays client=False until a
+  real t.b caller surface is driven; the store suit radio fires the
+  /shop/ suit route instead).
+- Everything else validated on-device: party auth + open-list, the
+  four-route dress-mode chain (using/check-resource/expire/type),
+  friend family follow gate, mail (row guard), engine PUT, store
+  recommend + suit page, Phase C worn-list fcall.
+- honest client_asserted = 144; host rig 458/458.
+- NO server changes. NO GameServer work.

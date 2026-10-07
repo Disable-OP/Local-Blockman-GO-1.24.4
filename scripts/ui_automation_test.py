@@ -1293,13 +1293,12 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
     flog = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
     check("A: friend list family served (GET /friend/api/v1/friends/follow)",
           re.search(r"GET /friend/api/v1/friends/follow", flog) is not None)
-    # Wave 15b — the hall dressing suit chip (navigate_all_tabs rbSuit tap)
-    # fires getDressSuitList (decorate.web.t.b = GET
-    # /decoration/api/v1/new/decorations/users/{userId}/suit) every run.
-    check("A: wardrobe suit list served (GET /decoration/api/v1/new/"
-          "decorations/users/{userId}/suit)",
-          re.search(r"GET /decoration/api/v1/new/decorations/"
-                    r"users/\d+/suit", flog) is not None)
+    # Wave 15c verdict (run 37603763817): the hall rbSuit chip is a LOCAL
+    # filter — the manager cache serves it and NO
+    # /decoration/api/v1/new/decorations/users/{userId}/suit GET fires
+    # from the hall. The route is client=False until a surface that
+    # really calls t.b/getDressSuitList is driven (the STORE suit radio
+    # fires the /shop/ suit route instead). No gate here on purpose.
     # Evidence-backed surface assertions (run 37492582973's deep-drive
     # delta proved both fetches fire during THIS walk):
     # - the game detail's video section fetches GET /video/api/v1/app/

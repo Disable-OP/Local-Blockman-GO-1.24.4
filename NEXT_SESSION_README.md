@@ -1584,3 +1584,18 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 - Known flake risk in the new gates: the mail-row engine/mail checks
   are guarded by their tap successes; if the Welcome row is absent the
   checks skip (non-fatal).
+
+## Session 30 delta 2 (Wave 15b/15c — read after WORKLOG)
+
+- Full-run verdicts: party hall (auth + open-list) and the store
+  dress-mode chain (using/check-resource/expire/type/{typeId}) are
+  HARD gates, validated on-device. Video template fires NO route on
+  open (probe only). Hall rbSuit = local filter (no network).
+- gen_coverage: trailing-/ family probes + >=4-segment depth guard +
+  verb-aware fcalls. Honest client_asserted = 144.
+- REMAINING VALIDATION: re-dispatch full mode after 15c's gate
+  removal (the suite should now be fully green); then the fast-mode
+  budget stays 4:02 (all new work is deep-only).
+- Next candidates: drive the tag-filter dialog on the video screen
+  (getVideoTagList trigger), map the recommend/users/{userId}/type
+  decoration-recommend trigger, keep promoting discovery probes.
