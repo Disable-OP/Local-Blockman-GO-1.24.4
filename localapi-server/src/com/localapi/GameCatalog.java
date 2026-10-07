@@ -38,12 +38,121 @@ final class GameCatalog {
         if (!root.has("chatRooms")) root.put("chatRooms", new JSONObject());
         if (!root.has("nextPropId")) root.put("nextPropId", 70001);
         if (!root.has("nextRoomId")) root.put("nextRoomId", 90001);
+        if (!root.has("gamePurchases")) root.put("gamePurchases", new JSONArray());
+        if (ensurePremium(root)) dirty = true;
         if (dirty) {
             L.i("catalog generated: " + root.optJSONArray("games").length()
                     + " games, " + root.optJSONArray("categories").length()
                     + " categories, " + root.optJSONArray("citizens").length() + " citizens");
             store.save();
         }
+    }
+
+    /**
+     * Migration + fresh-boot guarantee: the catalog always carries ONE
+     * premium (paid) game so the client's buy-game surface
+     * (GameDetailModel -> PUT /shop/api/v2/pay/game/{gameId}) has a real
+     * target. Appended LAST with deliberately low online/praise/complex
+     * metrics so it never displaces page-1 entries of any sorted list —
+     * the hall drives and host tests keep their stable first games.
+     * Runs on every boot; returns true when it appended the game
+     * (migration for stores that predate the premium catalog), no-ops
+     * once the premium game exists.
+     */
+    private static boolean ensurePremium(JSONObject root) {
+        JSONArray gs = root.optJSONArray("games");
+        if (gs == null) return false;
+        for (int i = 0; i < gs.length(); i++) {
+            JSONObject g = gs.optJSONObject(i);
+            if (g != null && g.optInt("isPay") == 1) return false; // already present
+        }
+        long now = System.currentTimeMillis();
+        JSONObject g = new JSONObject();
+        g.put("gameId", "5043");
+        g.put("gameTitle", "Mystic Vault");
+        g.put("gameName", "Mystic Vault");
+        g.put("gameCoverPic", "");
+        g.put("bannerPic", new JSONArray());
+        g.put("gameBannerVideoInfos", new JSONArray());
+        g.put("gameDetail", "A premium locally hosted experience. "
+                + "Unlock it once with diamonds — everything runs on your own server.");
+        JSONArray types = new JSONArray();
+        types.put("Mini Games");
+        g.put("gameTypes", types);
+        g.put("appreciate", false);
+        g.put("gameMode", 1);
+        g.put("visitorEnter", 0);
+        g.put("version", 1);
+        g.put("isRankOnline", 1);
+        g.put("isShopOnline", 0);
+        g.put("isOpenParty", 0);
+        g.put("isPay", 1);
+        // GamePayInfo (client Game entity, src_classes3 greendao Game.java):
+        // qty = price, currency 1 = diamonds / 2 = golds. 800 diamonds —
+        // affordable out of the box, real deduction on purchase.
+        JSONObject pay = new JSONObject();
+        pay.put("qty", 800);
+        pay.put("currency", 1);
+        pay.put("orderType", 0);
+        pay.put("productId", "premium_game_5043");
+        pay.put("desc", "Unlock Mystic Vault");
+        g.put("gamePayInfo", pay);
+        g.put("turntableStatus", 0);
+        g.put("turntableRemainCount", 0);
+        g.put("isNewEngine", 1);
+        g.put("isUgcGame", 0);
+        g.put("gameUgcType", "");
+        g.put("currentPage", 0);
+        g.put("currentSize", 0);
+        g.put("resVersion", 1);
+        g.put("pageType", 0);
+        g.put("typeId", 106);
+        g.put("createTime", now);
+        // lowest metrics of the whole catalog -> sorts LAST everywhere
+        g.put("complexNum", 1);
+        g.put("praiseNumber", 1);
+        g.put("onlineNumber", 1);
+        g.put("index", 9999);
+        JSONObject latest = new JSONObject();
+        latest.put("cresVersion", 1);
+        latest.put("dresVersion", 1);
+        latest.put("gresVersion", 1);
+        g.put("latestResVersions", latest);
+        gs.put(g);
+        L.i("catalog: premium game 5043 (Mystic Vault) added");
+        return true;
+    }
+
+    // ---------------------------------------------------------- ownership
+
+    /** True when userId owns gameId (root.gamePurchases, persisted). */
+    static synchronized boolean isOwned(StateStore store, long userId, String gameId) {
+        JSONArray ps = store.root().optJSONArray("gamePurchases");
+        if (ps == null) return false;
+        for (int i = 0; i < ps.length(); i++) {
+            JSONObject p = ps.optJSONObject(i);
+            if (p != null && p.optLong("userId") == userId
+                    && gameId.equals(p.optString("gameId"))) return true;
+        }
+        return false;
+    }
+
+    /** Append a purchase record (caller persists). */
+    static synchronized void recordPurchase(StateStore store, long userId, String gameId,
+                                            long price, int currency, String orderId) {
+        JSONArray ps = store.root().optJSONArray("gamePurchases");
+        if (ps == null) {
+            ps = new JSONArray();
+            store.root().put("gamePurchases", ps);
+        }
+        JSONObject p = new JSONObject();
+        p.put("userId", userId);
+        p.put("gameId", gameId);
+        p.put("price", price);
+        p.put("currency", currency);
+        p.put("orderId", orderId);
+        p.put("ts", System.currentTimeMillis());
+        ps.put(p);
     }
 
     // ----------------------------------------------------------- generation
@@ -397,6 +506,12 @@ final class GameCatalog {
         boolean changed = false;
         for (int i = 0; i < gs.length(); i++) {
             JSONObject g = gs.getJSONObject(i);
+            // the premium game keeps its deliberately-low metrics: drift
+            // derives counts from the ARRAY INDEX, and the appended-last
+            // premium entry would otherwise get the highest online count
+            // of the catalog (first in every online-sorted list — the
+            // exact displacement ensurePremium exists to prevent).
+            if (g.optInt("isPay") == 1) continue;
             int base = 30 + (i * 53) % 2400;
             int wobble = (int) ((boot * (7 + i)) % 220);
             int next = base + wobble;

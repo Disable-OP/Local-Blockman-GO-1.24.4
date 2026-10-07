@@ -334,7 +334,7 @@ public final class RoutingTable {
         "PUT /game/api/v1/game/{gameId}/turntable|H:turntableDraw",
         "PUT /game/api/v1/games/{gameId}/appreciation|H:appreciation",
         "PUT /shop/api/v1/shop/decorations/buy/{decorationId}|H:dressBuyOne",
-        "PUT /shop/api/v2/pay/game/{gameId}|obj",
+        "PUT /shop/api/v2/pay/game/{gameId}|H:payGame",
         "PUT /user/api/v1/clan/decoration/advertising/{userId}|H:dressAdsReward",
         "PUT /user/api/v1/users/tasks/{type}|H:claimTask",
         "PUT /user/api/v1/users/{userId}/daily/tasks/ads|H:getAdsReward",

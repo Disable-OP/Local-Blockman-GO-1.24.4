@@ -366,6 +366,64 @@ def main():
         pbuyn = call("PUT", "/shop/api/v3/shop/game/props/new?gameId=%s&propsId=999999" % gid,
                      None, headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
         check("buy unknown prop rejected", pbuyn.get("code") == 0, str(pbuyn)[:80])
+
+        print("== Phase 2: premium game purchase (payGame) ==")
+        # The catalog always carries ONE premium game (server-owned fixture
+        # id 5043, appended with lowest metrics so it never displaces
+        # page-1 of any sorted list). Contract decoded from the client's
+        # V.java onError switch (gamedetail buy-game subscriber).
+        PREMIUM = "5043"
+        pd = call("GET", "/game/api/v2/games/%s?appVersion=4003" % PREMIUM,
+                  headers={"language": "en", "engineVersion": "1"})
+        pdj = pd.get("data", {})
+        check("premium detail isPay=1 + gamePayInfo", pd.get("code") == 1
+              and pdj.get("isPay") == 1 and isinstance(pdj.get("gamePayInfo"), dict)
+              and pdj["gamePayInfo"].get("qty", 0) > 0
+              and pdj["gamePayInfo"].get("currency") in (1, 2), str(pd)[:150])
+        ppay = pdj.get("gamePayInfo", {})
+        pprice = ppay.get("qty", 0)
+        pkind = "golds" if ppay.get("currency") == 2 else "diamonds"
+        wp3 = call("POST", "/user/api/v1/login", {"uid": "qa_user1", "password": "pw1", "imei": "dev1"})
+        tok1 = wp3.get("data", {}).get("accessToken", tok1)
+        pre_prem = wp3.get("data", {})
+        pbuy_noauth = call("PUT", "/shop/api/v2/pay/game/%s" % PREMIUM, None,
+                           headers={"language": "en"})
+        check("premium buy unauthenticated -> code 7", pbuy_noauth.get("code") == 7,
+              str(pbuy_noauth)[:100])
+        pbuy_free = call("PUT", "/shop/api/v2/pay/game/%s" % gid, None,
+                         headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        check("buy free game -> 5002 invalid good id", pbuy_free.get("code") == 5002,
+              str(pbuy_free)[:100])
+        pbuy_unk = call("PUT", "/shop/api/v2/pay/game/99999999", None,
+                        headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        check("buy unknown game -> 5002 invalid good id", pbuy_unk.get("code") == 5002,
+              str(pbuy_unk)[:100])
+        pbuy1 = call("PUT", "/shop/api/v2/pay/game/%s" % PREMIUM, None,
+                     headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        wpost = call("POST", "/user/api/v1/login", {"uid": "qa_user1", "password": "pw1", "imei": "dev1"})
+        post_prem = wpost.get("data", {})
+        check("premium buy deducts wallet + orderId", pbuy1.get("code") == 1
+              and isinstance(pbuy1.get("data", {}).get("orderId"), str)
+              and post_prem.get(pkind, 0) == pre_prem.get(pkind, 0) - pprice
+              and pbuy1["data"].get("userId") == uid1,
+              "%s | %s %s -> %s" % (str(pbuy1)[:120], pkind,
+                                    pre_prem.get(pkind), post_prem.get(pkind)))
+        pd2 = call("GET", "/game/api/v2/games/%s?appVersion=4003" % PREMIUM,
+                   headers={"language": "en", "engineVersion": "1",
+                            "Access-Token": tok1, "userId": str(uid1)})
+        check("owned premium detail serves isPay=0", pd2.get("code") == 1
+              and pd2.get("data", {}).get("isPay") == 0, str(pd2)[:120])
+        pd2b = call("GET", "/game/api/v2/games/%s?appVersion=4003" % PREMIUM,
+                    headers={"language": "en", "engineVersion": "1"})
+        check("unauth detail still shows price (other users)", pd2b.get("code") == 1
+              and pd2b.get("data", {}).get("isPay") == 1, str(pd2b)[:120])
+        pbuy2 = call("PUT", "/shop/api/v2/pay/game/%s" % PREMIUM, None,
+                     headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        wpost2 = call("POST", "/user/api/v1/login", {"uid": "qa_user1", "password": "pw1", "imei": "dev1"})
+        check("re-buy premium -> 5008 already owned (no double charge)",
+              pbuy2.get("code") == 5008
+              and wpost2.get("data", {}).get(pkind, 0) == post_prem.get(pkind, 0),
+              "%s | %s" % (str(pbuy2)[:80], str(wpost2.get("data", {}).get(pkind))))
         ann = call("GET", "/game/api/v1/games/announcement/info", headers={"language": "en"})
         stop = call("GET", "/game/api/v1/games/stop/announcement/info", headers={"language": "en"})
         check("announcements hidden", ann.get("data", {}).get("isShow") is False

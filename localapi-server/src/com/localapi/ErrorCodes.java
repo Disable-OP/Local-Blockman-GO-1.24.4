@@ -85,6 +85,20 @@ final class ErrorCodes {
     /** 2008 "You need to play the game to like" — NOT emitted yet (see PATCH_PLAN Phase 7d). */
     static final int GAME_NOT_PLAYED = 2008;
 
+    // ---- game purchase (gamedetail V.java onError switch, decoded from
+    // src_classes3/com/sandboxol/gamedetail/c/a/a/V.java — the
+    // PUT /shop/api/v2/pay/game/{gameId} subscriber) ----
+    /** good_invalid_good_id — OneButtonDialog "invalid good id". */
+    static final int GAME_GOOD_INVALID = 5002;
+    /** good_is_sell_out — OneButtonDialog "sold out". */
+    static final int GAME_GOOD_SOLD_OUT = 5004;
+    /** good_diamonds_not_enough — TwoButtonDialog + recharge shortcut. */
+    static final int GAME_DIAMONDS_NOT_ENOUGH = 5006;
+    /** gold_not_enough — toast "Coin not enough" (same numeric space as tribe). */
+    static final int GAME_GOLDS_NOT_ENOUGH = 5007;
+    /** good_have_clothes — "already owned" (owned games cannot be re-bought). */
+    static final int GAME_GOOD_OWNED = 5008;
+
     // ---- scrap (ScrapOnError) ----
     /** base_err_user_without_scrap — "You do not have the fragment". */
     static final int SCRAP_USER_WITHOUT_SCRAP = 10104;

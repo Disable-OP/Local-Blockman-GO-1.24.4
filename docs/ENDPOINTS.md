@@ -1124,3 +1124,62 @@ SERVER CHANGES:
 
 Host rig: 441 -> 442 (title list == [sign, weekday, weekend] + the
 banner content contract). NO GameServer work.
+
+# Wave 13 (Session 28): the buy-game purchase chain is REAL (payGame + premium catalog)
+
+CLIENT DECODE (src_classes3):
+- IGameDetailsApi.bugGame: PUT /shop/api/v2/pay/game/{gameId}
+  (header language + the global Access-Token/userId interceptors; no body).
+- Caller: GameDetailModel (c/a/a/Z.java) — the game-detail buy button.
+  Client gate BEFORE the call (Z.a): game.gamePayInfo.currency == 2 OR
+  gamePayInfo.qty <= AccountCenter.diamonds; otherwise a PayGdiamondDialog
+  offers recharge — so the local flow completes without hitting the gate
+  only when the wallet covers the price (seeded wallets do).
+- Success (V.onSuccess): BuyGameResponse {userId, diamonds, gDiamonds,
+  golds, orderId} feeds AccountCenter balances; local Game.isPay -> 0;
+  toast good_buy_success.
+- Errors (V.onError switch): 5002 good_invalid_good_id (OneButtonDialog),
+  5004 good_is_sell_out, 5006 good_diamonds_not_enough (TwoButtonDialog
+  with a recharge shortcut), 5007 gold_not_enough (toast), 5008
+  good_have_clothes (already owned). 5003/5005/default -> generic toast.
+
+SERVER CHANGES:
+- RoutingTable: PUT /shop/api/v2/pay/game/{gameId} default ->
+  H:payGame (state-backed).
+- Handlers.payGame implements the FULL contract above: requireUser
+  (code 7 unauthenticated), catalog lookup (5002 unknown OR isPay!=1),
+  ownership check via root.gamePurchases (5008 re-buy), optional stock
+  field (5004), balance check against gamePayInfo qty/currency
+  (5006 diamonds / 5007 golds), real wallet deduction (store.award),
+  persisted purchase record {userId, gameId, price, currency, orderId,
+  ts}, response body = BuyGameResponse shape with a fresh orderId.
+- GameCatalog.ensurePremium (migration, runs every boot): the catalog
+  ALWAYS carries exactly ONE premium game — id 5043 "Mystic Vault",
+  isPay=1, gamePayInfo {qty 800, currency 1 (diamonds), orderType 0,
+  productId premium_game_5043}, visitorEnter=0, Mini Games category.
+  Appended LAST with deliberately LOWEST online/praise/complex metrics
+  so it never displaces page-1 of any sorted list (the hall drives and
+  host tests keep their stable first games). GameCatalog.drift now
+  SKIPS the premium entry (drift derives onlineNumber from the array
+  index; without the skip the appended game got the catalog's highest
+  count — caught by the rig, 2 failures on the first run).
+- Game detail (v1 + v2) serves a PER-USER owned view: an authenticated
+  buyer gets isPay=0 (copy, store untouched); other users keep seeing
+  the price. The client also caches isPay=0 locally after V.onSuccess.
+- ErrorCodes: GAME_GOOD_INVALID 5002, GAME_GOOD_SOLD_OUT 5004,
+  GAME_DIAMONDS_NOT_ENOUGH 5006, GAME_GOLDS_NOT_ENOUGH 5007,
+  GAME_GOOD_OWNED 5008 (game-domain aliases over the shared numeric
+  space — TribeOnError and the buy-game switch reuse 5006/5007).
+
+COVERAGE HONESTY FIX (gen_coverage.py): the substring probes in the UI
+suite ("/shop/api", "/game/api" used in traffic filters) were extracted
+as concrete literals and prefix-claimed EVERY shop/game route as
+client_asserted (27 inflated claims). Prefix matches now require a
+>= 4-segment literal. client_asserted 167 -> 140 (pay/game is
+implemented + host-tested, client=False until a UI/REQ run drives it).
+
+Host rig: 450 -> 458 (premium detail shape; unauthenticated buy -> 7;
+buy free game -> 5002; buy unknown -> 5002; purchase deducts the wallet
+and returns orderId; owned detail serves isPay=0; unauth detail keeps
+the price; re-buy -> 5008 without double charge).
+NO GameServer work.

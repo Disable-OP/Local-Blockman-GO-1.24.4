@@ -75,6 +75,7 @@ final class Handlers {
         if ("getGameMyRank".equals(name)) return getGameMyRank(ctx, store);
         if ("getGameDetailShop".equals(name)) return getGameDetailShop(ctx, store);
         if ("buyGameProp".equals(name)) return buyGameProp(ctx, store);
+        if ("payGame".equals(name)) return payGame(ctx, store);
         if ("shareRewardList".equals(name)) return shareRewardList();
         if ("getGameUpdateContent".equals(name)) return envelope("obj", "{\"content\":\"\",\"count\":0}");
         if ("getGameUpdateContentList".equals(name)) return envelope("obj", "{}");
@@ -671,21 +672,34 @@ final class Handlers {
         return envelope("list", list.toString());
     }
 
-    /** GET /game/api/v1/games/{gameId} — v1 detail. */
-    private static String miniGameDetail(Ctx ctx, StateStore store) {
-        return gameDetailJson(store, pathTail(store, ctx));
-    }
-
-    /** GET /game/api/v2/games/{gameId} — v2 detail. */
+    /** GET /game/api/v1/games/{gameId} (v1) and /game/api/v2/games/{gameId} (v2) — detail. */
     private static String gameDetail(Ctx ctx, StateStore store) {
-        return gameDetailJson(store, pathTail(store, ctx));
+        return gameDetailUserView(ctx, store, pathTail(store, ctx));
     }
 
-    private static String gameDetailJson(StateStore store, String gameId) {
+    private static String miniGameDetail(Ctx ctx, StateStore store) {
+        return gameDetailUserView(ctx, store, pathTail(store, ctx));
+    }
+
+    /**
+     * Per-user detail view: a premium game the requesting user already
+     * bought is served with isPay=0 (the client's Game entity carries
+     * its own local cache after V.onSuccess, but a fresh login/reinstall
+     * must also see "owned" — otherwise the detail page would offer to
+     * sell an already-owned game again).
+     */
+    private static String gameDetailUserView(Ctx ctx, StateStore store, String gameId) {
         JSONObject g = GameCatalog.byId(store, gameId);
         if (g == null) {
             // GameOnError 2002 base_game_detail_appreciation_game_not_exist
             return failCode(ErrorCodes.GAME_NOT_EXIST, "game not found");
+        }
+        JSONObject u = requireUser(ctx, store);
+        if (u != null && g.optInt("isPay") == 1
+                && GameCatalog.isOwned(store, u.optLong("userId"), gameId)) {
+            JSONObject copy = new JSONObject(g.toString());
+            copy.put("isPay", 0);
+            return envelope("obj", copy.toString());
         }
         return envelope("obj", g.toString());
     }
@@ -1295,6 +1309,72 @@ final class Handlers {
         L.i("buyGameProp: userId=" + u.optLong("userId") + " game=" + gameId
                 + " prop=" + propsId + " -" + price + " " + kind);
         return envelope("none", null);
+    }
+
+    /**
+     * PUT /shop/api/v2/pay/game/{gameId} — buy a PAID game (client
+     * GameDetailModel.b -> IGameDetailsApi.bugGame). Contract decoded from
+     * the 1.24.4 client:
+     * - request: PUT /shop/api/v2/pay/game/{gameId}, header language
+     *   (+ the global Access-Token/userId interceptors); no body.
+     * - success (code 1) body: BuyGameResponse {userId, diamonds,
+     *   gDiamonds, golds, orderId} — V.onSuccess feeds the balances into
+     *   AccountCenter, sets the local Game isPay=0 and toasts buy-success.
+     * - error codes (V.onError switch): 5002 invalid good id, 5004 sold
+     *   out, 5006 diamonds not enough (client offers the recharge page),
+     *   5007 golds not enough, 5008 already owned.
+     * Price/currency come from the catalog entry's gamePayInfo
+     * (qty = price, currency 1 = diamonds / 2 = golds) — the same fields
+     * the client's buy gate reads (Z.a).
+     */
+    private static String payGame(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) {
+            return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        }
+        String gameId = pathTail(store, ctx);
+        if (gameId == null || gameId.isEmpty()) {
+            return failCode(ErrorCodes.GAME_GOOD_INVALID, "invalid good id");
+        }
+        JSONObject g = GameCatalog.byId(store, gameId);
+        if (g == null || g.optInt("isPay") != 1) {
+            return failCode(ErrorCodes.GAME_GOOD_INVALID, "invalid good id");
+        }
+        JSONObject pay = g.optJSONObject("gamePayInfo");
+        if (pay == null) {
+            return failCode(ErrorCodes.GAME_GOOD_INVALID, "invalid good id");
+        }
+        if (GameCatalog.isOwned(store, u.optLong("userId"), gameId)) {
+            return failCode(ErrorCodes.GAME_GOOD_OWNED, "already owned");
+        }
+        if (pay.has("stock") && pay.optInt("stock") <= 0) {
+            return failCode(ErrorCodes.GAME_GOOD_SOLD_OUT, "sold out");
+        }
+        int currency = pay.optInt("currency", 1);
+        long price = pay.optLong("qty", 0);
+        String kind = (currency == 2) ? "golds" : "diamonds";
+        if (u.optLong(kind) < price) {
+            return failCode(currency == 2
+                            ? ErrorCodes.GAME_GOLDS_NOT_ENOUGH
+                            : ErrorCodes.GAME_DIAMONDS_NOT_ENOUGH,
+                    currency == 2 ? "golds not enough" : "diamonds not enough");
+        }
+        store.award(u, kind, -price);
+        String orderId = "ORD" + System.currentTimeMillis()
+                + String.format(java.util.Locale.US, "%05d",
+                        (int) (u.optLong("userId") % 100000));
+        GameCatalog.recordPurchase(store, u.optLong("userId"), gameId,
+                price, currency, orderId);
+        store.save();
+        L.i("payGame: userId=" + u.optLong("userId") + " game=" + gameId
+                + " -" + price + " " + kind + " order=" + orderId);
+        JSONObject out = new JSONObject();
+        out.put("userId", u.optLong("userId"));
+        out.put("diamonds", u.optLong("diamonds"));
+        out.put("gDiamonds", u.optLong("gDiamonds"));
+        out.put("golds", u.optLong("golds"));
+        out.put("orderId", orderId);
+        return envelope("obj", out.toString());
     }
 
     /**

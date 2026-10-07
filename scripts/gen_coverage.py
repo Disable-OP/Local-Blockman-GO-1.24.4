@@ -58,8 +58,17 @@ def main():
     for r in routes:
         tested = any(hp == r["path"] or r["path"].startswith(hp.rstrip("*"))
                      for hp in host_paths)
-        client_seen = any(up == r["path"] or r["path"].startswith(up.rstrip("*"))
-                          for up in ui_paths)
+        # Honesty (session-28): a UI literal only claims a LONGER route via
+        # prefix when it is itself a concrete multi-segment path. Substring
+        # probes like "/shop/api" or "/game/api" (used in `in`-filters over
+        # captured traffic) used to claim EVERY shop/game route as
+        # client_asserted. Equality always counts; prefix needs >= 4
+        # segments ("/config/files/x" qualifies, "/shop/api" does not).
+        client_seen = any(
+            up == r["path"]
+            or (r["path"].startswith(up.rstrip("*"))
+                and len(up.rstrip("*").split("/")) >= 4)
+            for up in ui_paths)
         status = "implemented" if r["implemented"] else "default"
         report.append({
             "verb": r["verb"],
