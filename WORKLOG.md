@@ -2649,3 +2649,27 @@
   numeric form adopted (run 37580012443 validates it).
 - CI state: fast runs 6:32 / 6:45 / 7:10 / 7:54 all PASS (35:00
   baseline). Host rig 450/450. Latest head 5bbe4bc. NO GameServer work.
+### Session 26 cont. 5 (hand-over ROOT CAUSE candidate + mitigation; full run verdicts)
+
+- RUN 37578905160 (wip-47, full, mode-aware caps — the fix worked, the
+  drive completed): 92 endpoints, ONE FAIL — the G hand-over again. The
+  retry evidence: attempt 1 = taps landed, PUT 1->1 (no PUT); attempt 2 =
+  'Hand over Chief' not on the sheet. Phase O client-UI login ACCEPTED
+  (RES code=1) — the RSA contract re-validated. Phase P probe non-fatal
+  (0 banner rows, APK predates the Wave-12 strip).
+- HAND-OVER DECODE COMPLETE (classes2 tribehas/J.java + classes3
+  TribeApi.setIdentity): the long-press guard h() silently drops unless
+  the CACHED TribeCenter.tribeRole is 10/20 (after mid-phase restarts
+  this cache can be stale — attempt-2's missing sheet), and setIdentity
+  has NO further guard. The surviving explanation for attempt 1 (taps
+  landed, zero traffic, no error): the sheet item and the confirm
+  btnSure are ANIMATED dialogs — a coordinate tap during the entrance
+  animation misses the hitbox and DISMISSES the dialog silently. 5/6
+  recent runs passed = classic race.
+- MITIGATION SHIPPED: settle 1.2s + re-find before BOTH critical taps
+  (sheet item, btnSure) inside ho_attempt. Next full run validates.
+- FAST caps were killing full drives (run 37577021081 died mid-Phase-P
+  at the fixed 12-min step cap): both caps are now mode-aware
+  (fast 12/20, full 45/60). A-phase video-list check PASSED in both
+  wip-47 runs (the paramCheck 0-value policy fixed the boot-walk
+  disruption).

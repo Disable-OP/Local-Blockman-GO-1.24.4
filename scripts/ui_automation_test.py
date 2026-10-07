@@ -3474,6 +3474,21 @@ def main():
                                                     return (False, "'Hand over "
                                                             "Chief' not on the "
                                                             "member sheet")
+                                                # BottomDialog/TwoButtonDialog
+                                                # entrance animations: a
+                                                # coordinate tap during the
+                                                # animation misses the hitbox
+                                                # and DISMISSES the dialog
+                                                # silently (the run-37546126594
+                                                # family: taps landed, zero
+                                                # traffic, no error). Settle +
+                                                # re-find before both critical
+                                                # taps.
+                                                time.sleep(1.2)
+                                                hov2 = screen.find(
+                                                    texts=["Hand over Chief"])
+                                                if hov2 and hov2.center:
+                                                    hov = hov2
                                                 screen.tap_node(hov)
                                                 time.sleep(3)
                                                 sure3 = screen.wait_for(
@@ -3483,6 +3498,11 @@ def main():
                                                     return (False, "hand-over "
                                                             "TwoButtonDialog not "
                                                             "confirmed")
+                                                time.sleep(1.2)
+                                                sure3b = screen.find(
+                                                    ids=["btnSure"])
+                                                if sure3b and sure3b.center:
+                                                    sure3 = sure3b
                                                 screen.tap_node(sure3)
                                                 time.sleep(5)
                                                 f_alive("G-handover-" + tag)
