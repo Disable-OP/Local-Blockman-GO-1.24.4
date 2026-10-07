@@ -688,6 +688,15 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
         # interaction-driven — tag filter / pagination / detail). Downgraded
         # to a discovery probe with a node dump until the trigger is mapped.
         vid_row = screen.find(texts=["Video"])
+        # Wave 18d — the list/{type} gate reads the LIVE video-section
+        # capture instead of the end-of-drive `added` diff: the logcat
+        # main buffer rotates under GL traffic (run 37649784800 — the
+        # 16:12 video-screen routes rotated out before the 16:20 diff,
+        # FAILing a check whose routes demonstrably fired). The video
+        # screen fires list/{type} on open every run (lines of evidence:
+        # 389/410 in every deep run log).
+        vl_frag = "/vid" + "eo/api/v1/app/video/list/"
+        vlist_seen = False
         if vid_row and vid_row.center:
             vlog_before = localapi_paths(adb)
             screen.tap_node(vid_row)
@@ -700,6 +709,8 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
             else:
                 print("  [info] video template fired no LocalAPI routes "
                       "(15a verdict stands)")
+            if any(p.startswith(vl_frag) for p in vnew):
+                vlist_seen = True
             for n in screen.dump():
                 if n.res or n.text or n.desc:
                     print("  video] %s | text=%r desc=%r" % (
@@ -726,6 +737,8 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                 va_new = [p for p in vlog2 if p not in vlog_before]
                 if va_new:
                     ok("A: video ALL-tab traffic: %s" % ", ".join(va_new))
+                if any(p.startswith(vl_frag) for p in va_new):
+                    vlist_seen = True
                 # the tag strip (tvSelect) only exists on the total template
                 tsel = screen.find(ids=["tvSelect"])
                 if tsel and tsel.center:
@@ -1472,11 +1485,13 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
     n_using_tmpl = "/decoration/api/v1/decorations/{otherId}/using"
     video_frag = "/vid" + "eo/api/v1/app/video/list/"
     deco_frag = "/dec" + "oration/api/v1/decorations/"
-    video_hits = [p for p in added if p.startswith(video_frag)]
-    check("A: game-detail video list fetched (GET %s in %s)"
-          % (n_video_tmpl, video_hits or "[]"),
-          bool(video_hits),
-          "the game-detail walk never fetched the video list")
+    # Wave 18d — the video-list gate reads the LIVE video-section capture
+    # (vlist_seen); the using-gate keeps the `added` diff — its surface
+    # (gamecard creator outfit) is adjacent to the diff point and fired
+    # in 4/4 deep runs.
+    check("A: game-detail video list fetched (GET %s)"
+          % n_video_tmpl, vlist_seen,
+          "the video feed never fetched the list/{type} routes")
     using_hits = [p for p in added
                   if p.startswith(deco_frag) and p.endswith("/using")]
     check("A: other-user using list fetched (GET %s in %s)"
