@@ -2673,3 +2673,38 @@
   (fast 12/20, full 45/60). A-phase video-list check PASSED in both
   wip-47 runs (the paramCheck 0-value policy fixed the boot-walk
   disruption).
+
+### Session 28 (read first — fast CI now 5:03, user mandate delivered)
+
+- USER MANDATE (2026-10-07, "time is precious"): Redroid test time cut from
+  30-35 min to 5 minutes. DONE + VALIDATED: run 37583919830 (fast,
+  mode-conditional caps) = 5m03s total, UI suite 199s (was 386s), 0 FAIL.
+- What changed (commit 9cd17c0, no assertion removed):
+  - workflow: fast caps 20->12 (job) / 12->8 (UI step) — hangs die fast,
+    no more 30+ min waits; binder step tries modprobe FIRST and only
+    apt-installs on failure; full keeps 45/60.
+  - dismiss_permission_dialogs: early-exit after 2 dialog-free rounds
+    (was a fixed 8-round loop = ~8s dead per call, 3+ calls/run).
+  - relaunch_and_wait: settle 12->8s, poll 3->2s. Phase A: settle 12->8s.
+  - navigate_all_tabs: per-tab settle 5->3s; records the tab carrying the
+    hall activity strip (bg_content rows) for Phase P.
+  - Phase P: taps the strip tab directly when the A-walk cached it
+    (fallback walk kept + trimmed 3->2s; sign-open 5->3s; poll 12->8s;
+    exit 2->1.5s).
+  - Phase D: SKIPS the D-relaunch boot when the app is already alive on
+    the main UI (fast mode: B skipped, P exited at hall). Validated live:
+    "D: app already on the main UI - skipping the D-relaunch boot (fast
+    path, ~80s saved)". Deep mode still resets on foreign screens.
+- Budget math (measured): infra ~84s (binder 48 + redroid 15 + boot 5 +
+  keep-alive 10 + install 2) + UI 199s + diag 6s ~= 5m03s. The two
+  remaining app boots (A fresh-data boot ~29-70s, D restart ~28-70s) are
+  real Redroid app boot time — the floor without losing the restart gate.
+- 39 'default' endpoints re-verified against client sources: NO live call
+  sites (worldCup/bgtube/halloween/videostars/VIP/password-reset are
+  config-gated or dead in 1.24.4; interfaces all in classes3, no callers
+  across src_classes1/2/3; classes6.dex = our own localapi server dex).
+  Do not "implement" them speculatively — error-driven from new traffic
+  only (session-27 rule stands).
+- FULL-mode evidence run dispatched (37584366843) to validate the b2cef28
+  hand-over animation mitigation + bank REQ evidence; regenerate
+  COVERAGE.json only on a green FULL run. NO GameServer work.
