@@ -26,7 +26,9 @@ permissions:
 jobs:
   redroid-test:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: ${{ github.event.inputs.mode == 'full' && '60' || '20' }}
+    # mode-aware: fast fits in 20 min; a full deep drive needs ~40+ (run
+    # 37577021081 was killed by the fixed 20-min job cap mid-Phase P)
+    timeout-minutes: ${{ github.event.inputs.mode == 'full' && 60 || 20 }}
     env:
       PACKAGE: com.disabngo.blockynexus
       ACTIVITY: com.disabngo.blockynexus.view.activity.start.StartActivity
@@ -88,10 +90,10 @@ jobs:
         # stay ~5 minutes — Phase A core (visitor + tabs + boot surfaces),
         # Phase C (fresh account via the local API), Phase D core (upgrade
         # + restart) + assertions/crash scan. The deep-drive phases (B,
-        # E-O) are opt-in via workflow_dispatch input mode=full, which
-        # also raises this step's ceiling (45 min — the historical full
-        # duration).
-        timeout-minutes: ${{ github.event.inputs.mode == 'full' && '45' || '12' }}
+        # E-O) are opt-in via workflow_dispatch input mode=full and get a
+        # mode-aware timeout (a full drive ran 12 min -> timeout kill at
+        # Phase P in run 37577021081).
+        timeout-minutes: ${{ github.event.inputs.mode == 'full' && 45 || 12 }}
         run: |
           python3 scripts/ui_automation_test.py \
             --serial localhost:5555 \
