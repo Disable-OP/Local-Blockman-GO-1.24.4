@@ -3640,6 +3640,17 @@ def main():
                                         if mm3 and mm3.center:
                                             screen.tap_node(mm3)
                                             time.sleep(5)
+                                            # Wave 15d — the member list may
+                                            # sit on its loading spinner long
+                                            # after the G-ho-cache cold
+                                            # relaunch; wait for it to clear
+                                            # (up to ~24s) before hunting the
+                                            # row (run 37607065791).
+                                            for _sp in range(8):
+                                                if not screen.find(
+                                                        ids=["rlLoading"]):
+                                                    break
+                                                time.sleep(3)
                                             f_alive("G-managescreen-ho")
 
                                             def ho_attempt(tag):
@@ -3651,7 +3662,7 @@ def main():
                                                 # PUT member type=3. Returns
                                                 # (ok, evidence).
                                                 row = screen.wait_for(
-                                                    texts=[gk_nick], timeout=12,
+                                                    texts=[gk_nick], timeout=20,
                                                     poll=3)
                                                 if not (row and row.center):
                                                     return (False, "third member "
@@ -3779,11 +3790,35 @@ def main():
                                             ho_ev = "not attempted"
                                             for ho_i in range(2):
                                                 if ho_i:
-                                                    # dismiss any leftover
-                                                    # sheet/dialog from
-                                                    # attempt 1, re-ground
+                                                    # Wave 15d — the member
+                                                    # list can sit on its
+                                                    # loading spinner for
+                                                    # 30s+ after the G-ho-cache
+                                                    # cold relaunch (run
+                                                    # 37607065791: both row
+                                                    # hunts expired against a
+                                                    # stuck 'Loading…' screen).
+                                                    # The retry now LEAVES and
+                                                    # RE-ENTERS the manage
+                                                    # screen — a fresh open
+                                                    # re-fires the member GET —
+                                                    # then waits for the
+                                                    # spinner to clear before
+                                                    # hunting the row.
                                                     adb.key(4)
-                                                    time.sleep(2)
+                                                    time.sleep(3)
+                                                    mm3r = screen.wait_for(
+                                                        texts=["Manage Members"],
+                                                        timeout=8, poll=2)
+                                                    if mm3r and mm3r.center:
+                                                        screen.tap_node(mm3r)
+                                                        time.sleep(5)
+                                                        for _sp in range(8):
+                                                            if not screen.find(
+                                                                    ids=["rlLoading"]):
+                                                                break
+                                                            time.sleep(3)
+                                                    f_alive("G-managescreen-ho2")
                                                 ho_ok, ho_ev = ho_attempt(
                                                     "attempt%d" % (ho_i + 1))
                                                 if ho_ok:
