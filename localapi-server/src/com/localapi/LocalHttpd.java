@@ -106,10 +106,19 @@ public class LocalHttpd extends NanoHTTPD {
             }
         };
 
+        long t0 = System.nanoTime();
         String json = route(verb, uri, ctx, pathParams);
+        // Session-28 observability: the RES line now carries latency +
+        // auth-state (spec: method/route/status/latency/auth/size/result).
+        // Fields APPENDED — the automation's RES assertions are substring
+        // prefix checks and stay compatible. auth=tok means an Access-Token
+        // header was present (not that it resolved — handlers own that).
+        long ms = (System.nanoTime() - t0) / 1_000_000L;
+        String auth = ctx.header("access-token") == null ? "anon" : "tok";
         L.i("REQ " + verb + " " + uri
                 + (fBody.isEmpty() ? "" : " body=" + Handlers.abbrev(fBody)));
-        L.i("RES " + verb + " " + uri + " " + json.length() + "b " + envelopeCode(json));
+        L.i("RES " + verb + " " + uri + " " + json.length() + "b " + envelopeCode(json)
+                + " " + ms + "ms auth=" + auth);
         return respond(json);
     }
 
