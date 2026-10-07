@@ -2491,3 +2491,25 @@
   evidence (if attempt-1 dumps show a specific dialog/layout, decode it);
   (3) bmg-sign verification decode (CommonHelper.getSignature) — only if
   error-driven traffic ever makes it matter; (4) NO GameServer work.
+
+### Session 26 cont. addendum (parallel-session merge + wip build dispatch)
+
+- PUSH COLLISION: the gateway cron spawned a PARALLEL session whose
+  3d84d40 ("Wave 11: login-surface contract fixes") landed on local-api
+  while this session pushed. Their work is COMPLEMENTARY, same
+  error-driven area (the login surface): setPsdParamCheck now returns
+  HttpResponse<Long> (the old {} default crashed Gson on
+  IUserLoginApi.paramCheck — the session-23 "set-psd/param/check fires
+  only in some runs" item, now explained), accountInvalidCheck returns
+  Boolean false from the login screen, RoutingTable audit. Host rig
+  422 -> 426 on their side.
+- MERGED by rebase: 6fdb8c4 = 3d84d40 + this session's RSA work. Doc
+  conflicts resolved keeping both sections (their heading stays
+  "Wave 11 (session 26): the login-surface contract fixes"; this
+  session's retitled "Wave 11 amendment: the RSA password contract").
+  Merged host rig: 435/435 (their 4 + this session's 9 on the 422 base).
+- BUILD: dispatched build-release on 6fdb8c4 (run 37572010508) — the
+  wip-N release comes from DISPATCH (tag pushes only fire on v*; the
+  wip-46 tag pushed earlier is inert, harmless). Next: test-redroid
+  against the new release asset; Phase O's "client-UI login accepted
+  (RES code=1)" is the headline check to watch.
