@@ -1389,6 +1389,18 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
             if n.cls.endswith("RecyclerView") or n.cls.endswith("LinearLayout"):
                 card = n
                 break
+        # Wave 18c — PROMOTED to a hard gate: the game-card /
+        # creator-outfit surface fires the decoration recommend feed
+        # deterministically (evidence: deep runs 37635019492, 37640357412
+        # and 37644219937 ALL added /decoration/api/v1/new/decorations/
+        # recommend/users/<uid>/type/{5,12} at this exact stage — the
+        # card's creator outfit renders via FriendGoodsListModel ->
+        # t.a(typeId, isSuit=false) -> getRecommendList). The gate is
+        # UNCONDITIONAL (verdict-backed: a navigation miss records a FAIL
+        # with evidence, never a silent phantom claim in gen_coverage).
+        reco_deco_lit = ("/decoration/api/v1/new/decorations/recommend/"
+                         "users/{userId}/type/{typeId}")
+        reco_gate_pass = False
         if card:
             screen.tap_node(card)
             time.sleep(8)          # game detail fires its whole surface
@@ -1414,8 +1426,14 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
             adb.key(4)
             time.sleep(2)
             alive_or_recover("%s-gamecard" % tag)
+            rclog = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+            reco_gate_pass = (re.search(r"GET /decoration/api/v1/new/decorations/"
+                                        r"recommend/users/\d+/type/", rclog)
+                              is not None)
         else:
             print("  [skip] no home card candidate found")
+        check("A: creator-outfit recommend feed served (GET %s)"
+              % reco_deco_lit, reco_gate_pass)
     added = sorted(set(localapi_paths(adb)) - paths_before)
     ok("deep drive added %d new endpoint paths" % len(added))
     for p in added:
