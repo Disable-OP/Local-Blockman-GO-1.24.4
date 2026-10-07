@@ -2138,6 +2138,31 @@ def main():
                     None, w16h1)
         check("w16 dress recommend list", dr16.get("code") == 1
               and isinstance(dr16.get("data"), list), str(dr16)[:120])
+        # --- Wave 18: recommend honors ?isSuit= (client t.a(context, 31L,
+        # true, na) sends it; DressCompat.f(list) NPEs on a suit row whose
+        # shopSuitDecorationInfo member is missing) ---
+        sr18 = call("GET", "/decoration/api/v1/new/decorations/recommend/users/%d/type/31?isSuit=true"
+                    % uid1, None, w16h1)
+        sr18_rows = sr18.get("data") if isinstance(sr18.get("data"), list) else []
+        sr18_ok = (sr18.get("code") == 1 and isinstance(sr18.get("data"), list)
+                   and len(sr18_rows) > 0)
+        for r in sr18_rows:
+            suit = r.get("shopSuitDecorationInfo")
+            if not isinstance(suit, dict) or not suit.get("suitId") \
+                    or not isinstance(suit.get("shopDecorationInfos"), list):
+                sr18_ok = False
+        check("w18 suit recommend rows carry shopSuitDecorationInfo", sr18_ok,
+              str(sr18)[:200])
+        dr18 = call("GET", "/decoration/api/v1/new/decorations/recommend/users/%d/type/1?isSuit=false"
+                    % uid1, None, w16h1)
+        dr18_rows = dr18.get("data") if isinstance(dr18.get("data"), list) else []
+        dr18_ok = (dr18.get("code") == 1 and isinstance(dr18_rows, list))
+        for r in dr18_rows:
+            if not isinstance(r.get("shopDecorationInfo"), dict) \
+                    or not r["shopDecorationInfo"].get("id"):
+                dr18_ok = False
+        check("w18 dress recommend rows carry shopDecorationInfo", dr18_ok,
+              str(dr18)[:200])
         vd16 = call("GET", "/decoration/api/v1/vip/decorations/users/1", None, w16h1)
         check("w16 vip dress list", vd16.get("code") == 1 and vd16.get("data") == [],
               str(vd16)[:80])

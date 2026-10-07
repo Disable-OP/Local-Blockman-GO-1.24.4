@@ -1917,7 +1917,38 @@ final class Handlers {
 
     private static String dressRecommend(Ctx ctx, StateStore store) {
         long typeId = parseLong(ctx.pathParam("typeId"), 0);
+        // Wave 18: the client sends ?isSuit= (t.a(context, 31L, true, na)
+        // for the suit page; ia via ga for dress pages). Suit recommends
+        // MUST carry shopSuitDecorationInfo — DressCompat.f(list) calls
+        // a(getShopSuitDecorationInfo()) which NPEs on a null row member
+        // (decompiled f/b.java). isSuit=true answers from the Suits
+        // catalog (un-owned suits first); isSuit=false keeps the dress
+        // rows (shopDecorationInfo) that the dress pages merge in
+        // DressPageListModel ha.onSuccess.
+        boolean isSuit = "true".equalsIgnoreCase(ctx.query("isSuit"));
         JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        if (isSuit) {
+            Suits.ensureSuits(store);
+            JSONArray suits = store.root().optJSONArray("suits");
+            JSONArray sOut = new JSONArray();
+            if (suits != null) {
+                for (int i = 0; i < suits.length() && sOut.length() < 5; i++) {
+                    JSONObject s = suits.optJSONObject(i);
+                    if (s == null || Suits.owned(store, u, s.optLong("suitId"))) {
+                        continue;
+                    }
+                    JSONObject row = new JSONObject();
+                    row.put("id", s.optLong("suitId"));
+                    row.put("iconUrl", s.optString("iconUrl", ""));
+                    row.put("hasPurchase", 0);
+                    row.put("isNew", s.optInt("isNew"));
+                    row.put("shopSuitDecorationInfo",
+                            Suits.suitJson(store, u, s));
+                    sOut.put(row);
+                }
+            }
+            return envelope("list", sOut.toString());
+        }
         JSONArray list = DressShop.ensureType(store, typeId);
         JSONArray out = new JSONArray();
         for (int i = 0; i < list.length() && out.length() < 5; i++) {

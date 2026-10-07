@@ -1410,3 +1410,62 @@ RESULT: 512/512 host tests. docs/COVERAGE.json: 335 discovered /
 144 client_asserted (unchanged; the two template unifications that
 looked like gains were phantom claims and are now blocked by the
 concrete-first rule). NO server changes. NO GameServer work.
+
+## Wave 17 (Session 32): default-route ELIMINATION — 334/334, 0 defaults
+
+New decompilation of classes4.dex (jadx, per-dex — recovered the
+halloween + videosubmit modules previous runs missed) pinned every Gson
+shape; 38 handler dispatches implemented in Handlers.java: videostars
+star-code config/lookup/paging/cash-apply/exchange (StateStore.
+findByStarCode, codes lazily assigned BG<userId>), VIP golds price table
++ real purchase with expiry stacking, legacy email/phone password flows
+(RSA per Wave 11), halloween per-user candy ledger, bgtube sign-up +
+video links persisting per user, @Deprecated worldCup cluster as
+inactive-campaign shapes with honest mutation failures, 5 external
+config files as exact empty-state shapes. RoutingTable 334 routes all
+H:-backed. Host rig 562/562 (+50). Release wip-51 validated on-device
+(chained test-redroid 37628144566 GREEN 4.0min).
+
+## Wave 18 (Session 33): deep-drive evidence targets — video tag list +
+decoration recommend + isSuit contract fix
+
+Traffic forensics (fresh runs + run 37615459162 logs): all responses
+code=1, zero crashes — no error-driven server fixes needed; the honest
+gaps are un-asserted deep surfaces. Decompiled trigger maps:
+
+1. Video tag filter (now a HARD gate in the deep drive): VideoViewModel
+   (wa.d) rbAll -> VideoTotalFragment (ya.c / FragmentAppVideoTotal);
+   databinding fd.executeBindings binds the click command to the root
+   ConstraintLayout; g.f() -> VideoTotalModel.f.a -> getVideoTagList =
+   GET /video/api/v1/app/video/tag/list (header language), then
+   VideoTagPopupWindowDialog drops down with rows built from the Map
+   keys + the "all" row; a row tap -> Messenger token.video.total.
+   select.tag -> xa.n.a(gameId) + RefreshMsg -> list/{type} reload
+   (videoTypeTag omitted for "all"). The local world has no videos, so
+   the server's tag map stays empty (consistent) — the gate asserts the
+   route + dialog, and the drive dumps the dialog rows for evidence.
+2. Decoration recommend trigger mapped: DressPageListModel (ia) loads a
+   NON-ZERO typeId page uncached -> getDressListByType -> ga.onSuccess
+   skips recommend only for typeId==0 (the 15b chain loads type/0 —
+   THAT is why recommend never fired). DressSuitPageListModel (oa) ->
+   getDressSuitList -> recommend(31L, isSuit=true). Deep drive now
+   probes rbCloth/rbPants/rbShoes/rbHair (evidence prints; promotion
+   with the next verdict).
+3. SERVER FIX (NPE prevention): dressRecommend now honors ?isSuit= —
+   isSuit=true returns un-owned SUITS with shopSuitDecorationInfo rows
+   (Suits.suitJson); DressCompat.f(list) calls a(getShopSuitDecoration
+   Info()) which NPEs on a null member (decompiled f/b.java). isSuit=
+   false keeps the dress rows (shopDecorationInfo). Host rig +2 checks
+   (564/564).
+4. NEW workflow test-redroid-deep.yml: MANUAL workflow_dispatch only,
+   --mode full, 45-min cap — the on-device home for deep-drive
+   validation. test-redroid.yml stays FAST-ONLY (~5 min, user mandate
+   2026-10-07) and is untouched; no push/PR/workflow_run can reach deep
+   mode.
+
+COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 145
+(tag/list claimed by the new verdict-backed gate). Expected after the
+deep run's evidence pass: recommend/users + users/{userId}/suit (+2
+more). more/list stays un-assertable (its only caller is the video
+detail screen — the local world has no videos, detail is unreachable).
+NO GameServer work; Engine 10068 untouched.

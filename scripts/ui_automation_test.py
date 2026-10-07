@@ -705,6 +705,88 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                     print("  video] %s | text=%r desc=%r" % (
                         n.res.rsplit("/", 1)[-1] if n.res else "",
                         n.text[:24], n.desc[:24]))
+            # Wave 18 — VideoViewModel (wa.d) radio map, decompiled:
+            # rbAll -> VideoTotalFragment (ya.c, FragmentAppVideoTotal)
+            # whose ROOT ConstraintLayout carries the click command
+            # (databinding fd.executeBindings: clickCommand(f5406a,
+            # gVar.e)); g.f() -> VideoTotalModel.f.a -> getVideoTagList =
+            # GET /video/api/v1/app/video/tag/list, then the
+            # VideoTagPopupWindowDialog drops down with the tag rows.
+            # rbRecommend -> VideoRecommendFragment (xa.g).
+            # The tag gate below is UNCONDITIONAL (always verdict-backed —
+            # never a silent phantom claim in gen_coverage): a navigation
+            # miss records a FAIL with the dump evidence for triage.
+            tag_lit = "/video/api/v1/app/video/tag/list"
+            tag_gate_pass = False
+            vall = screen.find(ids=["rbAll"])
+            if vall and screen.tap_node(vall):
+                time.sleep(5)
+                alive_or_recover("%s-VideoAll" % tag)
+                vlog2 = localapi_paths(adb)
+                va_new = [p for p in vlog2 if p not in vlog_before]
+                if va_new:
+                    ok("A: video ALL-tab traffic: %s" % ", ".join(va_new))
+                # the tag strip (tvSelect) only exists on the total template
+                tsel = screen.find(ids=["tvSelect"])
+                if tsel and tsel.center:
+                    # fd.java binds clickCommand to the ENCLOSING
+                    # ConstraintLayout (f5406a); the TextView itself does
+                    # not consume clicks, so tap tvSelect first and fall
+                    # back to its clickable ConstraintLayout ancestor.
+                    screen.tap_node(tsel)
+                    time.sleep(4)
+                    tag_log = adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                      timeout=60)
+                    if ("GET %s" % tag_lit) not in tag_log:
+                        tsb = tsel.bounds
+                        for n in screen.dump():
+                            if not (n.clickable and n.center
+                                    and n.cls.endswith("ConstraintLayout")):
+                                continue
+                            l2, t2, r2, b2 = n.bounds
+                            if l2 <= tsb[0] and r2 >= tsb[2] \
+                                    and t2 <= tsb[1] and b2 >= tsb[3]:
+                                screen.tap_node(n)
+                                time.sleep(4)
+                                tag_log = adb.raw("logcat", "-d", "-s",
+                                                  "LocalAPI", timeout=60)
+                                break
+                    alive_or_recover("%s-VideoTag" % tag)
+                    tag_gate_pass = (("GET %s" % tag_lit) in tag_log)
+                    for n in screen.dump():
+                        if n.text:
+                            print("  videotagdlg] %s | text=%r" % (
+                                n.res.rsplit("/", 1)[-1] if n.res else "",
+                                n.text[:24]))
+                    # close the dropdown: a tag row tap ("All" default row)
+                    # re-fires the list/{type} refresh; else BACK is unsafe
+                    # (dropdown + template stack) — tap rbAll again instead
+                    row = screen.find(texts=["All", "all"])
+                    if row and row.center:
+                        screen.tap_node(row)
+                        time.sleep(4)
+                        alive_or_recover("%s-VideoTagSel" % tag)
+                        vsel = [p for p in localapi_paths(adb)
+                                if p not in vlog2]
+                        if vsel:
+                            ok("A: video tag-select refresh: %s"
+                               % ", ".join(vsel))
+                    vlog_before = localapi_paths(adb)
+                else:
+                    print("  [info] tvSelect not found after rbAll — "
+                          "total template did not open (dump above)")
+                # round-trip back to the recommend tab
+                vreco = screen.find(ids=["rbRecommend"])
+                if vreco and screen.tap_node(vreco):
+                    time.sleep(4)
+                    alive_or_recover("%s-VideoReco" % tag)
+            else:
+                print("  [info] rbAll not found on the video screen")
+            # Unconditional verdict: the decompiled binding (fd.java) proves
+            # this click fires tag/list — the gate claims the route only
+            # when the drive actually performed it on-device.
+            check("A: video tag-filter strip served tag list (GET %s)"
+                  % tag_lit, tag_gate_pass)
             adb.key(4)  # back to Me
             time.sleep(2)
         else:
@@ -941,6 +1023,38 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                     if snew:
                         ok("A: suit-page extra traffic: %s" %
                            ", ".join("%s %s" % r for r in sorted(set(snew))))
+                    # Wave 18 — type-radio probes (DressPageListModel ia /
+                    # DressSuitPageListModel oa): the recommend feed
+                    # (recommend/users/{userId}/type/{typeId}) only fires
+                    # for a NON-ZERO typeId whose page list is uncached —
+                    # the 15b chain loads type/0, where ga.onSuccess skips
+                    # the recommend ride-along. Probe the type radios and
+                    # print what each adds; hard gates land with the next
+                    # evidence pass (nav is page-state dependent: p/z
+                    # flags decide suit-page vs recommend-page slots).
+                    reco_deco_lit = ("recommend/users/")
+                    for rid in ["rbCloth", "rbPants", "rbShoes", "rbHair"]:
+                        radio = screen.find(ids=[rid])
+                        if not (radio and radio.center):
+                            continue
+                        rlog_before = set(localapi_paths(adb))
+                        screen.tap_node(radio)
+                        time.sleep(4)
+                        alive_or_recover("%s-storetype-%s" % (tag, rid))
+                        rlog = localapi_paths(adb)
+                        rnew = [p for p in rlog if p not in rlog_before]
+                        if not rnew:
+                            continue
+                        ok("A: store type radio %s traffic: %s"
+                           % (rid, ", ".join(rnew)))
+                        joined = " ".join(rnew)
+                        if reco_deco_lit in joined:
+                            print("  [evidence] recommend feed fired from "
+                                  "type radio %s" % rid)
+                        if ("/suit?" in joined or "/suit " in joined
+                                or joined.rstrip().endswith("/suit")):
+                            print("  [evidence] decoration suit list fired "
+                                  "from type radio %s" % rid)
                 else:
                     print("  [skip] rbSuit not found on the store screen")
             else:

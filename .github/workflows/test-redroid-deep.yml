@@ -1,0 +1,126 @@
+name: test-redroid-deep
+# MANUAL deep-drive validation run (--mode full). This is the deliberate
+# diff decision the fast workflow's header reserves: the user mandate
+# 2026-10-07 ("lower the test redroid time ... 5 minutes only ... TIME IS
+# PRECIOUS") is enforced in test-redroid.yml and stays FAST-ONLY — that
+# workflow runs on every dispatch and after every build-release and must
+# never exceed ~5 minutes.
+#
+# THIS workflow exists so the deep-drive phases (B, E-O in
+# scripts/ui_automation_test.py — the only remaining client_asserted
+# growth surface) can still be validated on-device when there is deep
+# work to verify. It NEVER triggers automatically: no push, no PR, no
+# workflow_run. It is dispatched by hand at most a few times per session
+# and the agent keeps working while it runs — nobody waits on it.
+#
+# Expected wall: ~25-35 min (infra ~4 min + full suite ~20-30 min).
+# Timeout 45 min so a wedged run still terminates cleanly.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  redroid-deep-test:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    env:
+      PACKAGE: com.disabngo.blockynexus
+      ACTIVITY: com.disabngo.blockynexus.view.activity.start.StartActivity
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: local-api
+
+      - name: Fetch latest patched APK from releases (prerelease-aware)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/fetch_release_asset.py BlockyNexus-localapi.apk app.apk
+
+      - name: Load binder kernel module
+        run: |
+          if ! sudo modprobe binder_linux devices="binder,hwbinder,vndbinder" 2>/dev/null; then
+            echo "modprobe failed - installing kernel modules + adb"
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq linux-modules-extra-$(uname -r) android-tools-adb
+            sudo modprobe binder_linux devices="binder,hwbinder,vndbinder"
+          fi
+          command -v adb >/dev/null 2>&1 || { sudo apt-get update -qq; sudo apt-get install -y -qq android-tools-adb; }
+          adb version | head -1
+
+      - name: Start Redroid (arm64 native, Android 12)
+        run: |
+          docker run -d --name redroid --privileged -p 5555:5555 \
+            redroid/redroid:12.0.0-latest \
+            androidboot.redroid_width=720 \
+            androidboot.redroid_height=1280 \
+            androidboot.redroid_dpi=320 \
+            androidboot.redroid_gpu_mode=guest
+          adb connect localhost:5555
+
+      - name: Wait for Android boot
+        run: |
+          for i in $(seq 1 48); do
+            b=$(adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            [ "$b" = "1" ] && echo "boot completed" && exit 0
+            echo "waiting for boot ($i/48)"; sleep 5
+          done
+          echo "DEVICE FAILED TO BOOT"; exit 1
+
+      - name: Install APK
+        run: |
+          adb -s localhost:5555 install -r -t app.apk
+
+      - name: Launch + 10s keep-alive check
+        run: |
+          adb -s localhost:5555 logcat -c
+          adb -s localhost:5555 shell am start -n "$PACKAGE/$ACTIVITY"
+          sleep 10
+          if adb -s localhost:5555 shell pidof "$PACKAGE" | grep -qE '[0-9]'; then
+            echo "APP ALIVE after 10s"
+            adb -s localhost:5555 shell pidof "$PACKAGE"
+          else
+            echo "APP PROCESS DIED within 10s"
+            adb -s localhost:5555 logcat -d | tail -100
+            exit 1
+          fi
+
+      - name: Run UI automation suite (FULL deep-drive mode)
+        # --mode full: every deep phase. Hard cap 38 min (the job allows 45;
+        # leave the diagnostics steps room to always run).
+        timeout-minutes: 38
+        run: |
+          python3 scripts/ui_automation_test.py \
+            --serial localhost:5555 \
+            --package "$PACKAGE" \
+            --activity "$ACTIVITY" \
+            --mode full
+
+      - name: Collect diagnostics
+        if: always()
+        run: |
+          mkdir -p diags
+          adb -s localhost:5555 logcat -d > diags/logcat.txt || true
+          adb -s localhost:5555 logcat -d -b crash > diags/crash.txt || true
+          adb -s localhost:5555 logcat -d -b events > diags/events.txt || true
+          adb -s localhost:5555 logcat -d -b system > diags/system.txt || true
+          adb -s localhost:5555 logcat -d -s LocalAPI > diags/localapi.txt || true
+          adb -s localhost:5555 shell cat /proc/meminfo > diags/meminfo.txt || true
+          adb -s localhost:5555 shell dumpsys meminfo > diags/meminfo-app.txt || true
+          adb -s localhost:5555 shell uiautomator dump /sdcard/final_ui.xml >/dev/null 2>&1 || true
+          adb -s localhost:5555 pull /sdcard/final_ui.xml diags/final_ui.xml || true
+          adb -s localhost:5555 shell dumpsys activity processes > diags/processes.txt || true
+          for f in $(adb -s localhost:5555 shell ls /sdcard/snap_*.png 2>/dev/null | tr -d '\r'); do
+            adb -s localhost:5555 pull "$f" diags/ || true
+          done
+          tar czf redroid-deep-diagnostics.tgz diags || true
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redroid-deep-diagnostics
+          path: redroid-deep-diagnostics.tgz
+          if-no-files-found: ignore

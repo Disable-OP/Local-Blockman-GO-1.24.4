@@ -3006,3 +3006,47 @@
   future fast-run traffic; grow client_asserted only within the 5-minute
   mandate; Engine 10068 GameServer stays forbidden until the API phase
   is declared complete by the user.
+
+### Session 33 (Wave 18 — deep-drive evidence targets + isSuit server fix)
+
+- Verified repo/CI state: origin synced at be58ff7 (session 32 final),
+  fast-only CI stable (4.0-4.4 min greens), user's 5-minute Redroid
+  mandate enforced and protected. webDevReview cron tool again returned
+  "not available for this request" — could not verify/create.
+- Traffic forensics (run 37628144566 wip-51 artifact + run 37615459162
+  logs): 124 REQ all code=1, crash buffer empty, zero assertion misses;
+  the 154-REQ full run added no unclaimed traffic beyond known probes.
+  Verdict: no error-driven server fixes; the honest gap = un-asserted
+  deep surfaces.
+- Decompiled trigger maps (jadx classes1/classes3):
+  * Video: wa.d VideoViewModel — rbAll -> ya.c VideoTotalFragment;
+    fd.java binds clickCommand to the root ConstraintLayout; g.f() ->
+    VideoApi.getVideoTagList -> VideoTagPopupWindowDialog; row select ->
+    Messenger -> xa.n.a(gameId) + refresh -> list/{type}.
+  * Dress shop: ia DressPageListModel.onLoad -> b(listener) ->
+    getDressListByType -> ga.onSuccess fires recommend ONLY for
+    typeId != 0 (15b chain loads type/0 — root cause of the missing
+    recommend); oa DressSuitPageListModel -> getDressSuitList ->
+    t.a(31L, isSuit=true, na). Store rgDress radios mapped
+    (rbRecommend/rbSuit/rbOnesies/rbCloth/rbPants/rbShoes/rbHair/
+    rbEmoticon).
+- SERVER (commit "Wave 18"): dressRecommend honors ?isSuit= —
+  isSuit=true answers un-owned suits with shopSuitDecorationInfo rows
+  (Suits.suitJson); isSuit=false keeps shopDecorationInfo rows. Fixes
+  the on-device NPE path (DressCompat.f on null suit rows). Host rig
+  +2 checks -> 564/564 PASS. classes6.dex rebuilt via build_server_dex.sh.
+- Deep drive (scripts/ui_automation_test.py): video block extended —
+  rbAll tap -> tvSelect strip tap (clickable-ConstraintLayout fallback)
+  -> UNCONDITIONAL verdict-backed tag/list gate + dialog dump + row
+  select + rbRecommend round-trip. Store block: rbCloth/rbPants/rbShoes/
+  rbHair type-radio probes print per-tap traffic with recommend/suit
+  evidence markers (promotion after the next verdict).
+- NEW workflow test-redroid-deep.yml (manual workflow_dispatch only,
+  --mode full, 45-min cap, redroid-deep-diagnostics artifact). The fast
+  test-redroid.yml is untouched — 5-minute mandate intact (fast runs
+  cannot reach the deep drive; deep runs cannot auto-trigger).
+- Docs: ENDPOINTS.md (Wave 17 recap + Wave 18 section),
+  NEXT_SESSION_README.md (session 33 delta), COVERAGE.json regenerated
+  (334/334/0-defaults/334 host-tested, client_asserted 145 — tag/list
+  claimed by the new gate).
+- NO GameServer work; Engine 10068 untouched this session.

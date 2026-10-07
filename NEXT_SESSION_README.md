@@ -1622,3 +1622,27 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   (getVideoTagList trigger), the decoration recommend strip
   (recommend/users/{userId}/type), promotion of remaining discovery
   probes. All deep-mode only — protect the 4:02 fast budget.
+
+## Session 33 delta (Wave 18 — deep-drive evidence targets; read after WORKLOG)
+
+- Traffic forensics on the freshest runs: zero server errors (all code=1,
+  no crashes) — no error-driven fixes needed. Remaining growth = deep
+  surfaces only (client_asserted was 144).
+- Decompiled trigger maps: (1) video tag list = rbAll -> VideoTotalFragment,
+  click command on the template ROOT (databinding fd.java) ->
+  getVideoTagList -> VideoTagPopupWindowDialog; (2) decoration recommend =
+  NON-ZERO typeId page loads only (ga.onSuccess skips typeId==0 — the 15b
+  chain loads type/0, which is why recommend never fired); suit page = oa
+  -> getDressSuitList -> recommend(31, isSuit=true).
+- SERVER FIX: dressRecommend honors ?isSuit= — true returns un-owned suits
+  with shopSuitDecorationInfo (DressCompat.f would NPE on null rows,
+  decompiled f/b.java). Host rig 564/564 (+2 w18 checks).
+- Deep drive: video tag gate is HARD + verdict-backed (unconditional check
+  — no silent phantom claims); store type radios (rbCloth/rbPants/rbShoes/
+  rbHair) probe for recommend + decoration-suit traffic (evidence prints).
+- NEW .github/workflows/test-redroid-deep.yml: MANUAL dispatch only, full
+  mode, 45-min cap. test-redroid.yml stays FAST-ONLY — the 5-minute user
+  mandate is untouched and structurally protected (no input, hard caps).
+- client_asserted 145 (tag/list). NEXT: dispatch test-redroid-deep, read
+  the verdicts; promote recommend/users + users/{userId}/suit from the
+  probe evidence to gates; rerun deep once green. Then error-driven loop.
