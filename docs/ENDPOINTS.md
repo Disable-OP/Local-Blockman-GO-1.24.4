@@ -986,6 +986,31 @@ Gson could not parse, plus a systematic audit that found no others:
 - Host rig: +4 checks (Long-parse, Boolean-parse, stateless-false,
   probe-visitor) → 426/426.
 
+## Wave 11 amendment 2 (decode complete): paramCheck Long + accountCheck Boolean value semantics
+
+The parallel-session handlers fixed the TYPES (Long/Boolean — the {}
+default crashed Gson); the VALUE semantics are now decoded from the call
+sites and the handlers refined:
+
+- GET /user/api/v1/user/set-psd/param/check (IUserLoginApi.paramCheck,
+  only caller chain LoginService -> web.b.b): the consumer is
+  GooglePlayPayService recharge onSuccess (classes3) for a passwordless
+  account — onSuccess(Long l) { if (l > 100)
+  IntentUtils.startPasswordSettingDialog(context, false); }. The Long is
+  a PROMPT THRESHOLD, not a timestamp. Local policy: 200 (prompt) for a
+  resolved user without a password, 0 for a secured account.
+- POST /user/api/v1/account/invalid/check (IUserLoginApi.accountCheck ->
+  the guest SetAccountViewModel, classes2 f/a/a/h): onSuccess(true) ->
+  TwoTextButtonDialog "login_set_account_confirm <name>" -> accountModify
+  (name FREE); onSuccess(false) -> base_set_account_exits helper
+  ("Account already exists") and the flow STOPS. A constant false (the
+  first implementation) BLOCKED the whole set-account surface. The local
+  server now answers from real state: taken -> false, free -> true.
+
+Host rig: both value branches tested (free name true, taken name false;
+register-then-check). The "Account already exists" string and the dialog
+flow make the decode unambiguous.
+
 ## Wave 11 amendment (run 37546126594 triage): the RSA password contract — real crypto, real server
 
 Discovery (error-driven, from the client's own traffic):

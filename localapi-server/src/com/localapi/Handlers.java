@@ -2988,24 +2988,35 @@ final class Handlers {
     }
 
     /** GET /user/api/v1/user/set-psd/param/check — client model HttpResponse&lt;Long&gt;.
-     *  Returns the current server time (ms). The Long TYPE is client-asserted
-     *  (IUserLoginApi.paramCheck); the value semantics (a server-side param
-     *  echoed by the set-password flow) are decoded as far as the interface —
-     *  the previous {} default CRASHED Gson on HttpResponse&lt;Long&gt;. */
+     *  DECODE COMPLETE (classes3 GooglePlayPayService recharge onSuccess +
+     *  classes2 LoginService.paramCheck): the client gates on the response
+     *  VALUE — onSuccess(Long l) { if (l &gt; 100)
+     *  IntentUtils.startPasswordSettingDialog(context, false); } — so the
+     *  Long is a "should prompt set-password" threshold, not a timestamp.
+     *  The client only calls it for passwordless accounts (hasPassword
+     *  gate); the local server answers 200 (prompt) for passwordless
+     *  resolved users, 0 otherwise (never prompt a secured account). */
     private static String setPsdParamCheck(Ctx ctx, StateStore store) {
-        return envelope("num", String.valueOf(System.currentTimeMillis()));
+        JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
+        boolean hasPw = u != null && u.optBoolean("hasPassword", false);
+        return envelope("num", hasPw ? "0" : "200");
     }
 
     /** POST /user/api/v1/account/invalid/check — client model HttpResponse&lt;Boolean&gt;.
-     *  Called from the LOGIN screen (pre-auth) with account/loginTypeId/type.
-     *  Local accounts are always valid: data=false ("not invalid"). The
-     *  Boolean type is client-asserted (IUserLoginApi.accountCheck); the
-     *  call site's exact true/false branch is pending a UI decode — when the
-     *  client previously got no data field the Boolean stayed null. */
+     *  DECODE COMPLETE (classes2 f/a/a SetAccountViewModel h.java): the
+     *  guest set-account screen calls this with the typed name —
+     *  onSuccess(true)  -&gt; TwoTextButtonDialog "login_set_account_confirm
+     *  &lt;name&gt;" -&gt; confirm proceeds to accountModify (name is FREE);
+     *  onSuccess(false) -&gt; helper text base_set_account_exits ("Account
+     *  already exists") and the flow STOPS. So true = name available,
+     *  false = name taken — the local server answers from REAL state. */
     private static String accountInvalidCheck(Ctx ctx, StateStore store) {
-        L.i("accountInvalidCheck: account=" + ctx.query("account")
+        String account = ctx.query("account");
+        L.i("accountInvalidCheck: account=" + account
                 + " loginTypeId=" + ctx.query("loginTypeId") + " type=" + ctx.query("type"));
-        return envelope("bool", "false");
+        boolean taken = account != null && !account.isEmpty()
+                && (store.findByKey(account) != null || store.findByAccount(account) != null);
+        return envelope("bool", taken ? "false" : "true");
     }
 
     /** GET /user/api/v1/users/new/daily/tasks — DailyTaskResponse (7-slot strip). */

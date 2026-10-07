@@ -2513,3 +2513,19 @@
   wip-46 tag pushed earlier is inert, harmless). Next: test-redroid
   against the new release asset; Phase O's "client-UI login accepted
   (RES code=1)" is the headline check to watch.
+
+### Session 26 cont. 2 (paramCheck/accountCheck value semantics decoded + refined)
+
+- While the wip-46 redroid run was in flight, finished the parallel
+  session's "pending a UI decode" items:
+  * set-psd/param/check Long = a PROMPT THRESHOLD (GooglePlayPayService
+    recharge onSuccess: l > 100 -> startPasswordSettingDialog), NOT a
+    timestamp. Local policy: 200 for passwordless, 0 for secured.
+  * account/invalid/check Boolean: TRUE = name free (confirm dialog ->
+    accountModify), FALSE = "Account already exists" (flow stops) —
+    SetAccountViewModel h.java decode. The previous constant-false
+    implementation would have BLOCKED the entire guest set-account
+    surface. Now answered from real state (taken -> false, free -> true).
+- Host rig 435/435 (value-branch tests replace the stateless probe).
+- These refinements ride the NEXT build (wip-46 was already cut; its run
+  validates the RSA contract — the two refinements are host-tested).
