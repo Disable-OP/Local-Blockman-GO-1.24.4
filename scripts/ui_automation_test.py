@@ -1608,24 +1608,47 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
         return marker in adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
 
     def pick_question_row(anchor_ids, row_text_prefix):
-        """Tap a question picker anchor, then the first popup row that
-        starts with row_text_prefix (the rows render the CATALOG strings
-        the server served). True when a row was selected."""
+        """Tap a question picker anchor, then the popup row whose text
+        starts with row_text_prefix (rows render the CATALOG strings the
+        server served). Run 9 evidence: the row tap must land on a
+        CLICKABLE node or the selection never registers and the answer
+        field stays invisible (the binding gates it on the selection).
+        True when a row was selected."""
         anchor = screen.find(ids=anchor_ids)
         if not (anchor and anchor.center):
             print("  [skip] LM: picker %s not found" % (anchor_ids,))
             return False
         screen.tap_node(anchor)
         time.sleep(3)
-        row = screen.find(contains=[row_text_prefix])
-        if not (row and row.center):
+        # popup dump first (evidence for the next iteration), then tap the
+        # first CLICKABLE node whose text contains the prefix — prefer the
+        # deepest match (the text node itself is rarely clickable)
+        nodes = screen.dump()
+        for n in nodes:
+            if n.text and row_text_prefix.split()[0] in n.text:
+                print("  [qp] popup row: %r clickable=%s cls=%s"
+                      % (n.text[:30], n.clickable, n.cls))
+        cands = [n for n in nodes
+                 if n.text and row_text_prefix.split()[0] in n.text
+                 and n.center]
+        target = next((n for n in cands if n.clickable), None)
+        if target is None and cands:
+            # fall back to the text node's PARENT hit via a raw tap at its
+            # center (uiautomator may not flag the list row clickable)
+            target = cands[0]
+        if target is None:
             print("  [skip] LM: popup row %r not found" % row_text_prefix)
             debug_dump(screen, "lm-popup")
             adb.key(4)
             time.sleep(2)
             return False
-        screen.tap_node(row)
-        time.sleep(2)
+        screen.tap_node(target)
+        time.sleep(2.5)
+        # the answer field visibility is gated on the selection — verify
+        selected = any(row_text_prefix.split()[0] in (n.text or "")
+                       for n in screen.dump())
+        if not selected:
+            print("  [info] LM: popup row tap may not have registered")
         return True
 
     def back(times=1):
@@ -1730,13 +1753,20 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                 # catalog entry's text prefix.
                 qs_lit = "/user/api/v1/users/secret/question/set" + "ting"
                 if fill_q1(screen, adb):
-                    # answer 1 = first visible EditText under the picker
+                    # answer 1 = first visible EditText (appears once the
+                    # question selection registered); dump when it doesn't
+                    time.sleep(2)
+                    if not edit_nodes():
+                        print("  [info] LM: no answer field after Q1 pick "
+                              "- selection visibility still gated")
+                        debug_dump(screen, "lm-qscreen")
                     fill_edit(0, "LocalQA-One")
                     nxt = screen.find(ids=["btn_next"], texts=["Next"])
                     if nxt and nxt.center:
                         screen.tap_node(nxt)
                         time.sleep(3)
                     if fill_q2(screen, adb):
+                        time.sleep(2)
                         fill_edit(0, "LocalQA-Two")
                         if confirm_button():  # btn_confirm 'Confirm'
                             time.sleep(6)

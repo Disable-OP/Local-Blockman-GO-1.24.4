@@ -1606,3 +1606,22 @@ COVERAGE: 334/334/0-defaults; host rig 570/570; client_asserted 152.
    field. 570/570.
 
 COVERAGE: 334/334/0-defaults; host rig 570/570; client_asserted 152.
+
+### Wave 20e (session 35 cont.) — run-9 verdicts: question-GET gate GREEN; popup evidence pass
+
+1. Deep run 9 (1c34312 + wip-55): the question-list gate PASSED — the
+   securitySettings fix rerouted SafeSetting to the question-SETTING
+   flow (GET users/secret/question fired, verdict-backed). The 2
+   run-level FAILs were the pre-existing A-phase timing flake family
+   (both endpoints visible in the final hit list; green in runs 6/8).
+2. The popup/answer interaction still needs one evidence pass: the
+   answer EditTexts are visibility-gated on the popup selection
+   registering, and the [qs-end] dump showed the flow back on
+   SafeSetting (the selection tap likely missed the clickable node).
+   Wave 20e: pick_question_row now dumps the popup rows ([qp] lines),
+   prefers CLICKABLE nodes, and re-verifies the selection; the answer
+   search dumps the question screen when no EditText appears
+   (lm-qscreen).
+3. NO server changes; host rig 570/570 (untouched).
+
+COVERAGE: 334/334/0-defaults; host rig 570/570; client_asserted 152.
