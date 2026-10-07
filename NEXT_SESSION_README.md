@@ -1431,3 +1431,24 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   NOT decompiled (only --single-class on demand). PAT b64 at
   /home/z/work/.pat_b64.
 - NO GameServer work.
+
+## Session 27 FINAL 3 (read first — banner strip verdict + mode-conditional caps)
+
+- Phase P verdict (runs 37577912090 + 37580012443): the activity banner
+  strip carries ZERO bg_content rows on ALL four tabs for a fresh
+  visitor — the strip is inflated inside a dialog/template (the
+  ActivityViewModel consumer is among the 12 classes2 jadx errors).
+  Sign-surface client-assertion therefore rides on the dvSignUp dialog
+  path (handle_campaign_dialogs), NOT the banner. Do not chase the
+  include chain further without new traffic evidence.
+- Timeouts are mode-conditional NOW (fast 12/20, full 45/60) — use
+  NUMERIC forms in the expression (a quoted '45' from an expression
+  fails workflow validation: run 37579150160, 0 jobs in 2s).
+- Full-mode dispatches are safe again (45-min cap). Watch the parallel
+  full run for Phase O RSA + G verdicts; regenerate COVERAGE.json only
+  on green FULL runs.
+- Next decodes: (1) decompile classes2 with --show-bad-code to find the
+  ActivityViewModel consumer (low priority — no traffic pressure); (2)
+  week-sign chain (bc.e -> UserApi.dailySignIn) callers — also among
+  the failed classes; (3) error-driven from new traffic only.
+- NO GameServer work.

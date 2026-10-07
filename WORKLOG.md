@@ -2629,3 +2629,23 @@
 - WORKFLOW FIX: both caps are now mode-aware (fast: 12/20 min, full:
   45/60 min) via the mode dispatch input.
 - Re-dispatch full mode after push.
+
+### Session 27 FINAL 2 (Phase P evidence: the banner strip is NOT on the tabs)
+
+- Run 37580012443 (fast, PASS 7:54): Phase P walked rb_1..rb_4 and
+  counted bg_content rows per tab — ZERO everywhere. The activity
+  banner strip (item_activity_list / ActivityListLayout) is not part
+  of the four main tabs for a fresh visitor; it is inflated inside a
+  dialog/template screen (the ActivityViewModel constructor's consumer
+  is one of the 12 classes2 jadx-error classes — unresolvable this
+  session). Evidence banked; the sign surface remains reachable via
+  the dvSignUp dialog path (handle_campaign_dialogs) when the client
+  opens it.
+- Run 37577021081 triage: a mode=full dispatch hit the fixed 12-min
+  UI-step cap (full-mode Phase A alone is ~10 min) — timeouts are now
+  mode-conditional (fast 12/20, full 45/60). A re-dispatch with the
+  quoted-string expression variant died in 2s with ZERO jobs (GH
+  workflow validation rejects string timeouts from expressions) —
+  numeric form adopted (run 37580012443 validates it).
+- CI state: fast runs 6:32 / 6:45 / 7:10 / 7:54 all PASS (35:00
+  baseline). Host rig 450/450. Latest head 5bbe4bc. NO GameServer work.
