@@ -1599,3 +1599,26 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 - Next candidates: drive the tag-filter dialog on the video screen
   (getVideoTagList trigger), map the recommend/users/{userId}/type
   decoration-recommend trigger, keep promoting discovery probes.
+
+## Session 30 FINAL delta — read first next session
+
+- Wave 15 (a-e) CLOSED and validated: run 37615459162 = full-mode
+  GREEN with every new gate. client_asserted = 144 honest.
+- gen_coverage contract (for future edits): fcall probes are
+  VERB-AWARE; bare path literals are verb-blind equality; prefix
+  claims require a trailing-/ family probe with >=4 segments; split
+  any check-name literal that must not claim siblings ("/dec" +
+  "oration/..." convention). Multi-line variable splits CREATE
+  accidental trailing-/ probes — keep claim-carrying variables on
+  ONE line.
+- Verified on-device verdicts: party hall fires auth+open-list on
+  open; the store suit radio fires the 4-route dress-mode chain;
+  the video template fires list/{type} on open (more/list is
+  load-more); the hall rbSuit chip is a LOCAL filter (no network).
+- Known flake family: roaming killer (SIGKILL w/o trace, ~1-4x per
+  full run). alive_or_recover handles it; the register gate is now
+  rotation-proof; the G hand-over retry re-enters the manage screen.
+- Next highest-value targets: the video tag-filter dialog
+  (getVideoTagList trigger), the decoration recommend strip
+  (recommend/users/{userId}/type), promotion of remaining discovery
+  probes. All deep-mode only — protect the 4:02 fast budget.

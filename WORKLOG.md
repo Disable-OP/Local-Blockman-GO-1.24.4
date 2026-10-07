@@ -2903,3 +2903,19 @@
   snapshot (register_seen_early). G hand-over retry re-entry (15d)
   still unverified (G never ran this run).
 - NO server changes. NO GameServer work.
+
+### Session 30 FINAL (run 37615459162 GREEN — Wave 15 fully validated)
+
+- Full-mode drive: 0 FAIL, PASS. Every Wave-15 gate verified on-device:
+  party auth + open-list, store recommend + suit page, the 4-route
+  dress-mode chain (using/check-resource/expire/type), engine PUT,
+  friend family follow, worn-decoration fcall — plus the G hand-over
+  retry re-entry (15d) and the rotation-proof register capture (15e).
+- Session 30 totals: 5 full-mode dispatches (2 legit gate failures
+  caught and fixed, 2 infra-flake runs diagnosed and hardened,
+  1 fully green), honest client_asserted 142 -> 144, gen_coverage
+  hardened (verb-aware fcalls, trailing-/ family probes, depth guard),
+  6 commits pushed. Fast CI untouched (4:02 mandate stands).
+  Host rig 458/458 throughout. NO server changes needed — the local
+  API served every new surface correctly on first contact.
+- NO GameServer work.
