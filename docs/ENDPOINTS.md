@@ -1658,3 +1658,17 @@ COVERAGE: 334/334/0-defaults; host rig 570/570; client_asserted 152.
    EditText-count delta OR (ListView gone AND text shown).
 3. [qs-end2] evidence dump pins the post-confirm state for the next
    verdict. NO server changes; host rig untouched (570/570).
+
+### Wave 21d (session 36 cont.) — run-13 verdict: the screen was NEVER closed
+
+1. Run 13's [q1-state] dump is DECISIVE: after the Q1 DPAD pick, fa.i is
+   fully alive — title 'Security Questions', the anchor showing the
+   picked catalog string, the answer EditText (hint 'Please type the
+   answer'), and btn_next 'Next'. Run 12's "self-close" was a WEDGED
+   uiautomator snapshot (the documented dump flake), not a navigation.
+2. The real remaining gap: section 2 (ll_question_two/btn_confirm)
+   reveals BELOW the fold after Next — off-screen nodes never reach the
+   dump, so fill_q2's find failed. Fix: reveal-scroll after Next before
+   the Q2 hunt; [qs-end] gets a pause+re-dump stale guard.
+3. Run 13 = UI AUTOMATION PASS (4 consecutive green deep runs on the LM
+   phases; question-GET gate verdict-backed 4x).

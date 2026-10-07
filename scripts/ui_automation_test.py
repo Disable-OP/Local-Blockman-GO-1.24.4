@@ -1801,6 +1801,15 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                     if nxt and nxt.center:
                         screen.tap_node(nxt)
                         time.sleep(3)
+                        # run-13 evidence: section 2 (ll_question_two +
+                        # btn_confirm) reveals BELOW the fold after Next —
+                        # off-screen nodes don't reach the uiautomator dump,
+                        # so the pick/tap hunts must scroll first
+                        for _ in range(3):
+                            if screen.find(ids=["ll_question_two"]):
+                                break
+                            adb.sh("input swipe 360 900 360 380 300")
+                            time.sleep(2)
                     if fill_q2(screen, adb):
                         time.sleep(2)
                         # run-11 evidence: index 0 is ANSWER 1's field (still
@@ -1835,6 +1844,12 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                                 print("  [qs-end2] %s | %r" % (
                                     n.res.rsplit("/", 1)[-1] if n.res else "",
                                     (n.text or "")[:28]))
+                # stale-dump guard (run-12/13: the end-of-question dumps
+                # landed on SafeSetting while fa.i was demonstrably up —
+                # a wedged accessibility snapshot). Pause + re-dump; if the
+                # title still reads SafeSetting the screen genuinely
+                # changed, otherwise the earlier dump was stale.
+                time.sleep(3)
                 for n in screen.dump():
                     if n.text or n.res.endswith("EditText"):
                         print("  [qs-end] %s | %r" % (
