@@ -2618,3 +2618,14 @@
 - Host rig 442/442. HEAD a175c7d. build-release dispatched — its
   test-redroid (fast) validates Phase P + the new asset. NO GameServer
   work.
+
+### Session 26 cont. 4 (full-mode timeout fix; run 37577021081 killed by FAST caps)
+
+- RUN 37577021081 (wip-47, mode=full): the UI suite was killed by the
+  FIXED 12-min step cap / 20-min job cap (FAST-mode defaults) while still
+  driving — Phase P (the new sign-in surface) was mid-walk at the kill;
+  zero FAIL lines, no verdicts. The A-phase video-list check PASSED this
+  time (the 0-value paramCheck policy fixed the boot-walk disruption).
+- WORKFLOW FIX: both caps are now mode-aware (fast: 12/20 min, full:
+  45/60 min) via the mode dispatch input.
+- Re-dispatch full mode after push.
