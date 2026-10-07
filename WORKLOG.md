@@ -2989,3 +2989,20 @@
   Next: build-release dispatch to cut a fresh APK carrying the Wave 17 dex,
   then the auto-chained test-redroid validates it (workflow_run trigger).
 - NO GameServer work. Engine 10068 remains forbidden this phase.
+
+### Session 32 FINAL (on-device validation GREEN — Wave 17 shipped)
+
+- build-release 37627889081 SUCCESS (1.9min) cut release wip-51
+  (BlockyNexus-localapi.apk, 232713642 bytes — +4.1KB over wip-50, the
+  Wave 17 classes6.dex). The chained test-redroid 37628144566 fetched the
+  wip-51 APK and went GREEN in 4.0 minutes: boot + visitor + fresh UI
+  register + tabs + upgrade/restart all served by the Wave 17 server.
+- Session 32 totals: 38 schema-default routes eliminated (334/334
+  implemented, 0 default), 50 new host checks (562/562), classes4.dex
+  decompiled (halloween + videosubmit modules recovered), 4 commits
+  pushed (a7e1725, ae89bee, + worklog), 3 fast CI runs green (3.8/4.0/
+  4.0 min), one release (wip-51). Fast-only discipline held throughout.
+- Next-candidate work (no server gaps left): error-driven upgrades from
+  future fast-run traffic; grow client_asserted only within the 5-minute
+  mandate; Engine 10068 GameServer stays forbidden until the API phase
+  is declared complete by the user.
