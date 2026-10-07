@@ -2789,3 +2789,36 @@
   on the released APK, coverage honesty (client_asserted 167 -> 142
   honest), RES observability (latency + auth-state), G hand-over
   closed. Host rig 458/458. NO GameServer work.
+
+### Session 29 (read first — Wave 14 dead-surface verdicts; fast CI now 4:02)
+
+- WAVE 14 (docs/ENDPOINTS.md): code-level classification that CLOSES
+  every open decode item:
+  - The hall activity strip's ONLY home is ActivityFragment (e/b/c/b,
+    TemplateFragment<g=ActivityViewModel, Zc>, single DataRecyclerView).
+    ActivityViewModel (g.java) RECOVERED — it just binds list model f +
+    row layout d. The fragment is started ONLY from D.b(Context), which
+    has ZERO live callers (MainFragmentViewModel declares its context
+    field as Activity -> static overload resolution picks D.b(Activity)
+    -> OverViewRankActivity; MoreViewModel casts to Activity too).
+    ORPHANED -> the strip can never appear for any user; Session 27's
+    "dialog/template" hypothesis resolved.
+  - The campaign sign pair (GET+POST /activity/api/v1/signIn) is
+    unreachable without game-play: strip tap dead + boot gate needs the
+    local hasPlayed DB (Wave 12). client=False is permanent for this
+    phase.
+  - The ICampaignApi integral/task/worldCup/rank-reward family is
+    @Deprecated AT THE RETROFIT INTERFACE in the client's own code —
+    permanent.
+  - bgtube/halloween surfaces: strip-only entries (dead). config/files
+    {activity-logo, campaign-precious-reward, blockymods-banner,
+    game-detail-to-editor, indiegame-moregame_introduction}: wrappers
+    have no callers. VIP/videostars/password-reset/ugc-status: no
+    callers. ALL 39 defaults now classified with evidence.
+  - Toolchain: jadx --show-bad-code does NOT emit fully-failed classes
+    (bc/MainModel unrecoverable; method map rebuilt from call sites).
+- FAST CI 4m02s (run 37592994290, 0 FAIL, PASS): Phase P's 4-tab strip
+  walk (~50s) + the A-walk's per-tab banner dumps (~8s) REMOVED as
+  provably dead work; Phase P is now a 6-second grounding + split-
+  literal traffic probe. Suite 154s. Mandate headroom: 24%.
+- Host rig 458/458 (re-verified). NO GameServer work.

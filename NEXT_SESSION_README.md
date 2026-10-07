@@ -1545,3 +1545,24 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   add-on: a premium-detail buy drive to client-assert payGame via UI;
   (3) the sign surface stays gated on game-play (Engine phase).
 - NO GameServer work.
+
+## Session 29 FINAL (read first — all surfaces classified; fast CI 4:02)
+
+- Wave 14 in docs/ENDPOINTS.md is the authoritative dead-surface map:
+  ActivityFragment ORPHANED (strip impossible), sign pair gated on
+  game-play, ICampaignApi legacy family @Deprecated in the client,
+  every one of the 39 'default' endpoints classified with code-level
+  evidence. Do NOT implement them speculatively; do NOT chase the strip
+  again — the fragment has no caller.
+- Fast CI: 4m02s (run 37592994290, 0 FAIL) — Phase P trimmed to a 6s
+  probe after the Wave 14 verdict. Suite 154s, infra ~85s (2 real app
+  boots — the floor). Six consecutive green fast runs overall.
+- Host rig 458/458. Full mode all green incl. HAND OVER CHIEF.
+- NEXT: the local API is at its practical ceiling for this phase —
+  every live client surface is served, asserted, and green; the rest is
+  provably dead in client 1.24.4. Remaining work is error-driven from
+  NEW traffic only, or the Engine/GameServer phase gate (explicitly
+  out of scope now). Optional polish if desired: a full-mode premium-
+  detail buy drive to client-assert payGame via UI (host rig already
+  covers the contract end-to-end).
+- NO GameServer work.
