@@ -1,51 +1,44 @@
-name: test-redroid
-# Boots the APK in Redroid (native arm64, Android 12) and runs the full
-# UI automation suite: fresh account registration through the UI, login,
-# every bottom tab, deep navigation — asserting the embedded local API
-# server serves all traffic and the app never crashes.
-# APK source: latest GitHub Release asset "BlockyNexus-localapi.apk".
+name: test-redroid-deep
+# MANUAL deep-drive validation run (--mode full). This is the deliberate
+# diff decision the fast workflow's header reserves: the user mandate
+# 2026-10-07 ("lower the test redroid time ... 5 minutes only ... TIME IS
+# PRECIOUS") is enforced in test-redroid.yml and stays FAST-ONLY — that
+# workflow runs on every dispatch and after every build-release and must
+# never exceed ~5 minutes.
+#
+# THIS workflow exists so the deep-drive phases (B, E-O in
+# scripts/ui_automation_test.py — the only remaining client_asserted
+# growth surface) can still be validated on-device when there is deep
+# work to verify. It NEVER triggers automatically: no push, no PR, no
+# workflow_run. It is dispatched by hand at most a few times per session
+# and the agent keeps working while it runs — nobody waits on it.
+#
+# Expected wall: ~25-35 min (infra ~4 min + full suite ~20-30 min).
+# Timeout 45 min so a wedged run still terminates cleanly.
 
 on:
-  # USER MANDATE 2026-10-07 (reinforced same day after runs 37598014388 /
-  # 37603763817 / 37607065791 / 37611564558 / 37615459162 ran 22-32 min as
-  # full-mode dispatches): "lower the test redroid time ... just make it
-  # 5 minutes only ... TIME IS PRECIOUS". CI is therefore FAST-ONLY:
-  # no mode input exists any more, every dispatch (even one that tries to
-  # pass inputs) runs the ~5-minute fast suite. The deep-drive phases
-  # remain in scripts/ui_automation_test.py (--mode full) for explicit
-  # local/manual evidence runs ONLY - re-adding a full option to CI is a
-  # deliberate diff decision, never a silent dispatch choice.
   workflow_dispatch:
-  workflow_run:
-    workflows: ["build-release"]
-    types: [completed]
 
 permissions:
   contents: read
 
 jobs:
-  redroid-test:
+  redroid-deep-test:
     runs-on: ubuntu-24.04-arm
-    # Fast-only (user mandate 2026-10-07): expected wall ~5 min
-    # (~75s infra + ~4 min UI suite); cap is 12 min so a hang can never
-    # hold the runner for half an hour again.
-    timeout-minutes: 12
+    timeout-minutes: 45
     env:
       PACKAGE: com.disabngo.blockynexus
       ACTIVITY: com.disabngo.blockynexus.view.activity.start.StartActivity
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: local-api  # workflow_run fires on the default branch; always test the newest scripts
+          ref: local-api
 
       - name: Fetch latest patched APK from releases (prerelease-aware)
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/fetch_release_asset.py BlockyNexus-localapi.apk app.apk
 
-      # Fast path (2026-10-07, ~30s saved): the GH runner image usually
-      # already ships the binder module + adb - only pay for apt update+
-      # install when modprobe actually fails.
       - name: Load binder kernel module
         run: |
           if ! sudo modprobe binder_linux devices="binder,hwbinder,vndbinder" 2>/dev/null; then
@@ -94,21 +87,16 @@ jobs:
             exit 1
           fi
 
-      - name: Run UI automation suite (register, login, navigate all tabs)
-        # FAST mode, hard-coded (user mandate 2026-10-07: "5 minutes only"):
-        # the suite itself must finish in ~4 minutes - Phase A core
-        # (visitor + tabs + boot surfaces), Phase P (sign banner), Phase C
-        # (fresh account via the local API), Phase D core (upgrade +
-        # restart) + assertions/crash scan. The deep-drive phases (B,
-        # E-O) are NOT reachable from CI - pass --mode full by hand on a
-        # local device if deep evidence is ever needed again.
-        timeout-minutes: 8
+      - name: Run UI automation suite (FULL deep-drive mode)
+        # --mode full: every deep phase. Hard cap 38 min (the job allows 45;
+        # leave the diagnostics steps room to always run).
+        timeout-minutes: 38
         run: |
           python3 scripts/ui_automation_test.py \
             --serial localhost:5555 \
             --package "$PACKAGE" \
             --activity "$ACTIVITY" \
-            --mode fast
+            --mode full
 
       - name: Collect diagnostics
         if: always()
@@ -124,16 +112,15 @@ jobs:
           adb -s localhost:5555 shell uiautomator dump /sdcard/final_ui.xml >/dev/null 2>&1 || true
           adb -s localhost:5555 pull /sdcard/final_ui.xml diags/final_ui.xml || true
           adb -s localhost:5555 shell dumpsys activity processes > diags/processes.txt || true
-          # assertion-miss screenshots (Screen.snap, e.g. snap_H_reward_dialog_missing)
           for f in $(adb -s localhost:5555 shell ls /sdcard/snap_*.png 2>/dev/null | tr -d '\r'); do
             adb -s localhost:5555 pull "$f" diags/ || true
           done
-          tar czf redroid-diagnostics.tgz diags || true
+          tar czf redroid-deep-diagnostics.tgz diags || true
 
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: redroid-diagnostics
-          path: redroid-diagnostics.tgz
+          name: redroid-deep-diagnostics
+          path: redroid-deep-diagnostics.tgz
           if-no-files-found: ignore
