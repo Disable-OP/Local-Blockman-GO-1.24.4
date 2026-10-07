@@ -3050,3 +3050,23 @@
   (334/334/0-defaults/334 host-tested, client_asserted 145 — tag/list
   claimed by the new gate).
 - NO GameServer work; Engine 10068 untouched this session.
+
+### Session 33 cont. (deep validation runs 1-2 verdicts + drive fixes)
+
+- Deep run #1 (37635019492, 0f75824) GREEN: the Wave 18 video tag gate
+  PASSED on-device — rbAll -> VideoTotalFragment -> tvSelect tap ->
+  GET /video/api/v1/app/video/tag/list + dialog evidence (tvSelect='Filter',
+  tvTitle='Choose tag:', 'All' row + CANCEL/CONFIRM). client_asserted 145
+  is now verdict-backed.
+- Deep run #1 also exposed a silent skip: the shop-mode buy block (and the
+  Wave 18 type-radio probes) never ran — diagnosed as a transient empty
+  uiautomator dump; added a find-retry + explicit [skip] logs (628a972).
+- Deep run #2 (37640357412, 628a972) GREEN + the skip became VISIBLE:
+  'rb_2 not found twice'. Root cause (evidence): the VideoTagPopupWindow
+  Dialog stays open on row-select; the single BACK dismissed only the
+  popup, so Party/ivTurntable/rb_2 all read 'not found'. Fix (cc0dee6):
+  tap CANCEL if present, then ground with up to 3 BACKs until rgBottom.
+- The video tag gate passed BOTH runs (stable). Fast CI green on 628a972
+  (4.2 min earlier on wip-52; mandate intact). Deep run #3 dispatched on
+  cc0dee6 to (a) validate the grounding fix end-to-end, (b) capture the
+  shop-mode type-radio evidence for recommend/users + users/{userId}/suit.
