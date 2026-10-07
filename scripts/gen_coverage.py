@@ -39,9 +39,16 @@ def load_routes():
 
 
 def concrete_paths(source):
-    """Literal path fragments used by the test suites (strip query strings)."""
+    """Literal path fragments used by the test suites (strip query strings).
+    Strings that sit directly behind an fcall("VERB",  cursor are NOT
+    included — those are verb-matched by fcall_claims (wave 15 honesty:
+    a GET fcall must not claim its PUT/DELETE siblings through the
+    verb-blind pool). Bare literals and assertion probes stay here."""
     out = set()
     for m in re.finditer(r'"(/[A-Za-z0-9\-._{}/]+)', source):
+        prefix_txt = source[max(0, m.start() - 48):m.start()]
+        if re.search(r'fcall\("[A-Za-z]+",\s*$', prefix_txt):
+            continue
         p = m.group(1)
         p = p.split("?")[0]
         if len(p) > 4:
@@ -49,10 +56,25 @@ def concrete_paths(source):
     return out
 
 
+def fcall_claims(source):
+    """(verb, path) pairs from fcall("VERB", "/path...") probes — verb-aware
+    claims (wave 15 honesty fix). The path keeps its query part stripped
+    and is matched with the same equality/prefix rules as the literals."""
+    out = set()
+    for m in re.finditer(r'fcall\("(\w+)",\s*"(/[A-Za-z0-9\-._{}/]+)',
+                         source):
+        out.add((m.group(1).upper(), m.group(2)))
+    return out
+
+
 def main():
     routes = load_routes()
-    host_paths = concrete_paths(open(HOST).read()) if os.path.exists(HOST) else set()
-    ui_paths = concrete_paths(open(UI).read()) if os.path.exists(UI) else set()
+    host_src = open(HOST).read() if os.path.exists(HOST) else ""
+    ui_src = open(UI).read() if os.path.exists(UI) else ""
+    host_fcalls = fcall_claims(host_src)
+    ui_fcalls = fcall_claims(ui_src)
+    host_paths = concrete_paths(host_src)
+    ui_paths = concrete_paths(ui_src)
 
     report = []
     for r in routes:
@@ -69,6 +91,15 @@ def main():
             or (r["path"].startswith(up.rstrip("*"))
                 and len(up.rstrip("*").split("/")) >= 4)
             for up in ui_paths)
+        # Verb-aware fcall claims (wave 15): fcall("GET", "/a/b") asserts
+        # exactly the GET route (plus longer routes via the same prefix
+        # rule) — never its PUT/DELETE siblings on the same path.
+        client_seen = client_seen or any(
+            fv == r["verb"]
+            and (fp == r["path"]
+                 or (r["path"].startswith(fp.rstrip("*"))
+                     and len(fp.rstrip("*").split("/")) >= 4))
+            for fv, fp in ui_fcalls)
         status = "implemented" if r["implemented"] else "default"
         report.append({
             "verb": r["verb"],

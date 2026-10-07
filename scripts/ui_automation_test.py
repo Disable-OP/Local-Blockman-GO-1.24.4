@@ -658,14 +658,88 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
             if row and row.center:
                 screen.tap_node(row)
                 time.sleep(5)
+                alive_or_recover("%s-MailRow" % tag)
+                # Wave 15 — opening a mail row fires mailOperation
+                # (MailBoxApi.mailOperation = PUT /mailbox/api/v1/mail,
+                # the read-marking contract; observed in run 37588191029).
+                mlog = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+                mail_op_lit = "/mailbox/api/v1/mail"
+                check("A: mail read-marking served (PUT %s)" % mail_op_lit,
+                      ("PUT %s" % mail_op_lit) in mlog)
                 adb.key(4)  # back to the list
                 time.sleep(2)
-                alive_or_recover("%s-MailRow" % tag)
             adb.key(4)  # back to Me
             time.sleep(2)
         visit("Top Up", 6)         # recharge screen (pay products path)
         visit("Ranking", 6)        # ranking screen (rank home path)
         visit("Store", 6)          # store screen (dress/suit shop path)
+        # Wave 15 — Video row (MoreViewModel.R -> VideoFragment (wa.b) ->
+        # rbRecommend -> xa.n list model -> VideoApi.getVideoByTag =
+        # GET /video/api/v1/app/video/more/list, fired on template open).
+        # Code-proven traffic, so the gate is HARD. The tag list
+        # (/video/api/v1/app/video/tag/list) rides the tag-filter dialog
+        # (ya.f.a) — discovery only unless the tap proves it.
+        vid_row = screen.find(texts=["Video"])
+        if vid_row and vid_row.center:
+            screen.tap_node(vid_row)
+            time.sleep(6)
+            alive_or_recover("%s-Video" % tag)
+            vlog = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+            vid_more_lit = "/video/api/v1/app/video/more/list"
+            check("A: video screen served (GET %s)" % vid_more_lit,
+                  ("GET %s" % vid_more_lit) in vlog)
+            adb.key(4)  # back to Me
+            time.sleep(2)
+        else:
+            print("  [skip] 'Video' row not found on the Me tab")
+        # Wave 15 — Party row (MoreViewModel.K -> PartyHallFragment):
+        # discovery probe. The hall's own REST loads are not yet mapped
+        # endpoint-for-endpoint; print what the tap adds (promotion to a
+        # hard gate lands with the next evidence pass).
+        party_row = screen.find(texts=["Party"])
+        if party_row and party_row.center:
+            plog_before = localapi_paths(adb)
+            screen.tap_node(party_row)
+            time.sleep(6)
+            alive_or_recover("%s-Party" % tag)
+            pnew = [p for p in localapi_paths(adb)
+                    if p not in plog_before]
+            if pnew:
+                ok("A: party hall traffic added: %s" % ", ".join(pnew))
+            else:
+                print("  [info] party hall added no new LocalAPI routes")
+            adb.key(4)  # back to Me
+            time.sleep(2)
+        else:
+            print("  [skip] 'Party' row not found on the Me tab")
+        # Wave 15 — ivTurntable (Me-tab turntable icon ->
+        # AdsTurntableDialog family). The red-point GET is config-gated
+        # (CampaignControl: slot_machine / Lucky 2020 activity ids) —
+        # discovery probe, non-fatal.
+        turn = screen.find(ids=["ivTurntable"])
+        if turn and turn.center:
+            tlog_before = localapi_paths(adb)
+            screen.tap_node(turn)
+            time.sleep(5)
+            alive_or_recover("%s-Turntable" % tag)
+            tnew = [p for p in localapi_paths(adb)
+                    if p not in tlog_before]
+            if tnew:
+                ok("A: turntable traffic added: %s" % ", ".join(tnew))
+            else:
+                print("  [info] turntable tap added no new LocalAPI routes")
+            # grounding: close whatever the tap opened WITHOUT risking the
+            # double-back-to-exit path on the main activity (an empty tap
+            # surface + BACK would arm the exit toast)
+            if not screen.find(ids=["rgBottom"]):
+                adb.key(4)
+                time.sleep(2)
+            home_tab = screen.find(ids=["rb_1"])
+            if home_tab and home_tab.center:
+                screen.tap_node(home_tab)
+                time.sleep(2)
+        else:
+            print("  [skip] ivTurntable not found on the Me tab")
         # Wave 5m — BUY through the real Store UI: the Dressing tab only
         # shows OWNED items, so the wear path needs a purchase first.
         # Entry: rb_2 -> ivShopEnter (id from the 5j on-device dump) so we
@@ -688,6 +762,14 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                     r"REQ (\w+) (/shop/\S+)", slog)))
                 ok("shop-mode traffic so far: %s" %
                    (", ".join("%s %s" % r for r in shop_reqs[-6:]) or "none"))
+                # Wave 15 — the recommend feed is a HARD gate now: the
+                # shop-mode open fires shopRecommendByV2 on every run
+                # (code: decorate.web.w.a -> IShopApi.shopRecommendByV2;
+                # evidence: run 37588191029 printed it on this exact path).
+                reco_shop_lit = "/shop/api/v1/new/shop/recommend/decorations"
+                check("A: store recommend feed served (GET %s)"
+                      % reco_shop_lit,
+                      ("GET %s" % reco_shop_lit) in slog)
                 for x in screen.dump():
                     if x.res or x.text or x.desc:
                         print("  store] %s | text=%r desc=%r" % (
@@ -785,6 +867,35 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                     time.sleep(2)
                 else:
                     print("  [skip] no store product candidate found")
+                # Wave 15 — the store's suit radio (rbSuit in rgDress):
+                # one tap from shop mode loads the suit page through
+                # decorate.web.w.b -> shopSuitByV2 =
+                # GET /shop/api/v1/new/shop/suit/decorations (code-proven;
+                # the route is fcall-asserted since Phase C — this tap
+                # upgrades it to real app traffic).
+                suit_radio = screen.find(ids=["rbSuit"])
+                if suit_radio and suit_radio.center:
+                    screen.tap_node(suit_radio)
+                    time.sleep(5)
+                    alive_or_recover("%s-storesuit" % tag)
+                    slog2 = adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                    timeout=60)
+                    suit_page_lit = "/shop/api/v1/new/shop/suit/decorations"
+                    check("A: store suit page served (GET %s)"
+                          % suit_page_lit,
+                          ("GET %s" % suit_page_lit) in slog2)
+                    # discovery channel: what else the suit page added
+                    # (suitIds follow-up fetches land here when the
+                    # client has suit ids to resolve)
+                    known = {reco_shop_lit, suit_page_lit}
+                    snew = [ln for ln in re.findall(
+                        r"REQ (\w+) (/(?:shop|decoration)/\S+)", slog2)
+                        if ln[1].split("?")[0] not in known]
+                    if snew:
+                        ok("A: suit-page extra traffic: %s" %
+                           ", ".join("%s %s" % r for r in sorted(set(snew))))
+                else:
+                    print("  [skip] rbSuit not found on the store screen")
             else:
                 print("  [skip] ivShopEnter not found on the Dressing tab")
             # return to the Me tab directly (BACK on the main activity is
@@ -1097,6 +1208,14 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
             screen.tap_node(card)
             time.sleep(8)          # game detail fires its whole surface
             alive_or_recover("%s-gamedetail" % tag)
+            # Wave 15 — the game-detail open carries the engine-config
+            # upload (PUT /game/api/v1/games/engine; observed in run
+            # 37588191029's game-detail surface dump).
+            glog = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+            engine_lit = "/game/api/v1/games/engine"
+            check("A: game detail engine config served (PUT %s)"
+                  % engine_lit,
+                  ("PUT %s" % engine_lit) in glog)
             # game-detail sub-screens (rank / comments) — best-effort probes;
             # labels may vary per game detail layout, BACK always recovers
             for sub in ("rank", "comment"):
@@ -1772,6 +1891,12 @@ def main():
     r14 = fcall("GET", "/game/api/v1/games/%s/rank?type=complex&pageNo=1&pageSize=20" % first_game)
     check("C: game rank board", r14.get("code") == 1
           and len(r14.get("data", {}).get("pageInfo", {}).get("data", [])) > 0, str(r14)[:120])
+    # Wave 15 — on-device proof (adb forward) for the current-worn
+    # decorations list the dress template loads on its dress-mode side.
+    r15 = fcall("GET", "/decoration/api/v1/decorations/using?otherId=%d" % qa_uid_num,
+                headers=auth_hdr)
+    check("C: worn-decoration list", r15.get("code") == 1
+          and isinstance(r15.get("data"), list), str(r15)[:120])
 
     # Phase 4 surface: tribe (clan) lifecycle — all state-backed
     t0 = fcall("GET", "/clan/api/v1/clan/tribe/id", headers=auth_hdr)

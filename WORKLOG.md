@@ -2822,3 +2822,28 @@
   provably dead work; Phase P is now a 6-second grounding + split-
   literal traffic probe. Suite 154s. Mandate headroom: 24%.
 - Host rig 458/458 (re-verified). NO GameServer work.
+
+### Session 30 (Wave 15: store/video/mail/engine app-traffic gates + verb-aware coverage honesty)
+
+- Evidence-first: diffed the run-37588191029 artifact traffic against
+  docs/COVERAGE.json -> ZERO overlap (every route the client hit had an
+  assertion). The honest gap is the inverse: implemented routes the drive
+  VISITS but never claimed (the prints built paths dynamically, so
+  gen_coverage saw no literal).
+- New deep-mode hard gates (fast CI untouched at 4:02): store recommend
+  GET, video more/list GET (code chain: MoreViewModel.R -> VideoFragment
+  rbRecommend -> xa.n -> getVideoByTag), store suit radio ->
+  suit/decorations GET (upgraded fcall claim to app traffic), mail
+  read-marking PUT (MailBoxApi.mailOperation), game-detail engine PUT,
+  Phase C fcall GET /decoration/api/v1/decorations/using.
+- Discovery probes (non-fatal): Me-tab Party row (party hall REST loads),
+  ivTurntable (config-gated red point; grounding is tab-tap based to
+  avoid the double-back-to-exit path).
+- gen_coverage HONESTY FIX: fcall("VERB", "/path") now matches
+  verb-aware (contextual 48-char cursor exclusion keeps bare assertion
+  literals). Recount: 12 verb-blind sibling claims removed (8x
+  decorations/using family, 3x friend DELETEs, DELETE emails, GET
+  gift/suit/receive, PUT appreciation — none had script evidence of that
+  verb). client_asserted = 139 honest (from the 142/150 bookkeeping),
+  + GET /video/api/v1/app/video/more/list as the first new claim.
+- Host rig 458/458. NO server changes. NO GameServer work.

@@ -1566,3 +1566,21 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   detail buy drive to client-assert payGame via UI (host rig already
   covers the contract end-to-end).
 - NO GameServer work.
+
+## Session 30 delta (Wave 15 — read after WORKLOG)
+
+- Wave 15 shipped: deep-mode hard gates for the store/video/mail/engine
+  cluster (recommend, video more/list, suit page, mail read-marking,
+  engine PUT) + Phase C fcall for GET /decorations/using. Fast CI
+  untouched (4:02 mandate stands). No server changes; rig 458/458.
+- gen_coverage is now VERB-AWARE for fcall probes; honest
+  client_asserted = 139 (12 verb-blind sibling claims removed; see the
+  Wave 15 section in docs/ENDPOINTS.md).
+- PENDING VERDICT: the full-mode validation run for the new gates (no
+  server delta; scripts-only). If a gate fails on-device, the tap
+  target moved — fix the drive, do NOT weaken the gate without
+  evidence. Promote the Party/turntable discovery probes once their
+  traffic is captured.
+- Known flake risk in the new gates: the mail-row engine/mail checks
+  are guarded by their tap successes; if the Welcome row is absent the
+  checks skip (non-fatal).

@@ -1265,3 +1265,70 @@ c(context)=campaign sign surface; j(context)=hall activity button;
 b=activity/action fetch; i(context)=main-activity init.
 
 Host rig: unchanged (458/458). NO server changes. NO GameServer work.
+
+# Wave 15 (Session 30): app-traffic gates for the store/video/mail cluster + verb-aware coverage honesty
+
+No server changes; host rig 458/458 unchanged. Everything here is
+drive-side: new deep-mode assertions for routes the client ALREADY
+fires on surfaces the drive already visits, discovered by diffing the
+run-37588191029 artifact traffic against docs/COVERAGE.json.
+
+## 1. New hard gates (deep mode only; fast CI untouched at 4:02)
+
+- GET /shop/api/v1/new/shop/recommend/decorations — the store-mode
+  open fires shopRecommendByV2 (decorate.web.w.a). Was observed and
+  printed every run ("shop-mode traffic so far") but never claimed:
+  the print built the path dynamically so gen_coverage saw no
+  literal. Now a hard check with a bare-path literal.
+- GET /video/api/v1/app/video/more/list — the Me-tab Video row opens
+  VideoFragment (wa.b) whose rbRecommend loads the xa.n list model ->
+  VideoApi.getVideoByTag = this route, fired on template open
+  (code-proven chain). Hard check after the row tap.
+- GET /shop/api/v1/new/shop/suit/decorations — the store's rbSuit
+  radio -> decorate.web.w.b -> shopSuitByV2. Was fcall-asserted
+  (Phase C) since earlier waves; the tap upgrades it to real APP
+  traffic. Hard check.
+- PUT /mailbox/api/v1/mail — opening a mail row fires
+  MailBoxApi.mailOperation (read-marking; observed in run 37588191029).
+  Hard check after the Welcome-row tap in the Inbox visit.
+- PUT /game/api/v1/games/engine — the game-detail open carries the
+  engine-config upload (observed in run 37588191029's game-detail
+  surface). Hard check inside the game-card block.
+- GET /decoration/api/v1/decorations/using — Phase C fcall
+  (adb forward) with the otherId query: on-device proof for the
+  current-worn list the dress template loads on its dress-mode side.
+  App-side trigger discovery continues (see 3).
+
+## 2. Discovery probes (non-fatal; promotion lands after evidence)
+
+- Me-tab Party row: PartyHallFragment open — prints which LocalAPI
+  routes the tap adds (/api/v1/parties family is the candidate).
+- Me-tab ivTurntable: red-point GET is config-gated
+  (CampaignControl: slot_machine / Lucky 2020 activity ids) — prints
+  whatever the tap adds. Grounding is tab-tap based (never a blind
+  BACK on the main activity: double-back-to-exit).
+
+## 3. Coverage honesty recount (verb-aware gen_coverage)
+
+scripts/gen_coverage.py now matches fcall("VERB", "/path") pairs
+VERB-AWARE: a GET fcall no longer claims its PUT/DELETE siblings on
+the same path (the old verb-blind pool did — e.g. the r15 fcall URL
+"/decoration/api/v1/decorations/using" prefix-claimed 8 routes across
+three verbs; only the GET is actually exercised). The exclusion is
+contextual (48-char cursor window behind `fcall("VERB", `), so bare
+assertion literals on the same paths still count.
+
+Honest recount: the previous 142 included 12 verb-blind sibling
+claims (8x /decorations/using* family, 3x /friend/api/v1/friends*
+DELETEs, DELETE /user/api/v2/users/{userId}/emails,
+GET /shop/api/v1/new/shop/gift/suit/receive via its POST fcall,
+PUT /game/api/v1/games/{gameId}/appreciation via the /games/ prefix).
+None of them has script-side evidence of that verb. With the fix plus
+the new video claim: client_asserted = 139 (from the 142/150
+bookkeeping), every True now carrying exact evidence.
+
+## 4. Verification status
+
+Host rig 458/458. Fast-mode budget untouched (all gates live inside
+deep_drive). The full-mode validation run for the new gates is
+dispatched on the current release APK (no server delta this wave).
