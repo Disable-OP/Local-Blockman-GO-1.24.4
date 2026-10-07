@@ -1308,13 +1308,12 @@ def main():
     # ------------------------------------------------- Phase P: the sign banner
     # Wave 12 decode (ActivityItemViewModel tap handler e.b.c.c.java): the
     # hall's activity banner list (GET /activity/api/v2/activity/title)
-    # renders one row per title; a row whose content carries
-    # "activity:sign" opens the campaign sign-in surface (bc.c ->
-    # CampaignApi.signInList -> GET /activity/api/v1/signIn, then the
-    # claim dialog POSTs /activity/api/v1/signIn). The server serves a
-    # "Daily Sign-in" banner (titleType sign) — tap it by TEXT and
-    # hard-check the fetch. Best-effort until the APK carrying the banner
-    # ships: a missing banner is a probe, not a failure.
+    # renders one IMAGE banner per title (item_activity_list = pic ImageView
+    # + red point + countdown; NO title text — Eg binding). A row whose
+    # content carries "activity:sign" opens the campaign sign-in surface
+    # (bc.c -> CampaignApi.signInList -> GET /activity/api/v1/signIn, then
+    # the claim dialog POSTs /activity/api/v1/signIn). The server serves
+    # the sign banner as the THIRD array entry.
     print("== Phase P: hall sign banner -> campaign sign-in surface ==")
     # honesty (session-24 rule): the path literal is SPLIT so gen_coverage
     # extracts only "/act" (len 4, below its >4 threshold) — the GET must
@@ -1329,20 +1328,26 @@ def main():
                    if marker in ln)
 
     p_pre = p_count("REQ GET " + p_sign_lit)
-    # return to the home tab first (the banner list lives on the hall)
+    # return to the home tab first (the banner strip lives on the hall)
     p_home = screen.find(ids=["rb_1"])
     if p_home and p_home.center:
         screen.tap_node(p_home)
         time.sleep(3)
-    p_banner = None
-    p_deadline = time.time() + 10
-    while time.time() < p_deadline and not p_banner:
-        p_banner = screen.find(texts=["Daily Sign-in"])
-        if not p_banner:
-            time.sleep(2)
-    if p_banner and p_banner.center:
-        ok("P: sign banner found at %s" % (p_banner.center,))
-        screen.tap_node(p_banner)
+    # FIND THE SIGN ROW: the banner rows (item_activity_list) are IMAGE
+    # banners — no title text is rendered (Eg binding: pic ImageView with
+    # a default background + red point + optional countdown), so a text
+    # match can never hit. Each row's clickable root carries the
+    # bg_content child; the server array order is [weekday, weekend,
+    # sign], so the THIRD row (index 2, sorted by y) is the sign banner.
+    p_rows = [n for n in screen.dump()
+              if n.res and n.res.rsplit("/", 1)[-1] == "bg_content"
+              and n.center]
+    p_rows.sort(key=lambda n: (n.center[1], n.center[0]))
+    if len(p_rows) >= 3:
+        p_sign_row = p_rows[2]
+        ok("P: %d banner rows; tapping row 2 at %s (sign)"
+           % (len(p_rows), (p_sign_row.center,)))
+        screen.tap_node(p_sign_row)
         time.sleep(5)
         assert_alive(adb, args.package, "P-sign-open")
         p_seen = p_pre
@@ -1364,8 +1369,9 @@ def main():
         alive_or_recover_at(adb, screen, args.package, args.activity,
                             "P-exit")
     else:
-        print("  [probe] P: no Daily Sign-in banner on the hall (APK predates "
-              "the Wave-12 server? non-fatal until the new asset ships)")
+        print("  [probe] P: %d bg_content banner rows on the hall (need 3; "
+              "APK predates the Wave-12 server, or the strip is not on this "
+              "screen) - non-fatal until proven" % len(p_rows))
 
     # ------------------------------------------------- Phase B: profile edit
     # Shared editor helpers live here (Phase D reuses them). HISTORY (read
