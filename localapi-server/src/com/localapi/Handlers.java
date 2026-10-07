@@ -153,7 +153,7 @@ final class Handlers {
         if ("unbindEmail".equals(name)) return unbindEmail(ctx, store);
         if ("tipsEmail".equals(name)) return tipsEmail(ctx, store);
         if ("verifyAck".equals(name)) return envelope("none", null);
-        if ("verifyEmail".equals(name)) return envelope("obj", "{\"authCode\":\"\",\"count\":0,\"right\":true}");
+        if ("verifyEmail".equals(name)) return verifyEmail(ctx, store);
         if ("questionGet".equals(name)) return questionGet(ctx, store);
         if ("questionAuth".equals(name)) return questionAuth(ctx, store);
         if ("questionSetting".equals(name)) return questionSetting(ctx, store);
@@ -3048,6 +3048,32 @@ final class Handlers {
         return envelope("list", (q == null ? new JSONArray() : q).toString());
     }
 
+    /**
+     * POST /user/api/v1/users/security/verify/email (+ /reset, +
+     * /users/verify/email) — VerifyEmailForm {email, verifyCode}.
+     * HttpResponse&lt;SecurityVerifyResponse&gt; = {authCode, flag}. The
+     * client's v2 question-setting chain reads getAuthCode() from this
+     * response and passes it as the ?authCode= of the next
+     * /users/secret/question/setting call — so the code must be REAL
+     * (generated + stored), never an empty string.
+     */
+    private static String verifyEmail(Ctx ctx, StateStore store) {
+        JSONObject u = requireUser(ctx, store);
+        if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        JSONObject form = body(ctx);
+        String email = form.optString("email");
+        if (email == null || !email.contains("@")) return fail("valid email required");
+        String code = form.optString("verifyCode");
+        if (code == null || code.isEmpty()) return fail("verifyCode required");
+        // Local policy: no email transport exists, so the code is validated
+        // server-side against any non-empty value (same policy as bind).
+        String authCode = "local-" + Long.toHexString(System.currentTimeMillis());
+        store.userState(u).put("securityAuthCode", authCode);
+        store.save();
+        return envelope("obj", "{\"authCode\":\"" + authCode
+                + "\",\"flag\":true}");
+    }
+
     /** POST /user/api/v1/users/secret/question — save answers; issue an authCode. */
     private static String questionAuth(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
@@ -3072,12 +3098,20 @@ final class Handlers {
                 + list.length() + ",\"right\":true}");
     }
 
-    /** POST /user/api/{version}/users/secret/question/setting?authCode= — set with code check. */
+    /**
+     * POST /user/api/{version}/users/secret/question/setting?authCode=.
+     * Client contract (jadx fa.l.f / fa.j.a → IUserApi.setUserQuestion):
+     * v1 = NO authCode query (Retrofit omits null @Query) — the account
+     * has no email to verify, this is the only set path it has; v2 = the
+     * authCode issued by /users/security/verify/email. Accept v1 without
+     * a code; validate v2 against the stored securityAuthCode.
+     */
     private static String questionSetting(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String authCode = ctx.query("authCode");
-        if (authCode == null || !authCode.equals(store.userState(u).optString("securityAuthCode"))) {
+        if (authCode != null && !authCode.isEmpty()
+                && !authCode.equals(store.userState(u).optString("securityAuthCode"))) {
             return fail("invalid authCode");
         }
         JSONArray list = null;

@@ -2302,6 +2302,44 @@ def main():
               and any(q.get("question") == "QW16B" for q in qchk16.get("data", [])),
               "%s %s" % (str(qset16)[:80], str(qchk16)[:120]))
 
+        print("== Wave 20: verify-email authCode + v1/v2 question setting ==")
+        # Client contract (jadx ea/j + fa/l): the v2 chain is verify-email
+        # (returns SecurityVerifyResponse {authCode, flag}) -> setting with
+        # that authCode; the v1 (email-less) chain sends NO authCode.
+        ve = call("POST", "/user/api/v1/users/security/verify/email",
+                  {"email": "qa_user5@local.test", "verifyCode": "654321"},
+                  headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("w20 verify-email issues a REAL authCode", ve.get("code") == 1
+              and ve.get("data", {}).get("authCode")
+              and ve["data"].get("flag") is True, str(ve)[:150])
+        ve_bad = call("POST", "/user/api/v1/users/security/verify/email",
+                      {"email": "qa_user5@local.test"}, headers={"Access-Token": tok5})
+        check("w20 verify-email without code rejected", ve_bad.get("code") == 0,
+              str(ve_bad)[:80])
+        if ve.get("code") == 1 and ve.get("data", {}).get("authCode"):
+            vac = ve["data"]["authCode"]
+            qset_ok = call("POST", "/user/api/v2/users/secret/question/setting"
+                           "?userId=%d&authCode=%s" % (uid5, vac),
+                           [{"question": "QW20", "answer": "AW20"}],
+                           headers={"Access-Token": tok5, "userId": str(uid5)})
+            check("w20 setting v2 accepts the verify-email authCode",
+                  qset_ok.get("code") == 1, str(qset_ok)[:100])
+        qset_bad = call("POST", "/user/api/v2/users/secret/question/setting"
+                        "?userId=%d&authCode=not-the-code" % uid5,
+                        [{"question": "QX", "answer": "AX"}],
+                        headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("w20 setting v2 with wrong code rejected", qset_bad.get("code") == 0,
+              str(qset_bad)[:80])
+        qset_v1 = call("POST", "/user/api/v1/users/secret/question/setting?userId=%d" % uid5,
+                       [{"question": "QW20V1", "answer": "AW20V1"}],
+                       headers={"Access-Token": tok5, "userId": str(uid5)})
+        qset_v1_chk = call("GET", "/user/api/v1/users/secret/question?type=1",
+                           headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("w20 setting v1 (no authCode) accepted — email-less contract",
+              qset_v1.get("code") == 1
+              and any(q.get("question") == "QW20V1" for q in qset_v1_chk.get("data", [])),
+              "%s %s" % (str(qset_v1)[:80], str(qset_v1_chk)[:120]))
+
         print("== Wave 17: default-route elimination (star code / vip / password / events) ==")
         # fresh user: immune to earlier rig spending; default wallet 50000 golds
         r17 = call("POST", "/user/api/v1/register",

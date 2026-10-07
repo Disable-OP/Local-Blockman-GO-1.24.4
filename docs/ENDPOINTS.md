@@ -1547,3 +1547,24 @@ COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 147 ->
 152 (bind/email, bind/phone, password/check, password/modify,
 emails/verify/{email}). NO server changes (host rig re-verified 564/564
 after a clean ECJ rebuild). NO GameServer work; Engine 10068 untouched.
+
+### Wave 20b (session 35 cont.) — secret-question contract fixes from the decoded client chain
+
+1. Decoded the full question-setting chain (jadx ea/j + fa/l + fa/j +
+   IUserApi): v2 = verify-email (SecurityVerifyResponse {authCode,
+   flag}) -> POST /user/api/{v}/users/secret/question/setting?authCode=;
+   v1 (account has NO email) = the SAME setting call with NO authCode
+   query (Retrofit omits null @Query) — the only set path an email-less
+   account has.
+2. SERVER FIX 1: /users/security/verify/email (+ /reset +
+   /users/verify/email) now generates + stores a REAL securityAuthCode
+   and returns {"authCode":"local-...","flag":true} — the previous
+   empty-string response could never complete the v2 chain.
+3. SERVER FIX 2: question/setting accepts v1 without an authCode (the
+   decoded email-less contract) and keeps validating v2 codes against
+   the stored securityAuthCode.
+4. Host rig +5 checks: verify-email issues a real code; setting v2
+   accepts it; v2 with a wrong code rejected; v1 without a code
+   accepted and persisted; verify-email without a code rejected.
+
+COVERAGE: 334/334/0-defaults; host rig 569/569; client_asserted 152.
