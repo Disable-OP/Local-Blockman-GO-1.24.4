@@ -1166,13 +1166,8 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
     return added
 
 
-def navigate_all_tabs(adb, screen, package, tag, banner=None):
-    """Walk the five bottom tabs (liveness proof + API-traffic soak).
-
-    `banner` (optional dict) collects the hall activity-strip location for
-    Phase P: the first tab (rb_1..rb_4) whose screen carries >=3 clickable
-    bg_content rows. Phase P then taps that tab directly instead of
-    re-walking all four tabs (~18s saved per fast run)."""
+def navigate_all_tabs(adb, screen, package, tag):
+    """Walk the five bottom tabs (liveness proof + API-traffic soak)."""
     tabs_seen = 0
     for tab in ["rb_1", "rb_2", "rb_3", "rb_4", "rb_5"]:
         n = screen.find(ids=[tab])
@@ -1180,15 +1175,6 @@ def navigate_all_tabs(adb, screen, package, tag, banner=None):
             screen.tap_node(n)
             tabs_seen += 1
             time.sleep(3)  # let the tab fire its API calls
-            if banner is not None and "tab" not in banner \
-                    and tab != "rb_5":
-                rows = [x for x in screen.dump()
-                        if x.res and x.res.rsplit("/", 1)[-1] == "bg_content"
-                        and x.center]
-                if len(rows) >= 3:
-                    banner["tab"] = tab
-                    print("  [banner] %s: activity strip found on %s "
-                          "(%d rows)" % (tag, tab, len(rows)))
             if not assert_alive(adb, package, "%s-tab-%s" % (tag, tab)):
                 return tabs_seen
         else:
@@ -1266,8 +1252,7 @@ def main():
     # 37492582973: the D-phase upgrade PASSED live but the final
     # register-endpoint gate failed on a rotated-out buffer)
     paths_mid = []
-    p_banner = {}   # Phase P reuses this: tab carrying >=3 bg_content rows
-    navigate_all_tabs(adb, screen, args.package, "A", banner=p_banner)
+    navigate_all_tabs(adb, screen, args.package, "A")
     if deep:
         deep_drive(adb, screen, args.package, args.activity, "A",
                    set(paths_early))
@@ -1360,6 +1345,14 @@ def main():
     # the claim dialog POSTs /activity/api/v1/signIn). The server serves
     # the sign banner as the THIRD array entry.
     print("== Phase P: hall sign banner -> campaign sign-in surface ==")
+    # Wave 14 verdict (session 29, code-level): the activity strip's ONLY
+    # home is ActivityFragment (e/b/c/b) — ORPHANED in 1.24.4 (D.b(Context)
+    # has zero live callers; every call site binds D.b(Activity) ->
+    # OverViewRankActivity). The strip can never appear on any tab for any
+    # user, so the old 4-tab bg_content walk (~50s per fast run) was
+    # provably dead work. Phase P now just grounds on the hall and keeps
+    # the split-literal traffic probe + the defensive dialog handler; the
+    # sign surface itself stays gated on game-play (Wave 12/14).
     # honesty (session-24 rule): the path literal is SPLIT so gen_coverage
     # extracts only "/act" (len 4, below its >4 threshold) — the GET must
     # earn its client_asserted claim from REQ evidence, and the sibling
@@ -1373,82 +1366,25 @@ def main():
                    if marker in ln)
 
     p_pre = p_count("REQ GET " + p_sign_lit)
-    # return to the home tab first (the banner strip lives on the hall)
+    # ground on the home tab for the later phases
     p_home = screen.find(ids=["rb_1"])
     if p_home and p_home.center:
         screen.tap_node(p_home)
-        time.sleep(3)
-    # FIND THE SIGN ROW: the banner rows (item_activity_list) are IMAGE
-    # banners — no title text is rendered (Eg binding: pic ImageView with
-    # a default background + red point + optional countdown), so a text
-    # match can never hit. Each row's clickable root carries the
-    # bg_content child; the server array order is [weekday, weekend,
-    # sign], so the THIRD row (index 2, sorted by y) is the sign banner.
-    # PLACEMENT (run 37577912090 evidence): the hall home (rb_1) carried
-    # ZERO bg_content rows — the strip lives on an unknown tab. Walk
-    # rb_1..rb_4 and search each; the walk doubles as extra tab traffic.
-    p_rows = []
-    p_found_tab = None
-    p_cached = p_banner.get("tab")
-    if p_cached:
-        # fast-mode 2026-10-07: the A-walk already located the strip -
-        # drive straight to it instead of re-walking rb_1..rb_4 (~18s).
-        p_tabn = screen.find(ids=[p_cached])
-        if p_tabn and p_tabn.center:
-            screen.tap_node(p_tabn)
-            time.sleep(3)
-            p_rows = [n for n in screen.dump()
-                      if n.res and n.res.rsplit("/", 1)[-1] == "bg_content"
-                      and n.center]
-            if len(p_rows) >= 3:
-                p_found_tab = p_cached
-    if not p_found_tab:
-        for p_tab in ["rb_1", "rb_2", "rb_3", "rb_4"]:
-            p_tabn = screen.find(ids=[p_tab])
-            if not (p_tabn and p_tabn.center):
-                continue
-            screen.tap_node(p_tabn)
-            time.sleep(2)
-            p_rows = [n for n in screen.dump()
-                      if n.res and n.res.rsplit("/", 1)[-1] == "bg_content"
-                      and n.center]
-            if len(p_rows) >= 3:
-                p_found_tab = p_tab
-                break
-            if not adb.pid(args.package):
-                alive_or_recover_at(adb, screen, args.package, args.activity,
-                                    "P-walk-%s" % p_tab)
-    p_rows.sort(key=lambda n: (n.center[1], n.center[0]))
-    if len(p_rows) >= 3 and p_found_tab:
-        p_sign_row = p_rows[2]
-        ok("P: %d banner rows on %s; tapping row 2 at %s (sign)"
-           % (len(p_rows), p_found_tab, (p_sign_row.center,)))
-        screen.tap_node(p_sign_row)
-        time.sleep(3)
-        assert_alive(adb, args.package, "P-sign-open")
-        p_seen = p_pre
-        p_deadline = time.time() + 8
-        while time.time() < p_deadline and p_seen <= p_pre:
-            time.sleep(2)
-            p_seen = p_count("REQ GET " + p_sign_lit)
-        check("P: campaign sign list fetched (GET %s %d->%d)"
-              % (p_sign_lit, p_pre, p_seen),
-              p_seen > p_pre,
-              "the sign banner tap never fetched the sign list")
+        time.sleep(2)
+    p_seen = p_count("REQ GET " + p_sign_lit)
+    if p_seen > p_pre:
+        # never observed on 1.24.4 (the opener is dead); kept as a
+        # non-fatal probe in case a future client build revives the strip.
+        ok("P: campaign sign list fetched without the strip (GET %s %d->%d)"
+           % (p_sign_lit, p_pre, p_seen))
         handle_campaign_dialogs(adb, screen, "P-sign")
-        # back to the hall for the later phases
-        for _ in range(3):
-            if screen.find(ids=["flHomePage"]):
-                break
-            adb.key(4)
-            time.sleep(1.5)
-        alive_or_recover_at(adb, screen, args.package, args.activity,
-                            "P-exit")
     else:
-        print("  [probe] P: no tab carried >=3 bg_content banner rows "
-              "(max seen: %d) - the activity strip is dialog-gated or on "
-              "an undriven screen; non-fatal, evidence for the next "
-              "decode" % len(p_rows))
+        print("  [probe] P: no campaign sign traffic (expected: the strip "
+              "fragment is orphaned in this client build - Wave 14); "
+              "non-fatal")
+        if not adb.pid(args.package):
+            alive_or_recover_at(adb, screen, args.package, args.activity,
+                                "P-ground")
 
     # ------------------------------------------------- Phase B: profile edit
     # Shared editor helpers live here (Phase D reuses them). HISTORY (read
