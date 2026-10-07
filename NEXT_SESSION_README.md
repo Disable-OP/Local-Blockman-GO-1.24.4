@@ -1699,3 +1699,32 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   host-tested, need drive evidence), users/{userId}/suit reachable
   surface (rbSuit chip absent on-device), error-driven upgrades from
   future CI traffic. NO GameServer work.
+
+## Session 35 delta (Wave 20 — read first next session)
+
+- 5-min mandate re-verified with CI data: runs 177-187 all 3.7-4.4 min
+  GREEN (run 176 = 28.3 min was the last pre-mandate dispatch). Fast-only
+  discipline intact on both branches.
+- Wave 20 = login-module flows driven through the REAL client UI (Phase
+  LM in scripts/ui_automation_test.py, deep mode only). jadx trigger map
+  decoded end-to-end (Setting -> Security -> AccountSafe rows; see
+  ENDPOINTS.md Wave 20). client_asserted 147 -> 152: users/bind/email,
+  user/bind/phone, password/check, password/modify, emails/verify/
+  {email}. Honesty splits protect /users/secret/question (verb-blind
+  POST sibling), sms/send (refound sibling), and the {version} bind-email
+  template.
+- CRITICAL DECODE: the password-modify success callback forces a LOGOUT
+  (login.f.a.b.f -> logoutOnModifyPwd). Phase LM therefore runs LAST
+  (after Phase O); every session-dependent phase precedes it. The final
+  assertions + crash scan need no session.
+- The LM gates are NOT yet verdict-backed: dispatch test-redroid-deep,
+  read the [LM] log lines, fix any hop the dumps reveal, re-run. The
+  question-screen answer submit (POST /users/secret/question/setting?
+  authCode=) is intentionally unmapped — the [qs] dump lines are the
+  evidence for the next wave.
+- Sandbox restore recipe used this session (fresh sandbox): base APK =
+  release asset base-apk-1.24.4.apk (v0.1.0-pipeline); jadx 1.5.6 from
+  GitHub releases; per-dex decompile JAVA_OPTS=-Xmx2000m threads-count 1
+  (2 threads + 2600m heap OOM-killed classes2 in this 4 GB sandbox);
+  apktool 2.9.3 d --no-src for resources.arsc string resolution.
+- NO server changes (host rig 564/564 re-verified). NO GameServer work.

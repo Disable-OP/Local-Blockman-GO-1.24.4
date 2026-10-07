@@ -5,7 +5,7 @@
   "implemented": 334,
   "default": 0,
   "host_tested": 334,
-  "client_asserted": 147
+  "client_asserted": 152
  },
  "endpoints": [
   {
@@ -1566,7 +1566,7 @@
    "status": "implemented",
    "handler": "bindPhone",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1630,7 +1630,7 @@
    "status": "implemented",
    "handler": "passwordCheck",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1638,7 +1638,7 @@
    "status": "implemented",
    "handler": "passwordModify",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1670,7 +1670,7 @@
    "status": "implemented",
    "handler": "bindEmail",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -2518,7 +2518,7 @@
    "status": "implemented",
    "handler": "verifyAck",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",

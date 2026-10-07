@@ -1494,3 +1494,56 @@ NO GameServer work; Engine 10068 untouched.
 COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 147.
 NO server changes this wave (host rig re-verified 564/564 from a clean
 ECJ rebuild). NO GameServer work; Engine 10068 untouched.
+
+## Wave 20 (session 35) — login-module flows driven through the real client UI
+
+1. Trigger map (jadx, session 35 — every hop verified against the
+   decompiled sources; labels resolved from resources.arsc):
+   * Me tab -> "Setting" row (MoreViewModel.N "more_setup"; row 8 of
+     fragment_more, below the fold — the drive scrolls) ->
+     SettingFragment (e.b.ia.k).
+   * Setting -> "Security" row (ia.m.f; item_view_account_safe) ->
+     AccountSafeFragment (e.b.b.f / AccountSafeViewModel e.b.b.g).
+   * AccountSafe rows: "Modify Password" (hasPassword) -> f() ->
+     LoginManager.onConfirmPassword -> ConfirmPasswordFragment
+     (login.f.a.c.c: old pw + confirm -> web.b.c passwordCheck -> POST
+     /user/api/v1/user/password/check) -> ChangePasswordFragment
+     (login.f.a.b.d: new + confirm -> web.b.a modifyPassword -> POST
+     /user/api/v1/user/password/modify). SUCCESS CALLBACK FORCES A
+     LOGOUT (login.f.a.b.f -> logoutOnModifyPwd -> UserApi.logout) —
+     the LM phase therefore runs LAST (after O), and the suite's final
+     assertions need no session.
+   * "Email" (unbound) -> i() -> BindEmailFragment (e.b.e.f) is
+     TWO-STEP: email + "Next" (j() -> sendEmailVerifyCode -> POST
+     /user/api/v1/emails/verify/{email}) then code + "Add" (i() ->
+     bindEmail -> POST /user/api/v1/users/bind/email; the v2 {version}
+     variant fires only with a secret-answer bundle, not on fresh
+     accounts).
+   * "Phone number" (unbound) -> k() -> BindPhoneFragment (e.b.f.e):
+     phone + "Get validation code" (h() -> POST /user/api/v1/sms/send/
+     {phone}) + code + "Confirm" (f() -> bindPhone -> POST
+     /user/api/v1/user/bind/phone).
+   * "Safety Settings" -> j() (requires hasPassword, else a toast) ->
+     SafeSettingFragment (e.b.ca.c) -> "Security Questions" row -> f()
+     -> (email unbound) b(0) -> UserApi.getUserQuestion -> GET
+     /user/api/v1/users/secret/question -> the question screen. The
+     answer-submit (POST /users/secret/question/setting?authCode=)
+     stays best-effort/unmapped this wave (the authCode round-trip
+     needs on-device dumps).
+2. Wave 20 drive (scripts/ui_automation_test.py login_module_drive,
+   Phase LM, deep mode only — the fast suite budget stays protected):
+   Setting -> Security -> questions GET gate -> email two-step bind
+   gates -> phone bind gates -> password check+modify gates. Local
+   policy honored: bind codes are validated server-side (no SMS/email
+   transport can exist locally), the drive types arbitrary codes.
+3. Honesty mechanics (session-24 rule): claim-carrying literals are
+   bare-path variables. /users/secret/question is SPLIT mid-segment (a
+   full literal would verb-blind-claim the authUserQuestion POST
+   sibling), sms/send is split (would prefix-claim the refound
+   concrete sibling), and the {version} bind-email template is
+   protected by gen_coverage's concrete-route rule.
+
+COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 147 ->
+152 (bind/email, bind/phone, password/check, password/modify,
+emails/verify/{email}). NO server changes (host rig re-verified 564/564
+after a clean ECJ rebuild). NO GameServer work; Engine 10068 untouched.

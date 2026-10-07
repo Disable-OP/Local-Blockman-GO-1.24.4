@@ -3127,3 +3127,43 @@
   delta incl. the differ method), COVERAGE.json regenerated.
 - NO GameServer work. Engine 10068 untouched. Next: deep login-module
   flows / users/{userId}/suit reachability / error-driven upgrades.
+
+### Session 35 (Wave 20 — login-module flows driven through the real client UI)
+
+- Mandate check first: the 5-minute Redroid CI mandate is verified with
+  hard data — runs 177-187 all GREEN in 3.7-4.4 min (run 176, 28.3 min,
+  was the last pre-mandate dispatch). Fast-only discipline holds on both
+  branches; test-redroid-deep.yml remains manual-dispatch-only.
+- Fresh-run forensics (fast 37665565366, Wave 19 APK): 125 REQ all
+  code=1, crash buffer empty, the set-psd/param/check gate fired (natural
+  boot call + Phase C fcall). No error-driven server fixes needed.
+- Restored the sandbox decompile toolchain (fresh sandbox): jadx 1.5.6,
+  per-dex decompile at -Xmx2000m/1 thread (the first attempt with 2
+  threads/2600m was OOM-killed on classes2), apktool 2.9.3 for resources.
+- jadx trigger map for the WHOLE login module (classes2 + classes3 +
+  resources.arsc labels): Me -> Setting (MoreViewModel.N, row 8, needs
+  scroll) -> Security (ia.m.f) -> AccountSafe (e.b.b.g): password rows ->
+  LoginManager.onConfirmPassword/onSetPassword -> ConfirmPassword/Change
+  Password fragments -> password/check + password/modify; email row ->
+  BindEmailFragment two-step (Next -> emails/verify/{email}, Add ->
+  users/bind/email); phone row -> BindPhoneFragment (sms/send/{phone} +
+  user/bind/phone); Safety Settings -> ca.c -> Security Questions ->
+  getUserQuestion (GET users/secret/question). CRITICAL: password-modify
+  success forces a logout (login.f.a.b.f -> logoutOnModifyPwd).
+- Wave 20 server-side: NONE (all flows already implemented + host-tested;
+  rig re-verified 564/564 after a clean ECJ rebuild of the current
+  source).
+- Wave 20 drive: new login_module_drive() = Phase LM in the deep suite,
+  placed LAST (after Phase O) because the modify-password logout would
+  otherwise kill the session-dependent phases. Gates: question-list GET
+  (split-literal, evidence not claim), email two-step (verify + bind),
+  phone (sms + bind — both split-literal evidence), password check +
+  modify (full claims). client_asserted 147 -> 152 with sibling honesty
+  intact ({version} bind-email template, sms refound, authUserQuestion
+  POST all protected).
+- Docs: ENDPOINTS.md Wave 20, NEXT_SESSION_README.md session 35 delta,
+  COVERAGE.json regenerated.
+- NEXT: dispatch test-redroid-deep on the Wave 20 commit; verdict-check
+  the [LM] lines; fix hops from the [as]/[qs] dumps; promote the
+  question-screen answer submit once the authCode round-trip is mapped.
+  NO GameServer work; Engine 10068 untouched this session.

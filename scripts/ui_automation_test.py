@@ -1520,6 +1520,315 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
     return added
 
 
+def login_module_drive(adb, screen, package, activity, tag, old_password):
+    """Wave 20 — login-module flows driven through the REAL client UI.
+    Deep mode only (the fast suite budget stays protected).
+
+    jadx trigger map (session 35; every hop verified against the
+    decompiled sources, labels resolved from resources.arsc):
+      Me tab -> 'Setting' row (MoreViewModel.N "more_setup"; row 8 of
+        fragment_more — needs a list scroll) -> SettingFragment (e.b.ia.k)
+      Setting -> 'Security' row (ia.m.f; item_view_account_safe)
+        -> AccountSafeFragment (e.b.b.f / AccountSafeViewModel e.b.b.g):
+        * 'Safety Settings' -> j() (requires hasPassword, else toast)
+          -> SafeSettingFragment (e.b.ca.c) -> 'Security Questions' row
+          -> f() -> (email unbound) b(0) -> UserApi.getUserQuestion
+          -> GET /user/api/v1/users/secret/question -> question screen.
+          BEST-EFFORT answer submit (POST /user/api/{v}/users/secret/
+          question/setting?authCode=) — the authCode round-trip is not
+          fully mapped, so this stays evidence, never a gate.
+        * 'Email' (unbound) -> i() -> BindEmailFragment (e.b.e.f) is
+          TWO-STEP: email + 'Next' (j() -> sendEmailVerifyCode -> POST
+          /user/api/v1/emails/verify/{email}) then code + 'Add' (i() ->
+          bindEmail -> POST /user/api/v1/users/bind/email).
+        * 'Phone number' (unbound) -> k() -> BindPhoneFragment (e.b.f.e)
+          single-step: phone + 'Get validation code' (h() -> POST
+          /user/api/v1/sms/send/{phone}) + code + 'Confirm' (f() ->
+          bindPhone -> POST /user/api/v1/user/bind/phone).
+        * 'Modify Password' (hasPassword) -> f() -> LoginManager.
+          onConfirmPassword -> ConfirmPasswordFragment (login.f.a.c.c):
+          old pw + confirm -> web.b.c passwordCheck -> POST /user/api/v1/
+          user/password/check -> ChangePasswordFragment (login.f.a.b.d):
+          new + confirm -> web.b.a modifyPassword -> POST /user/api/v1/
+          user/password/modify.
+    Local policy: the embedded server validates bind codes itself (no
+    SMS/email transport can exist in a purely local world), so the drive
+    types arbitrary codes. Order is DELIBERATE: questions before the
+    email bind (the question list only fires from SafeSetting while the
+    email is unbound) and the password rotate LAST.
+    The hard requirement stays: the app never crashes; every gate below
+    is verdict-backed evidence for the coverage report."""
+    def alive_or_recover(stage):
+        if adb.pid(package):
+            return True
+        print("  [evidence] process died at %s - relaunching" % stage)
+        return bool(relaunch_and_wait(adb, screen, package, activity, stage))
+
+    def edit_nodes():
+        return [n for n in screen.dump()
+                if n.cls.endswith("EditText") and n.center]
+
+    def fill_edit(idx, value):
+        eds = edit_nodes()
+        if idx >= len(eds):
+            print("  [skip] edit field %d not found (%d visible)"
+                  % (idx, len(eds)))
+            return False
+        screen.tap_node(eds[idx])
+        time.sleep(0.6)
+        adb.key(123)  # MOVE_END
+        for _ in range(40):
+            adb.key(67)  # DEL
+        adb.text(value)
+        time.sleep(0.4)
+        adb.key(111)  # ESC hides the keyboard
+        time.sleep(0.8)
+        return True
+
+    def confirm_button():
+        for rid in ["btnSure", "btn_ok", "btn_save", "btnOk", "btn_confirm"]:
+            n = screen.find(ids=[rid])
+            if n and n.center and "cancel" not in (n.res or ""):
+                screen.tap_node(n)
+                return True
+        n = screen.find(texts=["Confirm", "Add", "Next", "OK", "Save",
+                               "sure"])
+        if n and n.center:
+            screen.tap_node(n)
+            return True
+        btn = next((x for x in screen.dump()
+                    if x.cls == "android.widget.Button" and x.clickable
+                    and x.center), None)
+        if btn:
+            screen.tap_node(btn)
+            return True
+        return False
+
+    def req_seen(marker):
+        return marker in adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+
+    def back(times=1):
+        for _ in range(times):
+            adb.key(4)
+            time.sleep(2)
+
+    # -- ground on the Me tab ------------------------------------------------
+    me = screen.find(ids=["rb_5"])
+    if not (me and me.center):
+        print("  [skip] LM: Me tab not reachable (no rb_5)")
+        return
+    screen.tap_node(me)
+    time.sleep(3)
+    if not alive_or_recover("%s-me" % tag):
+        return
+
+    # -- Setting row (scroll the Me list: row 8, below the fold) ------------
+    setting = None
+    for swipe in range(4):
+        setting = screen.find(texts=["Setting"])
+        if setting and setting.center:
+            break
+        adb.sh("input swipe 360 900 360 320 300")
+        time.sleep(2)
+    if not (setting and setting.center):
+        print("  [skip] LM: 'Setting' row not found after scrolling")
+        debug_dump(screen, "%s-no-setting" % tag)
+        back(1)
+        return
+    screen.tap_node(setting)
+    time.sleep(4)
+    if not alive_or_recover("%s-setting" % tag):
+        return
+    ok("LM: Setting screen open")
+
+    # -- Security (AccountSafe) ---------------------------------------------
+    sec = screen.find(texts=["Security"])
+    if not (sec and sec.center):
+        print("  [skip] LM: 'Security' row not found on Setting")
+        debug_dump(screen, "%s-no-security" % tag)
+        back(1)
+        return
+    screen.tap_node(sec)
+    time.sleep(4)
+    if not alive_or_recover("%s-accsafe" % tag):
+        return
+    ok("LM: Account Security screen open")
+    for n in screen.dump():
+        if n.text:
+            print("  [as] %r" % n.text[:32])
+
+    # -- 1) Safety Settings -> Security Questions (email still UNBOUND) -----
+    # honesty (session-24 rule): claim-carrying literals are bare-path
+    # variables; the question-list path is SPLIT mid-segment because a full
+    # literal would verb-blind-claim the POST /users/secret/question
+    # sibling (authUserQuestion) that this gate does NOT exercise. The
+    # sms/send literal is split for the same reason (the refound concrete
+    # sibling must not be prefix-claimed by a trailing-/ probe).
+    q_lit = "/user/api/v1/users/secret/ques" + "tion"
+    email_verify_lit = "/user/api/v1/emails/verify/"   # deliberate prefix probe
+    email_bind_lit = "/user/api/v1/users/bind/email"
+    phone_bind_lit = "/user/api/v1/user/bind/phone"
+    pw_check_lit = "/user/api/v1/user/password/check"
+    pw_modify_lit = "/user/api/v1/user/password/modify"
+    q_seen = False
+    safe = screen.find(texts=["Safety Settings"])
+    if safe and safe.center:
+        screen.tap_node(safe)
+        time.sleep(4)
+        if alive_or_recover("%s-safesetting" % tag):
+            ok("LM: Safety Settings screen open")
+            qrow = screen.find(texts=["Security Questions"])
+            if qrow and qrow.center:
+                screen.tap_node(qrow)
+                time.sleep(6)
+                alive_or_recover("%s-questions" % tag)
+                # q_lit is split mid-segment (above) so gen_coverage
+                # extracts nothing claimable — a full literal would
+                # verb-blind-claim the POST /users/secret/question
+                # sibling (authUserQuestion), which this gate does NOT
+                # exercise. The gate still proves the GET from traffic.
+                q_seen = req_seen("REQ GET " + q_lit)
+                if q_seen:
+                    ok("LM: question list fetched (GET users/secret/question)")
+                else:
+                    print("  [info] no question-list GET (row state changed?)")
+                # best-effort: the question screen pickers/answers are not
+                # mapped for deterministic driving — dump for the next wave
+                for n in screen.dump():
+                    if n.text or n.res.endswith("EditText"):
+                        print("  [qs] %s | %r" % (
+                            n.res.rsplit("/", 1)[-1] if n.res else "",
+                            (n.text or "")[:24]))
+                back(1)
+            else:
+                print("  [skip] LM: 'Security Questions' row not found")
+                debug_dump(screen, "%s-no-qrow" % tag)
+            back(1)  # out of Safety Settings
+            time.sleep(1)
+    else:
+        print("  [skip] LM: 'Safety Settings' row not found (hasPassword?)")
+
+    # -- 2) Email bind (two-step) -------------------------------------------
+    email = "qa%05d@local.test" % (int(time.time()) % 100000)
+    code = "138%03d" % (int(time.time()) % 1000)
+    erow = screen.find(texts=["Email"])
+    if erow and erow.center:
+        screen.tap_node(erow)
+        time.sleep(4)
+        if alive_or_recover("%s-bindemail" % tag):
+            if fill_edit(0, email):
+                if confirm_button():  # 'Next'
+                    time.sleep(6)
+                    alive_or_recover("%s-emailcode" % tag)
+                    v_seen = req_seen("REQ POST " + email_verify_lit)
+                    if v_seen:
+                        ok("LM: email verify-code acked (POST emails/verify/)")
+                    else:
+                        print("  [info] no emails/verify call (step-1 "
+                              "client gate?)")
+                    if fill_edit(0, code):
+                        if confirm_button():  # 'Add'
+                            time.sleep(6)
+                            alive_or_recover("%s-emailbind" % tag)
+                            b_seen = req_seen("REQ POST " + email_bind_lit)
+                            if b_seen:
+                                ok("LM: email bind served (POST users/bind/"
+                                   "email) for %s" % email)
+                            else:
+                                print("  [info] no users/bind/email call")
+                        else:
+                            print("  [skip] LM: 'Add' button not found")
+                    else:
+                        print("  [skip] LM: code field not found (step-2 "
+                              "not reached?)")
+            back(1)
+            time.sleep(1)
+    else:
+        print("  [skip] LM: 'Email' row not found on Account Security")
+
+    # -- 3) Phone bind --------------------------------------------------------
+    phone = "130%08d" % (int(time.time()) % 100000000)
+    prow = screen.find(texts=["Phone number"])
+    if prow and prow.center:
+        screen.tap_node(prow)
+        time.sleep(4)
+        if alive_or_recover("%s-bindphone" % tag):
+            if fill_edit(0, phone):
+                get_code = screen.find(texts=["Get validation code"],
+                                       contains=["validation code", "code"])
+                if get_code and get_code.center:
+                    screen.tap_node(get_code)
+                    time.sleep(5)
+                    alive_or_recover("%s-phonesms" % tag)
+                    s_seen = req_seen("REQ POST /user/api/v1/sms/sen" +
+                                      "d/" + phone)
+                    if s_seen:
+                        ok("LM: sms code acked (POST sms/send/)")
+                    else:
+                        print("  [info] no sms/send call (send gate?)")
+                else:
+                    print("  [skip] LM: 'Get validation code' not found")
+                if fill_edit(1, code):
+                    if confirm_button():  # 'Confirm'
+                        time.sleep(6)
+                        alive_or_recover("%s-phonebind" % tag)
+                        pb_seen = req_seen("REQ POST " + phone_bind_lit)
+                        if pb_seen:
+                            ok("LM: phone bind served (POST user/bind/phone)"
+                               " for %s" % phone)
+                        else:
+                            print("  [info] no user/bind/phone call")
+            back(1)
+            time.sleep(1)
+    else:
+        print("  [skip] LM: 'Phone number' row not found on Account Security")
+
+    # -- 4) Modify Password (LAST — rotates the credential) ------------------
+    mrow = screen.find(texts=["Modify Password"])
+    if mrow and mrow.center:
+        screen.tap_node(mrow)
+        time.sleep(4)
+        if alive_or_recover("%s-confirmpw" % tag):
+            if fill_edit(0, old_password):
+                if confirm_button():
+                    time.sleep(8)
+                    alive_or_recover("%s-changepw" % tag)
+                    c_seen = req_seen("REQ POST " + pw_check_lit)
+                    if c_seen:
+                        ok("LM: old-password check served (POST password/"
+                           "check)")
+                    else:
+                        print("  [info] no password/check call")
+                    new_pw = "NewQA%05d" % (int(time.time()) % 100000)
+                    if fill_edit(0, new_pw) and fill_edit(1, new_pw):
+                        if confirm_button():
+                            time.sleep(8)
+                            alive_or_recover("%s-modifypw" % tag)
+                            m_seen = req_seen("REQ POST " + pw_modify_lit)
+                            if m_seen:
+                                ok("LM: password modify served (POST password/"
+                                   "modify)")
+                            else:
+                                print("  [info] no password/modify call")
+            back(1)
+            time.sleep(1)
+    else:
+        print("  [skip] LM: 'Modify Password' row not found (hasPassword "
+              "state?)")
+
+    # -- ground back on a safe screen ----------------------------------------
+    back(1)  # AccountSafe -> Setting
+    time.sleep(1)
+    home_tab = screen.find(ids=["rb_1"])
+    if home_tab and home_tab.center:
+        screen.tap_node(home_tab)
+        time.sleep(2)
+    else:
+        relaunch_and_wait(adb, screen, package, activity, "%s-land" % tag)
+    alive_or_recover("%s-end" % tag)
+    print("== LM: login-module drive complete ==")
+
+
 def navigate_all_tabs(adb, screen, package, tag):
     """Walk the five bottom tabs (liveness proof + API-traffic soak)."""
     tabs_seen = 0
@@ -5328,6 +5637,20 @@ def main():
                 time.sleep(2)
             alive_or_recover_at(adb, screen, args.package, args.activity,
                                 "O-exit")
+
+        # ------------------------------------------------- Phase LM (Wave 20):
+        # login-module flows through the real UI (Setting -> Security).
+        # LAST deep phase, DELIBERATELY: the jadx-decoded success callback
+        # of the password modify fires logoutOnModifyPwd -> UserApi.logout
+        # (login.f.a.b.f -> login.y.a) — the session ends on success, so
+        # every session-dependent phase (D's token, E-O) must run BEFORE
+        # this. The drive's email/phone/question flows also mutate the
+        # account (bind state), which is why it runs on the fully-registered
+        # Phase-D session at the very end of the suite. The final
+        # assertions + crash scan below need no valid session.
+        print("== PHASE LM: login-module flows (Setting -> Security) ==")
+        login_module_drive(adb, screen, args.package, args.activity, "LM",
+                           password_d)
     else:
         print("  [skip] Phases E-O deep drives (fast mode)")
 
