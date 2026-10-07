@@ -2529,3 +2529,46 @@
 - Host rig 435/435 (value-branch tests replace the stateless probe).
 - These refinements ride the NEXT build (wip-46 was already cut; its run
   validates the RSA contract — the two refinements are host-tested).
+
+### Session 27 (read first — CI is now FAST: 35 min -> 6:32 verified; bind-race server fix)
+
+- USER MANDATE FIRST (done): the redroid UI suite used to run ~28.5 min
+  of deep-drive phases and the whole test-redroid pipeline took
+  35:00 (runs 37546126594 / 37569020063). The user demanded ~5 minutes.
+  * scripts/ui_automation_test.py gained --mode fast|full (default
+    fast, UI_MODE env). fast = Phase A core (visitor auto-login, 5
+    tabs, boot-surface + auth-traffic hard checks) + Phase C (fresh
+    account via the local API — registration is NEVER skipped) +
+    Phase D core (guest->registered set-password upgrade + restart +
+    Me-tab verify) + final assertions/crash scan. Skipped in fast:
+    deep_drive, Phase B editor drive, Phases E-O (clan UI, H reward,
+    I-K scrap, L-N rank/VIP, O account-switch login). ALL code stays
+    in the file (gen_coverage literals untouched — client_asserted
+    still 167); opt back in with mode=full for evidence sessions.
+  * test-redroid.yml: job 55 -> 20 min, UI step 40 -> 12, boot poll
+    60x10s -> 48x5s, workflow_dispatch 'mode' input (default fast).
+  * MAIN's workflow copy synced (f19f7b0) — workflow_run-triggered
+    runs read MAIN's file; without the sync post-build runs would
+    have kept the old ceilings.
+  * VERIFIED: run 37572931163 (a3750ce, fast) = SUCCESS in 6:32
+    (was 35:00). 10s keep-alive mandate unchanged.
+- COVERAGE.json regenerated honestly: host_tested 234 -> 236 (Wave 11
+  set-psd/param/check + account/invalid/check host tests were never
+  banked). client_asserted unchanged at 167.
+- SERVER FIX (bind-race stand-down, bde3fa0): run 37569020063's
+  localapi.txt showed a relaunched process (pid 12672) failing 5 binds
+  with 1s sleeps ON THE MAIN THREAD (App.onCreate) against a live
+  sibling holder before its watchdog stood by ~5s later. start() now
+  re-probes after each lost bind: a genuine LocalAPI holder answering
+  = stand down immediately. Death-race path (no holder yet) keeps the
+  5-attempt loop. HostBootTest 'race' mode encodes the deterministic
+  holder sequence (junk on conn 1, HTTP from conn 2). Host rig
+  435 -> 440/440, all green locally (ecj + nanohttpd 2.3.1 on JRE 21).
+- Run 37569020063 traffic audit: 105 REQs, 51 unique endpoints, ZERO
+  unmapped routes, zero 4xx/5xx. The RongIM onError stacks are the
+  known IM-out-of-scope limitation. Nothing new to implement from that
+  run's traffic.
+- Sandbox rebuilt (fresh sandbox had lost artifacts): APK wip-46 ->
+  dl/, dexes -> apk_dex/, jadx 1.5.6 -> tools/, decompilation of
+  classes1..5 running in the background for the next decodes.
+- NO GameServer work.

@@ -1370,3 +1370,31 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   G hand-over retry fires, read the G-ho-dump evidence in the log.
 - NO GameServer work.
 
+
+## Session 27 delta (read first — CI is FAST now; bind-race fixed; rig 440)
+
+- CI SPEED (user mandate, VERIFIED): test-redroid = 6:32 total
+  (run 37572931163), was 35:00. The UI suite default is --mode fast:
+  visitor core + Phase C registration + Phase D upgrade/restart +
+  assertions. Deep-drive phases (B, E-O) are opt-in: dispatch
+  test-redroid with input mode=full (or UI_MODE=full locally).
+  Main's workflow copy is synced to the fast version (f19f7b0) — keep
+  syncing main whenever the local-api workflow file changes (the
+  workflow_run trigger reads MAIN's copy).
+- Scheduled continuation: gateway cron task "webDevReview" (job
+  441456, fixed_rate 3600s, priority 15, prompt "Continue") created
+  and verified enabled.
+- Server: LocalServer.start() stands down after a lost bind when a
+  genuine sibling holder answers (run 37569020063 pid-12672 evidence:
+  5x1s main-thread bind burn). HostBootTest 'race' mode covers it;
+  host rig 440/440.
+- Artifacts rebuilt in this sandbox: /home/z/work/{dl,apk_dex,tools,
+  jadx_out}; jadx 1.5.6 at /home/z/work/tools/jadx/bin/jadx; PAT b64
+  at /home/z/work/.pat_b64 (decode per command; env does not persist).
+- NEXT (error-driven first): (1) watch the next fast runs + the first
+  FULL run after the RSA wip-46 asset — Phase O "client-UI login
+  accepted (RES code=1)" is the headline; (2) week-task UI chain
+  decode (dvSignUp gate) once jadx_out is rebuilt — client-assert
+  weekTasks/claimTask in a FULL drive; (3) regenerate COVERAGE.json
+  only after FULL runs add evidence.
+- NO GameServer work.
