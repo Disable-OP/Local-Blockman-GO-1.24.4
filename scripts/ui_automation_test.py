@@ -5052,10 +5052,18 @@ def main():
             for lit, tab in board_checks:
                 seen = n_wait(lit, n_pre[lit], 8)
                 if seen <= n_pre[lit] and tab:
-                    t = screen.find(ids=[tab])
-                    if t and t.center:
-                        screen.tap_node(t)
-                        seen = n_wait(lit, n_pre[lit], 12)
+                    # Wave 18d: run 37654738617 — the rb_area_tab fallback
+                    # tap was a silent no-op once in 5 deep runs (the
+                    # sibling rb_global_tab passed seconds later). Retry
+                    # the tab tap once with a FRESH find before failing;
+                    # check semantics unchanged (0->N).
+                    for _ in range(2):
+                        t = screen.find(ids=[tab])
+                        if t and t.center and screen.tap_node(t):
+                            seen = n_wait(lit, n_pre[lit], 12)
+                            if seen > n_pre[lit]:
+                                break
+                        time.sleep(2)
                 check("N: %s board fetched (GET %s %d->%d)"
                       % (label, lit, n_pre[lit], seen),
                       seen > n_pre[lit],
