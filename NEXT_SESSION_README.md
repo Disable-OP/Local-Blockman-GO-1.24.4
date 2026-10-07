@@ -1646,3 +1646,33 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 - client_asserted 145 (tag/list). NEXT: dispatch test-redroid-deep, read
   the verdicts; promote recommend/users + users/{userId}/suit from the
   probe evidence to gates; rerun deep once green. Then error-driven loop.
+
+## Session 33 delta 2 (Wave 18b/18c — read after delta 1)
+
+- Deep run verdicts: the video tag gate PASSED in ALL THREE deep runs
+  (37635019492 / 37640357412 / 37644219937) — tag/list is stable,
+  verdict-backed, dialog evidence pinned (tvSelect='Filter', tvTitle=
+  'Choose tag:', row 'All' + CANCEL/CONFIRM).
+- Run-2 exposed the popup grounding bug (VideoTagPopupWindowDialog stays
+  open on row-select; single BACK only closed the popup → Party/ivTurntable/
+  rb_2 all 'not found' → shop-mode block skipped). Fixed (cc0dee6): tap
+  CANCEL, then up to 3 BACKs grounding on rgBottom.
+- Run-3 shop-mode evidence: the store rgDress type radios fire SHOP lists
+  (/shop/api/v1/new/shop/decorations/{8,9,10,2}) — NOT the decoration
+  chain. The decoration recommend feed actually fires at the GAMECARD
+  stage (creator outfit -> FriendGoodsListModel -> t.a(typeId,isSuit=
+  false) -> getRecommendList, typeIds 5+12) — DETERMINISTIC in all three
+  runs. Wave 18c promoted it to an UNCONDITIONAL verdict-backed gate
+  (99ec1d3). client_asserted = 146.
+- users/{userId}/suit (decoration suit list) NEVER fired in any run —
+  the Dressing-tab rbSuit chip was absent on-device; stays un-asserted
+  (implemented + host-tested; reachable surface not yet mapped).
+- test-redroid-deep.yml exists on main TOO (sync 18c5199) — dispatchable
+  via API. ALSO: main's test-redroid.yml was still the pre-mandate
+  version (mode input present, 20-min cap) — synced to the fast-only
+  version in the same commit; the mandate is now complete on BOTH
+  branches.
+- NEXT: verify deep run #4 passes the recommend gate; then the remaining
+  growth is deep login-module flows (bind email/phone, set-password,
+  secret questions — all implemented + host-tested) or error-driven
+  upgrades from future traffic. NO GameServer work.
