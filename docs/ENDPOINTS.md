@@ -1585,3 +1585,24 @@ COVERAGE: 334/334/0-defaults; host rig 569/569; client_asserted 152.
 3. Host rig +1 check (type=0 catalog >= 2 pickable entries): 570/570.
 
 COVERAGE: 334/334/0-defaults; host rig 570/570; client_asserted 152.
+
+### Wave 20d (session 35 cont.) — run-8 verdict fixes: securitySettings state contract
+
+1. Deep run 8 (b96c25a + wip-53): the LM phase RAN — Setting ->
+   Security -> Safety Settings all opened; the password/check gate
+   PASSED; the run's single FAIL was the pre-existing Phase G
+   inviteFriend flake (unrelated). Verdict-driven fixes:
+2. SERVER FIX 4 (the root cause behind the SafeSetting misroute): the
+   client sets isFinishSecretQuestion = (secretQuestionList != null)
+   from the boot call /user/api/v2/users/verify/user/security/settings
+   (jadx service/d.java AccountManagerService). The handler emitted an
+   always-present (empty) array — every account looked
+   questions-finished and SafeSetting routed to the UNBIND flow. The
+   field is now OMITTED while the account has no saved questions.
+3. Drive fixes from the same evidence: AccountSafe's Email/Phone rows
+   sit BELOW the fold (scroll before hunting); the ChangePassword form
+   can show ONE visible EditText at a time (adaptive fill + re-dump).
+4. Host rig: the security-settings check updated to assert the OMITTED
+   field. 570/570.
+
+COVERAGE: 334/334/0-defaults; host rig 570/570; client_asserted 152.

@@ -1402,9 +1402,10 @@ def main():
         # error-driven fixes from the v0.4.3 run's client traffic
         ss = call("GET", "/user/api/v2/users/verify/user/security/settings?userId=%d" % uid5,
                   headers={"Access-Token": tok5, "userId": str(uid5)})
-        check("security settings shape", ss.get("code") == 1
+        check("security settings shape (no questions -> secretQuestionList OMITTED)",
+              ss.get("code") == 1
               and ss["data"].get("bindEmail") is False
-              and isinstance(ss["data"].get("secretQuestionList"), list)
+              and "secretQuestionList" not in ss["data"]
               and ss["data"].get("userId") == uid5, str(ss)[:150])
         call("POST", "/user/api/v1/users/bind/email", {"email": "qa@example.com"}, headers=h5)
         ss2 = call("GET", "/user/api/v2/users/verify/user/security/settings?userId=%d" % uid5,

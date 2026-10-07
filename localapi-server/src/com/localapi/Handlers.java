@@ -3355,21 +3355,30 @@ final class Handlers {
         return envelope("obj", out.toString());
     }
 
-    /** GET /user/api/v2/users/verify/user/security/settings — UserVerifySettingsInfo (client calls at boot). */
+    /** GET /user/api/v2/users/verify/user/security/settings — UserVerifySettingsInfo (client calls at boot).
+     * Contract detail (jadx service/d.java -> AccountManagerService): the
+     * client marks isFinishSecretQuestion = (secretQuestionList != null).
+     * The field must therefore be OMITTED while the account has no saved
+     * questions — an empty array would falsely mark them finished and the
+     * SafeSetting screen would route to the unbind flow instead of the
+     * question-setting flow. */
     private static String securitySettings(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
         String email = u.optString("email");
         JSONArray questions = store.userState(u).optJSONArray("secretQuestions");
-        JSONArray ids = new JSONArray();
-        for (int i = 0; questions != null && i < questions.length(); i++) {
-            ids.put(i + 1);
-        }
+        boolean hasQuestions = questions != null && questions.length() > 0;
         JSONObject out = new JSONObject();
         out.put("bindEmail", email != null && !email.isEmpty());
         out.put("email", email == null ? "" : email);
-        out.put("ids", ids);
-        out.put("secretQuestionList", questions == null ? new JSONArray() : questions);
+        if (hasQuestions) {
+            JSONArray ids = new JSONArray();
+            for (int i = 0; i < questions.length(); i++) {
+                ids.put(i + 1);
+            }
+            out.put("ids", ids);
+            out.put("secretQuestionList", questions);
+        }
         out.put("userId", u.optLong("userId"));
         return envelope("obj", out.toString());
     }

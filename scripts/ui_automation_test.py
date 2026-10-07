@@ -1762,9 +1762,18 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
         print("  [skip] LM: 'Safety Settings' row not found (hasPassword?)")
 
     # -- 2) Email bind (two-step) -------------------------------------------
+    # Run 8 evidence: the Email/Phone rows sit BELOW the fold on the
+    # AccountSafe list (the [as] dump only reached 'Safety Settings') —
+    # scroll before hunting for them.
     email = "qa%05d@local.test" % (int(time.time()) % 100000)
     code = "138%03d" % (int(time.time()) % 1000)
-    erow = screen.find(texts=["Email"])
+    erow = None
+    for swipe in range(3):
+        erow = screen.find(texts=["Email"])
+        if erow and erow.center:
+            break
+        adb.sh("input swipe 360 900 360 380 300")
+        time.sleep(2)
     if erow and erow.center:
         screen.tap_node(erow)
         time.sleep(4)
@@ -1801,7 +1810,13 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
 
     # -- 3) Phone bind --------------------------------------------------------
     phone = "130%08d" % (int(time.time()) % 100000000)
-    prow = screen.find(texts=["Phone number"])
+    prow = None
+    for swipe in range(3):
+        prow = screen.find(texts=["Phone number"])
+        if prow and prow.center:
+            break
+        adb.sh("input swipe 360 900 360 380 300")
+        time.sleep(2)
     if prow and prow.center:
         screen.tap_node(prow)
         time.sleep(4)
@@ -1853,16 +1868,28 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                     else:
                         print("  [info] no password/check call")
                     new_pw = "NewQA%05d" % (int(time.time()) % 100000)
-                    if fill_edit(0, new_pw) and fill_edit(1, new_pw):
-                        if confirm_button():
-                            time.sleep(8)
-                            alive_or_recover("%s-modifypw" % tag)
-                            m_seen = req_seen("REQ POST " + pw_modify_lit)
-                            if m_seen:
-                                ok("LM: password modify served (POST password/"
-                                   "modify)")
-                            else:
-                                print("  [info] no password/modify call")
+                    # Run 8 evidence: the ChangePassword form can show ONE
+                    # visible EditText at a time (the confirm field appears
+                    # after the new password is entered — TextWatcher-driven
+                    # visibility). Fill whatever is visible, re-dump, fill
+                    # again until two distinct fields are typed.
+                    if fill_edit(0, new_pw):
+                        time.sleep(2)
+                        eds_now = edit_nodes()
+                        if len(eds_now) > 1:
+                            fill_edit(1, new_pw)
+                        else:
+                            # confirm field may replace the old one in place
+                            fill_edit(0, new_pw)
+                    if confirm_button():
+                        time.sleep(8)
+                        alive_or_recover("%s-modifypw" % tag)
+                        m_seen = req_seen("REQ POST " + pw_modify_lit)
+                        if m_seen:
+                            ok("LM: password modify served (POST password/"
+                               "modify)")
+                        else:
+                            print("  [info] no password/modify call")
             back(1)
             time.sleep(1)
     else:
