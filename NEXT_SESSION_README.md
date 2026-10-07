@@ -1452,3 +1452,26 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   week-sign chain (bc.e -> UserApi.dailySignIn) callers — also among
   the failed classes; (3) error-driven from new traffic only.
 - NO GameServer work.
+
+## Session 28 (read first — CI is 5:03 fast; timing mandate DELIVERED)
+
+- USER MANDATE 2026-10-07: "lower the test redroid time... just make it 5
+  minutes only". DONE, PUSHED (9cd17c0), VALIDATED: run 37583919830 fast
+  = 5m03s total / UI suite 199s / 0 FAIL (baseline was 6:32-7:54, worst
+  35:39). Caps now 12/8 (fast) so a hang can never cost 30 min again.
+- Fast-mode time cuts live in 9cd17c0: early-exit permission-dialog
+  dismiss, settle 12->8, poll 3->2, tab settle 5->3, Phase P strip-tab
+  cache (fallback walk kept), Phase D relaunch skip when already at
+  main (validated live), binder modprobe-first. All gates kept: 10s
+  keep-alive smoke, visitor + fresh registration (Phase C), upgrade +
+  restart (Phase D), boot-surface assertions, diagnostics bundle.
+- 39 'default' endpoints: NO live client call sites (interfaces live in
+  classes3 only; classes6.dex is OUR localapi dex). Speculative
+  implementation is forbidden — error-driven from new traffic only.
+- Full-mode evidence run in flight (37584366843): validates the b2cef28
+  hand-over mitigation (settle+re-find on sheet/btnSure taps) + banks
+  REQ evidence. On green: regen COVERAGE.json (scripts/gen_coverage.py),
+  then commit docs. If the G hand-over still fails, the next decode is
+  the TribeCenter.tribeRole cache staleness path (h() guard drops the
+  long-press when the cached role is stale after mid-phase restarts).
+- NO GameServer work.
