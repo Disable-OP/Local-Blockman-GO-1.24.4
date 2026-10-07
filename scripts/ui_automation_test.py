@@ -850,7 +850,14 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
         # dialog if one appears. The purchase is REAL state (dressBuyV2
         # wallet math; the visitor wallet covers a product).
         buy_seen = False
+        # One retry: a transient empty uiautomator dump (3 failed reads ->
+        # []) silently skipped this whole block in the 37635019492 deep run
+        # — the shop-mode traffic + Wave 18 type-radio probes never ran and
+        # nothing said why. Retry once, then log the skip.
         tab2s = screen.find(ids=["rb_2"])
+        if not tab2s:
+            time.sleep(3)
+            tab2s = screen.find(ids=["rb_2"])
         if tab2s and screen.tap_node(tab2s):
             time.sleep(5)
             shop_enter = screen.find(ids=["ivShopEnter"])
@@ -1058,13 +1065,17 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                 else:
                     print("  [skip] rbSuit not found on the store screen")
             else:
-                print("  [skip] ivShopEnter not found on the Dressing tab")
+                print("  [skip] ivShopEnter not found on the Dressing tab "
+                      "(shop-mode block + type-radio probes skipped)")
             # return to the Me tab directly (BACK on the main activity is
             # double-back-to-exit territory)
             me_tab = screen.find(ids=["rb_5"])
             if me_tab and me_tab.center:
                 screen.tap_node(me_tab)
                 time.sleep(2)
+        else:
+            print("  [skip] rb_2 not found twice on the Me tab "
+                  "(shop-mode buy block + type-radio probes skipped)")
         if buy_seen:
             # the Dressing tab now holds the purchased item: drive the
             # wear action on it (PUT /decorations/using/new). The item's
