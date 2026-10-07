@@ -1642,3 +1642,19 @@ COVERAGE: 334/334/0-defaults; host rig 570/570; client_asserted 152.
    missed it after the hunts.
 3. NO server changes; NO new APK needed (the deep run checks out the
    newest scripts and fetches wip-56).
+
+### Wave 21b (session 36 cont.) — run-11 verdict fixes for the question submit
+
+1. Run 11: UI AUTOMATION PASS; the Q1 DPAD pick REGISTERED (the answer
+   field appeared and was filled), btn_next advanced to section 2, the
+   Q2 popup opened (the [qp] rows are the catalog minus Q1 — proof the
+   selection + f-list construction work end-to-end).
+2. Remaining gaps fixed blind from the decoded flow: (a) the Q2 answer
+   fill typed into ANSWER 1 (index 0) leaving l empty — now fills the
+   LAST EditText; (b) btn_confirm sits below the fold on 720x1280 — the
+   text hunt missed it and the flow dropped out silently — now
+   ID-based (btn_confirm) with a reveal scroll; (c) the pick
+   verification text-matched the popup's own rows — now the
+   EditText-count delta OR (ListView gone AND text shown).
+3. [qs-end2] evidence dump pins the post-confirm state for the next
+   verdict. NO server changes; host rig untouched (570/570).

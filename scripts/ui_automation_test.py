@@ -1622,6 +1622,11 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
         if not (anchor and anchor.center):
             print("  [skip] LM: picker %s not found" % (anchor_ids,))
             return False
+        # baseline = visible EditTexts BEFORE the selection (the answer
+        # field's visibility delta is the picked-verification signal)
+        pick_question_row.baseline_edits = len([
+            n for n in screen.dump()
+            if n.cls.endswith("EditText") and n.center])
         screen.tap_node(anchor)
         time.sleep(3)
         # popup evidence: the rows render the CATALOG strings the server
@@ -1634,19 +1639,37 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
         time.sleep(1)
         adb.key(23)   # DPAD_CENTER/ENTER — click the selected row
         time.sleep(2.5)
-        # selection verification: with the popup dismissed, the activity
-        # shows the picked question text (the binding mirrors m/n)
-        picked = any(row_text_prefix.split()[0] in (n.text or "")
-                     for n in screen.dump())
+        # selection verification (run-11 fix): the popup's own rows contain
+        # the prefix too, so text-matching alone false-positives. The REAL
+        # signals: (a) the answer-field visibility delta — the binding
+        # reveals the section's EditText when its question is picked; or
+        # (b) the popup ListView is GONE and the picked text remains (the
+        # anchor's select TextView mirrors m/n — covers a wizard-style
+        # layout that replaces section 1 instead of stacking).
+        nodes = screen.dump()
+        eds_after = [n for n in nodes
+                     if n.cls.endswith("EditText") and n.center]
+        listview_gone = not any(n.cls == "android.widget.ListView"
+                                for n in nodes)
+        text_shown = any(row_text_prefix.split()[0] in (n.text or "")
+                         for n in nodes)
+        picked = (len(eds_after) > pick_question_row.baseline_edits) \
+            or (listview_gone and text_shown)
         if not picked:
             print("  [info] LM: DPAD row pick did not register "
-                  "(%s)" % row_text_prefix)
+                  "(%s; edits %d->%d)" % (row_text_prefix,
+                                          pick_question_row.baseline_edits,
+                                          len(eds_after)))
             debug_dump(screen, "lm-qpick")
             # the focusable popup is still open — BACK dismisses it (popups
             # take the back key before the activity), so the outer flow's
             # back count stays anchored on fa.i
             adb.key(4)
             time.sleep(2)
+        else:
+            ok("LM: question picked (%s; edits %d->%d)"
+               % (row_text_prefix, pick_question_row.baseline_edits,
+                  len(eds_after)))
         return picked
 
     def back(times=1):
@@ -1765,8 +1788,21 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                         time.sleep(3)
                     if fill_q2(screen, adb):
                         time.sleep(2)
-                        fill_edit(0, "LocalQA-Two")
-                        if confirm_button():  # btn_confirm 'Confirm'
+                        # run-11 evidence: index 0 is ANSWER 1's field (still
+                        # visible when section 2 reveals) — the newly-gated
+                        # answer-2 field is the LAST EditText
+                        eds_q2 = edit_nodes()
+                        fill_edit(max(0, len(eds_q2) - 1), "LocalQA-Two")
+                        # the Confirm button sits below the fold on 720x1280
+                        # — reveal it before the ID-based tap (run-11: the
+                        # text hunt missed it and the flow dropped out)
+                        cf = screen.find(ids=["btn_confirm"])
+                        if not (cf and cf.center):
+                            adb.sh("input swipe 360 800 360 400 300")
+                            time.sleep(2)
+                        cf = screen.find(ids=["btn_confirm"])
+                        if cf and cf.center:
+                            screen.tap_node(cf)
                             time.sleep(6)
                             alive_or_recover("%s-qset" % tag)
                             if req_seen("REQ POST " + qs_lit):
@@ -1775,6 +1811,15 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                             else:
                                 print("  [info] no question/setting POST "
                                       "(picker shape changed? see [qs])")
+                        else:
+                            print("  [skip] LM: btn_confirm not found even "
+                                  "after the reveal scroll")
+                        print("  [qs-end2] state after the confirm attempt:")
+                        for n in screen.dump():
+                            if n.text:
+                                print("  [qs-end2] %s | %r" % (
+                                    n.res.rsplit("/", 1)[-1] if n.res else "",
+                                    (n.text or "")[:28]))
                 for n in screen.dump():
                     if n.text or n.res.endswith("EditText"):
                         print("  [qs-end] %s | %r" % (
