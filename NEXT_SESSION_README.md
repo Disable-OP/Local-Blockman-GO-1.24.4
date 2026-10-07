@@ -1398,3 +1398,36 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   weekTasks/claimTask in a FULL drive; (3) regenerate COVERAGE.json
   only after FULL runs add evidence.
 - NO GameServer work.
+
+## Session 27 FINAL (read first — Wave 12 sign-in decode, rig 450, all pipelines fast)
+
+- CI: fast mode is the default everywhere and VERIFIED twice
+  (37572931163 = 6:32, 37576779681 = 6:45, both PASS). Deep evidence
+  sessions: dispatch test-redroid with input mode=full.
+- Session-23 dormancy SOLVED (see ENDPOINTS.md Wave 12): GET
+  /activity/api/v1/signIn fires only from the hall BANNER tap
+  (content "activity:sign"); the boot gate (getActivitySignUp) needs
+  the local hasPlayed flag. Server now serves the sign banner as the
+  THIRD title entry; automation Phase P taps bg_content row index 2
+  (rows are IMAGE-only — no text; run 37576779681 proved the text
+  probe can never hit).
+- Legacy verdict: dairy/tasks + users/tasks have NO client call sites
+  (documented Wave 12); implemented + host-tested stays.
+- claimTask returns the FULL RechargeEntity; StateStore.readFile
+  hardened (traversal guard + canonical containment); rig 450/450
+  (malformed-request block added: invalid JSON/empty body/wrong verb/
+  unknown route/traversal ids/health-after barrage).
+- Coverage honesty: Phase P's literal is source-split; COVERAGE.json
+  regenerated (host_tested 236, client_asserted 167). Regenerate only
+  after FULL runs add REQ evidence.
+- NEXT (priority): (1) watch the Phase P validation run (bg_content
+  row count printed; if <3, the strip is not on the hall home — decode
+  where activity_list_view is included from the binding Zc/_c chain);
+  (2) if the tap opens the surface, a FULL run can client-assert
+  GET+POST /activity/api/v1/signIn (+2 routes, regen coverage); (3)
+  the H-phase item1 walk may need revalidation against 3 banners.
+- Artifacts: /home/z/work/{repo,dl,apk_dex,jadx_out,tools,jd}; jadx
+  full decompiles DONE for classes1/2/3 (src_classes1/2/3); classes4/5
+  NOT decompiled (only --single-class on demand). PAT b64 at
+  /home/z/work/.pat_b64.
+- NO GameServer work.
