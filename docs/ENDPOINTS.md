@@ -1332,3 +1332,41 @@ bookkeeping), every True now carrying exact evidence.
 Host rig 458/458. Fast-mode budget untouched (all gates live inside
 deep_drive). The full-mode validation run for the new gates is
 dispatched on the current release APK (no server delta this wave).
+
+## Wave 15b (Session 30 cont.): on-device verdicts from run 37598014388 + gen_coverage prefix-rule fix
+
+The first full-mode validation run FAILED on exactly one gate — the
+system worked as designed (a wrong assumption caught before it could
+rot). Verdicts:
+
+- Video template: OPENS but fires NO LocalAPI route on open (the
+  more/list gate failed; zero /video traffic in the whole run). The
+  xa.n onLoad chain is interaction-driven (tag filter / pagination /
+  detail). Gate DOWNGRADED to a discovery probe with a node dump;
+  GET /video/api/v1/app/video/more/list is client=False again until
+  its real trigger is mapped.
+- Party hall: PROMOTED to two hard gates — the open deterministically
+  fires GET /game/api/v2/party/auth AND GET
+  /game/api/v1/games/all/open/party (observed).
+- Store suit radio: the dress-mode load chain is deterministic —
+  using + check/resource + expire + type/{typeId} all fired in the
+  same snapshot. expire and type/{typeId} are NEW claims (exact
+  template literals); using stays fcall-claimed (the check name is
+  source-split so no verb-blind sibling claims).
+- gen_coverage prefix rule hardened twice:
+  1) prefix claims now require the literal to END with "/" (a
+     deliberate family probe) — a complete path literal can never
+     claim longer siblings (this killed the decorations/using
+     PUT/DELETE phantoms for good);
+  2) family probes keep the >=4-segment depth guard (a "/friend/"
+     2-segment string claims nothing).
+- Friend family: the /friend/api/v1/friends/ + /friend/api/v2/friends/
+  probes are now DELIBERATE trailing-slash variables with a hard
+  follow-GET gate (artifact: 7x follow per run); the friend routes
+  keep their pre-session claims with an explicit carrier.
+- Wardrobe suit list (GET /decoration/api/v1/new/decorations/users/
+  {userId}/suit): new hard gate on the hall rbSuit chip traffic
+  (code: t.b -> getDressSuitList; fires every run).
+
+Honest client_asserted: 144. Host rig 458/458. Fast CI untouched.
+Next validation: full-mode dispatch on 37f334d+ scripts.

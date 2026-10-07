@@ -668,6 +668,9 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                       ("PUT %s" % mail_op_lit) in mlog)
                 adb.key(4)  # back to the list
                 time.sleep(2)
+            else:
+                print("  [info] no Welcome mail row this run — read-marking "
+                      "gate skipped (row guard)")
             adb.key(4)  # back to Me
             time.sleep(2)
         visit("Top Up", 6)         # recharge screen (pay products path)
@@ -679,15 +682,29 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
         # Code-proven traffic, so the gate is HARD. The tag list
         # (/video/api/v1/app/video/tag/list) rides the tag-filter dialog
         # (ya.f.a) — discovery only unless the tap proves it.
+        # Wave 15b — Video row: the 15a hard gate FAILED on-device (run
+        # 37598014388): the tap lands, the app stays alive, but the video
+        # template fires NO LocalAPI route on open (its REST loads are
+        # interaction-driven — tag filter / pagination / detail). Downgraded
+        # to a discovery probe with a node dump until the trigger is mapped.
         vid_row = screen.find(texts=["Video"])
         if vid_row and vid_row.center:
+            vlog_before = localapi_paths(adb)
             screen.tap_node(vid_row)
             time.sleep(6)
             alive_or_recover("%s-Video" % tag)
-            vlog = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
-            vid_more_lit = "/video/api/v1/app/video/more/list"
-            check("A: video screen served (GET %s)" % vid_more_lit,
-                  ("GET %s" % vid_more_lit) in vlog)
+            vnew = [p for p in localapi_paths(adb)
+                    if p not in vlog_before]
+            if vnew:
+                ok("A: video screen traffic added: %s" % ", ".join(vnew))
+            else:
+                print("  [info] video template fired no LocalAPI routes "
+                      "(15a verdict stands)")
+            for n in screen.dump():
+                if n.res or n.text or n.desc:
+                    print("  video] %s | text=%r desc=%r" % (
+                        n.res.rsplit("/", 1)[-1] if n.res else "",
+                        n.text[:24], n.desc[:24]))
             adb.key(4)  # back to Me
             time.sleep(2)
         else:
@@ -698,16 +715,19 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
         # hard gate lands with the next evidence pass).
         party_row = screen.find(texts=["Party"])
         if party_row and party_row.center:
-            plog_before = localapi_paths(adb)
             screen.tap_node(party_row)
             time.sleep(6)
             alive_or_recover("%s-Party" % tag)
-            pnew = [p for p in localapi_paths(adb)
-                    if p not in plog_before]
-            if pnew:
-                ok("A: party hall traffic added: %s" % ", ".join(pnew))
-            else:
-                print("  [info] party hall added no new LocalAPI routes")
+            # Wave 15b — PROMOTED to hard gates: run 37598014388 proved
+            # the party-hall open fires both routes every time.
+            plog = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+            party_auth_lit = "/game/api/v2/party/auth"
+            check("A: party hall auth served (GET %s)" % party_auth_lit,
+                  ("GET %s" % party_auth_lit) in plog)
+            party_open_lit = "/game/api/v1/games/all/open/party"
+            check("A: party hall open-list served (GET %s)"
+                  % party_open_lit,
+                  ("GET %s" % party_open_lit) in plog)
             adb.key(4)  # back to Me
             time.sleep(2)
         else:
@@ -884,9 +904,36 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                     check("A: store suit page served (GET %s)"
                           % suit_page_lit,
                           ("GET %s" % suit_page_lit) in slog2)
-                    # discovery channel: what else the suit page added
-                    # (suitIds follow-up fetches land here when the
-                    # client has suit ids to resolve)
+                    # Wave 15b — PROMOTED: the suit radio switches the store
+                    # to its dress-mode side, whose load chain (code:
+                    # va.b(Boolean) -> DressManager.getUsingList family) fires
+                    # four deterministic GETs (run 37598014388 captured all
+                    # four in this exact snapshot). Regexes are verb-aware
+                    # and userId-agnostic (the visitor id is dynamic). The
+                    # using-path in the check NAME is source-split (repo
+                    # convention) so this GET-only gate never verb-blindly
+                    # claims the PUT/DELETE siblings of that path — the GET
+                    # claim itself rides the Phase C fcall (verb-aware).
+                    check("A: store dress-mode worn-list served (GET "
+                          "/dec" + "oration/api/v1/decorations/using)",
+                          re.search(r"GET /decoration/api/v1/decorations/"
+                                    r"using(?:\?|\s|$)", slog2) is not None)
+                    reschk_lit = "/decoration/api/v1/new/decorations/check/resource"
+                    check("A: store dress-mode res-check served (GET %s)"
+                          % reschk_lit,
+                          re.search(r"GET /decoration/api/v1/new/decorations/"
+                                    r"check/resource", slog2) is not None)
+                    expire_lit = "/decoration/api/v1/new/decorations/users/{userId}/expire"
+                    dtype_lit = "/decoration/api/v1/new/decorations/users/{userId}/type/{typeId}"
+                    check("A: store dress-mode expire list served (GET %s)"
+                          % expire_lit,
+                          re.search(r"GET /decoration/api/v1/new/decorations/"
+                                    r"users/\d+/expire", slog2) is not None)
+                    check("A: store dress-mode type list served (GET %s)"
+                          % dtype_lit,
+                          re.search(r"GET /decoration/api/v1/new/decorations/"
+                                    r"users/\d+/type/", slog2) is not None)
+                    # discovery channel: anything else the suit page added
                     known = {reco_shop_lit, suit_page_lit}
                     snew = [ln for ln in re.findall(
                         r"REQ (\w+) (/(?:shop|decoration)/\S+)", slog2)
@@ -1235,6 +1282,24 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
     ok("deep drive added %d new endpoint paths" % len(added))
     for p in added:
         print("    + %s" % p)
+    # Wave 15b — friend-family evidence carrier: the chat tab load and the
+    # friend-card surfaces fire the /friend/api/v1/friends/ family every
+    # run (run 37588191029 artifact: 7x friends/follow, friends/{id}/gaming,
+    # friends/info/{nickName}, v2 friends detail). The trailing-slash
+    # variable is a DELIBERATE family probe (gen_coverage prefix rule);
+    # the follow GET is the deterministic hard gate for the family.
+    friend_fam = "/friend/api/v1/friends/"
+    friend_v2_fam = "/friend/api/v2/friends/"
+    flog = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+    check("A: friend list family served (GET /friend/api/v1/friends/follow)",
+          re.search(r"GET /friend/api/v1/friends/follow", flog) is not None)
+    # Wave 15b — the hall dressing suit chip (navigate_all_tabs rbSuit tap)
+    # fires getDressSuitList (decorate.web.t.b = GET
+    # /decoration/api/v1/new/decorations/users/{userId}/suit) every run.
+    check("A: wardrobe suit list served (GET /decoration/api/v1/new/"
+          "decorations/users/{userId}/suit)",
+          re.search(r"GET /decoration/api/v1/new/decorations/"
+                    r"users/\d+/suit", flog) is not None)
     # Evidence-backed surface assertions (run 37492582973's deep-drive
     # delta proved both fetches fire during THIS walk):
     # - the game detail's video section fetches GET /video/api/v1/app/

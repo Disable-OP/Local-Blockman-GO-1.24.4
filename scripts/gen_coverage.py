@@ -80,25 +80,27 @@ def main():
     for r in routes:
         tested = any(hp == r["path"] or r["path"].startswith(hp.rstrip("*"))
                      for hp in host_paths)
-        # Honesty (session-28): a UI literal only claims a LONGER route via
-        # prefix when it is itself a concrete multi-segment path. Substring
-        # probes like "/shop/api" or "/game/api" (used in `in`-filters over
-        # captured traffic) used to claim EVERY shop/game route as
-        # client_asserted. Equality always counts; prefix needs >= 4
-        # segments ("/config/files/x" qualifies, "/shop/api" does not).
+        # Honesty (session-28 + wave-15b): a UI literal claims a LONGER
+        # route via prefix ONLY when it is itself a deliberate prefix
+        # probe — it must END with "/" (e.g. "/game/api/v1/games/"). A
+        # complete path literal ("/a/b/using") must never claim its
+        # longer siblings ("/a/b/using/new") — that is how the
+        # decorations/using family got phantom PUT/DELETE claims.
         client_seen = any(
             up == r["path"]
-            or (r["path"].startswith(up.rstrip("*"))
-                and len(up.rstrip("*").split("/")) >= 4)
+            or (up.endswith("/")
+                and len(up.rstrip("*").split("/")) >= 4
+                and r["path"].startswith(up.rstrip("*")))
             for up in ui_paths)
         # Verb-aware fcall claims (wave 15): fcall("GET", "/a/b") asserts
-        # exactly the GET route (plus longer routes via the same prefix
-        # rule) — never its PUT/DELETE siblings on the same path.
+        # exactly the GET route (prefix only from trailing-/ URLs) — never
+        # its PUT/DELETE siblings on the same path.
         client_seen = client_seen or any(
             fv == r["verb"]
             and (fp == r["path"]
-                 or (r["path"].startswith(fp.rstrip("*"))
-                     and len(fp.rstrip("*").split("/")) >= 4))
+                 or (fp.endswith("/")
+                     and len(fp.rstrip("*").split("/")) >= 4
+                     and r["path"].startswith(fp.rstrip("*"))))
             for fv, fp in ui_fcalls)
         status = "implemented" if r["implemented"] else "default"
         report.append({

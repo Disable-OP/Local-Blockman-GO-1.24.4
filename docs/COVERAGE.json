@@ -5,7 +5,7 @@
   "implemented": 296,
   "default": 39,
   "host_tested": 237,
-  "client_asserted": 139
+  "client_asserted": 144
  },
  "endpoints": [
   {
@@ -70,7 +70,7 @@
    "status": "implemented",
    "handler": "friendBlacklist",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "DELETE",
@@ -726,7 +726,7 @@
    "status": "implemented",
    "handler": "partyAuth",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -1198,7 +1198,7 @@
    "status": "implemented",
    "handler": "videoPageList",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",
@@ -2102,7 +2102,7 @@
    "status": "implemented",
    "handler": "friendAliasDelete",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "DELETE",
@@ -2238,7 +2238,7 @@
    "status": "implemented",
    "handler": "dressExpireList",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -2254,7 +2254,7 @@
    "status": "implemented",
    "handler": "dressOwnedByType",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -2310,7 +2310,7 @@
    "status": "implemented",
    "handler": "friendDetails",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
