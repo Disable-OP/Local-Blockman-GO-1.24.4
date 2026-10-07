@@ -67,6 +67,30 @@ def fcall_claims(source):
     return out
 
 
+def template_match(template, literal, concrete=None):
+    """Wave 16 honesty+coverage fix: a concrete literal claims a ROUTE-TABLE
+    TEMPLATE exactly the way the router dispatches real requests — equal
+    segment count, every {placeholder} consumes exactly one literal segment,
+    all other segments equal. Never lets a literal claim a longer/shorter
+    sibling (the wave-15b rule still holds), and never claims concrete
+    routes (they keep the exact/prefix rules).
+
+    Router dispatch semantics: a CONCRETE route wins over a template, so a
+    literal that IS a concrete table route (e.g. /user/scrap/value when
+    /user/scrap/{scrapId} also exists) must never claim the template —
+    pass `concrete` (the set of placeholder-free table paths) to enforce
+    that; otherwise the literal /user/scrap/value would phantom-claim the
+    {scrapId} sibling just because "value" fits one segment."""
+    if concrete is not None and literal in concrete:
+        return False
+    ts = template.split("/")
+    ls = literal.split("/")
+    if len(ts) != len(ls):
+        return False
+    return all((t.startswith("{") and t.endswith("}")) or t == l
+               for t, l in zip(ts, ls))
+
+
 def main():
     routes = load_routes()
     host_src = open(HOST).read() if os.path.exists(HOST) else ""
@@ -77,8 +101,10 @@ def main():
     ui_paths = concrete_paths(ui_src)
 
     report = []
+    concrete_routes = {r["path"] for r in routes if "{" not in r["path"]}
     for r in routes:
         tested = any(hp == r["path"] or r["path"].startswith(hp.rstrip("*"))
+                     or template_match(r["path"], hp, concrete_routes)
                      for hp in host_paths)
         # Honesty (session-28 + wave-15b): a UI literal claims a LONGER
         # route via prefix ONLY when it is itself a deliberate prefix
@@ -91,16 +117,19 @@ def main():
             or (up.endswith("/")
                 and len(up.rstrip("*").split("/")) >= 4
                 and r["path"].startswith(up.rstrip("*")))
+            or template_match(r["path"], up, concrete_routes)
             for up in ui_paths)
         # Verb-aware fcall claims (wave 15): fcall("GET", "/a/b") asserts
         # exactly the GET route (prefix only from trailing-/ URLs) — never
-        # its PUT/DELETE siblings on the same path.
+        # its PUT/DELETE siblings on the same path. Wave 16: template
+        # routes unify segment-wise (router dispatch semantics).
         client_seen = client_seen or any(
             fv == r["verb"]
             and (fp == r["path"]
                  or (fp.endswith("/")
                      and len(fp.rstrip("*").split("/")) >= 4
-                     and r["path"].startswith(fp.rstrip("*"))))
+                     and r["path"].startswith(fp.rstrip("*")))
+                 or template_match(r["path"], fp, concrete_routes))
             for fv, fp in ui_fcalls)
         status = "implemented" if r["implemented"] else "default"
         report.append({

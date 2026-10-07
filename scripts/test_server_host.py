@@ -2038,6 +2038,245 @@ def main():
                        None, headers=atq_h)
         check("unknown action claim rejected", atq_bad.get("code") != 1, str(atq_bad)[:100])
 
+        print("== Wave 16: full-surface host contracts (sweep proves reach; these pin shapes) ==")
+        # The route-table sweep below only proves every route answers SOME
+        # envelope. The gen_coverage bookkeeping (wave 16) additionally
+        # expects a CONTRACT check per implemented route. These sections pin
+        # the previously sweep-only shapes (66 routes had zero literal
+        # coverage). Template routes are hit through one concrete version
+        # (the router treats {version}/{typeId}/... as one segment).
+
+        # --- activity scrap family leftovers ---
+        w16h1 = {"Access-Token": tok1, "userId": str(uid1), "language": "en"}
+        rv16 = call("GET", "/activity/api/v1/collect/exchange/reward/value", None, w16h1)
+        check("w16 scrap reward value==3000", rv16.get("code") == 1
+              and rv16.get("data") == 3000, str(rv16)[:100])
+        vc16 = call("GET", "/activity/api/v1/collect/exchange/user/vip/convert", None, w16h1)
+        check("w16 scrap vip convert keys", vc16.get("code") == 1
+              and "vip" in vc16.get("data", {}) and "newVip" in vc16.get("data", {}),
+              str(vc16)[:120])
+        cc16 = call("GET", "/activity/api/v1/collect/exchange/card/combine", None, w16h1)
+        check("w16 card combine num==3", cc16.get("code") == 1
+              and cc16.get("data") == 3, str(cc16)[:100])
+        sa16 = call("GET", "/activity/api/v1/collect/exchange/scrap/ask", None, w16h1)
+        sr16 = call("GET", "/activity/api/v1/collect/exchange/scrap/receive", None, w16h1)
+        check("w16 scrap ask/receive none-acks", sa16.get("code") == 1
+              and sa16.get("data") is None and sr16.get("code") == 1
+              and sr16.get("data") is None, "%s %s" % (str(sa16)[:60], str(sr16)[:60]))
+        tb16 = call("GET", "/activity/api/v1/collect/exchange/treasurebox/timeline", None, w16h1)
+        check("w16 treasurebox timeline", tb16.get("code") == 1
+              and "boxList" in tb16.get("data", {}), str(tb16)[:120])
+        bag16 = call("GET", "/activity/api/v1/collect/exchange/user/scrap?type=1", None, w16h1)
+        row16 = (bag16.get("data", {}).get("data") or [{}])[0] if bag16.get("code") == 1 else {}
+        sid16 = row16.get("scrapId")
+        if sid16 and row16.get("amount", 0) > 0:
+            snd16 = call("POST", "/activity/api/v1/collect/exchange/scrap/send?scrapId=%s" % sid16,
+                         None, w16h1)
+            check("w16 scrap send token", snd16.get("code") == 1
+                  and str(snd16.get("data", "")).startswith("send-"), str(snd16)[:120])
+            snd16b = call("POST", "/activity/api/v1/collect/exchange/scrap/send?scrapId=nope",
+                          None, w16h1)
+            check("w16 scrap send without scrap rejected", snd16b.get("code") != 1,
+                  str(snd16b)[:100])
+        else:
+            check("w16 scrap send (bag had stock)", False, "bag rows: %s" % str(bag16)[:150])
+
+        # --- ranking boards (all 10 sweep-only variants pin PageData+desc) ---
+        w16_boards = [
+            "active/global/weekly/rank", "active/region/overall/rank",
+            "active/region/weekly/rank", "clan/global/overall/rank",
+            "clan/global/weekly/rank", "clan/region/overall/rank",
+            "clan/region/weekly/rank", "gold/diamond/global/overall/rank",
+            "gold/diamond/region/overall/rank", "gold/diamond/region/weekly/rank",
+        ]
+        for b16 in w16_boards:
+            rb16 = call("GET", "/ranking/api/v1/%s?pageNo=1&pageSize=10" % b16)
+            rows16 = rb16.get("data", {}).get("data", []) if isinstance(rb16.get("data"), dict) else []
+            quants16 = [r16.get("quantity", 0) for r16 in rows16]
+            check("w16 ranking %s" % b16, rb16.get("code") == 1 and len(rows16) > 0
+                  and quants16 == sorted(quants16, reverse=True), str(rb16)[:100])
+
+        # --- pay leftovers ---
+        pr16 = call("GET", "/pay/api/v1/first/punch/reward", None, w16h1)
+        check("w16 first punch reward", pr16.get("code") == 1
+              and pr16.get("data", {}).get("status") == 1
+              and "rewardList" in pr16.get("data", {}), str(pr16)[:120])
+        pf16 = call("GET", "/pay/api/v1/pay/payssion/flag", None, w16h1)
+        check("w16 payssion flag false", pf16.get("code") == 1 and pf16.get("data") is False,
+              str(pf16)[:80])
+        ps16 = call("GET", "/pay/api/v1/pay/payssion/signature", None, w16h1)
+        check("w16 payssion signature", ps16.get("code") == 1
+              and "signature" in ps16.get("data", {})
+              and ps16["data"].get("userId") == uid1, str(ps16)[:120])
+        tp16 = call("GET", "/pay/api/v1/pay/third/part", None, w16h1)
+        check("w16 third part v1 false", tp16.get("code") == 1 and tp16.get("data") is False,
+              str(tp16)[:80])
+        tp16b = call("GET", "/pay/api/v2/pay/third/part", None, w16h1)
+        check("w16 third part v2 obj", tp16b.get("code") == 1
+              and "payChannel" in tp16b.get("data", {})
+              and "currency" in tp16b.get("data", {}), str(tp16b)[:120])
+        pv16 = call("GET", "/pay/api/v2/pay/products/vip", None, w16h1)
+        check("w16 vip products v2", pv16.get("code") == 1
+              and "products" in pv16.get("data", {}) and "vip" in pv16.get("data", {})
+              and "expireDate" in pv16.get("data", {}), str(pv16)[:120])
+        rc16 = call("POST", "/pay/api/v1/pay/users/recharge?type=android", {}, w16h1)
+        check("w16 legacy recharge v1 ack", rc16.get("code") == 1 and rc16.get("data") is None,
+              str(rc16)[:100])
+
+        # --- decoration leftovers ---
+        dv16 = call("GET", "/decoration/api/v1/decoration/versions", None, w16h1)
+        check("w16 decoration versions", dv16.get("code") == 1
+              and "md5" in dv16.get("data", {}) and dv16["data"].get("update") is False,
+              str(dv16)[:120])
+        cr16 = call("GET", "/decoration/api/v1/new/decorations/check/resource", None, w16h1)
+        check("w16 dress check resource", cr16.get("code") == 1
+              and cr16.get("data", {}).get("needUpdate") is False, str(cr16)[:120])
+        fu16 = call("GET", "/decoration/api/v1/decorations/%d/using" % uid1, None, w16h1)
+        check("w16 friend using list", fu16.get("code") == 1
+              and isinstance(fu16.get("data"), list), str(fu16)[:120])
+        dr16 = call("GET", "/decoration/api/v1/new/decorations/recommend/users/%d/type/1" % uid1,
+                    None, w16h1)
+        check("w16 dress recommend list", dr16.get("code") == 1
+              and isinstance(dr16.get("data"), list), str(dr16)[:120])
+        vd16 = call("GET", "/decoration/api/v1/vip/decorations/users/1", None, w16h1)
+        check("w16 vip dress list", vd16.get("code") == 1 and vd16.get("data") == [],
+              str(vd16)[:80])
+        dl16 = call("GET", "/decoration/api/v1/decorations/1", None, w16h1)
+        check("w16 dress list template", dl16.get("code") == 1
+              and isinstance(dl16.get("data"), list), str(dl16)[:120])
+
+        # --- video leftovers ---
+        vl16 = call("GET", "/video/api/v1/app/video/list/new?pageNo=1&pageSize=20", None, w16h1)
+        check("w16 video list/new page", vl16.get("code") == 1
+              and isinstance(vl16.get("data"), dict) and "data" in vl16["data"],
+              str(vl16)[:120])
+        vdet16 = call("GET", "/video/api/v1/app/video/detail/info?videoId=1", None, w16h1)
+        check("w16 video detail absent", vdet16.get("code") == 1
+              and vdet16.get("data") in (None, {}), str(vdet16)[:100])
+        vpr16 = call("POST", "/video/api/v1/app/video/praise/1", None, w16h1)
+        vdi16 = call("POST", "/video/api/v1/app/video/dislike/1", None, w16h1)
+        check("w16 video praise/dislike zero", vpr16.get("code") == 1 and vpr16.get("data") == 0
+              and vdi16.get("code") == 1 and vdi16.get("data") == 0,
+              "%s %s" % (str(vpr16)[:60], str(vdi16)[:60]))
+        vpa16 = call("POST", "/video/api/v1/app/video/report/play/amount", {"videoId": 1}, w16h1)
+        check("w16 video play ack", vpa16.get("code") == 1 and vpa16.get("data") == 0,
+              str(vpa16)[:80])
+
+        # --- msg group-chat leftovers (fresh group; cleaned up at the end) ---
+        gc16 = call("POST", "/msg/api/v2/msg/group/chat",
+                    {"cost": 0, "currency": 1, "memberIds": [uid3], "userId": uid2,
+                     "groupName": "QA W16"}, headers=h2)
+        check("w16 group create", gc16.get("code") == 1 and gc16["data"].get("groupId", 0) > 0,
+              str(gc16)[:150])
+        if gc16.get("code") == 1:
+            gid16 = gc16["data"]["groupId"]
+            ga16 = call("POST", "/msg/api/v1/msg/group/chat/apply?groupId=%d&msg=w16" % gid16,
+                        None, headers=h5)
+            check("w16 group apply", ga16.get("code") == 1, str(ga16)[:80])
+            greq16 = call("GET", "/msg/api/v1/msg/group/chat/request/list?pageNo=1&pageSize=10",
+                          headers=h2)
+            rowr16 = [r for r in greq16.get("data", {}).get("data", [])
+                      if r.get("type") == 1 and r.get("userId") == uid5]
+            grej16 = {"groupId": gid16, "requestId": None}
+            if rowr16:
+                grej16["requestId"] = rowr16[0]["requestId"]
+            grej = call("PUT", "/msg/api/v1/msg/group/chat/reject", grej16, headers=h2)
+            check("w16 group reject request", grej.get("code") == 1 and grej.get("data") is None,
+                  str(grej)[:100])
+            gadd16 = call("POST", "/msg/api/v1/msg/group/chat/add",
+                          {"groupId": gid16, "memberIds": [uid5]}, headers=h2)
+            # a REAL user gets a pending type-2 invitation (GroupChat.invite);
+            # only citizens are direct-added. The manager feed serializes the
+            # invitation row with the INVITER's userId (no inviteeId field).
+            greq16b = call("GET", "/msg/api/v1/msg/group/chat/request/list?pageNo=1&pageSize=10",
+                           headers=h2)
+            inv16 = [r for r in greq16b.get("data", {}).get("data", [])
+                     if r.get("type") == 2 and r.get("groupId") == gid16
+                     and r.get("userId") == uid2]
+            check("w16 group direct add -> invitation", gadd16.get("code") == 1
+                  and len(inv16) >= 1, "%s %s" % (str(gadd16)[:120], str(greq16b)[:160]))
+            ginv16 = call("POST", "/msg/api/v1/msg/group/chat/invite?groupId=%d&memberIds=%d"
+                          % (gid16, uid4), None, headers=h2)
+            check("w16 group invite none", ginv16.get("code") == 1, str(ginv16)[:100])
+            gml16 = call("POST", "/msg/api/v1/msg/group/chat/mail/add?groupId=%d&msg=w16-mail"
+                         % gid16, None, headers=h2)
+            check("w16 group mail invite", gml16.get("code") == 1
+                  and gml16.get("data", {}).get("groupId") == gid16, str(gml16)[:150])
+            gre16 = call("POST", "/msg/api/v1/msg/group/chat/recall/message?groupId=%d&msgId=w16m1"
+                         % gid16, None, headers=h2)
+            check("w16 group recall ack", gre16.get("code") == 1, str(gre16)[:100])
+            gq16 = call("PUT", "/msg/api/v1/msg/group/chat/quit?groupId=%d&groupName=QA%%20W16"
+                        % gid16, None, headers=h2)
+            check("w16 group cleanup (owner quit)", gq16.get("code") == 1, str(gq16)[:100])
+
+        # --- game leftovers ---
+        fa16 = call("GET", "/game/api/v1/flow/game/auth?typeId=1&targetId=%d&gameVersion=1" % uid1,
+                    None, w16h1)
+        check("w16 follow game auth", fa16.get("code") == 1
+              and bool(fa16.get("data", {}).get("token"))
+              and fa16.get("data", {}).get("dispUrl", "").startswith("http://127.0.0.1"),
+              str(fa16)[:150])
+
+        # --- shop leftovers ---
+        sl16 = call("GET", "/shop/api/v1/shop/decorations/102", None, w16h1)
+        shop_row16 = sl16.get("data", [{}])[0] if sl16.get("code") == 1 and sl16.get("data") else {}
+        check("w16 shop list v1 template", sl16.get("code") == 1
+              and isinstance(sl16.get("data"), list) and len(sl16["data"]) > 0, str(sl16)[:120])
+        if shop_row16.get("id"):
+            sd16 = call("GET", "/shop/api/v1/shop/decorations/details/%s" % shop_row16["id"],
+                        None, w16h1)
+            check("w16 shop decoration details", sd16.get("code") == 1
+                  and isinstance(sd16.get("data"), dict)
+                  and sd16["data"].get("resourceId"), str(sd16)[:120])
+        else:
+            check("w16 shop decoration details", False, "no shop row: %s" % str(sl16)[:120])
+
+        # --- user/api leftovers ---
+        da16 = call("GET", "/user/api/v1/clan/decoration/advertising/%d" % uid1, None, w16h1)
+        check("w16 dress ads info", da16.get("code") == 1
+              and da16.get("data", {}).get("adType") == 1, str(da16)[:120])
+        dar16 = call("PUT", "/user/api/v1/clan/decoration/advertising/%d" % uid1, None, w16h1)
+        check("w16 dress ads reward", dar16.get("code") == 1
+              and dar16.get("data", {}).get("quantity") == 150
+              and "picUrl" in dar16.get("data", {}), str(dar16)[:120])
+        em16 = call("POST", "/user/api/v1/emails/qa16@example.com", {}, w16h1)
+        check("w16 emails/{email} ack", em16.get("code") == 1, str(em16)[:80])
+        # the {version} bind template is a SEPARATE table row from the
+        # concrete v1 route — exercise it through v2 (router dispatch)
+        be16 = call("POST", "/user/api/v2/users/bind/email", {"email": "qa16@example.com"},
+                    w16h1)
+        check("w16 v2 bind email template", be16.get("code") == 1, str(be16)[:100])
+        rp16 = call("POST", "/user/api/v1/report/push", {"reason": "w16"}, w16h1)
+        rs16 = call("POST", "/user/api/v1/report/status", {"targetId": 1}, w16h1)
+        check("w16 report push/status acks", rp16.get("code") == 1 and rs16.get("code") == 1,
+              "%s %s" % (str(rp16)[:60], str(rs16)[:60]))
+        dl16b = call("POST", "/user/api/v1/user/daily/life/info", {"life": 1}, w16h1)
+        check("w16 daily life info ack", dl16b.get("code") == 1, str(dl16b)[:80])
+        nick16 = "qa_w16_%d" % random.randint(1000, 9999)
+        ci16 = call("POST", "/user/api/v1/user/details/info", {"nickName": nick16}, w16h1)
+        check("w16 details info changeInfo", ci16.get("code") == 1
+              and ci16.get("data", {}).get("nickName") == nick16, str(ci16)[:150])
+        de16 = call("PUT", "/user/api/v1/user/device/id", {"deviceId": "w16dev"}, w16h1)
+        la16 = call("POST", "/user/api/v1/user/language", {"language": "en"}, w16h1)
+        ma16 = call("POST", "/user/api/v1/user/mac/id", {"mac": "02:00:00:00:00:00"}, w16h1)
+        check("w16 device/language/mac acks", de16.get("code") == 1
+              and la16.get("code") == 1 and ma16.get("code") == 1,
+              "%s %s %s" % (str(de16)[:50], str(la16)[:50], str(ma16)[:50]))
+        qa16b = call("POST", "/user/api/v1/users/secret/question?userId=%d&complete=1" % uid5,
+                     [{"question": "QW16", "answer": "AW16"}],
+                     headers={"Access-Token": tok5, "userId": str(uid5)})
+        qset16 = None
+        if qa16b.get("code") == 1 and qa16b.get("data", {}).get("authCode"):
+            qset16 = call("POST", "/user/api/v2/users/secret/question/setting?userId=%d&authCode=%s"
+                          % (uid5, qa16b["data"]["authCode"]),
+                          [{"question": "QW16B", "answer": "AW16B"}],
+                          headers={"Access-Token": tok5, "userId": str(uid5)})
+        qchk16 = call("GET", "/user/api/v1/users/secret/question?type=1",
+                      headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("w16 secret question setting", qset16 is not None and qset16.get("code") == 1
+              and any(q.get("question") == "QW16B" for q in qchk16.get("data", [])),
+              "%s %s" % (str(qset16)[:80], str(qchk16)[:120]))
+
         print("== route-table sweep (all routes answer the envelope) ==")
         sys.path.insert(0, os.path.join(REPO, "scripts"))
         sweep_miss = []

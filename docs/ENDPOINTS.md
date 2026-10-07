@@ -1370,3 +1370,43 @@ rot). Verdicts:
 
 Honest client_asserted: 144. Host rig 458/458. Fast CI untouched.
 Next validation: full-mode dispatch on 37f334d+ scripts.
+
+## Wave 16 (Session 31): full-surface host contracts + template-aware coverage — CI fast-only enforcement
+
+User mandate re-enforced after five full-mode dispatches burned 22-32
+runner-minutes each (runs 37598014388/37603763817/37607065791/37611564558/
+37615459162): test-redroid is now FAST-ONLY — the workflow_dispatch mode
+input is REMOVED (a dispatch that passes inputs now 422s), --mode fast is
+hard-coded, caps are job 12 min / suite 8 min. Verified: run 37619514335
+GREEN at 4.4 min on the enforcement commit itself. Deep drives
+(--mode full) survive in the script for explicit local evidence runs only.
+
+Coverage honesty (gen_coverage): template-aware literal matching with
+router dispatch semantics — a concrete literal claims a {placeholder}
+route only with equal segment count AND when the literal is not itself a
+concrete table route (concrete wins over template, so /user/scrap/value
+can never phantom-claim /user/scrap/{scrapId}, /decorations/using never
+claims /decorations/{typeId}).
+
+Host rig: Wave 16 section pins real contracts for every route that only
+the sweep touched (66 routes): 10 ranking board variants, the scrap
+send/ask/receive/treasurebox/reward-value/vip-convert/card-combine family,
+video list-new/detail/praise/dislike/play-ack, pay first-punch/payssion
+flag+signature/third-part v1+v2/vip-products-v2/legacy-recharge-v1,
+decoration versions/check-resource/friend-using/recommend/vip-dress/
+{typeId} list, msg group direct-add (real users get pending type-2
+invitations — the manager feed row carries the INVITER's userId)/invite/
+mail-add/recall/reject, flow/game/auth, shop v1 {typeId} list +
+details/{id} (obj with resourceId), user ads-info/ads-reward/emails-ack/
+report push+status/daily-life/details-info(changeInfo)/device/language/
+mac, v2 secret-question-setting (authCode round-trip) and the v2
+{version} bind-email template. Contract lessons pinned: video detail
+absent = data {}, dressDetails = obj (not list), scrap-send error =
+business code 10104.
+
+RESULT: 512/512 host tests. docs/COVERAGE.json: 335 discovered /
+296 implemented / 39 default (all evidence-classified dead surfaces) /
+303 host-tested — ZERO implemented routes without a host test — /
+144 client_asserted (unchanged; the two template unifications that
+looked like gains were phantom claims and are now blocked by the
+concrete-first rule). NO server changes. NO GameServer work.

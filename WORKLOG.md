@@ -2919,3 +2919,40 @@
   Host rig 458/458 throughout. NO server changes needed — the local
   API served every new surface correctly on first contact.
 - NO GameServer work.
+
+### Session 31 (Wave 16: fast-only CI enforcement + full-surface host contracts)
+
+- USER MANDATE ENFORCED: the five most recent runs (37598014388 29.0m FAIL,
+  37603763817 22.8m FAIL, 37607065791 31.9m FAIL, 37611564558 22.6m FAIL,
+  37615459162 28.3m PASS) were all full-mode dispatches — the fast ~4-5 min
+  path existed but sessions kept opting into 22-32 min deep drives. Fix
+  (commit e5f7194): test-redroid is FAST-ONLY — workflow_dispatch mode
+  input REMOVED (input-passing dispatches now 422 with "Unexpected input"),
+  --mode fast hard-coded in the suite step, caps job 12 min / suite 8 min.
+  VERIFIED: run 37619514335 GREEN at 4.4 minutes on the enforcement commit.
+  Deep drives remain in ui_automation_test.py for explicit local runs;
+  re-adding them to CI is now a reviewable diff.
+- Wave 16 (host rig): added contract checks for all 66 routes the sweep
+  only proved reachable — 512/512 PASS (was 458/458). Real shapes pinned
+  per family (ranking boards, scrap send/ask/receive/treasurebox, video,
+  pay payssion/third-part/vip-products/legacy-recharge, decoration
+  versions/using/recommend/vip, group direct-add INVITATION semantics
+  (type-2 rows carry the inviter's userId in the manager feed), flow/game/
+  auth, shop details obj, user settings acks, v2 secret-question-setting +
+  v2 {version} bind-email).
+- gen_coverage: template-aware matching with router dispatch semantics
+  (concrete-first): a literal claims a {placeholder} route only with equal
+  segment count and only when it is NOT itself a concrete table route.
+  Two apparent client_asserted gains from naive unification were phantom
+  claims (scrap/value -> {scrapId}, decorations/using -> {typeId}) and are
+  blocked. Honest counts: client_asserted stays 144.
+- Coverage bookkeeping (docs/COVERAGE.json regenerated): 335 discovered /
+  296 implemented / 39 default / 303 host-tested / 0 implemented routes
+  without a host test.
+- Sandbox notes: no javac in this sandbox (JRE 21 only) — reused the
+  compiled classes + .javatools jars from /home/z/work/repo (sources
+  byte-identical, verified by diff). Host rig boots unchanged.
+- Next candidates: (1) keep the fast-only discipline (never dispatch full
+  from sessions), (2) error-driven upgrades if a fresh CI run surfaces new
+  client traffic, (3) Engine 10068 remains FORBIDDEN this phase.
+- Host rig 512/512. NO server changes. NO GameServer work.
