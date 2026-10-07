@@ -1529,3 +1529,19 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   full run MAY add a premium-detail buy drive to client-assert
   payGame via UI (host rig already covers the contract).
 - NO GameServer work.
+
+## Session 28 FINAL 2 (read first — G hand-over CLOSED; session fully green)
+
+- RUN 37588191029 (full, d73d204): 0 FAIL / PASS. The G-ho-cache clean
+  relaunch FIXED the chief hand-over — "HAND OVER CHIEF client-asserted
+  (PUT 1->2, gk role=20, old chief role=0, chief from base=10008)".
+  Every deep-drive phase (B, E-O) is now reliably green.
+- Five consecutive green ~5:00 fast runs (37583919830 / 37586200196 /
+  37587512455 / 37588644532 + the 5:03 baseline). Caps 12/8.
+- Wave 13 live: payGame + premium 5043; RES lines now carry
+  "<ms>ms auth=<tok|anon>"; rig 458/458; coverage 142 honest.
+- NEXT: (1) nothing is failing — next work is ERROR-DRIVEN from new
+  traffic or the GameServer phase gate; (2) optional future full-run
+  add-on: a premium-detail buy drive to client-assert payGame via UI;
+  (3) the sign surface stays gated on game-play (Engine phase).
+- NO GameServer work.

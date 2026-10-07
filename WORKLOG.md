@@ -2776,3 +2776,16 @@
   consecutive ~5:00 fast run, now on the RES-line APK.
 - Full run 37588191029 (G-ho-cache verdict) still in flight.
 - NO GameServer work.
+
+### Session 28 cont. 6 (FINAL: the G hand-over flake is CLOSED)
+
+- FULL run 37588191029 (checkout d73d204): 0 FAIL, UI AUTOMATION: PASS.
+  The G-ho-cache relaunch FIXED the hand-over: "settings sheet shows
+  'Manage Members'" -> "HAND OVER CHIEF client-asserted (PUT 1->2, gk
+  role=20, old chief role=0, chief from base=10008)". The last
+  recurring deep-drive flake (G hand-over, sessions 26-27) is closed.
+- Session 28 totals: user CI mandate delivered (5 consecutive green
+  ~5:00 fast runs, caps 12/8), Wave 13 payGame + premium catalog live
+  on the released APK, coverage honesty (client_asserted 167 -> 142
+  honest), RES observability (latency + auth-state), G hand-over
+  closed. Host rig 458/458. NO GameServer work.
