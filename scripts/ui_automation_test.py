@@ -3255,6 +3255,58 @@ def main():
     check("C: gift suit claimed into wardrobe", p4.get("data") is True
           and p5.get("code") == 1 and len(p5.get("data", [])) >= 3, str(p5)[:150])
 
+    # ------------------------------------------------- Wave 23e: buy->wear
+    # chain through the REAL server state (fcall tier, verb-aware claims).
+    # The DressBuyDialog is GL-only on the emulator (run 37742955965: the
+    # card tap opens a dialog with ZERO accessibility nodes), so the UI
+    # hunt cannot drive the buy; the API chain is what the local server
+    # must own. All ids are DYNAMIC (from the served shop list — nothing
+    # hardcoded) and the wallet math is verified across the buy (the 50k
+    # golds visitor affords the cheapest suit: catalog prices 200..2780).
+    p5_dresses = [d for d in (p5.get("data") or [])
+                  if isinstance(d, dict) and d.get("id")]
+    if p5_dresses:
+        wear_id = p5_dresses[0]["id"]
+        wear_c = fcall("PUT", "/decoration/api/v1/decorations/using/%d"
+                       % wear_id, None, headers=auth_hdr)
+        check("C: wear PUT /decoration/api/v1/decorations/using/{id}",
+              wear_c.get("code") == 1
+              and (wear_c.get("data") or {}).get("id") == wear_id,
+              str(wear_c)[:150])
+        using_c = fcall("GET", "/decoration/api/v1/decorations/using",
+                        headers=auth_hdr)
+        worn_ids = [d.get("id") for d in (using_c.get("data") or [])
+                    if isinstance(d, dict)]
+        check("C: worn list holds the wear PUT target",
+              using_c.get("code") == 1 and wear_id in worn_ids,
+              str(using_c)[:150])
+    else:
+        print("  [info] C: no gift-suit dress id for the wear chain")
+    gift_sid = ((p3.get("data") or [{}])[0].get("suitId"))
+    cand = sorted(
+        (s for s in (p3.get("data") or [])
+         if isinstance(s, dict) and s.get("suitId")
+         and s.get("suitId") != gift_sid),
+        key=lambda s: s.get("price") or 0)
+    if cand and (cand[0].get("price") or 0) <= 40000:
+        sid, sprice = cand[0]["suitId"], cand[0].get("price") or 0
+        wpre = fcall("GET", "/pay/api/v1/wealth/user",
+                     headers=auth_hdr).get("data", {})
+        buy_c = fcall("POST", "/shop/api/v1/new/shop/decorations/buy",
+                      {"buySuitList": [{"suitId": sid, "day": 0}]},
+                      headers=auth_hdr)
+        wpost = fcall("GET", "/pay/api/v1/wealth/user",
+                      headers=auth_hdr).get("data", {})
+        exp_kind = "golds" if cand[0].get("currency") == 2 else "diamonds"
+        check("C: dressBuyV2 buys the dynamic suit + deducts the wallet",
+              buy_c.get("code") == 1
+              and (buy_c.get("data", {}).get("suitPurchaseStatus") or {})
+              .get(str(sid)) is True
+              and wpost.get(exp_kind, 0) == wpre.get(exp_kind, 0) - sprice,
+              "%s | w %s -> %s" % (str(buy_c)[:140], wpre, wpost))
+    else:
+        print("  [info] C: no affordable suit for the buy chain")
+
     # Phase 5c surface: real mailbox (welcome mail -> badge -> claim -> wallet)
     m0 = fcall("GET", "/mailbox/api/v1/mail/new", headers=auth_hdr)
     check("C: mail/new true after register", m0.get("code") == 1
