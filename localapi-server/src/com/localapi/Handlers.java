@@ -2943,7 +2943,13 @@ final class Handlers {
         String pw = RsaCipher.decryptIfEncrypted(
                 qpw != null ? qpw : body(ctx).optString("password"));
         boolean right = pw != null && !pw.isEmpty() && pw.equals(u.optString("password"));
-        return envelope("obj", "{\"authCode\":\"\",\"count\":0,\"right\":" + right + "}");
+        // CLIENT CONTRACT (jadx com.sandbox.login.f.a.c.d): the callback is
+        // OnResponseListener<Boolean> and calls bool.booleanValue() - data
+        // must be a JSON BOOLEAN. The old UserVerifyInfo object
+        // {"right":...} threw in Gson -> silent onError -> the fragment
+        // never advanced even after the @Query fix. Same family as the
+        // Wave-11 account/invalid/check Boolean fix.
+        return envelope("bool", String.valueOf(right));
     }
 
     /** POST /user/api/v1/user/nickname/exist?nickName= — code 1 free, code 0 taken. */

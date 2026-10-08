@@ -1302,12 +1302,12 @@ def main():
         check("login with modified password", pml.get("code") == 1, str(pml)[:100])
         pc = call("POST", "/user/api/v1/user/password/check", {"password": "npw6"},
                   headers={"Access-Token": tok5, "userId": str(uid5)})
-        check("password check right", pc.get("code") == 1
-              and pc["data"]["right"] is True, str(pc)[:100])
+        check("password check right (data=boolean)", pc.get("code") == 1
+              and pc["data"] is True, str(pc)[:100])
         pc2 = call("POST", "/user/api/v1/user/password/check", {"password": "bad"},
                    headers={"Access-Token": tok5, "userId": str(uid5)})
-        check("password check wrong", pc2.get("code") == 1
-              and pc2["data"]["right"] is False, str(pc2)[:100])
+        check("password check wrong (data=boolean)", pc2.get("code") == 1
+              and pc2["data"] is False, str(pc2)[:100])
         ne1 = call("POST", "/user/api/v1/user/nickname/exist?nickName=BrandNewNick", None,
                    headers={"Access-Token": tok5})
         check("nickname free", ne1.get("code") == 1, str(ne1)[:80])
@@ -1875,9 +1875,10 @@ def main():
                          {"password": _rsa_pkcs1_encrypt(b"modpw11", rsa_pub)}, headers=hm11)
             pc11w = call("POST", "/user/api/v1/user/password/check",
                          {"password": _rsa_pkcs1_encrypt(b"nope", rsa_pub)}, headers=hm11)
-            check("password/check RSA right+wrong", pc11r.get("code") == 1
-                  and pc11r.get("data", {}).get("right") is True
-                  and pc11w.get("data", {}).get("right") is False,
+            check("password/check RSA right+wrong (data=boolean)",
+                  pc11r.get("code") == 1
+                  and pc11r.get("data") is True
+                  and pc11w.get("data") is False,
                   "%s %s" % (str(pc11r)[:80], str(pc11w)[:80]))
 
             # (f2) THE CLIENT CONTRACT: the real client sends the RSA
@@ -1895,8 +1896,8 @@ def main():
                                      safe=""), None, headers=hm11)
             check("password/check @Query RSA right+wrong (client contract)",
                   pq11r.get("code") == 1
-                  and pq11r.get("data", {}).get("right") is True
-                  and pq11w.get("data", {}).get("right") is False,
+                  and pq11r.get("data") is True
+                  and pq11w.get("data") is False,
                   "%s %s" % (str(pq11r)[:80], str(pq11w)[:80]))
             # (g) a Base64 value that is NOT RSA-shaped passes through
             #     unchanged (still fails auth, but as wrong-password code 0
