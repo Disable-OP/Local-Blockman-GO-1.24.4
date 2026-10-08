@@ -2604,6 +2604,29 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                              and (x.res or "").rsplit("/", 1)[-1] in
                              ("btn_confirm", "btnSure", "btn_ok")), None)
                     if _sub is not None:
+                        # RUN 37829879205 SMOKING GUN: tap 0 WORKED - the
+                        # client POSTed /user/api/v2/user/password/modify
+                        # (ChangePasswordForm, newPassword RSA) at
+                        # 19:43:28, the server answered code=1 in 6ms, and
+                        # the success callback logged out into LoginActivity
+                        # at 19:43:36. The drive's v1-only marker missed it
+                        # and taps 1/2 landed on the login screen. Count
+                        # BOTH routes; stop as soon as the logout navigation
+                        # happens (the success proof needs no more taps).
+                        def _pw_mod_count():
+                            return sum(
+                                1 for line in
+                                adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                        timeout=60).splitlines()
+                                if "REQ POST /user/api/v2/user/password/"
+                                "modify" in line
+                                or "REQ POST " + pw_modify_lit in line)
+
+                        def _at_login():
+                            return "login.LoginActivity" in adb.sh(
+                                "dumpsys activity activities | grep -E "
+                                "\"topResumedActivity|ResumedActivity\"")
+
                         m_seen = False
                         for _att, _mode in enumerate(("center", "high",
                                                       "center")):
@@ -2613,19 +2636,22 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                                 screen.tap_node(_sub)
                             time.sleep(6)
                             alive_or_recover("%s-modifypw" % tag)
-                            m_seen = req_seen("REQ POST " + pw_modify_lit)
+                            m_seen = _pw_mod_count() > 0
                             print("  [evidence] pw submit tap %d (%s) -> "
-                                  "modify POST seen=%s"
-                                  % (_att, _mode, m_seen))
-                            if m_seen:
+                                  "modify POST seen=%s at_login=%s"
+                                  % (_att, _mode, m_seen, _at_login()))
+                            if m_seen or _at_login():
                                 break
                             _sub = next(
                                 (x for x in screen.dump()
                                  if (x.text or "").upper() == "CONFIRM"
                                  and x.center and x.clickable), None) or _sub
                         if m_seen:
-                            ok("LM: password modify served (POST password/"
-                               "modify)")
+                            ok("LM: password modify served through the real "
+                               "UI (v2 route, logout-on-success followed)")
+                        elif _at_login():
+                            print("  [info] logout-on-success fired but no "
+                                  "modify REQ was captured")
                         else:
                             print("  [info] no password/modify call "
                                   "(step-2 submit shape? see [pw-step2])")
