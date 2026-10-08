@@ -987,55 +987,97 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                         print("  store] %s | text=%r desc=%r" % (
                             x.res.rsplit("/", 1)[-1] if x.res else "",
                             x.text[:24], x.desc[:24]))
-                product = None
-                rv = screen.find(ids=["rvData"])
-                rvb = rv.bounds if rv else None
-                for n in screen.dump():
-                    if not (n.center and n.bounds):
-                        continue
-                    l, t, r, b = n.bounds
-                    w, h = r - l, b - t
-                    y = n.center[1]
-                    # a grid CARD is small; full-screen containers are not
-                    if w > 420 or h > 420:
-                        continue
-                    if y < 260 or y > 1000:
-                        continue
-                    # must sit INSIDE the shop grid (rvData) — chips/filters
-                    # live outside it (v4 evidence: a chip was tapped)
-                    if rvb:
-                        rl, rt, rr, rb = rvb
-                        cx, cy = n.center
-                        if not (rl <= cx <= rr and rt <= cy <= rb):
-                            continue
-                    if n.cls.endswith("FrameLayout") or n.cls.endswith(
-                            "LinearLayout") or n.cls.endswith(
-                            "RecyclerView") or n.cls.endswith(
-                            "ConstraintLayout") or "item" in n.res.lower():
-                        product = n
-                        break
-                if not product:
-                    # run-20 miss: the card roots are ConstraintLayout
-                    # (item_new_dress_shop.xml) — fall back to the bgView
-                    # child id every dress/shop card carries
+                def _hunt_product():
+                    """Wave 23d card hunt with BANNER REJECTION. Runs
+                    21/22/C evidence: the recommend feed's only card is a
+                    FULL-WIDTH bgView (720x330 — an activity banner); its
+                    tap never opens the buy dialog (the [buydlg] dump was
+                    the store screen itself — ivBigPic is the banner's
+                    image, NOT a dialog marker). Real product cards are
+                    narrow grid cells."""
+                    prod = None
+                    rv2 = screen.find(ids=["rvData"])
+                    rvb2 = rv2.bounds if rv2 else None
                     for n in screen.dump():
-                        rid = n.res.rsplit("/", 1)[-1] if n.res else ""
-                        if rid == "bgView" and n.center:
-                            y = n.center[1]
-                            if 260 <= y <= 1000:
-                                product = n
-                                break
-                    if not product:
-                        print("  [skip] no store product candidate found "
-                              "(bgView fallback missed too)")
+                        if not (n.center and n.bounds):
+                            continue
+                        l, t, r, b = n.bounds
+                        w, h = r - l, b - t
+                        y = n.center[1]
+                        # a grid CARD is small; banners/containers are not
+                        if w > 420 or h > 420:
+                            continue
+                        if y < 260 or y > 1000:
+                            continue
+                        # must sit INSIDE the shop grid (rvData) — chips/
+                        # filters live outside it (v4 evidence)
+                        if rvb2:
+                            rl, rt, rr, rb = rvb2
+                            cx, cy = n.center
+                            if not (rl <= cx <= rr and rt <= cy <= rb):
+                                continue
+                        if n.cls.endswith("FrameLayout") or n.cls.endswith(
+                                "LinearLayout") or n.cls.endswith(
+                                "RecyclerView") or n.cls.endswith(
+                                "ConstraintLayout") or "item" in n.res.lower():
+                            prod = n
+                            break
+                    if not prod:
+                        # run-20 miss: the card roots are ConstraintLayout
+                        # (item_new_dress_shop.xml) — fall back to the
+                        # bgView child id, now WIDTH-GUARDED (run C: the
+                        # unguarded fallback grabbed the 720-wide banner)
+                        for n in screen.dump():
+                            rid = n.res.rsplit("/", 1)[-1] if n.res else ""
+                            if rid == "bgView" and n.center:
+                                y = n.center[1]
+                                l, t, r, b = n.bounds or (0, 0, 0, 0)
+                                if 260 <= y <= 1000 and (r - l) <= 420:
+                                    prod = n
+                                    break
+                                if 260 <= y <= 1000 and (r - l) > 420:
+                                    print("  [info] bgView candidate %dx%d "
+                                          "rejected (full-width banner)"
+                                          % (r - l, b - t))
+                    return prod
+
+                product = _hunt_product()
+                if not product:
+                    # the recommend feed is banner-only — a type radio
+                    # loads a real per-type product grid (DressPageList
+                    # Model page); rbCloth is the first type radio
+                    cloth = screen.find(ids=["rbCloth"])
+                    if cloth and cloth.center:
+                        print("  [info] no card <=420px on the recommend "
+                              "feed — switching to the Clothes type page")
+                        screen.tap_node(cloth)
+                        time.sleep(6)
+                        alive_or_recover("%s-storetype-cloth" % tag)
+                        product = _hunt_product()
+                if not product:
+                    print("  [skip] no store product candidate found "
+                          "(banner rejected, type page empty too)")
                 if product and screen.tap_node(product):
-                    # the DressBuyDialog (FullScreenDialog, GL-backed) takes a
-                    # moment; wait for its ivBigPic marker (v3 evidence)
-                    dlg = screen.wait_for(ids=["ivBigPic"], timeout=15,
-                                          poll=2)
-                    if not dlg:
-                        print("  [info] buy dialog did not open (no ivBigPic)")
-                    time.sleep(3)
+                    # Wave 23d: ivBigPic is the CARD's image on the store
+                    # screen (matched pre-tap in runs 21/22/C) — NOT a
+                    # dialog marker. Verify the dialog by DIFFING the
+                    # accessibility tree: a real dialog ADDS nodes; a
+                    # no-op tap adds none.
+                    pre_tap = set((n.res, n.text) for n in screen.dump())
+                    time.sleep(6)
+                    new_nodes = [n for n in screen.dump()
+                                 if (n.res, n.text) not in pre_tap
+                                 and (n.res or n.text)]
+                    if new_nodes:
+                        print("  [evidence] nodes added by the card tap: "
+                              "%s" % ", ".join(
+                                  (n.res.rsplit("/", 1)[-1] if n.res else "")
+                                  or repr(n.text[:16])
+                                  for n in new_nodes[:8]))
+                    else:
+                        print("  [info] card tap added no nodes (GL-only "
+                              "dialog or no-op) — buy hunt proceeds")
+                    time.sleep(1)
                     alive_or_recover("%s-storeproduct" % tag)
                     for x in screen.dump():
                         l2, t2, r2, b2 = x.bounds or (0, 0, 0, 0)
