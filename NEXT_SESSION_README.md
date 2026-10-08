@@ -1914,3 +1914,21 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   evidence in the same run; (3) if buy still missed, mine the [buydlg]
   dump for the real control ids; (4) tune deep-budget estimates from the
   budgeted run's phase timings. NO GameServer work.
+
+## Session 38 delta 2 (Wave 23c — read FIRST next session)
+
+- DEEP BUDGET SHAKEDOWN COMPLETE. Three runs taught: (1) budget-skip of
+  Phase B crashed Phase D (UnboundLocalError) -> b_ran flag + outcome_d
+  pre-init (4921217); (2) run 22's FAIL was the G invite UI flake (POST
+  0->0), NOT a server gap; (3) the 9-min step backstop killed a healthy
+  run (Phase A alone ~7 min guest-GPU) -> step 12 / job 18 (65936d0).
+- THE DRESSING-TAB DISCOVERY: rb_2 = WORN-items manager; fresh visitors
+  get client-local empty state ('No dressing in use now'); chips fire
+  ZERO /decoration traffic. Wave 23b's dressList claim REVERTED (156).
+  The dressing second-level radios (rbSuit/rbOnesies/rbCloth/...) DO
+  exist on-device (corrects Wave 19's 'absent' note). Store rbSuit got
+  a 3x4s retry (was GL-missing, silently dropping the 4 dress-mode GET
+  gates). Buy hunt: ID candidates + two 10s beats (e5eedbf).
+- Run dispatched on 65936d0 (budget 5). READ FIRST: wall time, buy
+  verdicts ([buydlg]/5m lines), the 4 dress-mode GET gates, G invite
+  flake recurrence. NO GameServer work.
