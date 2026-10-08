@@ -2162,3 +2162,30 @@ phantoms). Engine 10068 untouched. NO GameServer work.
 
 COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 184.
 Engine 10068 untouched. NO GameServer work.
+
+### SERVER FIX (session 39) — recharge double-credit bug (caught by Wave 25b)
+
+1. The budget-30 harvest's +1000 assert failed with the wallet moving
+   +2000 (39260 -> 41260): ensureProducts seeded BOTH golds AND
+   diamonds with the pack value, and recharge credits
+   qty = golds + diamonds — every pack double-credited (a 1000-gold
+   pouch granted 2000). The host test only pinned rewardQuantity > 0
+   with self-consistent wallet math, so it never caught it. This is
+   the exact bug class the project hunts: the on-device fcall tier
+   with EXACT face-value math found what the host rig tolerated.
+2. FIX (3c2fb44): face-value seeding — a gold pack carries its value
+   in golds only, a diamond pack in diamonds only (currency-keyed).
+   Host test 'recharge credits wallet' now pins rewardQuantity == 1000
+   (the pack's face value). FULL host suite re-run after the rebuild:
+   576/576 PASS.
+3. Release wip-58 rebuilt + verified: the classes6.dex inside the
+   published asset hashes IDENTICAL to the local fixed build
+   (f442c507...). NOTE: the fast post-release run (37764012208) still
+   saw the OLD behavior — GitHub release-asset CDN served stale bytes
+   for the first minutes after --clobber re-upload (asset updated
+   10:31:12; the run fetched ~10:31-10:32; a direct download at 10:38
+   already returned the fixed dex). Any run dispatched within ~5 min
+   of a re-upload may test the previous APK.
+
+COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 193.
+Engine 10068 untouched. NO GameServer work.
