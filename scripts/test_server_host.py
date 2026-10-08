@@ -1313,19 +1313,35 @@ def main():
         check("unbind phone", up.get("code") == 1, str(up)[:80])
 
         print("== Phase 4d: secret questions ==")
+        # Wave-22 contract truth (jadx IUserApi:64-65 + ca.e/ha.i/ha.h):
+        # questions are SAVED via /secret/question/setting; POST
+        # /secret/question is authUserQuestion — a VERIFY-ONLY call with
+        # ONE SecretQuestionInfo body that must NOT touch stored state.
         qs = call("GET", "/user/api/v1/users/secret/question?type=1",
                   headers={"Access-Token": tok5, "userId": str(uid5)})
         check("questions empty at start", qs.get("code") == 1 and qs.get("data") == [],
               str(qs)[:80])
-        qa = call("POST", "/user/api/v1/users/secret/question?userId=%d&complete=1" % uid5,
-                  [{"question": "Q1", "answer": "A1"}, {"question": "Q2", "answer": "A2"}],
+        qset = call("POST", "/user/api/v1/users/secret/question/setting?userId=%d" % uid5,
+                    [{"id": 1, "question": "Q1", "answer": "A1"},
+                     {"id": 2, "question": "Q2", "answer": "A2"}],
+                    headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("setting v1 saves questions", qset.get("code") == 1, str(qset)[:80])
+        qa = call("POST", "/user/api/v1/users/secret/question?userId=%d&complete=0" % uid5,
+                  {"id": 1, "question": "Q1", "answer": "A1"},
                   headers={"Access-Token": tok5, "userId": str(uid5)})
-        check("question auth issues code", qa.get("code") == 1
-              and qa["data"].get("right") is True and qa["data"].get("authCode"), str(qa)[:150])
+        check("question auth verifies right answer", qa.get("code") == 1
+              and qa.get("data", {}).get("right") is True and qa["data"].get("authCode"),
+              str(qa)[:150])
         auth_code = qa["data"]["authCode"]
+        qa_bad = call("POST", "/user/api/v1/users/secret/question?userId=%d&complete=1" % uid5,
+                      {"id": 2, "question": "Q2", "answer": "nope"},
+                      headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("question auth rejects wrong answer", qa_bad.get("code") == 1
+              and qa_bad.get("data", {}).get("right") is False, str(qa_bad)[:120])
         qs2 = call("GET", "/user/api/v1/users/secret/question?type=1",
                    headers={"Access-Token": tok5, "userId": str(uid5)})
-        check("questions persisted", qs2.get("code") == 1 and len(qs2["data"]) == 2
+        check("questions persisted (auth never clobbers)",
+              qs2.get("code") == 1 and len(qs2["data"]) == 2
               and qs2["data"][0]["question"] == "Q1", str(qs2)[:150])
         qrp = call("POST", "/user/api/v1/users/question/reset/password"
                    "?userId=%d&newPwd=resetpw&authCode=%s" % (uid5, auth_code))
@@ -2288,20 +2304,52 @@ def main():
         check("w16 device/language/mac acks", de16.get("code") == 1
               and la16.get("code") == 1 and ma16.get("code") == 1,
               "%s %s %s" % (str(de16)[:50], str(la16)[:50], str(ma16)[:50]))
-        qa16b = call("POST", "/user/api/v1/users/secret/question?userId=%d&complete=1" % uid5,
-                     [{"question": "QW16", "answer": "AW16"}],
+        # Wave-22 contract truth: authUserQuestion VERIFIES one answer
+        # (single SecretQuestionInfo body); it never saves. Save via
+        # setting first, then verify; the authCode issued on a right
+        # answer drives the v2 setting chain.
+        qa16s = call("POST", "/user/api/v1/users/secret/question/setting?userId=%d" % uid5,
+                     [{"id": 1, "question": "QW16", "answer": "AW16"},
+                      {"id": 2, "question": "QW16B", "answer": "AW16B"}],
                      headers={"Access-Token": tok5, "userId": str(uid5)})
+        qa16b = call("POST", "/user/api/v1/users/secret/question?userId=%d&complete=0" % uid5,
+                     {"id": 1, "question": "QW16", "answer": "AW16"},
+                     headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("w16 question verify right", qa16s.get("code") == 1
+              and qa16b.get("code") == 1
+              and qa16b.get("data", {}).get("right") is True
+              and qa16b.get("data", {}).get("authCode"),
+              "%s %s" % (str(qa16s)[:80], str(qa16b)[:120]))
+        qa16w = call("POST", "/user/api/v1/users/secret/question?userId=%d&complete=0" % uid5,
+                     {"id": 1, "question": "QW16", "answer": "WRONG"},
+                     headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("w16 question verify wrong rejected", qa16w.get("code") == 1
+              and qa16w.get("data", {}).get("right") is False, str(qa16w)[:120])
         qset16 = None
         if qa16b.get("code") == 1 and qa16b.get("data", {}).get("authCode"):
             qset16 = call("POST", "/user/api/v2/users/secret/question/setting?userId=%d&authCode=%s"
                           % (uid5, qa16b["data"]["authCode"]),
-                          [{"question": "QW16B", "answer": "AW16B"}],
+                          [{"id": 1, "question": "QW16", "answer": "AW16"},
+                           {"id": 2, "question": "QW16B", "answer": "AW16B"}],
                           headers={"Access-Token": tok5, "userId": str(uid5)})
         qchk16 = call("GET", "/user/api/v1/users/secret/question?type=1",
                       headers={"Access-Token": tok5, "userId": str(uid5)})
         check("w16 secret question setting", qset16 is not None and qset16.get("code") == 1
               and any(q.get("question") == "QW16B" for q in qchk16.get("data", [])),
               "%s %s" % (str(qset16)[:80], str(qchk16)[:120]))
+        # Wave-22: the v2 bind template validates the ?answer= pair the
+        # client verified on the identity screen against the STORED
+        # questions — right answers bind, wrong answers fail.
+        be16v = call("POST", "/user/api/v2/users/bind/email?answer=AW16&answer=AW16B",
+                     {"email": "qa16@example.com"},
+                     headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("w16 v2 bind email validates right answers", be16v.get("code") == 1,
+              str(be16v)[:120])
+        be16w = call("POST", "/user/api/v2/users/bind/email?answer=WRONG&answer=AW16B",
+                     {"email": "qa16@example.com"},
+                     headers={"Access-Token": tok5, "userId": str(uid5)})
+        check("w16 v2 bind email rejects wrong answers", be16w.get("code") == 0,
+              str(be16w)[:120])
 
         print("== Wave 20: verify-email authCode + v1/v2 question setting ==")
         # Client contract (jadx ea/j + fa/l): the v2 chain is verify-email

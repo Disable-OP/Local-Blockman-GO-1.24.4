@@ -3007,10 +3007,43 @@ final class Handlers {
         return envelope("none", null);
     }
 
-    /** POST /user/api/v1/users/bind/email (+/{version}) — EmailBindForm. */
+    /**
+     * POST /user/api/v1/users/bind/email (+ /{version}) — EmailBindForm.
+     * Wave-22: the {version} template carries the secret-question answers
+     * the client verified on the SafeSetting identity screen as repeated
+     * ?answer=a1&amp;a2 query params (jadx k.i() -> IUserApi
+     * bindEmail(version, form, answers), opened via ha.h with the
+     * secret_answer bundle). Local policy: no email transport exists, so
+     * the questions ARE the second factor — when answer params are
+     * present they must ALL match the stored secretQuestions answers
+     * (order-insensitive, case-insensitive); a v1 bind (no answers)
+     * keeps the plain shape.
+     */
     private static String bindEmail(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
+        java.util.List<String> answers = ctx.queryValues("answer");
+        if (answers != null && !answers.isEmpty()) {
+            JSONArray saved = store.userState(u).optJSONArray("secretQuestions");
+            if (saved == null || saved.length() == 0) {
+                return fail("no secret questions stored for this account");
+            }
+            if (answers.size() < saved.length()) {
+                return fail("missing secret-question answers");
+            }
+            java.util.HashSet<String> wanted = new java.util.HashSet<>();
+            for (int i = 0; i < saved.length(); i++) {
+                JSONObject q = saved.optJSONObject(i);
+                String a = q == null ? "" : q.optString("answer").trim().toLowerCase();
+                if (a.isEmpty()) return fail("stored question has no answer");
+                wanted.add(a);
+            }
+            for (String given : answers) {
+                if (given == null || !wanted.remove(given.trim().toLowerCase())) {
+                    return fail("secret-question answer mismatch");
+                }
+            }
+        }
         JSONObject form = body(ctx);
         String email = form.optString("email");
         if (email == null || !email.contains("@")) return fail("valid email required");
@@ -3102,28 +3135,56 @@ final class Handlers {
                 + "\",\"flag\":true}");
     }
 
-    /** POST /user/api/v1/users/secret/question — save answers; issue an authCode. */
+    /**
+     * POST /user/api/v1/users/secret/question — authUserQuestion
+     * (jadx IUserApi:64-65: @Query userId, @Query complete (0 = verify
+     * answer 1, 1 = verify answer 2), @Body ONE SecretQuestionInfo
+     * {id, question, answer}). Wave-22 contract fix: this is a VERIFY
+     * call, not a save call — the on-device identity-verify chain
+     * (SafeSetting 'Safety Mailbox' -> ha.f -> ha.i -> ha.h) posts the
+     * typed answer here and branches on UserVerifyInfo.isRight(). The
+     * previous handler saved the body (a misread of the shape: the real
+     * client never sends a list here) which clobbered the account's
+     * saved questions with a single-entry list. It now validates the
+     * posted answer against the STORED secretQuestions (case-insensitive,
+     * trimmed) and returns {authCode, count, right} WITHOUT touching
+     * stored state. A right answer still issues + stores the authCode
+     * so POST /users/question/reset/password keeps working off it.
+     */
     private static String questionAuth(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
-        JSONArray list = body(ctx).optJSONArray("list");
-        if (list == null) {
-            JSONArray alt = body(ctx).names() == null ? null : body(ctx).optJSONArray("");
-            list = null;
-            // tolerate both a bare array and {list: [...]}
-            try {
-                list = new org.json.JSONArray(ctx.body());
-            } catch (Throwable ignore) {
-                // not a bare array
+        JSONObject posted = body(ctx);
+        JSONArray saved = store.userState(u).optJSONArray("secretQuestions");
+        String question = posted.optString("question");
+        String answer = posted.optString("answer");
+        boolean right = false;
+        if (saved != null && !answer.isEmpty()) {
+            for (int i = 0; i < saved.length(); i++) {
+                JSONObject q = saved.optJSONObject(i);
+                if (q == null) continue;
+                String sq = q.optString("question");
+                String sa = q.optString("answer");
+                boolean sameQ = question.isEmpty() || sq.trim().equalsIgnoreCase(question.trim());
+                if (sameQ && !sa.isEmpty()
+                        && sa.trim().equalsIgnoreCase(answer.trim())) {
+                    right = true;
+                    break;
+                }
             }
         }
-        if (list == null) list = new JSONArray();
-        store.userState(u).put("secretQuestions", list);
-        String authCode = "local-" + Long.toHexString(System.currentTimeMillis());
-        store.userState(u).put("securityAuthCode", authCode);
-        store.save();
-        return envelope("obj", "{\"authCode\":\"" + authCode + "\",\"count\":"
-                + list.length() + ",\"right\":true}");
+        if (right) {
+            String authCode = "local-" + Long.toHexString(System.currentTimeMillis());
+            store.userState(u).put("securityAuthCode", authCode);
+            store.save();
+            return envelope("obj", "{\"authCode\":\"" + authCode
+                    + "\",\"count\":" + saved.length() + ",\"right\":true}");
+        }
+        // wrong/unknown answer: code=1 + right=false — the client's
+        // ha.h.onSuccess toasts and KEEPS the verify screen up (it never
+        // reveals section 2), so the envelope stays a success envelope.
+        return envelope("obj", "{\"authCode\":\"\",\"count\":"
+                + (saved == null ? 0 : saved.length()) + ",\"right\":false}");
     }
 
     /**

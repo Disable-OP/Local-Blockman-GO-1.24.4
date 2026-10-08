@@ -3218,3 +3218,28 @@
   at the password/modify form interaction.
 - Deep runs this session: 11-18 (8 runs; PASS on 11/13/16/17/18).
   NO GameServer work; Engine 10068 untouched. Host rig 570/570.
+
+## Session 37 (2026-10-08) — Wave 22: Safety Mailbox chain + server contract fixes
+
+- Verified the 5-minute Redroid mandate against live CI data first
+  (user's standing order): last 8 fast runs 3.7-4.2 min, all GREEN.
+  Push state verified (local b260544 == origin/local-api).
+- Decoded the Safety Mailbox email-bind chain from the jadx sources
+  (e.b.ca.g.h, e.b.ha.f/i/h, e.b.e.f/k, IUserApi bindEmail/
+  sendEmailVerifyCode/authUserQuestion, fragment_safe_setting,
+  fragment_secret_question_verify, fragment_bind_email): questions-set
+  accounts reach BindEmailFragment ONLY through the saved-question
+  identity verify, and the bind fires as v2 with the answers as query
+  params.
+- Server: questionAuth rewritten VERIFY-ONLY (validates one answer
+  against stored secretQuestions; issues authCode on right; never
+  saves); bindEmail validates repeated ?answer= params when present.
+  Host tests phase-4d + w16 rewritten to the true client shapes.
+  Rig: 576/576 PASS (was 570).
+- Drive: Phase LM block 2 = Safety Mailbox dual-path (verify/direct);
+  dead AccountSafe Email/Phone hunts removed; leave-dialog-aware
+  grounding; fill_node/edit_not_containing helpers.
+- Coverage: client_asserted 153 -> 155 (GET question, POST question,
+  {version} bind v2 claimed; phone bind honestly dropped to
+  host-tested-only).
+- Engine 10068 untouched. GameServer not started (mandate honored).

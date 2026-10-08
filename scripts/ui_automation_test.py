@@ -1802,7 +1802,9 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
     q_lit = "/user/api/v1/users/secret/ques" + "tion"
     email_verify_lit = "/user/api/v1/emails/verify/"   # deliberate prefix probe
     email_bind_lit = "/user/api/v1/users/bind/email"
-    phone_bind_lit = "/user/api/v1/user/bind/phone"
+    # phone_bind_lit REMOVED (wave 22): the AccountSafe phone hunt is gone
+    # (the row never renders) — POST /user/api/v1/user/bind/phone stays
+    # host-tested-only until its reachable surface is mapped in this build.
     pw_check_lit = "/user/api/v1/user/password/check"
     pw_modify_lit = "/user/api/v1/user/password/modify"
     q_seen = False
@@ -1934,12 +1936,32 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
     else:
         print("  [skip] LM: 'Safety Settings' row not found (hasPassword?)")
 
-    # -- 2) Email bind (two-step) -------------------------------------------
-    # Run 8 evidence: the Email/Phone rows sit BELOW the fold on the
-    # AccountSafe list (the [as] dump only reached 'Safety Settings') —
-    # scroll before hunting for them. RUN-17: the roaming killer may have
-    # restarted the process during the question block (the stack restores
-    # to SafeSetting) — detect and re-walk before hunting.
+    # -- 2) Email bind via SafeSetting's 'Safety Mailbox' row (Wave 22) ------
+    # Run 8/10/17/18 evidence: the AccountSafe 'Email'/'Phone number' rows
+    # DO NOT render in this build — the old AccountSafe hunts are GONE.
+    # jadx trigger map (session 37, e.b.ca/g + e.b.ha/* + e.b.e/*):
+    #   SafeSetting 'Safety Mailbox' (item_view_secret_mailbox) -> g.h():
+    #   * email unbound AND questions NOT finished -> BindEmailFragment
+    #     (e.b.e.f) directly (v1 bind path);
+    #   * questions FINISHED (block 1 just set them) -> b(1) ->
+    #     GET /users/secret/question?type=1 (saved) -> e.b.ha.f
+    #     SecretQuestionVerify: answer 1 + 'Next' and answer 2 + 'Done'
+    #     each POST /users/secret/question (authUserQuestion, complete=0/1,
+    #     ONE SecretQuestionInfo body); a right answer reveals the next
+    #     section (ha.h), and after answer 2 the client CHAINS into
+    #     BindEmailFragment carrying the secret_answer bundle — the bind
+    #     then fires as POST /user/api/v2/users/bind/email?answer=a1&answer=a2
+    #     (IUserApi bindEmail(version, form, answers)).
+    # Both paths converge on BindEmailFragment: email + 'Next' (POST
+    # /emails/verify/{email}) -> code + 'Add' (bind). BACK on the verify
+    # screen raises the leave-dialog; its 'Confirm' dismisses + finishes
+    # (ha.i.onBack -> TwoButtonDialog listener).
+    email_bind_v2_lit = "/user/api/v2/users/bind/email"
+    # FULL literal (wave 22): the mailbox block now GENUINELY fires both
+    # verbs on this path — GET ?type=1 (saved-question fetch, b(1)) and
+    # POST authUserQuestion (the answer verify, complete=0/1) — so a full
+    # literal is claim-honest for both concrete routes.
+    qa_verify_lit = "/user/api/v1/users/secret/question"
     if restarted():
         print("  [evidence] LM: process restarted during the question block "
               "(roaming-killer family, pid %s -> %s) - re-walking"
@@ -1950,96 +1972,179 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
         ok("LM: Account Security re-entered after the restart")
     email = "qa%05d@local.test" % (int(time.time()) % 100000)
     code = "138%03d" % (int(time.time()) % 1000)
-    erow = None
-    for swipe in range(3):
-        erow = screen.find(texts=["Email"])
-        if erow and erow.center:
-            break
-        adb.sh("input swipe 360 900 360 380 300")
-        time.sleep(2)
-    if erow and erow.center:
-        screen.tap_node(erow)
-        time.sleep(4)
-        if alive_or_recover("%s-bindemail" % tag):
-            if fill_edit(0, email):
-                if confirm_button():  # 'Next'
-                    time.sleep(6)
-                    alive_or_recover("%s-emailcode" % tag)
-                    v_seen = req_seen("REQ POST " + email_verify_lit)
-                    if v_seen:
-                        ok("LM: email verify-code acked (POST emails/verify/)")
-                    else:
-                        print("  [info] no emails/verify call (step-1 "
-                              "client gate?)")
-                    if fill_edit(0, code):
-                        if confirm_button():  # 'Add'
-                            time.sleep(6)
-                            alive_or_recover("%s-emailbind" % tag)
-                            b_seen = req_seen("REQ POST " + email_bind_lit)
-                            if b_seen:
-                                ok("LM: email bind served (POST users/bind/"
-                                   "email) for %s" % email)
-                            else:
-                                print("  [info] no users/bind/email call")
-                        else:
-                            print("  [skip] LM: 'Add' button not found")
-                    else:
-                        print("  [skip] LM: code field not found (step-2 "
-                              "not reached?)")
-            back(1)
-            time.sleep(1)
-    else:
-        print("  [skip] LM: 'Email' row not found on Account Security")
 
-    # -- 3) Phone bind --------------------------------------------------------
-    phone = "130%08d" % (int(time.time()) % 100000000)
-    if restarted():
-        print("  [evidence] LM: process restarted before the phone bind - "
-              "re-walking (pid %s -> %s)" % (pid0, adb.pid(package)))
-        if not enter_accountsafe():
-            print("  [skip] LM: could not re-enter Account Security (phone)")
-            return
-        ok("LM: Account Security re-entered (phone)")
-    prow = None
-    for swipe in range(3):
-        prow = screen.find(texts=["Phone number"])
-        if prow and prow.center:
+    def fill_node(node, value):
+        """fill_edit for an already-found node (same IME mechanics)."""
+        screen.tap_node(node)
+        time.sleep(0.6)
+        adb.key(123)  # MOVE_END
+        for _ in range(40):
+            adb.key(67)  # DEL
+        adb.text(value)
+        time.sleep(0.4)
+        if adb.ime_visible():
+            adb.key(4)
+            time.sleep(0.8)
+        return True
+
+    def edit_not_containing(marker):
+        """The EditText whose content lacks marker — the code/answer-2
+        field when a same-screen sibling keeps the earlier value. Falls
+        back to the LAST EditText (the reveal appends fields)."""
+        eds = [n for n in screen.dump()
+               if n.cls.endswith("EditText") and n.center]
+        if not eds:
+            return None
+        non = [e for e in eds if marker not in (e.text or "")]
+        return non[0] if non else eds[-1]
+
+    safe2 = None
+    for _ in range(2):
+        safe2 = screen.find(texts=["Safety Settings"])
+        if safe2 and safe2.center:
             break
-        adb.sh("input swipe 360 900 360 380 300")
+        adb.sh("input swipe 360 380 360 900 300")  # row sits at the top
         time.sleep(2)
-    if prow and prow.center:
-        screen.tap_node(prow)
+    if not (safe2 and safe2.center):
+        debug_dump(screen, "%s-no-safe2" % tag)
+        print("  [skip] LM: 'Safety Settings' row not found for the "
+              "mailbox block")
+    else:
+        screen.tap_node(safe2)
         time.sleep(4)
-        if alive_or_recover("%s-bindphone" % tag):
-            if fill_edit(0, phone):
-                get_code = screen.find(texts=["Get validation code"],
-                                       contains=["validation code", "code"])
-                if get_code and get_code.center:
-                    screen.tap_node(get_code)
-                    time.sleep(5)
-                    alive_or_recover("%s-phonesms" % tag)
-                    s_seen = req_seen("REQ POST /user/api/v1/sms/sen" +
-                                      "d/" + phone)
-                    if s_seen:
-                        ok("LM: sms code acked (POST sms/send/)")
-                    else:
-                        print("  [info] no sms/send call (send gate?)")
-                else:
-                    print("  [skip] LM: 'Get validation code' not found")
-                if fill_edit(1, code):
-                    if confirm_button():  # 'Confirm'
-                        time.sleep(6)
-                        alive_or_recover("%s-phonebind" % tag)
-                        pb_seen = req_seen("REQ POST " + phone_bind_lit)
-                        if pb_seen:
-                            ok("LM: phone bind served (POST user/bind/phone)"
-                               " for %s" % phone)
+        if alive_or_recover("%s-safesetting2" % tag):
+            mbox = screen.find(texts=["Safety Mailbox"])
+            if not (mbox and mbox.center):
+                for n in screen.dump():
+                    if n.text:
+                        print("  [ss] %r" % n.text[:32])
+            if mbox and mbox.center:
+                screen.tap_node(mbox)
+                time.sleep(5)
+                alive_or_recover("%s-mailbox" % tag)
+                if req_seen("REQ GET " + qa_verify_lit + "?type=1"):
+                    ok("LM: saved-question fetch served (GET users/secret/"
+                       "question?type=1)")
+                texts_now = [(n.text or "") for n in screen.dump()]
+                on_verify = any(
+                    "mail safety question" in t.lower()
+                    or t.startswith("Question 1") for t in texts_now)
+                on_bind = bool(edit_nodes())
+                if on_verify:
+                    ok("LM: identity-verify screen open (questions set)")
+                    # -- answer 1 -> 'Next' -> POST complete=0 -----------
+                    eds_v = edit_nodes()
+                    if not eds_v:
+                        debug_dump(screen, "%s-no-verify-edt" % tag)
+                        print("  [skip] LM: verify answer field missing")
+                    elif fill_node(eds_v[0], "LocalQA-One"):
+                        if confirm_button():  # 'Next'
+                            time.sleep(6)
+                            alive_or_recover("%s-qverify1" % tag)
+                            qa1 = req_seen("REQ POST " + qa_verify_lit
+                                           + "?userId=")
+                            if qa1:
+                                ok("LM: answer-1 verify served (POST users/"
+                                   "secret/question, authUserQuestion)")
+                            else:
+                                print("  [info] no authUserQuestion POST "
+                                      "(answer-1 gate?)")
+                            # section 2 reveals ONLY on a right answer
+                            for _ in range(2):
+                                if screen.find(ids=["ed_answer_two"]) \
+                                        or screen.find(texts=["Done"]):
+                                    break
+                                adb.sh("input swipe 360 900 360 380 300")
+                                time.sleep(2)
+                            if screen.find(ids=["ed_answer_two"]) \
+                                    or len(edit_nodes()) > 1:
+                                ok("LM: verify answer-1 accepted (section 2 "
+                                   "revealed)")
+                                ed2 = edit_not_containing("LocalQA-One")
+                                if ed2 and fill_node(ed2, "LocalQA-Two"):
+                                    done = screen.find(texts=["Done"])
+                                    if done and done.center:
+                                        screen.tap_node(done)
+                                        time.sleep(6)
+                                        alive_or_recover("%s-qverify2" % tag)
+                                        if req_seen("complete=1"):
+                                            ok("LM: answer-2 verify served "
+                                               "(POST users/secret/question "
+                                               "complete=1)")
+                                        # the client CHAINS into BindEmail
+                                        time.sleep(3)
+                                        if not edit_nodes():
+                                            print("  [evidence] LM: no bind "
+                                                  "screen after answer-2 "
+                                                  "(verify chain changed?)")
+                                    else:
+                                        print("  [skip] LM: 'Done' button "
+                                              "not found (answer-2 gate?)")
+                            else:
+                                print("  [info] verify answer-1 REJECTED "
+                                      "(right=false?) - section 2 never "
+                                      "revealed")
                         else:
-                            print("  [info] no user/bind/phone call")
+                            print("  [skip] LM: verify 'Next' not found")
+                elif on_bind:
+                    print("  [info] LM: BindEmail opened DIRECTLY (questions "
+                          "unfinished) - v1 bind path")
+                else:
+                    debug_dump(screen, "%s-mailbox-unknown" % tag)
+                    print("  [skip] LM: 'Safety Mailbox' tap landed on an "
+                          "unrecognized screen")
+                # -- BindEmailFragment (reached via either path) ----------
+                eds_b = edit_nodes()
+                if eds_b and fill_node(eds_b[0], email):
+                    if confirm_button():  # 'Next'
+                        time.sleep(6)
+                        alive_or_recover("%s-emailcode" % tag)
+                        v_seen = req_seen("REQ POST " + email_verify_lit)
+                        if v_seen:
+                            ok("LM: email verify-code acked (POST emails/"
+                               "verify/)")
+                        else:
+                            print("  [info] no emails/verify call (step-1 "
+                                  "client gate?)")
+                        cf = edit_not_containing(email)
+                        if cf and fill_node(cf, code):
+                            if confirm_button():  # 'Add'
+                                time.sleep(6)
+                                alive_or_recover("%s-emailbind" % tag)
+                                b2 = req_seen("REQ POST " + email_bind_v2_lit)
+                                b1 = req_seen("REQ POST " + email_bind_lit)
+                                if b2:
+                                    ok("LM: email bind v2 served (POST "
+                                       "{version}/users/bind/email with "
+                                       "?answer=) for %s" % email)
+                                elif b1:
+                                    ok("LM: email bind v1 served (POST users/"
+                                       "bind/email) for %s" % email)
+                                else:
+                                    print("  [info] no users/bind/email call")
+                            else:
+                                print("  [skip] LM: 'Add' button not found")
+                        else:
+                            print("  [skip] LM: code field not found (step-2 "
+                                  "not reached?)")
+                elif eds_b:
+                    print("  [skip] LM: email field fill failed")
+            else:
+                print("  [skip] LM: 'Safety Mailbox' row not found on "
+                      "SafeSetting")
+        # ground back on AccountSafe for the password block: bind success
+        # auto-finishes to SafeSetting, a failed hop can strand deeper;
+        # BACK on the verify screen raises the leave-dialog whose
+        # 'Confirm' dismisses + finishes (ha.i.onBack)
+        for _ in range(4):
+            if screen.find(texts=["Safety Settings", "Modify Password"]):
+                break
             back(1)
             time.sleep(1)
-    else:
-        print("  [skip] LM: 'Phone number' row not found on Account Security")
+            dlg = screen.find(texts=["Confirm"])
+            if dlg and dlg.center:
+                screen.tap_node(dlg)
+                time.sleep(2)
 
     # -- 4) Modify Password (LAST — rotates the credential) ------------------
     if restarted():

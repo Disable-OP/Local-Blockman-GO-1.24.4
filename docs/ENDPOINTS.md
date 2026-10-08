@@ -1727,3 +1727,61 @@ COVERAGE: 334/334/0-defaults; host rig 570/570; client_asserted 152.
 
 COVERAGE: 334/334/0-defaults/334 host-tested; host rig 570/570;
 client_asserted 152 -> 153.
+
+### Wave 22 (session 37) — Safety Mailbox email-bind chain: verify + v2 bind decoded end-to-end
+
+1. **The on-device email-bind surface is SafeSetting's "Safety Mailbox"
+   row** (`item_view_secret_mailbox`, fragment_safe_setting binding_1 ->
+   `ca.g.h()`), NOT the dead AccountSafe Email row. `h()` branches:
+   email unbound + questions unfinished -> BindEmailFragment (e.b.e.f)
+   directly (v1 bind); questions FINISHED -> `b(1)` ->
+   **GET /users/secret/question?type=1** (saved) -> e.b.ha.f
+   SecretQuestionVerify.
+2. **SecretQuestionVerify (ha.f/i) decoded**: two sections — answer 1 +
+   'Next' (`q` -> `h()`) and answer 2 (`ed_answer_two`) + 'Done'
+   (`r` -> `f()`); EACH answer POSTs **/user/api/v1/users/secret/
+   question** (`authUserQuestion`, IUserApi:64-65: @Query userId,
+   @Query complete 0/1, @Body ONE SecretQuestionInfo). `ha.h` branches
+   on `UserVerifyInfo.isRight()`: a right answer reveals the next
+   section; after answer 2 (non-reset path) it bundles
+   `secret_answer=[a1,a2]` and **starts BindEmailFragment**, finishing
+   the verify screen.
+3. **BindEmailFragment (e.b.e.f/k) decoded**: step 1 email + 'Next'
+   (`k.a(true)`: isEmail gate + 60s countdown + **POST /emails/verify/
+   {email}?unbindType=1**); verify-success reveals step 2 (`i.onSuccess`
+   -> `j.set(true)`); code + 'Add' (`k.i()` -> **bindEmail**) — and with
+   the secret_answer bundle (`e=true`) the bind fires as
+   **POST /user/api/v2/users/bind/email?answer=a1&answer=a2** (the
+   {version} template). Bind-success toasts, sets AccountCenter.email,
+   and FINISHES the screen (j.onSuccess).
+4. **Server Wave-22 contract fixes** (both verified by the host rig):
+   * `questionAuth` was a SAVE (it stored whatever body arrived — the
+     real client never sends a list there, so an on-device verify would
+     have CLOBBERED the saved questions with a single entry). It is now
+     a VERIFY-ONLY call: validates the posted answer against the stored
+     secretQuestions (trimmed, case-insensitive), returns
+     {authCode, count, right} with right=false on a wrong answer
+     (code=1 envelope — the client toasts and keeps the screen up),
+     and issues + stores the authCode ONLY on a right answer (the
+     reset-password flow still feeds off it).
+   * `bindEmail` now validates the repeated ?answer= params against the
+     stored secretQuestions when present (the questions are the second
+     factor in a purely local world); the v1 shape (no answers) is
+     unchanged.
+5. **Drive rewrite (Phase LM block 2)**: the AccountSafe Email/Phone
+   hunts are GONE (rows never render; the phone surface stays unmapped
+   — POST /user/api/v1/user/bind/phone drops to host-tested-only, an
+   honest -1). The new block: AccountSafe -> Safety Settings ->
+   Safety Mailbox -> (verify path | direct-bind path) -> email + Next ->
+   code + Add, with a leave-dialog-aware grounding loop (BACK on the
+   verify screen raises TwoButtonDialog; 'Confirm' dismisses+finishes).
+   New helpers: fill_node (node-targeted fill), edit_not_containing
+   (the code/answer-2 field when a sibling keeps the earlier value).
+6. Claim changes: GET /users/secret/question (False->True, the type=1
+   fetch is genuinely driven), POST /users/secret/question (False->True,
+   authUserQuestion verify), POST /user/api/{version}/users/bind/email
+   (False->True, the v2 answer-bind template),
+   POST /user/api/v1/user/bind/phone (True->False, honest drop).
+
+COVERAGE: 334/334/0-defaults/334 host-tested; host rig 576/576;
+client_asserted 153 -> 155.

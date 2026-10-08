@@ -1789,3 +1789,37 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 - Fast CI: 187-193 all 3.7-4.2 min GREEN — the 5-minute mandate holds.
   Deep: 15 runs total this arc, PASS on 10/11/13/16/17/18.
 - Engine 10068 untouched (mandate honored).
+
+## Session 37 delta (Wave 22 — read first next session)
+
+- 5-min mandate re-verified FIRST (per the standing user order): the last
+  8 test-redroid runs are all 3.7-4.2 min GREEN (runs 37654742234 ..
+  37685583845). Fast-only discipline intact on both branches (no mode
+  input, 12min/8min caps). Engine 10068 untouched.
+- Wave 22 = the Safety Mailbox email-bind chain, decoded end-to-end from
+  jadx (ca/g.h -> ha/f,i,h -> e/f,k + IUserApi): SafeSetting
+  'Safety Mailbox' -> (questions finished) GET users/secret/question?
+  type=1 -> SecretQuestionVerify (answer1+Next, answer2+Done, EACH a
+  POST /users/secret/question = authUserQuestion with ONE
+  SecretQuestionInfo body, complete=0/1) -> right answers chain into
+  BindEmailFragment with the secret_answer bundle -> POST emails/verify/
+  {email} -> POST /user/api/v2/users/bind/email?answer=a1&answer=a2.
+  See ENDPOINTS.md Wave 22 for the full map.
+- SERVER CONTRACT FIXES (host rig 576/576): (1) questionAuth is now
+  VERIFY-ONLY (it used to save the body — a real client verify would
+  have clobbered the saved questions); right answers issue + store the
+  authCode, wrong answers get right=false on a code=1 envelope.
+  (2) bindEmail validates the repeated ?answer= params against the
+  stored questions when present (v1 shape unchanged). Host-test blocks
+  rewritten to the true shapes (phase 4d + w16).
+- Drive: Phase LM block 2 rewritten (Safety Mailbox dual-path: verify
+  path + direct v1 path), AccountSafe Email/Phone hunts REMOVED (rows
+  never render). Honest claim churn: -1 phone bind (surface unmapped),
+  +3 (GET question, POST question/authUserQuestion, {version} bind v2).
+  client_asserted 153 -> 155.
+- NEXT: dispatch test-redroid-deep, read the [LM] verdicts (the verify
+  chain has NEVER been driven on-device; watch [ss]/[info]/[evidence]
+  lines for the popup/dialog hops), fix whatever the dumps reveal, then
+  re-run. After two green runs consider promoting emails/verify +
+  users/bind/email evidence lines to verdict-backed claims. NO
+  GameServer work.
