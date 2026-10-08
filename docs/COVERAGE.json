@@ -5,7 +5,7 @@
   "implemented": 334,
   "default": 0,
   "host_tested": 334,
-  "client_asserted": 152
+  "client_asserted": 159
  },
  "endpoints": [
   {
@@ -798,7 +798,7 @@
    "status": "implemented",
    "handler": "firstTopReward",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -822,7 +822,7 @@
    "status": "implemented",
    "handler": "vipProducts",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -830,7 +830,7 @@
    "status": "implemented",
    "handler": "products",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -846,7 +846,7 @@
    "status": "implemented",
    "handler": "payHistory",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -1414,7 +1414,7 @@
    "status": "implemented",
    "handler": "ackPost",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1430,7 +1430,7 @@
    "status": "implemented",
    "handler": "rechargeVip",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -2014,7 +2014,7 @@
    "status": "implemented",
    "handler": "vipBuy",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",

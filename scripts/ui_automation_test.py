@@ -3467,6 +3467,66 @@ def main():
     else:
         print("  [info] C: shop type-8 rows short for the dress-buy chain")
 
+    # ------------------------------------------------- Wave 25b: the
+    # wallet-recharge + VIP chain through the live session (fcall tier).
+    # Client: the shop's gold/diamond/VIP shelves read GET pay/products
+    # (+ products/vip, thirdPayFlag), IAP acks POST pay/users/recharge
+    # (v1 credits the sku's pack; v3/v4 set the VIP level), the
+    # gold-VIP button is PUT shop/user/buy/vip?productId=..., and
+    # GET wealth/record/users/{userId} lists the pay records all of
+    # that produces. Wallet: fresh accounts start 50k golds (StateStore
+    # default), so the 30k VIP stays affordable after the dress buys.
+    prods = fcall("GET", "/pay/api/v1/pay/products", headers=auth_hdr)
+    p_rows = [p for p in (prods.get("data") or []) if isinstance(p, dict)]
+    check("C: pay products catalog served",
+          prods.get("code") == 1 and len(p_rows) >= 8
+          and any(p.get("isVip") for p in p_rows), str(prods)[:120])
+    vip0 = fcall("GET", "/pay/api/v1/pay/products/vip", headers=auth_hdr)
+    check("C: products/vip served (expireDate/vip/products)",
+          vip0.get("code") == 1
+          and set(vip0.get("data") or {})
+          >= {"expireDate", "vip", "products"}, str(vip0)[:100])
+    sku1 = next((p["productId"] for p in p_rows
+                 if p.get("productId") == "local.golds.1"), None)
+    if sku1:
+        wpre = fcall("GET", "/pay/api/v1/wealth/user",
+                     headers=auth_hdr).get("data", {})
+        rc = fcall("POST", "/pay/api/v1/pay/users/recharge", {"sku": sku1},
+                   headers=auth_hdr)
+        wpost = fcall("GET", "/pay/api/v1/wealth/user",
+                      headers=auth_hdr).get("data", {})
+        check("C: recharge v1 credits the pack (+1000 golds)",
+              rc.get("code") == 1
+              and wpost.get("golds", 0) == wpre.get("golds", 0) + 1000,
+              "%s | w %s -> %s" % (str(rc)[:120], wpre, wpost))
+        ph = fcall("GET", "/pay/api/v1/wealth/record/users/%d" % qa_uid_num,
+                   headers=auth_hdr)
+        ph_d = ph.get("data") or {}
+        check("C: pay history records the recharge",
+              ph.get("code") == 1 and (ph_d.get("totalSize") or 0) >= 1
+              and len(ph_d.get("data") or []) >= 1, str(ph)[:120])
+    rcv = fcall("POST", "/pay/api/v3/pay/users/recharge",
+                {"sku": "local.vip.1"}, headers=auth_hdr)
+    check("C: recharge v3 sets VIP 1 + expireDate",
+          rcv.get("code") == 1 and (rcv.get("data") or {}).get("vip") == 1
+          and (rcv.get("data") or {}).get("expireDate"), str(rcv)[:120])
+    wpre = fcall("GET", "/pay/api/v1/wealth/user",
+                 headers=auth_hdr).get("data", {})
+    vb = fcall("PUT", "/shop/api/v1/shop/user/buy/vip?productId=local.vipgold.1m",
+               None, headers=auth_hdr)
+    wpost = fcall("GET", "/pay/api/v1/wealth/user",
+                  headers=auth_hdr).get("data", {})
+    vbd = vb.get("data") or {}
+    check("C: vipBuy deducts 30000 golds + extends VIP",
+          vb.get("code") == 1 and vbd.get("vip", 0) >= 1
+          and vbd.get("expireDate")
+          and wpost.get("golds", 0) == wpre.get("golds", 0) - 30000,
+          "%s | w %s -> %s" % (str(vb)[:130], wpre, wpost))
+    ftr = fcall("GET", "/pay/api/v1/first/punch/reward", headers=auth_hdr)
+    check("C: first punch reward served (status 1)",
+          ftr.get("code") == 1
+          and (ftr.get("data") or {}).get("status") == 1, str(ftr)[:100])
+
     # ------------------------------------------------- Wave 23e: buy->wear
     # chain through the REAL server state (fcall tier, verb-aware claims).
     # The DressBuyDialog is GL-only on the emulator (run 37742955965: the
