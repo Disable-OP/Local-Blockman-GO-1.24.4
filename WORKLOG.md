@@ -3614,3 +3614,47 @@
 - Nothing failing. Next work stays error-driven from NEW traffic only,
   or the GameServer phase gate.
 - Engine 10068 untouched (mandate honored). NO GameServer work.
+
+## Session 49 — SERVER: torn-write recovery + suite 589->597 + ephemeral-port flake killed (2026-10-08, ~21:30 UTC)
+
+- FOUND (code audit, not traffic): save() commits via state.json.tmp ->
+  rename, but a process death in the tiny close->rename window (the
+  native roaming killer kills the app mid-run — proven in every deep
+  run) left the NEWEST state batch in state.json.tmp while load()
+  read only the older state.json — worst case losing a just-created
+  account or password change. A torn state.json (rename-fallback
+  direct write died mid-write) silently started fresh.
+- SERVER FIX (StateStore.java): load() now tries recoverFrom(tmp)
+  FIRST — a leftover parseable state.json.tmp is always newer-or-equal
+  (the rename moves tmp OVER state.json; a valid state.json can only
+  be from an earlier completed save), and on success the store
+  normalizes itself immediately (save() rewrites tmp -> rename, so the
+  leftover disappears). A torn tmp falls through to the state.json
+  path; both torn -> the fresh-start contract. Both file readers got
+  proper full-read loops (the old single in.read() could truncate).
+  NO fsync: the threat is process death (page cache survives), not
+  power loss, and save() runs on every mutation.
+- HOST SUITE 589 -> 597 (+8, all green): scenario (a) torn state.json
+  + valid tmp -> tmp wins (seeded user logs in, tmp normalized away,
+  state.json holds the user); (b) valid state.json + torn tmp ->
+  state.json wins; (c) both torn -> fresh boot + visitor works.
+  Fixtures are schema-TRUE: booted throwaway instances, registered the
+  recovery users through the REAL handler, and used the persisted
+  state.json verbatim (never hand-crafted JSON). Two fixture helpers
+  (boot_hosttest / seed_state) now exist for future boot tests.
+- SUITE FLAKE CLASS KILLED: all 14 test-port selections moved from
+  20000-40000 to 20000-32000 — BELOW the kernel ephemeral start
+  (32768, /proc/sys/net/ipv4/ip_local_port_range). Live evidence at
+  21:06: the race holder's bind died with Address-already-in-use
+  against a TIME_WAIT client source port -> 4 spurious FAILs (the
+  race holder binds WITHOUT SO_REUSEADDR). Two earlier runs had gotten
+  lucky; the class is now impossible, not improbable.
+- release_and_test.sh: token extraction now accepts BOTH remote forms
+  (branch-local URL with x-access-token:<tok> — the old clone — and a
+  named origin remote with <user>:<tok> — this clone; the old grep
+  found NOTHING here, proven in session 48).
+- SHIP: classes6.dex rebuilt (246,408 bytes); commit 375bd48 pushed;
+  build-release run 37845097352 SUCCESS -> wip-63 asset (run number
+  63, 232,717,738 bytes, uploaded 21:13:54Z); budget-5 deep
+  verification dispatched on it (run 37845695626).
+- Engine 10068 untouched (mandate honored). NO GameServer work.

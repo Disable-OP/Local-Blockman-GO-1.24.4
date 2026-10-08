@@ -2325,3 +2325,29 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   wip-61 asset current, no server Java changes, no rebuild, no tag.
 - NEXT unchanged: nothing is failing — error-driven from NEW traffic
   only, or the GameServer phase gate. NO GameServer work.
+
+## Session 49 delta (read FIRST — SERVER: torn-write recovery; suite 597; wip-63 is current)
+
+- REAL DATA-LOSS WINDOW CLOSED: save() commits via state.json.tmp ->
+  rename; a process death between the tmp write and the rename (the
+  roaming killer kills mid-run) left the NEWEST batch in the tmp which
+  load() ignored, and a torn state.json started fresh. StateStore.load()
+  now tries recoverFrom(tmp) FIRST (a parseable leftover tmp is always
+  newer-or-equal), normalizes it away, and falls back cleanly (torn tmp
+  -> state.json; both torn -> fresh). Full-read loops in both readers;
+  no fsync (threat = process death, not power loss).
+- HOST SUITE 589 -> 597 (+8, all green): tmp-wins / state-wins /
+  both-torn scenarios, fixtures schema-TRUE via a throwaway instance +
+  real register (helpers boot_hosttest / seed_state reusable).
+- SUITE FLAKE CLASS KILLED: all 14 test ports moved to 20000-32000,
+  below the 32768 ephemeral start — a TIME_WAIT client source port
+  killed the race holder's bind at 21:06 (4 spurious FAILs); now
+  impossible. If you add ports, keep them under 32000.
+- release_and_test.sh accepts both remote token forms now (x-access-
+  token: URL and <user>:<tok> named remote).
+- SHIPPED: dex rebuilt (246,408 B), 375bd48 pushed, build 37845097352
+  SUCCESS -> wip-63 asset (run number 63). Budget-5 verification run
+  37845695626 dispatched on wip-63 — read its verdict below when
+  triaging. Current asset: wip-63. Host suite: 597/597.
+- NEXT unchanged: error-driven from NEW traffic only, or the GameServer
+  phase gate. NO GameServer work.
