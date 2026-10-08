@@ -2205,3 +2205,38 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 - The DEEP-TIME MANDATE is untouched: default budget-5 dispatches wall
   ~10 min; budgets 15/30 are deliberate opt-in verdict harvests.
 - Engine 10068 untouched (mandate honored). NO GameServer work.
+
+## Session 45 delta (read FIRST — the password/check @Query bug: found, fixed, shipped)
+
+- RUN 37806521212 (budget 30, PASS): the wired [pw-pre] dump finally
+  named the hop — 'Modify Password' title, Username/ID labels,
+  tvPassword PRE-FILLED with the OLD password, submit 'NEXT'. Three
+  check POSTs all code=1, no advance, no modify POST.
+- RUN 37811597325 (budget 30, PASS, ff84e99 wizard-drive fix): the
+  corrected drive (never overwrite a field holding the old password;
+  one extra safe NEXT) STILL saw the identical screen — so the
+  "two-step wizard" theory was WRONG and the diagnostics artifact got
+  pulled: localapi.txt shows THREE check REQ/RES pairs, all
+  "code=1 ... auth=tok", ~72b bodies.
+- ROOT CAUSE (the real one, in the SERVER): the client sends the
+  RSA-encrypted password as @Query("password") (the Wave-11 decode +
+  ENDPOINTS.md line said so; the handler even carried the comment) but
+  passwordCheck read body(ctx).optString("password") — EMPTY on every
+  real client POST. Every check answered right=false inside a code=1
+  envelope; ConfirmPasswordFragment never advanced to
+  ChangePasswordFragment; the modify POST was unreachable from the UI
+  since Wave 20. The rig passed because IT sends the body shape —
+  NanoHTTPD never logs query strings, so 20 runs of REQ-watching could
+  not see it.
+- FIX (2c50bdf): Handlers.passwordCheck reads ctx.query("password")
+  FIRST, body stays as the lenient fallback. Host rig +1: the @Query
+  RSA contract (URL-encoded) right+wrong pinned as the client
+  contract. Host suite 588 -> 589/589. classes6.dex rebuilt; build
+  37817165774 green; verification run 37817471283 (budget 30) in
+  flight on the NEW asset.
+- READ NEXT SESSION: the LM block of 37817471283 — expect
+  "old-password check served" THEN an advance (the [pw-step2] dump
+  names ChangePasswordFragment's real fields) THEN "LM: password
+  modify served". If the modify POST lands, the LAST evidence-only
+  surface of the whole local API is client-asserted end-to-end.
+- NO GameServer work.
