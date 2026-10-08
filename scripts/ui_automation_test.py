@@ -2164,11 +2164,17 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                 qs_lit = "/user/api/v1/users/secret/question/setting"
                 if fill_q1(screen, adb):
                     # answer 1 = first visible EditText (appears once the
-                    # question selection registered); dump when it doesn't
+                    # question selection registered); dump when it doesn't.
+                    # run-13 pattern: section 1 can reveal BELOW the fold -
+                    # one bounded scroll before declaring it gated.
                     time.sleep(2)
                     if not edit_nodes():
+                        adb.sh("input swipe 360 900 360 380 300")
+                        time.sleep(2)
+                    if not edit_nodes():
                         print("  [info] LM: no answer field after Q1 pick "
-                              "- selection visibility still gated")
+                              "- selection visibility still gated (even "
+                              "after the reveal scroll)")
                         debug_dump(screen, "lm-qscreen")
                     fill_edit(0, "LocalQA-One")
                     # run-15 evidence: fa.i still finishes even without the
@@ -5835,7 +5841,10 @@ def main():
                             time.sleep(0.5)
                             adb.text(new_name)
                             time.sleep(1)
-                            adb.key(4)  # close the IME
+                            # run 37751313202 lesson: BACK with the IME down
+                            # pops the EDIT FORM (the homepage dump proved it)
+                            if adb.ime_visible():
+                                adb.key(4)  # close the IME only when up
                             time.sleep(1)
                             for x in screen.dump():
                                 if x.cls.endswith("EditText") and x.center \
@@ -5850,7 +5859,8 @@ def main():
                                     adb.key(67)
                                 adb.text(new_name)
                                 time.sleep(1)
-                                adb.key(4)
+                                if adb.ime_visible():
+                                    adb.key(4)
                                 time.sleep(1)
                                 for x in screen.dump():
                                     if x.cls.endswith("EditText") and x.center \
@@ -5884,7 +5894,10 @@ def main():
                                         time.sleep(1)
                                         adb.text("QA2")
                                         time.sleep(1)
-                                        adb.key(4)
+                                        if adb.ime_visible():
+                                            adb.key(4)  # IME-guarded: the
+                                            # session-17 note is drop-the-
+                                            # keyboard, never the dialog
                                         time.sleep(1)
                                     conf = screen.find(ids=["btn_confirm"])
                                     if conf and conf.center:
@@ -5904,9 +5917,23 @@ def main():
                                   "tags may already exist")
                         # run-37418335203: the tag input leaves the soft
                         # keyboard up - BACK once drops it (the form stays);
-                        # otherwise the MODIFY taps land on the keyboard
-                        adb.key(4)
+                        # otherwise the MODIFY taps land on the keyboard.
+                        # RUN 37751313202 ROOT CAUSE: the confirm hop already
+                        # closed the IME (guarded BACK above), so this BACK
+                        # landed on the form itself and RETURNED TO THE CLAN
+                        # HOMEPAGE (the F2-form] dump shows DONATE/Task/Shop)
+                        # - the Modify button was never on screen. Guard it.
+                        if adb.ime_visible():
+                            adb.key(4)
                         time.sleep(2)
+                        # form-presence evidence: the submit hunt is only
+                        # meaningful while the edit form is actually up
+                        _ft = screen.find(ids=["tv_title"]) \
+                            or screen.find(ids=["tvTemplateTitle"])
+                        if not (_ft and (_ft.text or "") == "Edit Clan"):
+                            print("  [evidence] F2: edit form not up before "
+                                  "the submit hunt (title=%r) - the tag hop "
+                                  "closed it" % (_ft.text if _ft else None))
                         # 5t v10 (run 37374604536): the layout applies
                         # textAllCaps - the button renders 'MODIFY'
                         modify = next((x for x in screen.dump()
