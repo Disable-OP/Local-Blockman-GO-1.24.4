@@ -1051,19 +1051,36 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                     if forever and forever.center:
                         screen.tap_node(forever)
                         time.sleep(1)
-                    buy = screen.find(texts=["Buy", "Buy Now", "Purchase",
-                                             "Get", "Confirm"],
-                                      contains=["buy", "purchase",
-                                                "confirm"])
+                    def _find_buy():
+                        # Wave 23c: the buy dialog's action control is
+                        # text-bearing on some builds ("Confirm", the
+                        # dialog_dress_buy action) and databinding-only on
+                        # others — search BOTH texts and the known action
+                        # ids (the q2 dialogs prove btn_confirm carries
+                        # 'Confirm'; decorate_new_dress_buy_confirm stays
+                        # in the pool in case it is an id on this build).
+                        return screen.find(
+                            texts=["Buy", "Buy Now", "Purchase", "Get",
+                                   "Confirm"],
+                            contains=["buy", "purchase", "confirm"]) \
+                            or screen.find(ids=["btn_confirm", "btnSure",
+                                                "btn_ok", "btnOk", "btnBuy",
+                                                "btn_buy",
+                                                "decorate_new_dress_buy_confirm"])
+                    buy = _find_buy()
                     if not (buy and buy.center):
                         # run-21: the GL-backed dialog content can render
-                        # AFTER ivBigPic — re-dump once before falling back
-                        time.sleep(5)
-                        buy = screen.find(texts=["Buy", "Buy Now",
-                                                 "Purchase", "Get",
-                                                 "Confirm"],
-                                          contains=["buy", "purchase",
-                                                    "confirm"])
+                        # AFTER ivBigPic — re-dump with longer patience
+                        # (run-22: at +5s the price fields were still 0
+                        # and the item radios + buy button had not
+                        # rendered; guest-GPU frames are slow)
+                        time.sleep(10)
+                        buy = _find_buy()
+                    if not (buy and buy.center):
+                        # final GL beat (~20s total wait, budget-clamped
+                        # upstream by the deep-phase wall)
+                        time.sleep(10)
+                        buy = _find_buy()
                     if not (buy and buy.center):
                         # wave 23 evidence: dump the dialog texts so the
                         # next run can target the real controls
