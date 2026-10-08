@@ -2151,3 +2151,28 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   MANDATE is untouched: default budget-5 dispatches still wall ~10 min;
   budget 15/30 are deliberate opt-in harvests.
 - NO GameServer work.
+
+## Session 44 FINAL delta (read FIRST — F2 form-killer FIXED and verdict-backed)
+
+- RUN 37793212847 (budget 15, 13cc493): UI AUTOMATION PASS, zero fails,
+  269 unique endpoints. THE HEADLINE: "F2: clan-UPDATE client-asserted
+  through the real UI (PUT fired, server name='EditClan70787')" — the
+  IME-guard fix removed the form-killer and the Modify tap fired the
+  PUT on the FIRST try (PUT 0->1, no re-tap). No
+  "[evidence] edit form not up" line — the form stayed up through the
+  whole tag hop.
+- Same run re-verified the whole G fleet: second member join, Manage
+  Members sheet, setIdentity (type 1 elder, role=10), removeMember,
+  invite chain (invitee saw the type-2 message, POST 0->1), freeVerify
+  [1,0,1], HAND OVER CHIEF (PUT 1->2, gk role=20, old chief 0, chief
+  from base=10013). All green in ONE run.
+- The "3 stubborn UI flows" list is now down to TWO (LM answer-field
+  gate + password/modify tap) — both live in Phase LM (after O),
+  unreachable below budget 30. Today's LM reveal-scroll fix rides the
+  budget-30 harvest 37796083466 (258fb56) — READ ITS [LM]/[q1]/[qs]
+  LINES FIRST next session.
+- Docs commits: 44c1b56-era (delta), WORKLOG entry, this FINAL delta.
+  COVERAGE.json unchanged (F2 was already verdict-backed in session 17;
+  the fix makes it REPRODUCIBLE — the claim's evidence line now names
+  the run with the root cause removed).
+- NO GameServer work.
