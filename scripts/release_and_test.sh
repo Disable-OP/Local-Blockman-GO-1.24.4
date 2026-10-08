@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 # release_and_test.sh — create release v0.2.0-localapi with the embedded-server APK, dispatch CI.
-# Token is read from git config (never printed).
+# Token is read from git config (never printed). The remote can carry the
+# credential in either form seen across clones: branch-local URL with
+# x-access-token:<tok>, or a named remote (origin) with <user>:<tok>.
 set -euo pipefail
 cd "$(dirname "$0")"  # repo root
-
-URL=$(git config branch.local-api.remote)
-TOKEN=$(echo "$URL" | sed -n 's|https://x-access-token:\([^@]*\)@.*|\1|p')
+REMOTE=$(git config branch.local-api.remote || echo origin)
+case "$REMOTE" in
+  http*) URL="$REMOTE" ;;
+  *) URL=$(git config remote."$REMOTE".url || true) ;;
+esac
+TOKEN=$(echo "$URL" | sed -n 's|https://[^:@/]*:\([^@]*\)@.*|\1|p')
 [ -n "$TOKEN" ] || { echo "no token in git config"; exit 1; }
 API="https://api.github.com/repos/Disable-OP/Local-Blockman-GO-1.24.4"
 UP="https://uploads.github.com/repos/Disable-OP/Local-Blockman-GO-1.24.4"

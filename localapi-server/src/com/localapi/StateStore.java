@@ -30,14 +30,27 @@ public final class StateStore {
 
     private void load() {
         root = new JSONObject();
+        // Torn-write recovery FIRST: save() commits via state.json.tmp ->
+        // rename. A process death between the tmp write and the rename
+        // (the native roaming killer kills the app mid-run, so the window
+        // is real) leaves the NEWEST state in the tmp; a leftover parseable
+        // tmp is therefore always newer-or-equal to state.json. Prefer it.
+        // No fsync: the threat is process death (page cache survives), not
+        // power loss, and save() runs on every mutation.
+        if (recoverFrom(new File(file.getParentFile(), "state.json.tmp"))) return;
         try {
             if (file.exists()) {
                 byte[] buf = new byte[(int) file.length()];
                 FileInputStream in = new FileInputStream(file);
-                int read = in.read(buf);
+                int total = 0;
+                while (total < buf.length) {
+                    int n = in.read(buf, total, buf.length - total);
+                    if (n < 0) break;
+                    total += n;
+                }
                 in.close();
-                if (read > 0) {
-                    root = new JSONObject(new String(buf, StandardCharsets.UTF_8));
+                if (total > 0) {
+                    root = new JSONObject(new String(buf, 0, total, StandardCharsets.UTF_8));
                     return;
                 }
             }
@@ -50,6 +63,34 @@ public final class StateStore {
         if (!root.has("tokens")) root.put("tokens", new JSONObject());
         if (!root.has("mailSeq")) root.put("mailSeq", 1);
         save();
+    }
+
+    /** Boot from a leftover state.json.tmp (crash between the tmp write and
+     *  the atomic rename). Returns false when the tmp is absent or not
+     *  parseable JSON (in which case the regular state.json path runs). On
+     *  success the store immediately normalizes itself: save() rewrites the
+     *  tmp and renames it over state.json, so the leftover disappears. */
+    private boolean recoverFrom(File tmp) {
+        if (!tmp.exists() || tmp.length() == 0) return false;
+        try {
+            byte[] buf = new byte[(int) tmp.length()];
+            FileInputStream in = new FileInputStream(tmp);
+            int total = 0;
+            while (total < buf.length) {
+                int n = in.read(buf, total, buf.length - total);
+                if (n < 0) break;
+                total += n;
+            }
+            in.close();
+            if (total <= 0) return false;
+            root = new JSONObject(new String(buf, 0, total, StandardCharsets.UTF_8));
+            L.e("state recovered from state.json.tmp (crash before rename)");
+            save();
+            return true;
+        } catch (Throwable t) {
+            L.e("state.json.tmp recovery failed, falling back: " + t);
+            return false;
+        }
     }
 
     public synchronized void save() {

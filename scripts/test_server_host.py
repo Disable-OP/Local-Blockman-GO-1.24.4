@@ -26,7 +26,13 @@ HOST_CP = os.pathsep.join([
     os.path.join(REPO, ".javatools", "nanohttpd.jar"),
     os.path.join(REPO, ".javatools", "json.jar"),
 ])
-PORT = int(os.environ.get("LOCALAPI_TEST_PORT", str(random.randint(20000, 40000))))
+# All test ports stay in 20000-32000: the kernel ephemeral range starts
+# at 32768 (/proc/sys/net/ipv4/ip_local_port_range) and this suite makes
+# hundreds of localhost calls whose TIME_WAIT source ports would
+# otherwise randomly eat a test port (run 2026-10-08: the race holder
+# bind died with Address-already-in-use against a TIME_WAIT client port
+# -> 4 spurious FAILs). Below 32768 the collision class cannot exist.
+PORT = int(os.environ.get("LOCALAPI_TEST_PORT", str(random.randint(20000, 32000))))
 BASE = "http://127.0.0.1:%d" % PORT
 
 passed, failed = [], []
@@ -2917,9 +2923,9 @@ def main():
     # a junk holder socket owns the port for 9s, LocalServer.start runs beside
     # it (fast path fails, watchdog starts), holder releases -> watchdog must
     # take the port over and serve state.
-    port2 = random.randint(20000, 40000)
+    port2 = random.randint(20000, 32000)
     while port2 == PORT:
-        port2 = random.randint(20000, 40000)
+        port2 = random.randint(20000, 32000)
     state_b = tempfile.mkdtemp(prefix="localapi-boot-")
     boot_log = open(os.path.join(state_b, "boot.log"), "wb")
     boot = subprocess.Popen(
@@ -2989,9 +2995,9 @@ def main():
     # connection 2 (the post-bind-loss probe) — the loser must stand down
     # after the FIRST lost bind, leave the port to the holder, and return
     # from start() in well under a second (the old path took ~5s).
-    port4 = random.randint(20000, 40000)
+    port4 = random.randint(20000, 32000)
     while port4 in (PORT, port2):
-        port4 = random.randint(20000, 40000)
+        port4 = random.randint(20000, 32000)
     state_rc = tempfile.mkdtemp(prefix="localapi-race-")
     race_log_path = os.path.join(state_rc, "race.log")
     race_log = open(race_log_path, "wb")
@@ -3035,9 +3041,9 @@ def main():
     # HTTPD dies while the app process stays alive, it must notice (its state
     # machine goes UP -> NO SERVER) and re-boot. HostBootTest "resurrect"
     # stops the live server 2s after boot; the rig watches up -> down -> up.
-    port3 = random.randint(20000, 40000)
+    port3 = random.randint(20000, 32000)
     while port3 in (PORT, port2):
-        port3 = random.randint(20000, 40000)
+        port3 = random.randint(20000, 32000)
     state_r = tempfile.mkdtemp(prefix="localapi-resurrect-")
     res_log = open(os.path.join(state_r, "res.log"), "wb")
     res = subprocess.Popen(
@@ -3076,6 +3082,177 @@ def main():
             res.wait(timeout=5)
         except Exception:
             res.kill()
+
+    print("== boot resilience: torn-write recovery (state.json.tmp) ==")
+    # save() commits via state.json.tmp -> rename. A process death in the
+    # window between the tmp write and the rename (the native roaming killer
+    # kills the app mid-run, so the window is real) leaves the NEWEST state
+    # in the tmp while state.json holds the previous batch — or is torn
+    # itself if the rename-fallback direct write died mid-write. load() must
+    # prefer a parseable tmp (always newer-or-equal) and then normalize it
+    # away; a torn tmp must NOT shadow a valid state.json; both torn -> the
+    # fresh-start path must still boot.
+
+    def boot_hosttest(state_root, port):
+        log = open(os.path.join(state_root, "boot.log"), "wb")
+        p = subprocess.Popen(
+            ["java", "-cp", HOST_CP, "com.localapi.HostTest", state_root,
+             str(port)],
+            stdout=log, stderr=subprocess.STDOUT)
+        return p, log
+
+    def wait_serving(base_url, deadline_s=30):
+        end = time.time() + deadline_s
+        while time.time() < end:
+            try:
+                v = call("GET", "/config/files/blockymods-check-version",
+                         base=base_url)
+                if v.get("code") == 1:
+                    return True
+            except Exception:
+                pass
+            time.sleep(0.3)
+        return False
+
+    def seed_state(account, password):
+        """Schema-true state.json fixture: boot a throwaway instance on a
+        scratch dir, register the user through the REAL handler, stop it,
+        and return the persisted state JSON (never hand-crafted)."""
+        sd = tempfile.mkdtemp(prefix="localapi-seed-")
+        port_s = random.randint(20000, 32000)
+        p, log = boot_hosttest(sd, port_s)
+        try:
+            base_s = "http://127.0.0.1:%d" % port_s
+            ok_boot = wait_serving(base_s)
+            assert ok_boot, "seed instance failed to boot"
+            r = call("POST", "/user/api/v1/register",
+                     {"uid": account, "password": password,
+                      "confirmPassword": password, "imei": "recseed",
+                      "appType": "android", "os": "12"}, base=base_s)
+            assert r.get("code") == 1 and r.get("data", {}).get("userId", 0) > 0, str(r)[:200]
+        finally:
+            p.terminate()
+            try:
+                p.wait(timeout=5)
+            except Exception:
+                p.kill()
+            log.close()
+        with open(os.path.join(sd, "localapi", "state.json")) as f:
+            return f.read()
+
+    def torn_copy(text, frac=0.6):
+        """A truncated (torn) prefix of a full state dump; guaranteed
+        unparseable by stripping chars until json.loads rejects it."""
+        out = text[: int(len(text) * frac)]
+        while out:
+            try:
+                json.loads(out)
+                out = out[:-1]
+            except ValueError:
+                break
+        return out
+
+    full_a = seed_state("recqa1", "recpw1")
+    torn = torn_copy(full_a)
+    port4 = random.randint(20000, 32000)
+    while port4 in (PORT, port2, port3):
+        port4 = random.randint(20000, 32000)
+
+    # (a) torn state.json + VALID tmp (crash between tmp write and rename):
+    # the tmp is the newest commit — the seeded user must survive and the
+    # tmp must be normalized away by the post-recovery save.
+    dir_a = tempfile.mkdtemp(prefix="localapi-recov-")
+    os.makedirs(os.path.join(dir_a, "localapi"))
+    with open(os.path.join(dir_a, "localapi", "state.json"), "w") as f:
+        f.write(torn)
+    with open(os.path.join(dir_a, "localapi", "state.json.tmp"), "w") as f:
+        f.write(full_a)
+    proc_a, log_a = boot_hosttest(dir_a, port4)
+    try:
+        base4 = "http://127.0.0.1:%d" % port4
+        up4 = wait_serving(base4)
+        check("recovery (a): server boots from leftover tmp", up4)
+        if up4:
+            lg = call("POST", "/user/api/v1/login",
+                      {"uid": "recqa1", "password": "recpw1",
+                       "imei": "recdev1"}, base=base4)
+            check("recovery (a): tmp (newest commit) won — seeded user logs in",
+                  lg.get("code") == 1 and lg.get("data", {}).get("userId", 0) > 0,
+                  str(lg)[:150])
+            check("recovery (a): leftover tmp normalized away after boot",
+                  not os.path.exists(os.path.join(dir_a, "localapi",
+                                                  "state.json.tmp")))
+            with open(os.path.join(dir_a, "localapi", "state.json")) as f:
+                check("recovery (a): state.json now holds the recovered user",
+                      "recqa1" in f.read())
+    finally:
+        proc_a.terminate()
+        try:
+            proc_a.wait(timeout=5)
+        except Exception:
+            proc_a.kill()
+        log_a.close()
+
+    # (b) valid state.json + TORN tmp (crash mid-tmp-write): the tmp must be
+    # ignored, the valid state.json must keep serving its user.
+    dir_b = tempfile.mkdtemp(prefix="localapi-recov2-")
+    os.makedirs(os.path.join(dir_b, "localapi"))
+    with open(os.path.join(dir_b, "localapi", "state.json"), "w") as f:
+        f.write(seed_state("recqa2", "recpw2"))
+    with open(os.path.join(dir_b, "localapi", "state.json.tmp"), "w") as f:
+        f.write(torn)
+    port5 = random.randint(20000, 32000)
+    while port5 in (PORT, port2, port3, port4):
+        port5 = random.randint(20000, 32000)
+    proc_b, log_b = boot_hosttest(dir_b, port5)
+    try:
+        base5 = "http://127.0.0.1:%d" % port5
+        up5 = wait_serving(base5)
+        check("recovery (b): server boots with torn tmp beside valid state", up5)
+        if up5:
+            lg = call("POST", "/user/api/v1/login",
+                      {"uid": "recqa2", "password": "recpw2",
+                       "imei": "recdev2"}, base=base5)
+            check("recovery (b): torn tmp ignored — state.json user logs in",
+                  lg.get("code") == 1 and lg.get("data", {}).get("userId", 0) > 0,
+                  str(lg)[:150])
+    finally:
+        proc_b.terminate()
+        try:
+            proc_b.wait(timeout=5)
+        except Exception:
+            proc_b.kill()
+        log_b.close()
+
+    # (c) both files torn: no recoverable state anywhere — the server must
+    # still boot fresh and serve (the pre-existing fresh-start contract).
+    dir_c = tempfile.mkdtemp(prefix="localapi-recov3-")
+    os.makedirs(os.path.join(dir_c, "localapi"))
+    with open(os.path.join(dir_c, "localapi", "state.json"), "w") as f:
+        f.write(torn)
+    with open(os.path.join(dir_c, "localapi", "state.json.tmp"), "w") as f:
+        f.write(torn)
+    port6 = random.randint(20000, 32000)
+    while port6 in (PORT, port2, port3, port4, port5):
+        port6 = random.randint(20000, 32000)
+    proc_c, log_c = boot_hosttest(dir_c, port6)
+    try:
+        base6 = "http://127.0.0.1:%d" % port6
+        up6 = wait_serving(base6)
+        check("recovery (c): both torn — server still boots fresh", up6)
+        if up6:
+            u = call("POST", "/user/api/v1/visitor", {"imei": "recqa3"},
+                     base=base6)
+            check("recovery (c): fresh visitor works after total loss",
+                  u.get("code") == 1
+                  and bool(u.get("data", {}).get("accessToken")), str(u)[:120])
+    finally:
+        proc_c.terminate()
+        try:
+            proc_c.wait(timeout=5)
+        except Exception:
+            proc_c.kill()
+        log_c.close()
 
     print("\nRESULT: %d passed, %d failed" % (len(passed), len(failed)))
     if failed:
