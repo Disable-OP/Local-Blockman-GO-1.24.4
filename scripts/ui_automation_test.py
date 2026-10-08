@@ -1695,6 +1695,21 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                     print("  [q1-state] %s | %r" % (
                         n.res.rsplit("/", 1)[-1] if n.res else "",
                         (n.text or "")[:30]))
+            # run-16 evidence: the close fires ~10-20s after the pick with
+            # or without further input — sample the title at 5s intervals
+            # to timestamp the flip, then capture the real top activity
+            for tick in range(3):
+                time.sleep(5)
+                t_nodes = screen.dump()
+                t_title = next((n.text for n in t_nodes
+                                if n.res.endswith("tvTemplateTitle")), "?")
+                t_edits = len([n for n in t_nodes
+                               if n.cls.endswith("EditText") and n.center])
+                print("  [q1-t%d] title=%r edits=%d" % (
+                    tick, (t_title or "")[:26], t_edits))
+            print("  [q1-top] %s" % adb.sh(
+                "dumpsys activity activities | grep -E "
+                "\"topResumedActivity|ResumedActivity\" | head -2"))
         return picked
 
     def back(times=1):
