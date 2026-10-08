@@ -3329,8 +3329,11 @@ def main():
                        "/msg/api/v1/msg/group/chat/request/list?pageNo=1&pageSize=20",
                        headers=gf_hdr)
         reqs_f = (greq_f.get("data") or {}).get("data") or []
+        # requestFeed entries carry the INVITER as userId (no
+        # inviteeId field) — identify my invitation by type 2 + inviter
         inv = next((r for r in reqs_f if isinstance(r, dict)
-                    and r.get("inviteeId") == gf_id
+                    and r.get("type") == 2 and r.get("userId") == qa_uid_num
+                    and r.get("groupId") == gid
                     and r.get("status") == 0), None)
         check("C: group invitation reaches the friend's feed",
               greq_f.get("code") == 1 and inv is not None,
@@ -3406,7 +3409,9 @@ def main():
         reqs_f2 = (greq_f2.get("data") or {}).get("data") or []
         check("C: re-invite reaches the friend's feed (pending)",
               greq_f2.get("code") == 1
-              and any(isinstance(r, dict) and r.get("inviteeId") == gf_id
+              and any(isinstance(r, dict) and r.get("type") == 2
+                      and r.get("userId") == qa_uid_num
+                      and r.get("groupId") == gid
                       and r.get("status") == 0 for r in reqs_f2),
               str(greq_f2)[:140])
         greq = fcall("GET", "/msg/api/v1/msg/group/chat/request/list?pageNo=1&pageSize=20",
