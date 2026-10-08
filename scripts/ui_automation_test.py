@@ -2756,7 +2756,14 @@ def main():
     print("== PHASE B: profile edit through the Personal Info editor ==")
     nickname = "qa%05d" % (int(time.time()) % 100000)
     guest_edited = False
+    # Wave 23b budget fix: the editor helpers below are defined INSIDE the
+    # Phase B block (python if-blocks do not scope, so they only bind when
+    # the block runs). Phase D's re-drive calls two of them — it must skip
+    # when the budget gate skipped Phase B (run 37738096151:
+    # UnboundLocalError on open_personal_info_editor).
+    b_ran = False
     if deep and deep_go("Phase B (profile editor)", 3):
+        b_ran = True
 
         def tap_label(screen, label):
             """Tap the node carrying `label` (Personal Info rows are llItem
@@ -3213,6 +3220,11 @@ def main():
     nick_edit = "qaD%05d" % (int(time.time()) % 100000)
     d_edited = False
     d_intro = None
+    # Wave 23b: `if outcome_d == "edited":` is a SIBLING of the
+    # open_personal_info_editor() guard (not nested inside it) — when the
+    # editor never opens, outcome_d must be defined or main crashes with
+    # UnboundLocalError (same class as the run-37738096151 budget skip).
+    outcome_d = None
     d_tok = None   # live session token (auth-token response) - Phase F uses it
     d_uid_live = None  # live session user id - Phase F uses it
 
@@ -3297,7 +3309,7 @@ def main():
                                     for n in screen.dump())
                         print("  [%s] Me tab shows the new account %r"
                               % ("ok" if shown else "info", qa_uid_d))
-                    if deep and not guest_edited:
+                    if b_ran and not guest_edited:
                         # B's PUT never fires for a guest - drive the editor
                         # under the registered session now
                         if open_personal_info_editor(adb, screen,
