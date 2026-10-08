@@ -4242,6 +4242,89 @@ def main():
           "%s | w %s -> %s" % (str(sex29)[:80], wpre29.get("data"),
                                wpost29.get("data")))
 
+    # ------------------------------------------------- Wave 29c: the
+    # paid-game + game-prop economy through the live session (fcall
+    # tier). Client: a PAID game's detail page carries gamePayInfo (the
+    # buy gate reads qty/currency), the buy button is PUT
+    # /shop/api/v2/pay/game/{gameId} (BuyGameResponse {userId, diamonds,
+    # gDiamonds, golds, orderId}; V.onError 5008 = already owned), the
+    # game's prop shelf is GET /shop/api/v2/shop/game/props/new and the
+    # purchase is PUT /shop/api/v3/shop/game/props/new (buyGameProp:
+    # per-game ownedProps, re-buy rejected, exact wallet deduction).
+    # The premium fixture (game 5043, isPay=1, 800 diamonds) is seeded
+    # by ensurePremium on every boot — the detail read below PROVES the
+    # fixture before anything buys it.
+    pd43 = fcall("GET", "/game/api/v2/games/5043?appVersion=4003",
+                 headers={"language": "en"})
+    pd_d = pd43.get("data") or {}
+    pay43 = pd_d.get("gamePayInfo") or {}
+    check("C: premium game detail carries the pay info",
+          pd43.get("code") == 1 and pd_d.get("gameId") == "5043"
+          and pd_d.get("isPay") == 1 and pay43.get("qty") == 800
+          and pay43.get("currency") == 1, str(pd43)[:150])
+    props43 = fcall("GET", "/shop/api/v2/shop/game/props/new?gameId=5043",
+                    headers=auth_hdr)
+    pr_rows = [p for p in (props43.get("data") or [])
+               if isinstance(p, dict) and p.get("id")]
+    check("C: game prop shelf served (props with prices)",
+          props43.get("code") == 1 and len(pr_rows) >= 3
+          and all("price" in p and "currency" in p for p in pr_rows),
+          str(props43)[:130])
+    if pr_rows:
+        prop0 = pr_rows[0]
+        pkind = "golds" if prop0.get("currency") == 2 else "diamonds"
+        wpre = fcall("GET", "/pay/api/v1/wealth/user",
+                     headers=auth_hdr).get("data", {})
+        pb = fcall("PUT",
+                   "/shop/api/v3/shop/game/props/new?gameId=5043&propsId=%d"
+                   % prop0["id"], None, headers=auth_hdr)
+        wmid = fcall("GET", "/pay/api/v1/wealth/user",
+                     headers=auth_hdr).get("data", {})
+        check("C: buyGameProp deducts the exact prop price",
+              pb.get("code") == 1
+              and wmid.get(pkind, 0) == wpre.get(pkind, 0) - prop0["price"],
+              "%s | w %s -> %s" % (str(pb)[:110], wpre, wmid))
+        pb2 = fcall("PUT",
+                    "/shop/api/v3/shop/game/props/new?gameId=5043&propsId=%d"
+                    % prop0["id"], None, headers=auth_hdr)
+        wmid2 = fcall("GET", "/pay/api/v1/wealth/user",
+                      headers=auth_hdr).get("data", {})
+        check("C: prop re-buy rejected (no double charge)",
+              pb2.get("code") != 1
+              and wmid2.get(pkind, 0) == wmid.get(pkind, 0),
+              "%s | w %s" % (str(pb2)[:110], wmid2))
+        pb_bad = fcall("PUT",
+                       "/shop/api/v3/shop/game/props/new?gameId=5043&propsId=999993",
+                       None, headers=auth_hdr)
+        check("C: buyGameProp unknown prop rejected",
+              pb_bad.get("code") != 1, str(pb_bad)[:100])
+    wpre2 = fcall("GET", "/pay/api/v1/wealth/user",
+                  headers=auth_hdr).get("data", {})
+    pg = fcall("PUT", "/shop/api/v2/pay/game/5043", None, headers=auth_hdr)
+    pg_d = pg.get("data") or {}
+    wpost2 = fcall("GET", "/pay/api/v1/wealth/user",
+                   headers=auth_hdr).get("data", {})
+    check("C: payGame buys the premium game (800 diamonds + orderId)",
+          pg.get("code") == 1 and pg_d.get("userId") == qa_uid_num
+          and pg_d.get("diamonds") == wpre2.get("diamonds", 0) - 800
+          and str(pg_d.get("orderId") or "").startswith("ORD"),
+          "%s | w %s -> %s" % (str(pg)[:140], wpre2, wpost2))
+    pd43b = fcall("GET", "/game/api/v2/games/5043?appVersion=4003",
+                  headers={"language": "en"})
+    check("C: owned premium game serves isPay=0 (per-user view)",
+          pd43b.get("code") == 1 and (pd43b.get("data") or {}).get("isPay") == 0,
+          str(pd43b)[:120])
+    pg2 = fcall("PUT", "/shop/api/v2/pay/game/5043", None, headers=auth_hdr)
+    check("C: payGame re-buy rejected (already owned)",
+          pg2.get("code") != 1, str(pg2)[:100])
+    rcv4 = fcall("POST", "/pay/api/v4/pay/users/recharge",
+                 {"sku": "local.vip.1"}, headers=auth_hdr)
+    rcv4_d = rcv4.get("data") or {}
+    check("C: recharge v4 sets VIP 1 + expireDate (gDiamonds echo)",
+          rcv4.get("code") == 1 and rcv4_d.get("vip") == 1
+          and rcv4_d.get("expireDate") and "gDiamonds" in rcv4_d,
+          str(rcv4)[:130])
+
     # ------------------------------------------------- Wave 24a: suitDetail
     # + suitListByIds through the live session (fcall tier, DYNAMIC ids).
     # Client contract (Retrofit getDressSuit / getSuitById): a suit-card
