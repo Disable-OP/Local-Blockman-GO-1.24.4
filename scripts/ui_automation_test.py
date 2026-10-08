@@ -1180,6 +1180,44 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                     if snew:
                         ok("A: suit-page extra traffic: %s" %
                            ", ".join("%s %s" % r for r in sorted(set(snew))))
+                    # Wave 23b — suit-card probe: the suit page's cards
+                    # (same ConstraintLayout/bgView roots the buy hunt
+                    # learned in run 21) open a suit detail whose load
+                    # fires the suitDetail GET (shop suit info by id).
+                    # First pass = DISCOVERY: tap the first card
+                    # candidate, print the traffic delta; no hard gate
+                    # (the page-state p/z flags decide the slot) and no
+                    # leading-/ literal (nothing is claimed yet).
+                    scard = None
+                    for x in screen.dump():
+                        if not x.center:
+                            continue
+                        sy = x.center[1]
+                        if sy < 420 or sy > 950:
+                            continue
+                        srid = x.res.rsplit("/", 1)[-1] if x.res else ""
+                        if (x.cls.endswith("FrameLayout")
+                                or x.cls.endswith("LinearLayout")
+                                or x.cls.endswith("ConstraintLayout")
+                                or srid == "bgView"):
+                            scard = x
+                            break
+                    if scard and screen.tap_node(scard):
+                        time.sleep(5)
+                        alive_or_recover("%s-suitcard" % tag)
+                        sc_log = adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                         timeout=60)
+                        if re.search(r"REQ GET /shop/api/v1/new/shop/suit/"
+                                     r"info/\d+", sc_log):
+                            print("  [evidence] suit detail GET fired "
+                                  "from the suit card (new/shop/suit/"
+                                  "info/{suitId})")
+                        else:
+                            print("  [info] suit-card tap added no suit "
+                                  "detail GET (GL render or slot "
+                                  "mismatch)")
+                        adb.key(4)
+                        time.sleep(2)
                     # Wave 18 — type-radio probes (DressPageListModel ia /
                     # DressSuitPageListModel oa): the recommend feed
                     # (recommend/users/{userId}/type/{typeId}) only fires
@@ -1344,15 +1382,36 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                 print("  ab2] %s | text=%r desc=%r clickable=%s" % (
                     n.res.rsplit("/", 1)[-1] if n.res else "",
                     n.text[:24], n.desc[:24], n.clickable))
+        chips_tapped = 0
         for chip in ("rb_clothes", "rb_accessories", "rb_character",
                      "rb_function"):
             n = screen.find(ids=[chip])
             if n and screen.tap_node(n):
                 time.sleep(4)
+                chips_tapped += 1
                 alive_or_recover("%s-dress-%s" % (
                     tag, chip.replace("rb_", "")))
             else:
                 print("  [skip] dressing chip %s not found" % chip)
+        # Wave 23b — the first-level chips switch the wardrobe's per-type
+        # page, whose load fires the dressList family (the concrete v1/v2
+        # + typeId land on the wire). Entry load (default chip) + the
+        # chip taps = the union, claimed ONCE here. The verb+digit regex
+        # cannot touch the /using or new/decorations siblings of the
+        # path. Guard: only when at least one chip actually tapped (a
+        # screen-shape change must be re-discovered, not fail the run).
+        if chips_tapped:
+            dlog3 = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+            dlist_lit = "/decoration/api/{version}/decorations/{typeId}"
+            check("A: dressing chips fired dressList (GET %s)" % dlist_lit,
+                  re.search(r"REQ GET /decoration/api/v\d+/decorations/"
+                            r"\d+", dlog3) is not None)
+            if "REQ GET /config/files/dress-guide-config" in dlog3:
+                print("  [evidence] dress guide config served on the "
+                      "wardrobe (config/files/dress-guide-config)")
+            else:
+                print("  [info] dress-guide-config not seen (one-time "
+                      "or cached on this build)")
         suit = screen.find(ids=["rbSuit"])
         if suit and screen.tap_node(suit):
             time.sleep(5)
