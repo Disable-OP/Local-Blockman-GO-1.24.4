@@ -1879,6 +1879,25 @@ def main():
                   and pc11r.get("data", {}).get("right") is True
                   and pc11w.get("data", {}).get("right") is False,
                   "%s %s" % (str(pc11r)[:80], str(pc11w)[:80]))
+
+            # (f2) THE CLIENT CONTRACT: the real client sends the RSA
+            #      password as a URL-ENCODED @Query("password") (Wave 11 +
+            #      ENDPOINTS.md; run 37811597325 proved the body-only read
+            #      answered right=false for every REAL client call, so
+            #      ConfirmPasswordFragment never advanced). The body shape
+            #      above is the documented lenient fallback.
+            import urllib.parse as _up
+            pq11r = call("POST", "/user/api/v1/user/password/check?password="
+                         + _up.quote(_rsa_pkcs1_encrypt(b"modpw11", rsa_pub),
+                                     safe=""), None, headers=hm11)
+            pq11w = call("POST", "/user/api/v1/user/password/check?password="
+                         + _up.quote(_rsa_pkcs1_encrypt(b"nope", rsa_pub),
+                                     safe=""), None, headers=hm11)
+            check("password/check @Query RSA right+wrong (client contract)",
+                  pq11r.get("code") == 1
+                  and pq11r.get("data", {}).get("right") is True
+                  and pq11w.get("data", {}).get("right") is False,
+                  "%s %s" % (str(pq11r)[:80], str(pq11w)[:80]))
             # (g) a Base64 value that is NOT RSA-shaped passes through
             #     unchanged (still fails auth, but as wrong-password code 0
             #     — never a server error)

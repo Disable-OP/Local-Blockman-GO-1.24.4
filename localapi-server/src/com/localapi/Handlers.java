@@ -2931,8 +2931,17 @@ final class Handlers {
     private static String passwordCheck(Ctx ctx, StateStore store) {
         JSONObject u = requireUser(ctx, store);
         if (u == null) return failCode(ErrorCodes.NOT_LOGIN, NO_AUTH);
-        // the client encrypts this @Query("password") value too (Wave 11)
-        String pw = RsaCipher.decryptIfEncrypted(body(ctx).optString("password"));
+        // The client sends the RSA-encrypted password as @Query("password")
+        // (Wave 11 decode; ENDPOINTS.md "POST /user/api/v1/user/password/check
+        // @Query(\"password\")"). The body-only read answered right=false for
+        // EVERY real client call (run 37811597325: three code=1 envelopes all
+        // right=false - ConfirmPasswordFragment never advanced to
+        // ChangePasswordFragment and the modify POST could never fire).
+        // Query first (the client contract); the host rig's body shape stays
+        // as the documented lenient fallback.
+        String qpw = ctx.query("password");
+        String pw = RsaCipher.decryptIfEncrypted(
+                qpw != null ? qpw : body(ctx).optString("password"));
         boolean right = pw != null && !pw.isEmpty() && pw.equals(u.optString("password"));
         return envelope("obj", "{\"authCode\":\"\",\"count\":0,\"right\":" + right + "}");
     }
