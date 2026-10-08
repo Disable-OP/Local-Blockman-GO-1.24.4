@@ -4,7 +4,7 @@
   "discovered": 334,
   "implemented": 334,
   "default": 0,
-  "host_tested": 329,
+  "host_tested": 334,
   "client_asserted": 334
  },
  "endpoints": [
@@ -1725,7 +1725,7 @@
    "path": "/user/api/v1/users/verify/email",
    "status": "implemented",
    "handler": "verifyEmail",
-   "host_tested": false,
+   "host_tested": true,
    "client_asserted": true
   },
   {
@@ -2221,7 +2221,7 @@
    "path": "/decoration/api/v1/new/decorations/recommend/users/{userId}/type/{typeId}",
    "status": "implemented",
    "handler": "dressRecommend",
-   "host_tested": false,
+   "host_tested": true,
    "client_asserted": true
   },
   {
@@ -2229,7 +2229,7 @@
    "path": "/decoration/api/v1/new/decorations/users/{userId}/expire",
    "status": "implemented",
    "handler": "dressExpireList",
-   "host_tested": false,
+   "host_tested": true,
    "client_asserted": true
   },
   {
@@ -2245,7 +2245,7 @@
    "path": "/decoration/api/v1/new/decorations/users/{userId}/type/{typeId}",
    "status": "implemented",
    "handler": "dressOwnedByType",
-   "host_tested": false,
+   "host_tested": true,
    "client_asserted": true
   },
   {
@@ -2469,7 +2469,7 @@
    "path": "/user/api/v1/users/{userId}/daily/tasks/ads/config",
    "status": "implemented",
    "handler": "getAdsRewardInfo",
-   "host_tested": false,
+   "host_tested": true,
    "client_asserted": true
   },
   {

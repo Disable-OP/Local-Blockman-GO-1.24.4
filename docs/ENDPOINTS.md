@@ -2421,3 +2421,37 @@ Engine 10068 untouched. NO GameServer work.
 COVERAGE: 334/334/0-defaults/329 host-tested; client_asserted 334
 (all verdict-backed on wip-59).
 Engine 10068 untouched. NO GameServer work.
+
+### Session 43 — coverage symmetry closed: host_tested 329 -> 334/334
+
+The last five client-asserted-but-host-untested routes are now pinned on
+both tiers; COVERAGE.json is fully symmetric for the first time.
+
+- GEN_COVERAGE MATCHER BUG (the two phantom-gaps): for {fmt+} literals,
+  template_match only tried literal-as-regex against the raw template
+  string, so a template with a {placeholder} AFTER the fmt segment
+  (…/users/{userId}/type/{typeId}) could never be claimed by a rig
+  literal like …/users/%d/type/101 (concrete tail 101 != "{typeId}"
+  text). Fix (router-faithful, under-claim-biased): when the first
+  direction fails, build the pattern the ROUTER builds from the template
+  ({name} -> [^/]+) and fullmatch it against the literal, with the fmt
+  value itself confined to ONE segment — a multi-segment runtime value
+  would not dispatch to a single-segment placeholder. Diff-verified
+  surgical: exactly dressOwnedByType + dressRecommend flipped, zero
+  phantom claims anywhere else.
+- 3 GENUINE RIG GAPS closed with 6 new host checks (588/588):
+  - GET /user/api/v1/users/{userId}/daily/tasks/ads/config — pinned
+    BEFORE the PUT (client order: ui fcall reads the config
+    currency=2/quantity=200/remainTime that RechargeEntity consumes).
+  - GET /decoration/api/v1/new/decorations/users/{userId}/expire —
+    dressExpireList empty-list sibling pinned next to the wardrobe
+    checks.
+  - POST /user/api/v1/users/verify/email — the SECURITY verify-code
+    issuer (distinct from /emails/verify/{email}): no-auth code=7,
+    invalid-email + empty-code rejections, happy path {authCode: local-*,
+    flag:true}.
+- NO server Java changes — no rebuild, no tag, no dispatch needed; the
+  verification tier for rig-side changes is the local host suite.
+- COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 334.
+  Every implemented route is now verified on BOTH tiers.
+- Engine 10068 untouched. NO GameServer work.

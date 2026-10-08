@@ -455,6 +455,15 @@ def main():
                    headers={"Access-Token": tok1, "userId": str(uid1)})
         check("signin claimed status (client: 2 = Received)",
               si2["data"]["first"]["status"] == 2, str(si2["data"]["first"])[:100])
+        # Wave 43: the client reads the ad config BEFORE the PUT (ui fcall
+        # GET {userId}/daily/tasks/ads/config -> currency/quantity/remainTime);
+        # pin the host shape the client's RechargeEntity consumes.
+        adcfg = call("GET", "/user/api/v1/users/%d/daily/tasks/ads/config" % uid1,
+                     headers={"Access-Token": tok1, "userId": str(uid1)})
+        check("ads config RechargeEntity shape", adcfg.get("code") == 1
+              and adcfg.get("data", {}).get("currency") == 2
+              and adcfg.get("data", {}).get("quantity") == 200
+              and "remainTime" in adcfg.get("data", {}), str(adcfg)[:150])
         ad = call("PUT", "/user/api/v1/users/%d/daily/tasks/ads" % uid1,
                   headers={"Access-Token": tok1, "userId": str(uid1)})
         check("ads task reward RechargeEntity", ad.get("code") == 1
@@ -556,6 +565,12 @@ def main():
         check("wardrobe has bought dress", own2.get("code") == 1
               and len(own2.get("data", [])) == 1
               and own2["data"][0]["id"] == dress0["id"], str(own2)[:120])
+        # Wave 43: pin the expire-list sibling (IDecorationApi
+        # dressExpireList — schema-true empty list for a fresh wardrobe).
+        exp0 = call("GET", "/decoration/api/v1/new/decorations/users/%d/expire" % uid1,
+                    headers={"Access-Token": tok1, "userId": str(uid1), "language": "en"})
+        check("dress expire list empty", exp0.get("code") == 1
+              and exp0.get("data") == [], str(exp0)[:100])
         use = call("PUT", "/decoration/api/v1/decorations/using/%d" % dress0["id"], None,
                    headers={"Access-Token": tok1, "userId": str(uid1)})
         check("use decoration", use.get("code") == 1
@@ -1342,6 +1357,26 @@ def main():
         check("sms send ack", sm.get("code") == 1, str(sm)[:80])
         ev = call("POST", "/user/api/v1/emails/verify/qa@example.com", {})
         check("email verify ack", ev.get("code") == 1, str(ev)[:80])
+        # Wave 43: POST /users/verify/email (verifyEmail — the SECURITY
+        # verify-code issuer, distinct from /emails/verify/{email}).
+        # Contract: requireUser (code=7 no-auth), email must contain '@',
+        # verifyCode must be non-empty, happy path {authCode: local-*,
+        # flag:true} and the authCode lands in user state.
+        ve0 = call("POST", "/user/api/v1/users/verify/email",
+                   {"email": "qa5@example.com", "verifyCode": "42"})
+        check("verify email no-auth code=7", ve0.get("code") == 7, str(ve0)[:80])
+        ve1 = call("POST", "/user/api/v1/users/verify/email",
+                   {"email": "bad", "verifyCode": "42"}, headers=h5)
+        check("verify email invalid rejected", ve1.get("code") == 0, str(ve1)[:80])
+        ve2 = call("POST", "/user/api/v1/users/verify/email",
+                   {"email": "qa5@example.com", "verifyCode": ""}, headers=h5)
+        check("verify email empty code rejected", ve2.get("code") == 0, str(ve2)[:80])
+        ve3 = call("POST", "/user/api/v1/users/verify/email",
+                   {"email": "qa5@example.com", "verifyCode": "42"}, headers=h5)
+        check("verify email ack flag+authCode", ve3.get("code") == 1
+              and ve3.get("data", {}).get("flag") is True
+              and str(ve3.get("data", {}).get("authCode", "")).startswith("local-"),
+              str(ve3)[:120])
         up = call("POST", "/user/api/v1/user/unbind/phone", {}, headers=h5)
         check("unbind phone", up.get("code") == 1, str(up)[:80])
 

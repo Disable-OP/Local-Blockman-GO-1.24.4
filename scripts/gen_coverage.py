@@ -138,7 +138,23 @@ def template_match(template, literal, concrete=None):
         # value-tracking is out of scope; shape-matching is the closest
         # honest approximation.
         lit_rx = re.escape(literal).replace(re.escape("{fmt+}"), ".+")
-        return re.fullmatch(lit_rx, template) is not None
+        if re.fullmatch(lit_rx, template) is not None:
+            return True
+        # Wave 43: placeholder routes with a {placeholder} AFTER the fmt
+        # segment (e.g. template .../users/{userId}/type/{typeId} fed by
+        # the rig literal .../users/%d/type/101) can NEVER match the
+        # literal-as-regex above — the concrete tail (101) is not the
+        # template's literal text. Reverse the direction, router-faithful:
+        # build the pattern the ROUTER builds from the template
+        # ({name} -> [^/]+, static segments escaped) and fullmatch it
+        # against the literal, with the fmt value itself confined to ONE
+        # segment ([^/]+): a multi-segment runtime value would not
+        # dispatch to a single-segment placeholder, so under-claiming
+        # stays the honest default (same stance as direction 1).
+        tpl_rx = "/".join(
+            "[^/]+" if (s.startswith("{") and s.endswith("}")) else re.escape(s)
+            for s in template.split("/"))
+        return re.fullmatch(tpl_rx, literal) is not None
     ts = template.split("/")
     ls = literal.split("/")
     if len(ts) != len(ls):

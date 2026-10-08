@@ -3459,3 +3459,28 @@
   surfaces (evidence-only by design); RongCloud offline shim
   decision; keep CI green on every push.
 - Engine 10068 untouched (mandate honored). NO GameServer work.
+
+## Session 43 — coverage symmetry closed: host_tested 334/334 (2026-10-08)
+
+- Session-42 close left a 5-route asymmetry (client_asserted but not
+  host-tested). Two were a gen_coverage.py MATCHER BUG: {fmt+} literals
+  only matched templates via literal-as-regex, so any route with a
+  {placeholder} AFTER the fmt segment (dressOwnedByType, dressRecommend)
+  could never be claimed. Fixed router-faithfully (reverse direction:
+  template-as-pattern {name}->[^/]+ vs the literal, fmt value confined
+  to one segment); diff-verified surgical — exactly those 2 flipped.
+- The other 3 were genuine rig gaps, closed with 6 new host checks:
+  ads/config shape pinned before the PUT (client order), dress expire
+  list sibling, and the POST /users/verify/email security family
+  (no-auth 7 / invalid email / empty code / flag+local- authCode).
+- Host suite 588/588 (582 + 6). COVERAGE.json: 334/334 implemented,
+  0 defaults, host_tested 334, client_asserted 334 — EVERY implemented
+  route now verified on BOTH tiers. No server Java changes, no rebuild,
+  no tag, no CI dispatch (time mandate: rig-side proof lives in the
+  local suite; the wip-59 verdict run 37789036373 still backs the
+  client side).
+- Docs: ENDPOINTS.md session-43 section, NEXT_SESSION_README.md delta.
+- Next session candidates unchanged: the 3 evidence-only UI flows
+  (F2 Modify, LM answer-field, password/modify tap); RongCloud stays
+  offline-shim per the session-7 decision; keep CI green.
+- Engine 10068 untouched (mandate honored). NO GameServer work.

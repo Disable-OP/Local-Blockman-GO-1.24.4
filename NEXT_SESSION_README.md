@@ -2106,3 +2106,19 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   along, wip-59 asset is current); (2) the 3 stubborn UI flows (F2
   Modify, LM answer-field, password/modify tap); (3) triage any 29d
   FAILs from the verdict lines. NO GameServer work.
+
+## Session 43 delta (read after WORKLOG)
+
+- COVERAGE IS FULLY SYMMETRIC: 334/334 implemented, 334 host-tested,
+  334 client_asserted, 0 defaults. Host suite 588/588 (6 new checks:
+  ads/config shape, dressExpireList, POST /users/verify/email x4).
+- gen_coverage.py template_match now resolves {fmt+} literals against
+  placeholder templates router-faithfully (reverse direction) — if you
+  add rig literals like ".../users/%d/type/101", the {typeId} sibling
+  claims correctly now.
+- No server Java changes this session — build/ and the wip-59 release
+  asset are still current; do NOT re-tag for rig/doc-only commits.
+- Next candidates: the 3 evidence-only UI flows (F2 Modify, LM
+  answer-field, password/modify tap) stay best-effort; RongCloud stays
+  offline-shim (session-7 decision, do not reopen without client
+  evidence); anything else error-driven from real device runs.
