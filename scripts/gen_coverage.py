@@ -43,14 +43,41 @@ def concrete_paths(source):
     Strings that sit directly behind an fcall("VERB",  cursor are NOT
     included — those are verb-matched by fcall_claims (wave 15 honesty:
     a GET fcall must not claim its PUT/DELETE siblings through the
-    verb-blind pool). Bare literals and assertion probes stay here."""
+    verb-blind pool). Bare literals and assertion probes stay here.
+
+    Wave-29a honesty fix: %-formatted literals (e.g.
+    "/game/api/v1/game/%s/turntable" inside a probe list) used to be
+    captured only up to the % — handing the truncated trailing-slash
+    prefix the deliberate-probe privilege and phantom-claiming whole
+    families (game chat rooms, team members, turntable PUT...). Now the
+    full literal is read: a clean %-format tail normalizes to a {fmt}
+    template segment (router-style matching, under-claiming beats
+    phantom-claiming); prose tails are dropped entirely."""
     out = set()
-    for m in re.finditer(r'"(/[A-Za-z0-9\-._{}/]+)', source):
+    for m in re.finditer(r'"([^"]*)"', source):
         prefix_txt = source[max(0, m.start() - 48):m.start()]
         if re.search(r'fcall\("[A-Za-z]+",\s*$', prefix_txt):
             continue
-        p = m.group(1)
-        p = p.split("?")[0]
+        lit = m.group(1)
+        head = re.match(r'/[A-Za-z0-9\-._{}/]*', lit)
+        if not head:
+            continue
+        p = head.group(0)
+        rest = lit[len(p):]
+        if rest.startswith("%"):
+            m2 = re.match(r'%[\w.]+((?:/[A-Za-z0-9\-._{}/]*)*)(?:\?.*)?$', rest)
+            if not m2:
+                continue
+            segs = [s for s in p.split("/") if s]
+            # {fmt+}: the substituted value may span several segments
+            # (the host ranking loop passes "active/global/weekly" as
+            # ONE %s) — template_match resolves it router-faithfully
+            # against the route string, concrete routes excluded.
+            segs.append("{fmt+}")
+            segs += [s for s in m2.group(1).split("/") if s]
+            p = "/" + "/".join(segs)
+        else:
+            p = p.split("?")[0]
         if len(p) > 4:
             out.add(p)
     return out
@@ -102,6 +129,16 @@ def template_match(template, literal, concrete=None):
     {scrapId} sibling just because "value" fits one segment."""
     if concrete is not None and literal in concrete:
         return False
+    if "{fmt+}" in literal:
+        # multi-segment format probe: match the literal (as a regex with
+        # {fmt+} -> .+) against the ROUTE string. NOTE: no concrete-route
+        # exclusion here — the probe's runtime values legitimately hit
+        # concrete routes (the host ranking loop calls every
+        # /ranking/api/v1/<board>/rank board, all concrete entries), and
+        # value-tracking is out of scope; shape-matching is the closest
+        # honest approximation.
+        lit_rx = re.escape(literal).replace(re.escape("{fmt+}"), ".+")
+        return re.fullmatch(lit_rx, template) is not None
     ts = template.split("/")
     ls = literal.split("/")
     if len(ts) != len(ls):

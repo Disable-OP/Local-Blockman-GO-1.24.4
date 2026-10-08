@@ -3846,6 +3846,104 @@ def main():
           wc_bad == [] and wcb.get("code") != 1,
           "missing: %s | %s" % (wc_bad, str(wcb)[:80]))
 
+    # ------------------------------------------------- Wave 29a: the
+    # game-hall / platform read sweep (fcall tier). Deterministic
+    # locally-served reads: announcements, resource checks, playlists,
+    # ugc, recommendations, the dispatch-bridge trio, geo info, pay
+    # config surfaces, the remaining ranking boards, the shop vip map,
+    # the game-detail family for the dynamic catalog game, the dress
+    # type list (the Wave-23c-reverted surface, now honestly driven
+    # with the dynamic typeId the store page itself uses) and the
+    # owned-suit list (the session owns the gift suit by now).
+    g_bad = []
+    for gp in ["/game/api/v1/games/announcement/info",
+               "/game/api/v1/games/stop/announcement/info",
+               "/game/api/v1/games/resource/version",
+               "/game/api/v1/games/ugc",
+               "/game/api/v1/games/ugc/status",
+               "/game/api/v1/games/playlist/recently",
+               "/game/api/v1/games/playlist/friends",
+               "/game/api/v1/games/app-engine/check-update",
+               "/game/api/v1/games/app-engine/upgrade",
+               "/game/api/v1/games",
+               "/game/api/v2/games/recommendation",
+               "/game/api/v2/games/recommendation/type",
+               "/api/v1/parties/exists",
+               "/v1/game-map",
+               "/v1/game-res",
+               "/decoration/api/v1/decoration/versions",
+               "/geoinfo/api/v1/userGeoInfo",
+               "/pay/api/v1/pay/payssion/flag",
+               "/pay/api/v1/pay/payssion/signature",
+               "/pay/api/v1/pay/third/part",
+               "/pay/api/v2/pay/third/part",
+               "/shop/api/v1/shop/users/vip"]:
+        gr = fcall("GET", gp, headers=auth_hdr)
+        if gr.get("code") != 1:
+            g_bad.append(gp)
+    check("C: platform read sweep served (22 docs)",
+          g_bad == [], "missing: %s" % g_bad)
+    rk_bad = []
+    for rkp in ["/ranking/api/v1/clan/region/overall/rank",
+                "/ranking/api/v1/clan/region/weekly/rank",
+                "/ranking/api/v1/gold/diamond/global/overall/rank",
+                "/ranking/api/v1/gold/diamond/region/overall/rank"]:
+        rr = fcall("GET", rkp + "?pageNo=1&pageSize=20", headers=auth_hdr)
+        if rr.get("code") != 1:
+            rk_bad.append(rkp)
+    check("C: remaining ranking boards served (4)",
+          rk_bad == [], "missing: %s" % rk_bad)
+    vd = fcall("GET", "/game/api/v1/games/%s" % first_game, headers=auth_hdr)
+    check("C: game detail serves the dynamic catalog game",
+          vd.get("code") == 1, str(vd)[:110])
+    gd_bad = []
+    for gdp in ["/game/api/v1/games/config/app/%s" % first_game,
+                "/game/api/v1/games/update/tip/info/app/%s" % first_game,
+                "/game/api/v1/games/warmup/%s/languages/en" % first_game,
+                "/game/api/v1/games/update/list/%d" % qa_uid_num,
+                "/game/api/v1/games/%s/uses/rank?pageNo=1&pageSize=20"
+                % first_game,
+                "/game/api/v1/game/%s/turntable" % first_game,
+                "/game/api/v1/game/%s/turntable/props" % first_game,
+                "/geoinfo/api/v1/user/game/career/data/%d" % qa_uid_num]:
+        gdr = fcall("GET", gdp, headers=auth_hdr)
+        if gdr.get("code") != 1:
+            gd_bad.append(gdp)
+    check("C: game-detail family served (8 docs)",
+          gd_bad == [], "missing: %s" % gd_bad)
+    fga = fcall("GET", "/game/api/v1/flow/game/auth?typeId=1&targetId=%d&gameVersion=1"
+                % qa_uid_num, headers=auth_hdr)
+    check("C: flow/game/auth issues the engine token",
+          fga.get("code") == 1
+          and (fga.get("data") or {}).get("token"), str(fga)[:120])
+    dl8 = fcall("GET", "/decoration/api/v1/decorations/8",
+                headers=auth_hdr)
+    dl_rows = dl8.get("data") or []
+    check("C: dressList serves the generated type-8 catalog",
+          dl8.get("code") == 1 and len(dl_rows) == 10
+          and all(d.get("id") and "price" in d for d in dl_rows),
+          str(dl8)[:130])
+    suit_own = fcall("GET", "/decoration/api/v1/new/decorations/users/%d/suit"
+                     % qa_uid_num, headers=auth_hdr)
+    check("C: owned-suit list holds the gift suit",
+          suit_own.get("code") == 1
+          and len(suit_own.get("data") or []) >= 1, str(suit_own)[:120])
+    vlist = fcall("GET", "/video/api/v1/app/video/list/all",
+                  headers=auth_hdr)
+    v_rows = [v for v in (vlist.get("data") or [])
+              if isinstance(v, dict) and v.get("id")]
+    if v_rows:
+        vid0 = v_rows[0]["id"]
+        vdet = fcall("GET", "/video/api/v1/app/video/detail/info?videoId=%s"
+                     % vid0, headers=auth_hdr)
+        vmore = fcall("GET", "/video/api/v1/app/video/more/list?videoId=%s"
+                      % vid0, headers=auth_hdr)
+        check("C: video detail + more/list serve the dynamic video",
+              vdet.get("code") == 1 and vmore.get("code") == 1,
+              "%s | %s" % (str(vdet)[:90], str(vmore)[:90]))
+    else:
+        print("  [info] C: no video rows for the detail sweep")
+
     # Phase 5 surface: dispatch bridge (token -> loopback dispatch) + suit gift
     p1 = fcall("GET", "/game/api/v2/game/auth?typeId=%s&targetId=%d&gameVersion=1"
                % (first_game, qa_uid_num), headers=auth_hdr)
