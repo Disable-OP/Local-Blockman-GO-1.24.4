@@ -5,7 +5,7 @@
   "implemented": 334,
   "default": 0,
   "host_tested": 334,
-  "client_asserted": 193
+  "client_asserted": 230
  },
  "endpoints": [
   {
@@ -86,7 +86,7 @@
    "status": "implemented",
    "handler": "worldCupTotalRank",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -94,7 +94,7 @@
    "status": "implemented",
    "handler": "worldCupTaskList",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -102,7 +102,7 @@
    "status": "implemented",
    "handler": "worldCupMyRank",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -110,7 +110,7 @@
    "status": "implemented",
    "handler": "worldCupRewardList",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -118,7 +118,7 @@
    "status": "implemented",
    "handler": "worldCupRankReward",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -126,7 +126,7 @@
    "status": "implemented",
    "handler": "worldCupGames",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -134,7 +134,7 @@
    "status": "implemented",
    "handler": "worldCupHistory",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -142,7 +142,7 @@
    "status": "implemented",
    "handler": "worldCupIntegral",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -150,7 +150,7 @@
    "status": "implemented",
    "handler": "worldCupNotice",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -158,7 +158,7 @@
    "status": "implemented",
    "handler": "bgtubeMultiLang",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -166,7 +166,7 @@
    "status": "implemented",
    "handler": "bgtubeSignInfo",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -174,7 +174,7 @@
    "status": "implemented",
    "handler": "bgtubeSignCheck",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -230,7 +230,7 @@
    "status": "implemented",
    "handler": "halloweenInfo",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -238,7 +238,7 @@
    "status": "implemented",
    "handler": "halloweenTaskInfo",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -246,7 +246,7 @@
    "status": "implemented",
    "handler": "turntableStatus",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -254,7 +254,7 @@
    "status": "implemented",
    "handler": "campaignSignInList",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -1126,7 +1126,7 @@
    "status": "implemented",
    "handler": "tipsEmail",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -1158,7 +1158,7 @@
    "status": "implemented",
    "handler": "securitySettings",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -1206,7 +1206,7 @@
    "status": "implemented",
    "handler": "worldCupBet",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1214,7 +1214,7 @@
    "status": "implemented",
    "handler": "bgtubeSignUp",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1222,7 +1222,7 @@
    "status": "implemented",
    "handler": "bgtubeVideoLink",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1230,7 +1230,7 @@
    "status": "implemented",
    "handler": "halloweenCandyExchange",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1238,7 +1238,7 @@
    "status": "implemented",
    "handler": "halloweenRewardExchange",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1246,7 +1246,7 @@
    "status": "implemented",
    "handler": "halloweenTaskReward",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1262,7 +1262,7 @@
    "status": "implemented",
    "handler": "campaignSignIn",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1366,7 +1366,7 @@
    "status": "implemented",
    "handler": "groupApply",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1398,7 +1398,7 @@
    "status": "implemented",
    "handler": "groupAck",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1486,7 +1486,7 @@
    "status": "implemented",
    "handler": "setPassword",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1502,7 +1502,7 @@
    "status": "implemented",
    "handler": "emailPasswordReset",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1678,7 +1678,7 @@
    "status": "implemented",
    "handler": "questionResetPassword",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1694,7 +1694,7 @@
    "status": "implemented",
    "handler": "verifyEmail",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1702,7 +1702,7 @@
    "status": "implemented",
    "handler": "verifyEmail",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1718,7 +1718,7 @@
    "status": "implemented",
    "handler": "unbindSecurity",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1726,7 +1726,7 @@
    "status": "implemented",
    "handler": "verifyEmail",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1758,7 +1758,7 @@
    "status": "implemented",
    "handler": "passwordModify",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1798,7 +1798,7 @@
    "status": "implemented",
    "handler": "worldCupIntegralReward",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
@@ -2102,7 +2102,7 @@
    "status": "implemented",
    "handler": "unbindEmail",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "DELETE",

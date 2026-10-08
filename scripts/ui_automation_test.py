@@ -3491,6 +3491,361 @@ def main():
     check("C: scrap receive served", srcv.get("code") == 1,
           str(srcv)[:80])
 
+    # ------------------------------------------------- Wave 28a: the
+    # account-security chain through the live session (fcall tier).
+    # Part A on the registered account (NON-destructive: bind ->
+    # verify -> unbind roundtrip restores the pre-state for the LM
+    # phase): security settings (v2) shows unbound, tipsEmail mask "",
+    # sendEmailCode (the literal {email} path quirk), users/bind/email,
+    # users/verify/email issues an authCode, tipsEmail masks
+    # (q***@...), settings flip bound, the security verify + reset
+    # variants serve, DELETE emails/{userId} unbinds, mask is "" again.
+    sec_email = "sec%05d@local.test" % (int(time.time()) % 100000)
+    sset0 = fcall("GET", "/user/api/v2/users/verify/user/security/settings",
+                  headers=auth_hdr)
+    check("C: security settings shows the unbound fresh account",
+          sset0.get("code") == 1
+          and (sset0.get("data") or {}).get("bindEmail") is False
+          and (sset0.get("data") or {}).get("userId") == qa_uid_num,
+          str(sset0)[:130])
+    tips0 = fcall("GET", "/user/api/v1/users/security/bind/email",
+                  headers=auth_hdr)
+    check("C: tipsEmail empty mask while unbound",
+          tips0.get("code") == 1 and tips0.get("data") == "",
+          str(tips0)[:100])
+    fcall("POST", "/user/api/v1/emails/{email}", None, headers=auth_hdr)
+    bind = fcall("POST", "/user/api/v1/users/bind/email",
+                 {"email": sec_email, "verifyCode": "123456"},
+                 headers=auth_hdr)
+    check("C: users/bind/email binds the security email",
+          bind.get("code") == 1, str(bind)[:100])
+    vex = fcall("POST", "/user/api/v1/users/verify/email",
+                {"email": sec_email, "verifyCode": "654321"},
+                headers=auth_hdr)
+    check("C: users/verify/email issues the authCode (flag true)",
+          vex.get("code") == 1
+          and (vex.get("data") or {}).get("flag") is True
+          and (vex.get("data") or {}).get("authCode"), str(vex)[:120])
+    tips1 = fcall("GET", "/user/api/v1/users/security/bind/email",
+                  headers=auth_hdr)
+    tips_mask = tips1.get("data") or ""
+    check("C: tipsEmail masks the bound email (x***@)",
+          tips1.get("code") == 1 and "***" in tips_mask
+          and tips_mask.endswith("@local.test")
+          and tips_mask[0] == sec_email[0], str(tips1)[:100])
+    sset1 = fcall("GET", "/user/api/v2/users/verify/user/security/settings",
+                  headers=auth_hdr)
+    check("C: security settings flips bound with the email",
+          sset1.get("code") == 1
+          and (sset1.get("data") or {}).get("bindEmail") is True
+          and (sset1.get("data") or {}).get("email") == sec_email,
+          str(sset1)[:130])
+    sv = fcall("POST", "/user/api/v1/users/security/verify/email",
+               {"email": sec_email, "verifyCode": "654321"},
+               headers=auth_hdr)
+    check("C: security/verify/email serves the authCode",
+          sv.get("code") == 1
+          and (sv.get("data") or {}).get("authCode"), str(sv)[:110])
+    svr = fcall("POST", "/user/api/v1/users/security/verify/email/reset",
+                {"email": sec_email, "verifyCode": "654321"},
+                headers=auth_hdr)
+    check("C: security/verify/email/reset serves the authCode",
+          svr.get("code") == 1
+          and (svr.get("data") or {}).get("authCode"), str(svr)[:110])
+    unb = fcall("DELETE", "/user/api/v1/users/%d/emails" % qa_uid_num,
+                None, headers=auth_hdr)
+    tips2 = fcall("GET", "/user/api/v1/users/security/bind/email",
+                  headers=auth_hdr)
+    check("C: DELETE emails unbinds (mask roundtrip to empty)",
+          unb.get("code") == 1 and tips2.get("code") == 1
+          and tips2.get("data") == "",
+          "%s | %s" % (str(unb)[:80], str(tips2)[:80]))
+
+    # Part B on a THROWAWAY account (password chains must not touch the
+    # session accounts the later UI phases log into): modify v1+v2 with
+    # end-to-end re-logins, the wrong-old-password rejection, both
+    # set-password routes, the secret-question save/verify/reset chain,
+    # the security unbind and the no-enumeration email reset.
+    thr_uid = "tqa%05d" % (int(time.time()) % 100000)
+    thr_pw = "LocalQA%05d" % (int(time.time()) % 100000)
+    thr_reg = fcall("POST", "/user/api/v1/register",
+                    {"uid": thr_uid, "password": thr_pw,
+                     "confirmPassword": thr_pw, "imei": "thr-device",
+                     "appType": "android", "os": "12"})
+    thr_id = (thr_reg.get("data") or {}).get("userId", 0)
+    thr_tok = (thr_reg.get("data") or {}).get("accessToken", "")
+    if thr_reg.get("code") == 1 and thr_id > 0 and thr_tok:
+        thr_hdr = {"Access-Token": thr_tok, "userId": str(thr_id),
+                   "language": "en"}
+        thr_pw2 = "NewQA%05d" % (int(time.time()) % 100000)
+        m1 = fcall("POST", "/user/api/v1/user/password/modify",
+                   {"oldPassword": thr_pw, "newPassword": thr_pw2,
+                    "confirmPassword": thr_pw2}, headers=thr_hdr)
+        rl1 = fcall("POST", "/user/api/v1/login",
+                    {"uid": thr_uid, "password": thr_pw2,
+                     "imei": "thr-device"})
+        check("C: password/modify v1 takes effect end-to-end",
+              m1.get("code") == 1 and rl1.get("code") == 1
+              and (rl1.get("data") or {}).get("userId") == thr_id,
+              "%s | %s" % (str(m1)[:80], str(rl1)[:90]))
+        thr_pw3 = "Nw3QA%05d" % (int(time.time()) % 100000)
+        m2 = fcall("POST", "/user/api/v2/user/password/modify",
+                   {"oldPassword": thr_pw2, "newPassword": thr_pw3,
+                    "confirmPassword": thr_pw3}, headers=thr_hdr)
+        m2bad = fcall("POST", "/user/api/v2/user/password/modify",
+                      {"oldPassword": "wrong-old", "newPassword": "x7",
+                       "confirmPassword": "x7"}, headers=thr_hdr)
+        check("C: password/modify v2 works + wrong-old rejected",
+              m2.get("code") == 1 and m2bad.get("code") != 1,
+              "%s | %s" % (str(m2)[:80], str(m2bad)[:80]))
+        thr_pw4 = "Set4QA%05d" % (int(time.time()) % 100000)
+        sp1 = fcall("POST", "/user/api/v1/app/set-password",
+                    {"password": thr_pw4, "confirmPassword": thr_pw4},
+                    headers=thr_hdr)
+        rl2 = fcall("POST", "/user/api/v1/login",
+                    {"uid": thr_uid, "password": thr_pw4,
+                     "imei": "thr-device"})
+        check("C: app/set-password v1 sets the password end-to-end",
+              sp1.get("code") == 1 and rl2.get("code") == 1,
+              "%s | %s" % (str(sp1)[:80], str(rl2)[:90]))
+        sp2 = fcall("POST", "/user/api/v2/app/set-password",
+                    {"password": thr_pw, "confirmPassword": thr_pw},
+                    headers=thr_hdr)
+        check("C: app/set-password v2 serves (none envelope)",
+              sp2.get("code") == 1, str(sp2)[:80])
+        qs = [{"id": 1, "question": "first pet?", "answer": "rex"},
+              {"id": 2, "question": "birth city?", "answer": "cairo"}]
+        qs_set = fcall("POST",
+                       "/user/api/v1/users/secret/question/setting",
+                       qs, headers=thr_hdr)
+        qv = fcall("POST", "/user/api/v1/users/secret/question",
+                   {"id": 1, "question": "first pet?", "answer": "rex"},
+                   headers=thr_hdr)
+        q_auth = (qv.get("data") or {}).get("authCode") or ""
+        check("C: secret question saved + verified right (authCode)",
+              qs_set.get("code") == 1 and qv.get("code") == 1
+              and (qv.get("data") or {}).get("right") is True
+              and q_auth, "%s | %s" % (str(qs_set)[:80], str(qv)[:110]))
+        thr_pw5 = "Rst5QA%05d" % (int(time.time()) % 100000)
+        qr = fcall("POST",
+                   "/user/api/v1/users/question/reset/password?userId=%d&authCode=%s&newPwd=%s"
+                   % (thr_id, q_auth, thr_pw5), None, headers=thr_hdr)
+        rl3 = fcall("POST", "/user/api/v1/login",
+                    {"uid": thr_uid, "password": thr_pw5,
+                     "imei": "thr-device"})
+        check("C: question/reset/password resets via the authCode",
+              qr.get("code") == 1 and rl3.get("code") == 1,
+              "%s | %s" % (str(qr)[:80], str(rl3)[:90]))
+        qv_bad = fcall("POST", "/user/api/v1/users/secret/question",
+                       {"id": 1, "question": "first pet?",
+                        "answer": "WRONG"}, headers=thr_hdr)
+        check("C: wrong secret answer returns right=false",
+              qv_bad.get("code") == 1
+              and (qv_bad.get("data") or {}).get("right") is False,
+              str(qv_bad)[:110])
+        uns = fcall("POST", "/user/api/v1/users/unbind/user/security",
+                    None, headers=thr_hdr)
+        qv_clr = fcall("POST", "/user/api/v1/users/secret/question",
+                       {"id": 1, "question": "first pet?",
+                        "answer": "rex"}, headers=thr_hdr)
+        check("C: unbind/user/security clears the questions",
+              uns.get("code") == 1
+              and (qv_clr.get("data") or {}).get("right") is False,
+              "%s | %s" % (str(uns)[:80], str(qv_clr)[:110]))
+        thr_email = "thr%05d@local.test" % (int(time.time()) % 100000)
+        be = fcall("POST", "/user/api/v1/users/bind/email",
+                   {"email": thr_email, "verifyCode": "123456"},
+                   headers=thr_hdr)
+        epr = fcall("POST", "/user/api/v1/emails/password/reset?email=%s"
+                    % thr_email, None, headers=thr_hdr)
+        epr2 = fcall("POST",
+                     "/user/api/v1/emails/password/reset?email=nobody%40local.test",
+                     None, headers=thr_hdr)
+        check("C: emails/password/reset acks bound AND unknown alike "
+              "(no enumeration)",
+              be.get("code") == 1 and epr.get("code") == 1
+              and epr2.get("code") == 1,
+              "%s | %s | %s" % (str(be)[:60], str(epr)[:60],
+                                str(epr2)[:60]))
+    else:
+        print("  [info] C: throwaway registration failed — password "
+              "chains skipped (%s)" % str(thr_reg)[:80])
+
+    # ------------------------------------------------- Wave 28b: the
+    # type-1 group join-request flow + recall + the event-config sweep.
+    # Join contract (the OTHER half of Wave 26): a member APPLIES
+    # (POST group/chat/apply?groupId=&msg=), the owner sees the type-1
+    # request in their feed (userId = the requester there) and accepts
+    # it via PUT agreement (operator = owner, userId = the requester).
+    # Then the group recall/message ack. All with a self-contained
+    # fresh friend so no coupling to Wave 26's state.
+    w_uid = "wqa%05d" % (int(time.time()) % 100000)
+    w_pw = "LocalQA%05d" % (int(time.time()) % 100000)
+    w_reg = fcall("POST", "/user/api/v1/register",
+                  {"uid": w_uid, "password": w_pw, "confirmPassword": w_pw,
+                   "imei": "w-device", "appType": "android", "os": "12"})
+    w_id = (w_reg.get("data") or {}).get("userId", 0)
+    if w_reg.get("code") == 1 and w_id > 0:
+        w_hdr = {"Access-Token": (w_reg.get("data") or {}).get("accessToken", ""),
+                 "userId": str(w_id), "language": "en"}
+        g2 = fcall("POST", "/msg/api/v2/msg/group/chat",
+                   {"cost": 0, "currency": 1, "memberIds": [],
+                    "userId": qa_uid_num,
+                    "groupName": "WJGroup%d" % (int(time.time()) % 100000)},
+                   headers=auth_hdr)
+        gid2 = g2.get("data", {}).get("groupId", 0)
+        if g2.get("code") == 1 and gid2 > 0:
+            wadd = fcall("POST", "/friend/api/v1/friends",
+                         {"friendId": w_id, "msg": "qa-add"},
+                         headers=auth_hdr)
+            wagr = fcall("PUT", "/friend/api/v1/friends/%d/agreement"
+                         % qa_uid_num, None, headers=w_hdr)
+            appl = fcall("POST",
+                         "/msg/api/v1/msg/group/chat/apply?groupId=%d&msg=join"
+                         % gid2, None, headers=w_hdr)
+            feed_o = fcall("GET",
+                           "/msg/api/v1/msg/group/chat/request/list?pageNo=1&pageSize=20",
+                           headers=auth_hdr)
+            req1 = next((r for r in
+                         ((feed_o.get("data") or {}).get("data") or [])
+                         if isinstance(r, dict) and r.get("type") == 1
+                         and r.get("userId") == w_id
+                         and r.get("groupId") == gid2
+                         and r.get("status") == 0), None)
+            check("C: group apply reaches the owner's feed (type 1)",
+                  appl.get("code") == 1 and wadd.get("code") == 1
+                  and wagr.get("code") == 1 and req1 is not None,
+                  "%s | %s" % (str(appl)[:70], str(feed_o)[:130]))
+            if req1:
+                gacc2 = fcall("PUT", "/msg/api/v1/msg/group/chat/agreement",
+                              {"groupId": gid2,
+                               "requestId": req1["requestId"],
+                               "userId": w_id}, headers=auth_hdr)
+                acc2_ids = [m.get("userId") for m in
+                            ((gacc2.get("data") or {})
+                             .get("groupMembers") or [])]
+                check("C: owner agreement admits the type-1 requester",
+                      gacc2.get("code") == 1 and w_id in acc2_ids,
+                      str(gacc2)[:130])
+            rec = fcall("POST", "/msg/api/v1/msg/group/chat/recall/message",
+                        {"groupId": gid2, "msgId": 0}, headers=auth_hdr)
+            check("C: group recall/message ack served",
+                  rec.get("code") == 1, str(rec)[:80])
+            wquit = fcall("PUT", "/msg/api/v1/msg/group/chat/quit?groupId=%d"
+                          % gid2, None, headers=w_hdr)
+            oquit = fcall("PUT", "/msg/api/v1/msg/group/chat/quit?groupId=%d"
+                          % gid2, None, headers=auth_hdr)
+            check("C: member then owner quit the join-test group",
+                  wquit.get("code") == 1 and oquit.get("code") == 1,
+                  "%s | %s" % (str(wquit)[:70], str(oquit)[:70]))
+        else:
+            print("  [info] C: wave-28b group create failed (%s)"
+                  % str(g2)[:80])
+    else:
+        print("  [info] C: wave-28b friend registration failed (%s)"
+              % str(w_reg)[:80])
+
+    # ------------------------------------------------- Wave 28c: the
+    # event-config sweep (campaign/worldCup/halloween/bgtube/turntable)
+    # through the live session (fcall tier, deterministic fresh-account
+    # states). worldCup is the inactive-campaign cluster (empty shapes,
+    # POST bet -> 'campaign not open'); halloween has real candy state
+    # (fresh = 0; the exchange fails both on candy=0 and on balance);
+    # bgtube is a REAL sign-up flow (check 0 -> sign -> check 1 ->
+    # linkCount 1); campaign sign-in claims day 1 then rejects the
+    # second claim of the day (7012 family).
+    cs0 = fcall("GET", "/activity/api/v1/signIn", headers=auth_hdr)
+    check("C: campaign sign-in map served", cs0.get("code") == 1,
+          str(cs0)[:100])
+    csi = fcall("POST", "/activity/api/v1/signIn", None, headers=auth_hdr)
+    csi2 = fcall("POST", "/activity/api/v1/signIn", None, headers=auth_hdr)
+    check("C: campaign sign-in claims day 1 then rejects the re-claim",
+          csi.get("code") == 1
+          and (csi.get("data") or {}).get("signInId", 0) >= 1
+          and csi2.get("code") != 1,
+          "%s | %s" % (str(csi)[:90], str(csi2)[:70]))
+    tts = fcall("GET", "/activity/api/v1/lucky/turntable/gold/status",
+                headers=auth_hdr)
+    check("C: turntable status isFree=1 on a fresh day",
+          tts.get("code") == 1
+          and (tts.get("data") or {}).get("isFree") == 1, str(tts)[:90])
+    hw = fcall("GET", "/activity/api/v1/halloween/info", headers=auth_hdr)
+    check("C: halloween info serves fresh candy 0",
+          hw.get("code") == 1
+          and (hw.get("data") or {}).get("candy") == 0, str(hw)[:110])
+    htx = fcall("POST", "/activity/api/v1/halloween/candy/exchange?candy=0",
+                None, headers=auth_hdr)
+    htb = fcall("POST", "/activity/api/v1/halloween/candy/exchange?candy=5",
+                None, headers=auth_hdr)
+    check("C: halloween exchange rejects candy=0 and empty balance",
+          htx.get("code") != 1 and htb.get("code") != 1,
+          "%s | %s" % (str(htx)[:70], str(htb)[:70]))
+    hti = fcall("GET", "/activity/api/v1/halloween/task/info",
+                headers=auth_hdr)
+    check("C: halloween task info serves an empty list",
+          hti.get("code") == 1 and hti.get("data") == [],
+          str(hti)[:90])
+    htr = fcall("POST", "/activity/api/v1/halloween/task/reward/receive?taskType=1",
+                None, headers=auth_hdr)
+    check("C: halloween task reward serves the candy counters",
+          htr.get("code") == 1
+          and (htr.get("data") or {}).get("acquireCandy") == 0,
+          str(htr)[:100])
+    hre = fcall("POST", "/activity/api/v1/halloween/reward/exchange?rewardId=1",
+                None, headers=auth_hdr)
+    check("C: halloween reward exchange fails while unconfigured",
+          hre.get("code") != 1, str(hre)[:80])
+    bg0 = fcall("GET", "/activity/api/v1/bgtube/sign", headers=auth_hdr)
+    bgc0 = fcall("GET", "/activity/api/v1/bgtube/sign/check",
+                 headers=auth_hdr)
+    check("C: bgtube unsigned at start (linkCount 0, status 0)",
+          bg0.get("code") == 1
+          and (bg0.get("data") or {}).get("linkCount") == 0
+          and bgc0.get("code") == 1
+          and (bgc0.get("data") or {}).get("status") == 0,
+          "%s | %s" % (str(bg0)[:80], str(bgc0)[:90]))
+    bgs = fcall("POST", "/activity/api/v1/bgtube/sign?youTubeName=qa%05d&language=en"
+                % (int(time.time()) % 100000), None, headers=auth_hdr)
+    bgc1 = fcall("GET", "/activity/api/v1/bgtube/sign/check",
+                 headers=auth_hdr)
+    check("C: bgtube sign-up flips the check status to 1",
+          bgs.get("code") == 1 and bgc1.get("code") == 1
+          and (bgc1.get("data") or {}).get("status") == 1,
+          "%s | %s" % (str(bgs)[:80], str(bgc1)[:90]))
+    bgl = fcall("POST", "/activity/api/v1/bgtube/video/link",
+                {"link": "https://youtu.be/local-qa"}, headers=auth_hdr)
+    bg1 = fcall("GET", "/activity/api/v1/bgtube/sign", headers=auth_hdr)
+    check("C: bgtube video link stored (linkCount 1)",
+          bgl.get("code") == 1 and bg1.get("code") == 1
+          and (bg1.get("data") or {}).get("linkCount") == 1,
+          "%s | %s" % (str(bgl)[:80], str(bg1)[:90]))
+    bgs2 = fcall("GET", "/activity/api/v1/bgtube/sign/check",
+                 headers=auth_hdr)
+    bgi = fcall("GET", "/activity/api/v1/bgtube/multilingualism/info",
+                headers=auth_hdr)
+    check("C: bgtube check stays 1 + multilingualism served",
+          bgs2.get("code") == 1
+          and (bgs2.get("data") or {}).get("status") == 1
+          and bgi.get("code") == 1, str(bgi)[:90])
+    wc_bad = []
+    for wcp in ["/activity/api/v1/activity/worldCup",
+                "/activity/api/v1/activity/worldCup/history",
+                "/activity/api/v1/activity/worldCup/integral",
+                "/activity/api/v1/activity/worldCup/notice",
+                "/activity/api/v1/activity/task",
+                "/activity/api/v1/activity/user/integral/rank",
+                "/activity/api/v1/activity/user/integral/reward",
+                "/activity/api/v1/activity/user/rank/reward",
+                "/activity/api/v1/activity/integral/rank"]:
+        wcr = fcall("GET", wcp, headers=auth_hdr)
+        if wcr.get("code") != 1:
+            wc_bad.append(wcp)
+    wcb = fcall("POST", "/activity/api/v1/activity/worldCup",
+                {"gameId": 1, "integral": 0}, headers=auth_hdr)
+    check("C: worldCup inactive cluster served + bet closed",
+          wc_bad == [] and wcb.get("code") != 1,
+          "missing: %s | %s" % (wc_bad, str(wcb)[:80]))
+
     # Phase 5 surface: dispatch bridge (token -> loopback dispatch) + suit gift
     p1 = fcall("GET", "/game/api/v2/game/auth?typeId=%s&targetId=%d&gameVersion=1"
                % (first_game, qa_uid_num), headers=auth_hdr)
