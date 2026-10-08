@@ -2004,3 +2004,24 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   client), user security/email chains (need bind-state setup), msg
   recall (needs a message first); (4) the F2 'Modify' button pass.
   NO GameServer work.
+
+## Session 39 CLOSED — final state (read FIRST next session)
+
+- Run 37768393688 PASSes with ZERO fails on the fixed APK: recharge
+  face value +1000 on device, group invite-accept chain green, scrap
+  chain green, config sweep green, suit/daily-tasks/dress-buy/VIP
+  green. client_asserted 193 (honest; 46 gained this session).
+- CI: fetch_release_asset.py now sorts by ASSET updated_at (release
+  created_at ties are backdated — wip-57/58 share one timestamp) and
+  logs the fetched release+timestamp. Deep backstops scale with
+  deep_budget_min (0->45/40, >5->45/38, else 18/12).
+- Server: product face-value seeding fixed (recharge double-credit);
+  host suite pins the face value; 576/576 PASS on the rebuild.
+- NEXT (priority order): (1) mine the remaining unasserted surfaces
+  the same dynamic-id way — worldCup/halloween/bgtube event configs
+  (server-backed, config-gated in the client), user security/email
+  chains (need bind-state setup), msg recall (needs a message first);
+  (2) the F2 'Modify' button pass + the LM answer-field gate +
+  password/modify tap (three stubborn UI flows with evidence lines);
+  (3) the headPic-picker drive for the clan-create UI gate (events-
+  buffer toast text now captured). NO GameServer work.

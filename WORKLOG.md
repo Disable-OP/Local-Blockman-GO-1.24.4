@@ -3368,3 +3368,18 @@
   run-22 precedent), v1-recharge-is-ack contract lesson, group
   invite/accept + requestFeed field shapes.
 - Engine 10068 untouched (mandate honored). NO GameServer work.
+
+## Session 39 CLOSED — everything green (2026-10-08 11:20 UTC)
+
+- The recharge double-credit server bug is dead end-to-end: on-device
+  assert caught it (budget-30 harvest) -> host face-value pin ->
+  rebuild 576/576 -> wip-58 dex hash-verified -> device [ok] +1000.
+- The stale-dex CI bug (backdated release created_at ties) is fixed:
+  fetch_release_asset.py picks by asset updated_at and logs its source;
+  validation run PASSes and names `wip-58 (asset built ...12Z)`.
+- Run 37768393688: UI AUTOMATION PASS, ZERO fails. client_asserted 193.
+- Session totals: 46 genuine on-device claims (147 -> 193), 20 phantoms
+  removed, 1 real server bug fixed, 2 CI infra bugs fixed (flat step
+  timeout, stale-dex fetch), E-clanui verdict closed (client headPic
+  gate), H..N/O/LM verdicts harvested green, Phase G verdict-complete.
+- Engine 10068 untouched (mandate honored). NO GameServer work.

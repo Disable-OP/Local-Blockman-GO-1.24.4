@@ -2189,3 +2189,17 @@ Engine 10068 untouched. NO GameServer work.
 
 COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 193.
 Engine 10068 untouched. NO GameServer work.
+
+### Session 39 CLOSED (2026-10-08) — full-green validation run
+
+Run 37768393688 (budget 5, b653f95): UI AUTOMATION PASS, ZERO fails —
+- `downloading BlockyNexus-localapi.apk from release wip-58 (asset
+  built 2026-10-08T10:31:12Z)` — the CI fix names its source.
+- recharge v2 +1000 face value [ok] ON DEVICE (the double-credit bug
+  is dead end-to-end: host 576/576 -> dex hash match -> device).
+- The full group invite-accept lifecycle, scrap chain, config sweep,
+  suit/daily-tasks/dress-buy/pay-VIP chains all [ok].
+- client_asserted 193; 334/334 implemented + host-tested; 0 defaults.
+
+COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 193.
+Engine 10068 untouched. NO GameServer work.
