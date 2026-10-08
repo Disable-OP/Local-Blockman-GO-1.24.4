@@ -3527,6 +3527,41 @@ def main():
           ftr.get("code") == 1
           and (ftr.get("data") or {}).get("status") == 1, str(ftr)[:100])
 
+    # ------------------------------------------------- Wave 25c: the
+    # config-file family through the live session (fcall tier). The
+    # client fetches these /config/files/* documents at boot and on the
+    # matching screens (several already observed in the boot REQ log);
+    # the sweep asserts the server serves every one of them locally
+    # with a well-formed envelope. The two indiegame docs use the
+    # dynamic catalog game id (the router matches them as embedded
+    # wildcards, regex ([^/]+) per segment).
+    cfg_paths = [
+        "/config/files/bg-tube-activity-config",
+        "/config/files/blockymods-activity-logo",
+        "/config/files/blockymods-banner",
+        "/config/files/blockymods-share-reward",
+        "/config/files/campaign-precious-reward",
+        "/config/files/dress-guide-config",
+        "/config/files/game-detail-to-editor",
+        "/config/files/indiegame-moregame_introduction",
+        "/config/files/name-sensitive-word-config",
+    ]
+    cfg_bad = []
+    for cp in cfg_paths:
+        cr = fcall("GET", cp, headers=auth_hdr)
+        if cr.get("code") != 1:
+            cfg_bad.append(cp)
+    # inline literals (not loop variables) so the extractor's
+    # fcall-claim capture sees the templated paths
+    for cr in [fcall("GET", "/config/files/indiegame-new-%s" % first_game,
+                     headers=auth_hdr),
+               fcall("GET", "/config/files/indiegame-%s" % first_game,
+                     headers=auth_hdr)]:
+        if cr.get("code") != 1:
+            cfg_bad.append("indiegame")
+    check("C: config-file family served locally (11 docs)",
+          not cfg_bad, "missing: %s" % cfg_bad)
+
     # ------------------------------------------------- Wave 23e: buy->wear
     # chain through the REAL server state (fcall tier, verb-aware claims).
     # The DressBuyDialog is GL-only on the emulator (run 37742955965: the

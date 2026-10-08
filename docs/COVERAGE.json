@@ -5,7 +5,7 @@
   "implemented": 334,
   "default": 0,
   "host_tested": 334,
-  "client_asserted": 159
+  "client_asserted": 170
  },
  "endpoints": [
   {
@@ -406,7 +406,7 @@
    "status": "implemented",
    "handler": "bgtubeConfig",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -422,7 +422,7 @@
    "status": "implemented",
    "handler": "campaignLogo",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -430,7 +430,7 @@
    "status": "implemented",
    "handler": "bannerList",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -446,7 +446,7 @@
    "status": "implemented",
    "handler": "shareRewardList",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -454,7 +454,7 @@
    "status": "implemented",
    "handler": "campaignPreciousReward",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -462,7 +462,7 @@
    "status": "implemented",
    "handler": "dressGuideConfig",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -470,7 +470,7 @@
    "status": "implemented",
    "handler": "editorConfig",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -478,7 +478,7 @@
    "status": "implemented",
    "handler": "moreGameIntro",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -486,7 +486,7 @@
    "status": "implemented",
    "handler": "sensitiveWords",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -2198,7 +2198,7 @@
    "status": "implemented",
    "handler": "adsCdConfig",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -2206,7 +2206,7 @@
    "status": "implemented",
    "handler": "adsCdConfig",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",

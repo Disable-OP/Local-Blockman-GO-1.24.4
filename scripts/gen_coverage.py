@@ -73,7 +73,14 @@ def fcall_claims(source):
         verb = m.group(1).upper()
         p = m.group(2).split("?")[0]
         if "%" in p:
-            p = "/".join("{fmt}" if "%" in s else s for s in p.split("/"))
+            segs = []
+            for s in p.split("/"):
+                # a WHOLE-segment %format becomes a placeholder; a
+                # mid-segment one (indiegame-new-%s) is kept as-is so
+                # _seg_match can apply the router's embedded-wildcard
+                # rule (route {gameId} -> ([^/]+) regex).
+                segs.append("{fmt}" if s.startswith("%") else s)
+            p = "/".join(segs)
         if len(p) > 4:
             out.add((verb, p))
     return out
@@ -99,8 +106,28 @@ def template_match(template, literal, concrete=None):
     ls = literal.split("/")
     if len(ts) != len(ls):
         return False
-    return all((t.startswith("{") and t.endswith("}")) or t == l
-               for t, l in zip(ts, ls))
+    return all(_seg_match(t, l) for t, l in zip(ts, ls))
+
+
+def _seg_match(t, l):
+    """One template segment vs one literal segment, router-faithful.
+    The real router turns every {name} into ([^/]+) REGEX — including
+    EMBEDDED ones (the /config/files/indiegame-{gameId} family), so a
+    literal with a %-format wildcard inside a segment claims that route
+    when the static frames around the wildcard agree (wave 25c)."""
+    if t == l:
+        return True
+    if t.startswith("{") and t.endswith("}"):
+        return True
+    if "{" in t and "%" in l:
+        t_pre, _, t_rest = t.partition("{")
+        t_post = t_rest.split("}", 1)[1] if "}" in t_rest else ""
+        l_pre, _, l_rest = l.partition("%")
+        l_post = l_rest
+        while l_post and l_post[0] in "sdf0123456789.":
+            l_post = l_post[1:]
+        return t_pre == l_pre and t_post == l_post
+    return False
 
 
 def main():
