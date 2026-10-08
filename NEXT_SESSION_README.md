@@ -2176,3 +2176,32 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   the fix makes it REPRODUCIBLE — the claim's evidence line now names
   the run with the root cause removed).
 - NO GameServer work.
+
+## Session 44 CLOSED (read FIRST — F2 reproducible, LM hotspot named, evidence dumps wired)
+
+- THREE deep runs this session: 37793212847 (budget 15, PASS), 37796083466
+  (budget 30, FAIL x1), 37801448616 (budget 30, PASS, 263 endpoints,
+  0 FATAL). THE HEADLINE: the F2 clan-UPDATE flow is REPRODUCIBLE —
+  run 37801448616 repeats run 37793212847's full verdict (PUT fired,
+  server name read-back matched) with the root causes removed.
+- ROOT CAUSES NAMED AND FIXED (all ours, not the client's):
+  1. The "stubborn" F2 form-killer was OUR OWN unconditional BACK after
+     the tag dialog (the IME was already down) — it popped the edit
+     form. Fixed with ime_visible() guards (13cc493).
+  2. The F2 tap-registration race (37796083466: both center taps alive,
+     PUT 0->0) — hardened (0e8c941): 3-attempt loop alternating center
+     and 25%-height taps (docked-submit-bar geometry, 5q v5).
+- LM FACTS (first LM executions since session 39; two budget-30 runs):
+  * The question screen is a ROAMING-KILLER HOTSPOT: both runs lost the
+    process ~15-30s after the Q1 pick registered (pids 12360->14814->
+    15334, 11870->14358->14829). The restart-aware drive recovered both
+    times (native killer — Java exonerated per session 11; do NOT chase
+    it in Java).
+  * Email code + email bind v1 + old-password check: [ok] in BOTH runs.
+  * The password/modify POST is the ONE remaining evidence-only hop:
+    check serves, modify never fires. [pw-pre]/[pw-fill] state dumps
+    are wired (8e8a5e1) — the NEXT budget-30 run's LM lines name the
+    exact hop. Read them FIRST.
+- The DEEP-TIME MANDATE is untouched: default budget-5 dispatches wall
+  ~10 min; budgets 15/30 are deliberate opt-in verdict harvests.
+- Engine 10068 untouched (mandate honored). NO GameServer work.

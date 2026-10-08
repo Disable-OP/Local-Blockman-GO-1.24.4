@@ -3514,3 +3514,17 @@
   screen (the reveal scroll worked as designed).
 - Re-verification dispatched: 37801448616 (budget 30, 0e8c941).
 - Engine 10068 untouched. NO GameServer work.
+
+## Session 44 CLOSED — F2 reproducible, LM hotspot named (2026-10-08, 16:15 UTC)
+
+- 3 deep dispatches (37793212847 budget-15 PASS / 37796083466 budget-30
+  FAIL x1 / 37801448616 budget-30 PASS): the F2 form-killer (our own
+  unguarded BACK) and the tap race (docked-bar geometry) are fixed and
+  the clan-UPDATE UI verdict is REPRODUCIBLE (2 green runs post-fix).
+- LM: email bind v1 + password/check [ok] x2 runs; the question screen
+  is a roaming-killer hotspot (process dies ~15-30s after the Q1 pick,
+  2/2 runs) — recovery absorbs it; the modify POST stays evidence-only
+  with [pw-pre]/[pw-fill] dumps wired for the next harvest.
+- Commits: 13cc493 44c1bdc 9424c7e 81fd350 0e8c941 8e8a5e1. No server
+  Java changes — wip-59 asset current, no rebuild/tag.
+- Engine 10068 untouched (mandate honored). NO GameServer work.
