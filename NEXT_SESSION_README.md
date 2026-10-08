@@ -2347,7 +2347,8 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   token: URL and <user>:<tok> named remote).
 - SHIPPED: dex rebuilt (246,408 B), 375bd48 pushed, build 37845097352
   SUCCESS -> wip-63 asset (run number 63). Budget-5 verification run
-  37845695626 dispatched on wip-63 — read its verdict below when
-  triaging. Current asset: wip-63. Host suite: 597/597.
+  37845695626 on wip-63: PASS — wall 9m37s, traffic clean (0 [err],
+  0 unknown routes, the 1 FATAL = the known tool-side uiautomator dump
+  NPE). Current asset: wip-63. Host suite: 597/597.
 - NEXT unchanged: error-driven from NEW traffic only, or the GameServer
   phase gate. NO GameServer work.

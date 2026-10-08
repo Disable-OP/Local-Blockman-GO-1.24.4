@@ -3658,3 +3658,12 @@
   63, 232,717,738 bytes, uploaded 21:13:54Z); budget-5 deep
   verification dispatched on it (run 37845695626).
 - Engine 10068 untouched (mandate honored). NO GameServer work.
+
+- VERDICT (run 37845695626, budget-5 on wip-63): PASS — suite step and
+  total wall 9 min 37 s (21:17:15 -> 21:26:52). Traffic mined: 870
+  REQ/RES, zero [err], zero unknown routes, all 22 non-code=1 lines are
+  the established deliberate business error codes; the one FATAL in
+  logcat is the known tool-side uiautomator dump NPE (classified,
+  absorbed). "state recovered" absent — no torn write occurred on this
+  run; the deterministic proof stays in the host suite's 3 scenarios.
+  Current state: asset wip-63, host suite 597/597, HEAD 97b1958+docs.
