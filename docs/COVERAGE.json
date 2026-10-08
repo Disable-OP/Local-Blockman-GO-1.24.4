@@ -4,8 +4,8 @@
   "discovered": 334,
   "implemented": 334,
   "default": 0,
-  "host_tested": 328,
-  "client_asserted": 289
+  "host_tested": 329,
+  "client_asserted": 334
  },
  "endpoints": [
   {
@@ -990,7 +990,7 @@
    "status": "implemented",
    "handler": "suitGiftInfo",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -1054,7 +1054,7 @@
    "status": "implemented",
    "handler": "idCardStatus",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -1062,7 +1062,7 @@
    "status": "implemented",
    "handler": "loginRecord",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -1078,7 +1078,7 @@
    "status": "implemented",
    "handler": "getVipInfo",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -1086,7 +1086,7 @@
    "status": "implemented",
    "handler": "joinSwitch",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -1310,7 +1310,7 @@
    "status": "implemented",
    "handler": "pingReport",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1318,7 +1318,7 @@
    "status": "implemented",
    "handler": "eventReport",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1326,7 +1326,7 @@
    "status": "implemented",
    "handler": "funnelReport",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1390,7 +1390,7 @@
    "status": "implemented",
    "handler": "groupMailInvite",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1462,7 +1462,7 @@
    "status": "implemented",
    "handler": "accountInvalidCheck",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1470,7 +1470,7 @@
    "status": "implemented",
    "handler": "login",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1478,7 +1478,7 @@
    "status": "implemented",
    "handler": "renew",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1510,7 +1510,7 @@
    "status": "implemented",
    "handler": "uploadFile",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1534,7 +1534,7 @@
    "status": "implemented",
    "handler": "verifyAck",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1542,7 +1542,7 @@
    "status": "implemented",
    "handler": "verifyAck",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1550,7 +1550,7 @@
    "status": "implemented",
    "handler": "verifyAck",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1558,7 +1558,7 @@
    "status": "implemented",
    "handler": "accountModify",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1566,7 +1566,7 @@
    "status": "implemented",
    "handler": "bindPhone",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1590,7 +1590,7 @@
    "status": "implemented",
    "handler": "idCardSubmit",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1622,7 +1622,7 @@
    "status": "implemented",
    "handler": "phonePassword",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1646,7 +1646,7 @@
    "status": "implemented",
    "handler": "verifyAck",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1654,7 +1654,7 @@
    "status": "implemented",
    "handler": "userRegister",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1662,7 +1662,7 @@
    "status": "implemented",
    "handler": "unbindPhone",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1710,7 +1710,7 @@
    "status": "implemented",
    "handler": "shareReward",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1774,7 +1774,7 @@
    "status": "implemented",
    "handler": "follow",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1782,7 +1782,7 @@
    "status": "implemented",
    "handler": "videoPlayAck",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
@@ -1790,7 +1790,7 @@
    "status": "implemented",
    "handler": "worldCupTaskReward",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
@@ -1902,7 +1902,7 @@
    "status": "implemented",
    "handler": "recordAdsGame",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
@@ -2046,7 +2046,7 @@
    "status": "implemented",
    "handler": "logout",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
@@ -2109,8 +2109,8 @@
    "path": "/user/api/v2/users/{userId}/emails",
    "status": "implemented",
    "handler": "unbindEmail",
-   "host_tested": false,
-   "client_asserted": false
+   "host_tested": true,
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -2254,7 +2254,7 @@
    "status": "implemented",
    "handler": "vipDress",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -2270,7 +2270,7 @@
    "status": "implemented",
    "handler": "friendPublicStatus",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -2334,7 +2334,7 @@
    "status": "implemented",
    "handler": "teamMembers",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -2358,7 +2358,7 @@
    "status": "implemented",
    "handler": "gamePreheat",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -2438,7 +2438,7 @@
    "status": "implemented",
    "handler": "shopList",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -2446,7 +2446,7 @@
    "status": "implemented",
    "handler": "dressAdsInfo",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -2454,7 +2454,7 @@
    "status": "implemented",
    "handler": "frequentlyGames",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -2534,7 +2534,7 @@
    "status": "implemented",
    "handler": "verifyAck",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -2542,7 +2542,7 @@
    "status": "implemented",
    "handler": "prefectCheck",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -2550,7 +2550,7 @@
    "status": "implemented",
    "handler": "prefectReward",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -2558,7 +2558,7 @@
    "status": "implemented",
    "handler": "uploadFile",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -2582,7 +2582,7 @@
    "status": "implemented",
    "handler": "videoFeedback",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -2590,7 +2590,7 @@
    "status": "implemented",
    "handler": "videoFeedback",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
@@ -2630,7 +2630,7 @@
    "status": "implemented",
    "handler": "appreciation",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
@@ -2654,7 +2654,7 @@
    "status": "implemented",
    "handler": "dressAdsReward",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",

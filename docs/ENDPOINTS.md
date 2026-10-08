@@ -2344,3 +2344,57 @@ Engine 10068 untouched. NO GameServer work.
 
 COVERAGE: 334/334/0-defaults/328 host-tested; client_asserted 289.
 Engine 10068 untouched. NO GameServer work.
+
+### Session 42 — Wave 29d: the full-coverage sweep (video feedback + user misc)
+
+- DEEP-TIME MANDATE VERIFIED LIVE (the user's 2026-10-08 order): the
+  budget-5 default dispatches now wall 9.5-9.9 min on runs
+  37755394303..37784092404 (was 30-35). Only deliberate verdict-harvest
+  dispatches (budget > 5) take longer — by design.
+- Wave 29d (this session): a 46-check fcall block in the deep suite
+  (after the 29c recharge, before the 24a suit block) asserts EVERY
+  remaining unasserted route, turning client_asserted 289 -> 334/334:
+  - video family: praise + dislike honest zero acks (data==0, the
+    local video store is empty by design), report/play/amount ack.
+  - throwaway device-account auth lifecycle (self-contained, the qa
+    token is never dropped): imei-only app login -> renew (fresh
+    accessToken) -> login/change/record (appType+loginTime echo) ->
+    login-out (token drop) -> re-login (SAME userId = persistence).
+    Then on the throwaway session: account/modify (re-key),
+    user/register (nickName echo), report/push + report/status acks,
+    file + directory/file honest no-multipart rejection, bind/phone,
+    phone password (phone+password+confirmPassword), unbind/phone,
+    sms/send + sms/send/refound acks.
+  - qa-session user-misc: player/info vip triple, id-card status GET
+    (str-0) + POST submit (str-0), profile/join/switch GET (true) +
+    POST ack, data/frequently/game (recent-else-catalog >= 3 rows),
+    clan/decoration/advertising GET (adType 1, qty/nextQty) + PUT
+    (+150 quantity, wallet UNTOUCHED — the handler is a literal, the
+    suite pins that honestly), prefect chain (check boolean -> false
+    on the empty profile -> details/info fill -> check flips true ->
+    +500 golds claim -> re-claim rejected), sharing/reward (+200
+    first claim, same-day re-claim rejected), game/record/ads (+100
+    golds), gift-suit info claimed-empty {} (rides the p5 claim),
+    account/invalid/check (fresh available / own uid taken), bind
+    email + DELETE /users/{id}/emails v2, games/{id}/appreciation
+    (first like + 2005 repeat), friend/status self == 2, team/member
+    rows, games/warmup preheat echo, shop decorations v1 wildcard,
+    vip decorations empty list, worldcup task/reward honest fail,
+    /v1/follow dispatch (mg token, loopback gAddr), datareport
+    ping/event/funnel acks, group chat mail add (via the real
+    group-list row when one exists).
+- NEW SERVER BUG HUNT (rig precheck, scripts/rig29d.py, 46/46): no
+  server bug this wave — all 46 chains passed on the rig BEFORE any
+  CI run (the run-37758897572 lesson applied). One suite-order lesson:
+  suitGiftInfo is claimed-empty ONLY after the p5 gift claim — the
+  rig mirrors the suite order now.
+- Group-list shape note: GET /msg/group/chat/list returns a PageData
+  OBJ (data.data rows) — the suite extracts rows from the inner list.
+- Host suite: +2 checks (re-bind email + v2 unbind) -> 582/582 green.
+- Route alias pinned: DELETE /user/api/v2/users/{userId}/emails is
+  now BOTH host-tested and client-asserted (it was the last
+  host_tested=False route).
+
+COVERAGE: 334/334/0-defaults/329 host-tested; client_asserted 334
+(suite-claimed; verdicts pending the 29d deep run).
+Engine 10068 untouched. NO GameServer work.

@@ -2075,3 +2075,34 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   frequently-game, clan advertising, prefect rewards, sms/send);
   (4) the three stubborn UI flows (F2 Modify, LM answer-field,
   password/modify tap). NO GameServer work.
+
+## Session 42 delta (Wave 29d — read FIRST next session)
+
+- Wave 29d LANDED: the 46-check fcall block (scripts/ui_automation_test.py,
+  between the 29c recharge and the 24a suit block) asserts every
+  remaining unasserted route — client_asserted 289 -> 334/334.
+  groups: video praise/dislike/report acks; a SELF-CONTAINED throwaway
+  device-account auth lifecycle (imei login -> renew -> login/change/
+  record -> login-out -> re-login persistence -> account/modify ->
+  user/register -> report push/status -> upload honest rejection ->
+  bind/phone + phone password + unbind/phone + sms/send/refound);
+  qa-session misc (player/info, id-card GET+POST, join/switch GET+POST,
+  frequently/game, clan advertising GET+PUT, prefect check->fill->
+  claim->re-claim, sharing/reward + re-claim, record/ads, gift-suit
+  claimed-empty, account/invalid/check, bind email + unbind email v2,
+  appreciation first+repeat, friend/status, team/member, game preheat,
+  shop v1 wildcard, vip decorations, worldcup honest fail, /v1/follow
+  dispatch, datareport x3, group mail add via the real group list).
+- Rig precheck: scripts/rig29d.py — 46/46 OK against a fresh HostTest
+  boot. Run it BEFORE dispatching whenever the 29d block or the
+  user-misc handlers change. Lesson: the rig must mirror the suite
+  order (suitGiftInfo is claimed-empty only after the p5 gift claim).
+- DEEP-TIME MANDATE HELD: budget-5 dispatches wall 9.5-9.9 min (runs
+  37755394303..37784092404). Do not raise the default budget.
+- Host suite 582/582 (the last host_tested=False route — DELETE
+  /user/api/v2/users/{userId}/emails — is now pinned both tiers).
+- NEXT (priority order): (1) dispatch a deep run to verdict the 29d
+  block on device (no build-release needed — no server changes rode
+  along, wip-59 asset is current); (2) the 3 stubborn UI flows (F2
+  Modify, LM answer-field, password/modify tap); (3) triage any 29d
+  FAILs from the verdict lines. NO GameServer work.

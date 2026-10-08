@@ -4345,6 +4345,311 @@ def main():
           and rcv4_d.get("expireDate") and "gDiamonds" in rcv4_d,
           str(rcv4)[:130])
 
+    # ------------------------------------------------- Wave 29d: video
+    # feedback + user-misc sweep through the live session (fcall tier,
+    # all ids DYNAMIC or state-proven). Contracts: video praise/dislike/
+    # report are honest zero acks (the local video store is empty by
+    # design — videoFeedback/videoPlayAck); the auth lifecycle below is
+    # SELF-CONTAINED on a throwaway visitor (visitor -> imei login ->
+    # renew -> login/change/record -> login-out -> re-login proves
+    # persistence) so the qa session token is never dropped; user-misc
+    # reads (id-card, player/info, join/switch, frequently-game, clan
+    # advertising, prefect, share/ads rewards) all gate on real state —
+    # prefect flips false->true only after the profile details fill.
+    vf29d = fcall("POST", "/video/api/v1/app/video/praise/%d"
+                  % (int(time.time()) % 900000 + 7), None, headers=auth_hdr)
+    check("C: video praise honest zero ack",
+          vf29d.get("code") == 1 and vf29d.get("data") == 0, str(vf29d)[:100])
+    vd29d = fcall("POST", "/video/api/v1/app/video/dislike/%d"
+                  % (int(time.time()) % 900000 + 7), None, headers=auth_hdr)
+    check("C: video dislike honest zero ack",
+          vd29d.get("code") == 1 and vd29d.get("data") == 0, str(vd29d)[:100])
+    vpa29d = fcall("POST", "/video/api/v1/app/video/report/play/amount",
+                   {"videoId": 7, "playAmount": 1}, headers=auth_hdr)
+    check("C: video play-amount telemetry ack",
+          vpa29d.get("code") == 1 and vpa29d.get("data") == 0, str(vpa29d)[:100])
+
+    # --- throwaway device-account auth lifecycle (never touches the qa
+    # token; imei logins key on "device:<imei>", a DIFFERENT record from
+    # the "visitor:" one - the same-device re-login identity is what the
+    # lifecycle proves). ---
+    im29d = "qa-29d-%d" % (int(time.time()) % 1000000)
+    dev29d = fcall("POST", "/user/api/v1/app/login", {"imei": im29d})
+    dev29d_d = dev29d.get("data") or {}
+    check("C: imei-only app login serves a device account",
+          dev29d.get("code") == 1 and dev29d_d.get("userId", 0) > 0
+          and dev29d_d.get("accessToken"), str(dev29d)[:130])
+    vh29d = {"Access-Token": dev29d_d.get("accessToken", ""),
+             "userId": str(dev29d_d.get("userId", 0)), "language": "en"}
+    vis29d = fcall("POST", "/user/api/v1/visitor", {"imei": im29d})
+    vis_d29d = vis29d.get("data") or {}
+    check("C: visitor creation acks (id + token)",
+          vis29d.get("code") == 1 and vis_d29d.get("id", 0) > 0
+          and vis_d29d.get("accessToken"), str(vis29d)[:110])
+    vr29d = fcall("POST", "/user/api/v1/app/renew?userId=%s" % dev29d_d.get("userId"),
+                  None, headers=vh29d)
+    vr29d_d = vr29d.get("data") or {}
+    check("C: renew serves a fresh accessToken",
+          vr29d.get("code") == 1 and vr29d_d.get("userId") == dev29d_d.get("userId")
+          and vr29d_d.get("accessToken"), str(vr29d)[:130])
+    vh29d["Access-Token"] = vr29d_d.get("accessToken", "")
+    lr29d = fcall("GET", "/user/api/v1/user/login/change/record",
+                  None, headers=vh29d)
+    lr29d_d = lr29d.get("data") or {}
+    check("C: login change record echoes the last login",
+          lr29d.get("code") == 1 and lr29d_d.get("appType") == "android"
+          and lr29d_d.get("loginTime"), str(lr29d)[:120])
+    lo29d = fcall("PUT", "/user/api/v1/user/login-out", None, headers=vh29d)
+    check("C: login-out drops the token", lo29d.get("code") == 1,
+          str(lo29d)[:100])
+    vl229d = fcall("POST", "/user/api/v1/app/login", {"imei": im29d})
+    vl229d_d = vl229d.get("data") or {}
+    check("C: re-login after logout proves persistence",
+          vl229d.get("code") == 1
+          and vl229d_d.get("userId") == dev29d_d.get("userId")
+          and vl229d_d.get("accessToken"), str(vl229d)[:130])
+    vh29d["Access-Token"] = vl229d_d.get("accessToken", "")
+    am29d = fcall("POST", "/user/api/v1/user/account/modify",
+                  {"account": "qa29dacc%d" % (int(time.time()) % 100000)},
+                  headers=vh29d)
+    check("C: account modify re-keys the device account",
+          am29d.get("code") == 1, str(am29d)[:110])
+    rg29d = fcall("POST", "/user/api/v1/user/register",
+                  {"nickName": "qa29dreg", "sex": 1}, headers=vh29d)
+    rg29d_d = rg29d.get("data") or {}
+    check("C: user register echoes the set nickname",
+          rg29d.get("code") == 1 and rg29d_d.get("nickName") == "qa29dreg",
+          str(rg29d)[:110])
+    rp29d = fcall("POST", "/user/api/v1/report/push", {"report": True},
+                  headers=vh29d)
+    rp29d2 = fcall("POST", "/user/api/v1/report/status", {"status": 1},
+                   headers=vh29d)
+    check("C: report push/status acks (verifyAck contract)",
+          rp29d.get("code") == 1 and rp29d2.get("code") == 1,
+          "%s | %s" % (str(rp29d)[:60], str(rp29d2)[:60]))
+    up29d = fcall("POST", "/user/api/v1/file", {"b64": "qa"}, headers=vh29d)
+    up229d = fcall("POST", "/user/api/v1/directory/file", {"b64": "qa"},
+                   headers=vh29d)
+    check("C: upload without a multipart part rejected (honest gate)",
+          up29d.get("code") != 1 and up229d.get("code") != 1,
+          "%s | %s" % (str(up29d)[:80], str(up229d)[:80]))
+    bp29d = fcall("POST", "/user/api/v1/user/bind/phone",
+                  {"phone": "13800002900", "code": "1234"}, headers=vh29d)
+    check("C: bind phone acked", bp29d.get("code") == 1, str(bp29d)[:100])
+    pw29d = fcall("POST", "/user/api/v1/user/password",
+                  {"phone": "13800002900", "password": password,
+                   "confirmPassword": password}, headers=vh29d)
+    check("C: phone password set acked", pw29d.get("code") == 1, str(pw29d)[:100])
+    bp229d = fcall("POST", "/user/api/v1/user/unbind/phone", None, headers=vh29d)
+    check("C: unbind phone acked", bp229d.get("code") == 1, str(bp229d)[:100])
+    sm29d = fcall("POST", "/user/api/v1/sms/send/13800002900", None,
+                  headers=vh29d)
+    check("C: sms/send acks (no transport, honest policy)",
+          sm29d.get("code") == 1, str(sm29d)[:100])
+    sm229d = fcall("POST", "/user/api/v1/sms/send/refound",
+                   {"phone": "13800002900"}, headers=vh29d)
+    check("C: sms refound acks", sm229d.get("code") == 1, str(sm229d)[:100])
+
+    # --- qa-session user-misc reads + reward chains (non-destructive) ---
+    pi29d = fcall("GET", "/user/api/v1/user/player/info", None, headers=auth_hdr)
+    pi29d_d = pi29d.get("data") or {}
+    check("C: player info echoes the vip triple",
+          pi29d.get("code") == 1 and "vip" in pi29d_d
+          and "expireDate" in pi29d_d and "gDiamonds" in pi29d_d,
+          str(pi29d)[:120])
+    idc29d = fcall("GET", "/user/api/v1/user/id/card/status", None,
+                   headers=auth_hdr)
+    check("C: id-card status str-0 gate",
+          idc29d.get("code") == 1 and idc29d.get("data") == "0",
+          str(idc29d)[:100])
+    idc229d = fcall("POST", "/user/api/v1/user/id/card/status",
+                    {"name": "qa", "idCard": "110101199001011234"},
+                    headers=auth_hdr)
+    check("C: id-card submit stays str-0",
+          idc229d.get("code") == 1 and idc229d.get("data") == "0",
+          str(idc229d)[:100])
+    js29d = fcall("GET", "/user/api/v1/user/profile/join/switch", None,
+                  headers=auth_hdr)
+    check("C: join switch reads true",
+          js29d.get("code") == 1 and js29d.get("data") is True,
+          str(js29d)[:100])
+    js229d = fcall("POST", "/user/api/v1/user/profile/join/switch",
+                   {"joinSwitch": False}, headers=auth_hdr)
+    check("C: join switch write acked", js229d.get("code") == 1,
+          str(js229d)[:100])
+    fq29d = fcall("GET", "/user/api/v1/data/frequently/game/%d" % qa_uid_num,
+                  None, headers=auth_hdr)
+    fq29d_rows = [g for g in (fq29d.get("data") or [])
+                  if isinstance(g, dict) and g.get("gameId")]
+    check("C: frequently-played serves recent-else-catalog",
+          fq29d.get("code") == 1 and len(fq29d_rows) >= 3,
+          str(fq29d)[:130])
+    dai29d = fcall("GET", "/user/api/v1/clan/decoration/advertising/%d"
+                   % qa_uid_num, None, headers=auth_hdr)
+    dai29d_d = dai29d.get("data") or {}
+    check("C: clan advertising info obj served",
+          dai29d.get("code") == 1 and dai29d_d.get("adType") == 1
+          and "qty" in dai29d_d and "nextQty" in dai29d_d, str(dai29d)[:120])
+    w29a = fcall("GET", "/pay/api/v1/wealth/user", headers=auth_hdr).get("data", {})
+    dar29d = fcall("PUT", "/user/api/v1/clan/decoration/advertising/%d"
+                   % qa_uid_num, None, headers=auth_hdr)
+    dar29d_d = dar29d.get("data") or {}
+    check("C: clan advertising reward grants +150",
+          dar29d.get("code") == 1 and dar29d_d.get("quantity") == 150,
+          str(dar29d)[:120])
+    w29b = fcall("GET", "/pay/api/v1/wealth/user", headers=auth_hdr).get("data", {})
+    check("C: advertising reward grants +150 (wallet untouched)",
+          dar29d.get("code") == 1 and dar29d_d.get("quantity") == 150
+          and w29b.get("golds", 0) == w29a.get("golds", 0),
+          "%s | w %s -> %s" % (str(dar29d)[:90], w29a, w29b))
+    pc029d = fcall("POST", "/user/api/v1/users/prefect/info/reward/check/%d"
+                   % qa_uid_num, None, headers=auth_hdr)
+    check("C: prefect check serves a boolean",
+          pc029d.get("code") == 1 and isinstance(pc029d.get("data"), bool),
+          str(pc029d)[:100])
+    if pc029d.get("data") is False:
+        ci29d = fcall("POST", "/user/api/v1/user/details/info",
+                      {"details": "qa profile"}, headers=auth_hdr)
+        check("C: profile details fill acked", ci29d.get("code") == 1,
+              str(ci29d)[:100])
+        pc129d = fcall("POST", "/user/api/v1/users/prefect/info/reward/check/%d"
+                       % qa_uid_num, None, headers=auth_hdr)
+        check("C: prefect check flips true after the fill",
+              pc129d.get("code") == 1 and pc129d.get("data") is True,
+              str(pc129d)[:100])
+    else:
+        print("  [info] C: prefect already done - skipping the fill chain")
+    w29c = fcall("GET", "/pay/api/v1/wealth/user", headers=auth_hdr).get("data", {})
+    prw29d = fcall("POST", "/user/api/v1/users/prefect/info/reward/%d"
+                   % qa_uid_num, None, headers=auth_hdr)
+    prw29d_d = prw29d.get("data") or {}
+    w29d_after = fcall("GET", "/pay/api/v1/wealth/user",
+                       headers=auth_hdr).get("data", {})
+    check("C: prefect reward claims +500 golds",
+          prw29d.get("code") == 1 and prw29d_d.get("golds") == 500
+          and w29d_after.get("golds", 0) == w29c.get("golds", 0) + 500,
+          "%s | w %s -> %s" % (str(prw29d)[:110], w29c, w29d_after))
+    prw229d = fcall("POST", "/user/api/v1/users/prefect/info/reward/%d"
+                    % qa_uid_num, None, headers=auth_hdr)
+    check("C: prefect re-reward rejected (claimed)",
+          prw229d.get("code") != 1, str(prw229d)[:100])
+    w29e = fcall("GET", "/pay/api/v1/wealth/user", headers=auth_hdr).get("data", {})
+    sr29d = fcall("POST", "/user/api/v1/users/sharing/reward", None,
+                  headers=auth_hdr)
+    w29f = fcall("GET", "/pay/api/v1/wealth/user", headers=auth_hdr).get("data", {})
+    check("C: share reward +200 golds (first claim today)",
+          sr29d.get("code") == 1
+          and w29f.get("golds", 0) == w29e.get("golds", 0) + 200,
+          "%s | w %s -> %s" % (str(sr29d)[:110], w29e, w29f))
+    sr229d = fcall("POST", "/user/api/v1/users/sharing/reward", None,
+                   headers=auth_hdr)
+    check("C: share re-reward rejected (same day)",
+          sr229d.get("code") != 1, str(sr229d)[:100])
+    w29g = fcall("GET", "/pay/api/v1/wealth/user", headers=auth_hdr).get("data", {})
+    ra29d = fcall("PUT", "/game/api/v1/game/record/ads", None, headers=auth_hdr)
+    w29h = fcall("GET", "/pay/api/v1/wealth/user", headers=auth_hdr).get("data", {})
+    check("C: record-ads grants +100 golds",
+          ra29d.get("code") == 1 and ra29d.get("data") == 100
+          and w29h.get("golds", 0) == w29g.get("golds", 0) + 100,
+          "%s | w %s -> %s" % (str(ra29d)[:110], w29g, w29h))
+    gs29d = fcall("GET", "/shop/api/v1/new/shop/gift/suit/receive", None,
+                  headers=auth_hdr)
+    check("C: gift-suit info serves the claimed empty state",
+          gs29d.get("code") == 1 and gs29d.get("data") == {},
+          str(gs29d)[:110])
+    aic129d = fcall("POST", "/user/api/v1/account/invalid/check?account=qa-29d-fresh",
+                    None, headers=auth_hdr)
+    check("C: account invalid check - fresh name available",
+          aic129d.get("code") == 1 and aic129d.get("data") is True,
+          str(aic129d)[:110])
+    aic229d = fcall("POST", "/user/api/v1/account/invalid/check?account=%s"
+                    % qa_uid, None, headers=auth_hdr)
+    check("C: account invalid check - own uid taken",
+          aic229d.get("code") == 1 and aic229d.get("data") is False,
+          str(aic229d)[:110])
+    ue29d = fcall("POST", "/user/api/v1/users/bind/email",
+                  {"email": "qa29d@example.com"}, headers=auth_hdr)
+    check("C: bind email acked (qa session)", ue29d.get("code") == 1,
+          str(ue29d)[:100])
+    ue229d = fcall("DELETE", "/user/api/v2/users/%d/emails" % qa_uid_num,
+                   None, headers=auth_hdr)
+    check("C: unbind email v2 acked (email cleared)",
+          ue229d.get("code") == 1, str(ue229d)[:100])
+    ap29d = fcall("PUT", "/game/api/v1/games/%s/appreciation" % first_game,
+                  None, headers=auth_hdr)
+    check("C: game appreciation first like acks",
+          ap29d.get("code") == 1, str(ap29d)[:100])
+    ap229d = fcall("PUT", "/game/api/v1/games/%s/appreciation" % first_game,
+                   None, headers=auth_hdr)
+    check("C: game re-appreciation rejected (2005 repeat like)",
+          ap229d.get("code") != 1, str(ap229d)[:110])
+    fs29d = fcall("GET", "/friend/api/v1/friend/status/%d" % qa_uid_num,
+                  None, headers=auth_hdr)
+    check("C: friend status self reads 2",
+          fs29d.get("code") == 1 and fs29d.get("data") == 2, str(fs29d)[:100])
+    tm29d = fcall("GET", "/game/api/v1/games/team/member/%d" % qa_uid_num,
+                  None, headers=auth_hdr)
+    tm29d_rows = [t for t in (tm29d.get("data") or [])
+                  if isinstance(t, dict) and t.get("userId")]
+    check("C: team member rows served with author shape",
+          tm29d.get("code") == 1 and len(tm29d_rows) >= 1
+          and "nickName" in tm29d_rows[0] and "isTeam" in tm29d_rows[0],
+          str(tm29d)[:120])
+    gh29d = fcall("GET", "/game/api/v1/games/warmup/%s/languages/en" % first_game,
+                  None, headers=auth_hdr)
+    gh29d_d = gh29d.get("data") or {}
+    check("C: game preheat echoes the catalog game",
+          gh29d.get("code") == 1 and gh29d_d.get("gameId") == first_game
+          and gh29d_d.get("isPublish") == 1, str(gh29d)[:120])
+    sl29d = fcall("GET", "/shop/api/v1/shop/decorations/1", None,
+                  headers=auth_hdr)
+    sl29d_rows = [r for r in (sl29d.get("data") or [])
+                  if isinstance(r, dict) and r.get("id")]
+    check("C: shop decorations v1 wildcard serves the type catalog",
+          sl29d.get("code") == 1 and len(sl29d_rows) >= 1, str(sl29d)[:120])
+    vp29d = fcall("GET", "/decoration/api/v1/vip/decorations/users/1", None,
+                  headers=auth_hdr)
+    check("C: vip decorations empty list (honest local policy)",
+          vp29d.get("code") == 1 and vp29d.get("data") == [], str(vp29d)[:100])
+    wcr29d = fcall("PUT", "/activity/api/v1/activity/task/reward",
+                   {"type": 1}, headers=auth_hdr)
+    check("C: worldcup task reward honestly inactive",
+          wcr29d.get("code") != 1, str(wcr29d)[:110])
+    fol29d = fcall("POST", "/v1/follow",
+                   {"clz": 0, "name": "qa", "pioneer": True,
+                    "targetId": qa_uid_num, "resVersion": 1, "ever": 1,
+                    "picUrl": "", "packageName": "ci", "appVer": "1.24.4",
+                    "country": "us", "lang": "en", "rid": 0},
+                   headers={"x-shahe-uid": str(qa_uid_num),
+                            "x-shahe-token": mg.get("token", "")})
+    check("C: follow dispatch returns the loopback engine",
+          fol29d.get("code") == 1
+          and (fol29d.get("data") or {}).get("gaddr") == "127.0.0.1:18080",
+          str(fol29d)[:150])
+    dr129d = fcall("POST", "/datareport/api/v1/app/ping/report/batch",
+                   {"events": [{"ping": 30}]}, headers=auth_hdr)
+    dr229d = fcall("POST", "/datareport/api/v1/event/report",
+                   [{"eventId": "qa_29d", "count": 1}], headers=auth_hdr)
+    dr329d = fcall("POST", "/datareport/api/v1/funnel/event/report",
+                   [{"funnelId": "qa_29d", "step": 1}], headers=auth_hdr)
+    check("C: datareport family acks (persisted verbatim)",
+          dr129d.get("code") == 1 and dr229d.get("code") == 1
+          and dr329d.get("code") == 1,
+          "%s | %s | %s" % (str(dr129d)[:60], str(dr229d)[:60], str(dr329d)[:60]))
+    gl29d = fcall("GET", "/msg/api/v1/msg/group/chat/list", None, headers=auth_hdr)
+    gl29d_page = (gl29d.get("data") or {}) if isinstance(gl29d.get("data"), dict) else {}
+    gl29d_rows = [g for g in (gl29d_page.get("data") or [])
+                  if isinstance(g, dict) and g.get("groupId")]
+    if gl29d_rows:
+        gm29d = fcall("POST", "/msg/api/v1/msg/group/chat/mail/add?groupId=%d"
+                      % gl29d_rows[0]["groupId"], None, headers=auth_hdr)
+        gm29d_d = gm29d.get("data") or {}
+        check("C: group mail add serves the group info",
+              gm29d.get("code") == 1 and gm29d_d.get("groupId"),
+              str(gm29d)[:130])
+    else:
+        print("  [info] C: qa session holds no group - mail add skipped")
+
     # ------------------------------------------------- Wave 24a: suitDetail
     # + suitListByIds through the live session (fcall tier, DYNAMIC ids).
     # Client contract (Retrofit getDressSuit / getSuitById): a suit-card

@@ -1330,6 +1330,14 @@ def main():
         ue = call("DELETE", "/user/api/v1/users/%d/emails" % uid5, headers=h5)
         te2 = call("GET", "/user/api/v1/users/security/bind/email?userId=%d" % uid5, headers=h5)
         check("unbind email", ue.get("code") == 1 and te2["data"] == "", str(te2)[:100])
+        # Wave 29d: pin the v2 alias route (same handler, {version} template)
+        be2 = call("POST", "/user/api/v1/users/bind/email",
+                   {"email": "qa2@example.com"}, headers=h5)
+        check("re-bind email (for the v2 unbind)", be2.get("code") == 1, str(be2)[:80])
+        ue2 = call("DELETE", "/user/api/v2/users/%d/emails" % uid5, headers=h5)
+        te3 = call("GET", "/user/api/v1/users/security/bind/email?userId=%d" % uid5, headers=h5)
+        check("unbind email v2 clears", ue2.get("code") == 1 and te3.get("data") == "",
+              "%s | %s" % (str(ue2)[:80], str(te3)[:80]))
         sm = call("POST", "/user/api/v1/sms/send/+201234567890", {})
         check("sms send ack", sm.get("code") == 1, str(sm)[:80])
         ev = call("POST", "/user/api/v1/emails/verify/qa@example.com", {})
