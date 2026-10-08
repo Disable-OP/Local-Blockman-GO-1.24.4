@@ -1807,6 +1807,16 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                               "- selection visibility still gated")
                         debug_dump(screen, "lm-qscreen")
                     fill_edit(0, "LocalQA-One")
+                    # run-15 evidence: fa.i still finishes even without the
+                    # ESC — pin the state right after the answer fill and
+                    # after Next so the closing hop is caught red-handed
+                    # (exit-dialog texts / focused window / revealed rows)
+                    for n in screen.dump():
+                        if n.text or n.cls.endswith("Dialog") \
+                                or n.cls.endswith("ListView"):
+                            print("  [q2-pre] %s | %r | %s" % (
+                                n.res.rsplit("/", 1)[-1] if n.res else "",
+                                (n.text or "")[:26], n.cls.rsplit(".", 1)[-1]))
                     nxt = screen.find(ids=["btn_next"], texts=["Next"])
                     if nxt and nxt.center:
                         screen.tap_node(nxt)
@@ -1820,6 +1830,12 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                                 break
                             adb.sh("input swipe 360 900 360 380 300")
                             time.sleep(2)
+                        print("  [q2-post] state after Next + reveal scroll:")
+                        for n in screen.dump():
+                            if n.text:
+                                print("  [q2-post] %s | %r" % (
+                                    n.res.rsplit("/", 1)[-1] if n.res else "",
+                                    (n.text or "")[:26]))
                     if fill_q2(screen, adb):
                         time.sleep(2)
                         # run-11 evidence: index 0 is ANSWER 1's field (still
