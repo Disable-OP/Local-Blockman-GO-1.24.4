@@ -5,7 +5,7 @@
   "implemented": 334,
   "default": 0,
   "host_tested": 334,
-  "client_asserted": 157
+  "client_asserted": 156
  },
  "endpoints": [
   {
@@ -2262,7 +2262,7 @@
    "status": "implemented",
    "handler": "dressList",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",

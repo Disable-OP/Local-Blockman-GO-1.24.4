@@ -33,7 +33,7 @@ permissions:
 jobs:
   redroid-deep-test:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: ${{ fromJSON(inputs.deep_budget_min || '5') == 0 && 45 || 16 }}
+    timeout-minutes: ${{ fromJSON(inputs.deep_budget_min || '5') == 0 && 45 || 18 }}
     env:
       PACKAGE: com.disabngo.blockynexus
       ACTIVITY: com.disabngo.blockynexus.view.activity.start.StartActivity
@@ -97,10 +97,11 @@ jobs:
 
       - name: Run UI automation suite (budgeted deep-drive mode)
         # Deep-phase budget enforced inside the suite itself; this step
-        # timeout is the backstop. Legacy unlimited runs (input 0) get the
-        # old 40-min backstop; budgeted runs get 9 min (5-min deep budget +
-        # core overrun headroom, diagnostics steps always run after).
-        timeout-minutes: ${{ fromJSON(inputs.deep_budget_min || '5') == 0 && 40 || 9 }}
+        # timeout is the backstop. run 37739443414 lesson: the CORE Phase A
+        # (visitor + tabs + deep-drive A) alone needs ~7 min on the
+        # guest-GPU emulator, so a 9-min backstop killed a healthy run.
+        # Budgeted runs get 12 min; legacy unlimited (input 0) keeps 40.
+        timeout-minutes: ${{ fromJSON(inputs.deep_budget_min || '5') == 0 && 40 || 12 }}
         run: |
           python3 scripts/ui_automation_test.py \
             --serial localhost:5555 \

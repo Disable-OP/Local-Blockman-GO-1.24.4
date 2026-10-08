@@ -1150,6 +1150,16 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                 # the route is fcall-asserted since Phase C — this tap
                 # upgrades it to real app traffic).
                 suit_radio = screen.find(ids=["rbSuit"])
+                if not (suit_radio and suit_radio.center):
+                    # run 37739443414: the store screen is GL-timing flaky —
+                    # the dress-mode rail (rbSuit) can render late; retry
+                    # before giving up (each miss skips the 4 dress-mode
+                    # GET gates below, losing the run's main claims)
+                    for _ in range(3):
+                        time.sleep(4)
+                        suit_radio = screen.find(ids=["rbSuit"])
+                        if suit_radio and suit_radio.center:
+                            break
                 if suit_radio and suit_radio.center:
                     screen.tap_node(suit_radio)
                     time.sleep(5)
@@ -1410,19 +1420,23 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                     tag, chip.replace("rb_", "")))
             else:
                 print("  [skip] dressing chip %s not found" % chip)
-        # Wave 23b — the first-level chips switch the wardrobe's per-type
-        # page, whose load fires the dressList family (the concrete v1/v2
-        # + typeId land on the wire). Entry load (default chip) + the
-        # chip taps = the union, claimed ONCE here. The verb+digit regex
-        # cannot touch the /using or new/decorations siblings of the
-        # path. Guard: only when at least one chip actually tapped (a
-        # screen-shape change must be re-discovered, not fail the run).
+        # Wave 23c CORRECTION (run 37739443414 evidence): the Dressing tab
+        # is the WORN-items manager — a fresh visitor gets the client-local
+        # empty state (tvLoadFailed 'No dressing in use now') and the chips
+        # fire ZERO /decoration traffic. The per-type catalog (dressList)
+        # belongs to the STORE's dress-mode side (rbSuit radio), which is
+        # GL-timing flaky (same run: 'rbSuit not found on the store
+        # screen'). No claim here — the traffic delta is evidence-only.
         if chips_tapped:
             dlog3 = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
-            dlist_lit = "/decoration/api/{version}/decorations/{typeId}"
-            check("A: dressing chips fired dressList (GET %s)" % dlist_lit,
-                  re.search(r"REQ GET /decoration/api/v\d+/decorations/"
-                            r"\d+", dlog3) is not None)
+            dnew = sorted(set(re.findall(
+                r"REQ (\w+) (/(?:decoration|shop)/\S+)", dlog3)))
+            if dnew:
+                ok("A: dressing-chip traffic: %s" % ", ".join(
+                    "%s %s" % r for r in dnew))
+            else:
+                print("  [info] dressing chips added no /decoration|/shop "
+                      "traffic (empty worn state is client-local)")
             if "REQ GET /config/files/dress-guide-config" in dlog3:
                 print("  [evidence] dress guide config served on the "
                       "wardrobe (config/files/dress-guide-config)")
