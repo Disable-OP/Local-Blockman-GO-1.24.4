@@ -31,16 +31,25 @@ def main():
     if not TOKEN:
         sys.exit("error: GH_TOKEN not set")
     releases = json.load(api(f"{API}/repos/{REPO}/releases?per_page=50"))
-    for rel in sorted(releases, key=lambda r: r["created_at"], reverse=True):
-        for a in rel.get("assets", []):
-            if a["name"] == name:
-                print(f"downloading {name} from release {rel['tag_name']}")
-                with api(a["url"], accept="application/octet-stream") as r, open(out, "wb") as f:
-                    while chunk := r.read(1 << 20):
-                        f.write(chunk)
-                print(f"saved {out} ({os.path.getsize(out)} bytes)")
-                return
-    sys.exit(f"error: asset {name!r} not found in any release of {REPO}")
+    # Pick the release whose APK ASSET was UPLOADED most recently.
+    # Release created_at is unreliable here: several tags share
+    # backdated timestamps (wip-57 and wip-58 both read
+    # 2026-10-07T14:13:42Z while their assets were built ~7h apart),
+    # so the old release-order sort could tie-break onto a STALE dex —
+    # a full session was spent chasing a "non-effective server fix"
+    # that the device never received (session 39, run 37766895731).
+    # Asset updated_at is the real build-freshness signal.
+    cands = [(a["updated_at"], rel, a) for rel in releases
+             for a in rel.get("assets", []) if a["name"] == name]
+    if not cands:
+        sys.exit(f"error: asset {name!r} not found in any release of {REPO}")
+    _, rel, a = max(cands, key=lambda x: x[0])
+    print(f"downloading {name} from release {rel['tag_name']} "
+          f"(asset built {a['updated_at']})")
+    with api(a["url"], accept="application/octet-stream") as r, open(out, "wb") as f:
+        while chunk := r.read(1 << 20):
+            f.write(chunk)
+    print(f"saved {out} ({os.path.getsize(out)} bytes)")
 
 
 if __name__ == "__main__":
