@@ -1857,3 +1857,29 @@ COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 155 -> 156.
 
 COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 156
 (all claims verdict-honest).
+
+### Wave 23 (session 37 cont.) — shop-buy -> wear chain unblocked (ConstraintLayout card fix)
+
+1. ROOT CAUSE for the never-firing wear probes (waves 5l/5m through
+   run-20): the shop/dress card roots are
+   `androidx.constraintlayout.widget.ConstraintLayout`
+   (item_new_dress_shop.xml / item_dress.xml) but the card detectors
+   only accepted FrameLayout/LinearLayout/RecyclerView — every hunt
+   missed, the buy dialog never opened, the account never owned an
+   item, and the wear path was unreachable ("No dressing in use now").
+   All three detectors now accept ConstraintLayout + a bgView-id
+   fallback (the child id every dress/shop card carries).
+2. The buy verdict now covers BOTH shapes: POST /shop/api/v1/new/shop/
+   decorations/buy (dressBuyV2 cart) and PUT /shop/api/v1/shop/
+   decorations/buy/{id} (dressBuyOne single). The wear verdict covers
+   PUT /decorations/using/{id} (DressItemModel.ea -> t.h useDecoration)
+   in addition to the /using/new multi variant.
+3. Wallet reality: the fresh account starts with 50k golds (StateStore)
+   and the catalog prices 200..2780 (DressShop) — the first card buy
+   ALWAYS succeeds server-side, so the owned-item wear path becomes
+   deterministic.
+4. Run-20 (37727810637) traffic diff vs COVERAGE: ZERO hit-but-
+   unclaimed routes (78 unique endpoints, all verdict-honest). The
+   next claims must come from NEW surfaces — this wave targets
+   shop/buy + using/{id} (+ the dressList family the wardrobe chips
+   fire).

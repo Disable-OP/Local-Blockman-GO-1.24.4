@@ -938,9 +938,24 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                             continue
                     if n.cls.endswith("FrameLayout") or n.cls.endswith(
                             "LinearLayout") or n.cls.endswith(
-                            "RecyclerView") or "item" in n.res.lower():
+                            "RecyclerView") or n.cls.endswith(
+                            "ConstraintLayout") or "item" in n.res.lower():
                         product = n
                         break
+                if not product:
+                    # run-20 miss: the card roots are ConstraintLayout
+                    # (item_new_dress_shop.xml) — fall back to the bgView
+                    # child id every dress/shop card carries
+                    for n in screen.dump():
+                        rid = n.res.rsplit("/", 1)[-1] if n.res else ""
+                        if rid == "bgView" and n.center:
+                            y = n.center[1]
+                            if 260 <= y <= 1000:
+                                product = n
+                                break
+                    if not product:
+                        print("  [skip] no store product candidate found "
+                              "(bgView fallback missed too)")
                 if product and screen.tap_node(product):
                     # the DressBuyDialog (FullScreenDialog, GL-backed) takes a
                     # moment; wait for its ivBigPic marker (v3 evidence)
@@ -993,10 +1008,24 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                         alive_or_recover("%s-storebuy" % tag)
                         log = adb.raw("logcat", "-d", "-s", "LocalAPI",
                                       timeout=60)
-                        buy_seen = ("new/shop/decorations/buy" in log)
-                        if buy_seen:
+                        # wave 23: the buy fires the v2 cart POST
+                        # (dressBuyV2) or the single-item PUT
+                        # (dressBuyOne, path carries the id) — the
+                        # RES code=1 verdict needs the wallet, the
+                        # visitor starts with 50k gold so both pass
+                        buy_seen = ("new/shop/decorations/buy" in log
+                                    or "REQ PUT /shop/api/v1/shop/"
+                                       "decorations/buy/" in log)
+                        if "REQ POST /shop/api/v1/new/shop/decorations/" \
+                                "buy" in log:
+                            buy_seen = True
                             ok("5m: Store buy hit POST /shop/api/v1/new/"
                                "shop/decorations/buy")
+                        elif "REQ PUT /shop/api/v1/shop/decorations/" \
+                                "buy/" in log:
+                            buy_seen = True
+                            ok("5m: Store buy hit PUT /shop/api/v1/shop/"
+                               "decorations/buy/{id}")
                         else:
                             print("  [info] buy POST not observed in the "
                                   "LocalAPI log (dialog shape changed?)")
@@ -1132,8 +1161,10 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                         y = n.center[1]
                         if y < 420 or y > 950:
                             continue
+                        rid = n.res.rsplit("/", 1)[-1] if n.res else ""
                         if n.cls.endswith("FrameLayout") or n.cls.endswith(
-                                "LinearLayout"):
+                                "LinearLayout") or n.cls.endswith(
+                                "ConstraintLayout") or rid == "bgView":
                             owned = n
                             break
                     if owned:
@@ -1150,9 +1181,19 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                         alive_or_recover("%s-wear" % tag)
                         wlog = adb.raw("logcat", "-d", "-s", "LocalAPI",
                                        timeout=60)
-                        if "/decorations/using/new" in wlog:
+                        # wave 23: the single-item wear (PUT using/{id},
+                        # DressItemModel.ea -> t.h) is the primary path;
+                        # using/new is the multi-select variant
+                        if "REQ PUT /decoration/api/v1/decorations/using/" \
+                                in wlog:
+                            ok("5m: wear action hit PUT /decoration/api/"
+                               "v1/decorations/using/{id}")
+                        elif "/decorations/using/new" in wlog:
                             ok("5m: wear action hit PUT /decoration/api/"
                                "v1/decorations/using/new")
+                        else:
+                            print("  [info] no wear PUT observed (control "
+                                  "shape changed?)")
                     else:
                         print("  [skip] no wear control on the owned item")
                     adb.key(4)
@@ -1242,8 +1283,10 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
             y = n.center[1]
             if y < 420 or y > 950:
                 continue
+            rid = n.res.rsplit("/", 1)[-1] if n.res else ""
             if n.cls.endswith("FrameLayout") or n.cls.endswith(
-                    "LinearLayout"):
+                    "LinearLayout") or n.cls.endswith(
+                    "ConstraintLayout") or rid == "bgView":
                 item = n
                 break
         if item and screen.tap_node(item):
@@ -1261,6 +1304,11 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                 screen.tap_node(wear)
                 time.sleep(5)
                 alive_or_recover("%s-dresswear" % tag)
+                wlog2 = adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                timeout=60)
+                if "REQ PUT /decoration/api/v1/decorations/using/" in wlog2:
+                    ok("dressitem wear hit PUT /decoration/api/v1/"
+                       "decorations/using/{id}")
             else:
                 print("  [skip] no wear/try button found on the detail")
             adb.key(4)  # back to the grid
