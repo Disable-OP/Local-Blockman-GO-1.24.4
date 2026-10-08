@@ -1539,17 +1539,15 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
           -> SafeSettingFragment (e.b.ca.c) -> 'Security Questions' row
           -> f() -> (email unbound) b(0) -> UserApi.getUserQuestion
           -> GET /user/api/v1/users/secret/question -> question screen.
-          BEST-EFFORT answer submit (POST /user/api/{v}/users/secret/
-          question/setting?authCode=) — the authCode round-trip is not
-          fully mapped, so this stays evidence, never a gate.
-        * 'Email' (unbound) -> i() -> BindEmailFragment (e.b.e.f) is
-          TWO-STEP: email + 'Next' (j() -> sendEmailVerifyCode -> POST
-          /user/api/v1/emails/verify/{email}) then code + 'Add' (i() ->
-          bindEmail -> POST /user/api/v1/users/bind/email).
-        * 'Phone number' (unbound) -> k() -> BindPhoneFragment (e.b.f.e)
-          single-step: phone + 'Get validation code' (h() -> POST
-          /user/api/v1/sms/send/{phone}) + code + 'Confirm' (f() ->
-          bindPhone -> POST /user/api/v1/user/bind/phone).
+          Run-18 VERDICT: the answer submit IS driven end-to-end (POST
+          /user/api/v1/users/secret/question/setting, v1 — served).
+        * 'Email' / 'Phone number' rows (binding_4/binding_5): visibility
+          GONE in the layout and the ViewModel exposes NO visibility
+          observables — the rows CANNOT render in this build (runs 8-19
+          dumps agree). The email bind's live surface is SafeSetting's
+          'Safety Mailbox' row (wave 22, block 2 below); the phone bind
+          (e.b.f.e, sms/send/{phone}, user/bind/phone) is UNREACHABLE
+          from the UI — host-tested only.
         * 'Modify Password' (hasPassword) -> f() -> LoginManager.
           onConfirmPassword -> ConfirmPasswordFragment (login.f.a.c.c):
           old pw + confirm -> web.b.c passwordCheck -> POST /user/api/v1/
@@ -1800,6 +1798,7 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
     # sms/send literal is split for the same reason (the refound concrete
     # sibling must not be prefix-claimed by a trailing-/ probe).
     q_lit = "/user/api/v1/users/secret/ques" + "tion"
+    email_code_lit = "/user/api/v1/emails/{email}"  # run-19: served code=1
     email_verify_lit = "/user/api/v1/emails/verify/"   # deliberate prefix probe
     email_bind_lit = "/user/api/v1/users/bind/email"
     # phone_bind_lit REMOVED (wave 22): the AccountSafe phone hunt is gone
@@ -1953,10 +1952,24 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
     #     then fires as POST /user/api/v2/users/bind/email?answer=a1&answer=a2
     #     (IUserApi bindEmail(version, form, answers)).
     # Both paths converge on BindEmailFragment: email + 'Next' (POST
-    # /emails/verify/{email}) -> code + 'Add' (bind). BACK on the verify
-    # screen raises the leave-dialog; its 'Confirm' dismisses + finishes
-    # (ha.i.onBack -> TwoButtonDialog listener).
+    # user/api/v1/emails/{email} with ?email= — jadx k.a(true) -> e.b.e.g.a
+    # -> UserApi.sendEmailCode, IUserApi:240: @POST emails/{email} with
+    # NO @Path binding, so Retrofit sends the path LITERALLY
+    # with {email} in it and the email rides as the ?email= query; run-19
+    # logcat verdict: code=1) -> code + 'Add' (bind). The verify-code
+    # variant emails/verify/{email} belongs to the SafeSetting
+    # email-BOUND chain (ca.d.a -> sendEmailVerifyCode), a different
+    # surface. BACK on the verify screen raises the leave-dialog; its
+    # 'Confirm' dismisses + finishes (ha.i.onBack -> TwoButtonDialog
+    # listener).
+    # NOTE for future literals: never write a trailing-slash emails path
+    # here — the claim extractor reads comments too and a bare
+    # "emails/" prefix phantom-claims the whole emails family
+    # (password/reset included).
     email_bind_v2_lit = "/user/api/v2/users/bind/email"
+    # Retrofit leaves {email} UNBOUND in the path (IUserApi:240 has no
+    # @Path("email") param) — the logged URI is literally this template,
+    # so the same string is both the runtime marker and the claim.
     # FULL literal (wave 22): the mailbox block now GENUINELY fires both
     # verbs on this path — GET ?type=1 (saved-question fetch, b(1)) and
     # POST authUserQuestion (the answer verify, complete=0/1) — so a full
@@ -2099,13 +2112,17 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                     if confirm_button():  # 'Next'
                         time.sleep(6)
                         alive_or_recover("%s-emailcode" % tag)
+                        c_seen = req_seen("REQ POST " + email_code_lit)
+                        if c_seen:
+                            ok("LM: email code served (POST emails/{email}, "
+                               "sendEmailCode — path literally {email})")
+                        else:
+                            print("  [info] no emails/{email} call (step-1 "
+                                  "client gate?)")
                         v_seen = req_seen("REQ POST " + email_verify_lit)
                         if v_seen:
                             ok("LM: email verify-code acked (POST emails/"
                                "verify/)")
-                        else:
-                            print("  [info] no emails/verify call (step-1 "
-                                  "client gate?)")
                         cf = edit_not_containing(email)
                         if cf and fill_node(cf, code):
                             if confirm_button():  # 'Add'

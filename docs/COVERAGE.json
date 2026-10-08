@@ -5,7 +5,7 @@
   "implemented": 334,
   "default": 0,
   "host_tested": 334,
-  "client_asserted": 155
+  "client_asserted": 156
  },
  "endpoints": [
   {
@@ -2526,7 +2526,7 @@
    "status": "implemented",
    "handler": "verifyAck",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",

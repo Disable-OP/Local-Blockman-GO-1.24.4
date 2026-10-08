@@ -1823,3 +1823,25 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   re-run. After two green runs consider promoting emails/verify +
   users/bind/email evidence lines to verdict-backed claims. NO
   GameServer work.
+
+## Session 37 delta 2 (Wave 22a — run-19 verdicts, read after delta 1)
+
+- Deep run 37724120431 (37 min) PASSED: the Wave-22 mailbox block drove
+  end-to-end on the v1 path (killer killed the Q2 pick -> questions
+  unfinished -> BindEmail DIRECTLY -> email bind v1 SERVED — first
+  on-device verdict). The dual-path design worked exactly as built.
+- STEP-1 CORRECTION: BindEmail 'Next' fires POST /user/api/v1/emails/
+  {email} (sendEmailCode) — Retrofit leaves {email} UNBOUND in the path
+  (no @Path param), so the logged URI is literally the template and one
+  string is marker+claim. emails/verify/{email} belongs to the
+  email-BOUND question-verify chain (future surface).
+- Phone-bind family CLOSED: the row is structurally GONE (no ViewModel
+  visibility observable) and BindPhoneFragment has exactly one launch
+  site. sms/send/{phone} + user/bind/phone are host-tested-only FINAL
+  for this build.
+- client_asserted 156. Extractor gotcha documented: comments are read
+  by gen_coverage — no trailing-slash path fragments in comments.
+- NEXT: dispatch another deep run for the v2 verify-path verdict
+  (needs a run where the killer spares the Q2 pick+submit window);
+  after two green runs promote the bind evidence lines to
+  verdict-backed claims in the wave notes. NO GameServer work.

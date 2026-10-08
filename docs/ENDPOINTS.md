@@ -1785,3 +1785,43 @@ client_asserted 152 -> 153.
 
 COVERAGE: 334/334/0-defaults/334 host-tested; host rig 576/576;
 client_asserted 153 -> 155.
+
+### Wave 22a (session 37 cont.) — RUN-19 verdicts: email bind v1 SERVED on-device; sendEmailCode decode
+
+1. Deep run 37724120431 (f838ccf, 37 min): UI AUTOMATION PASS. The
+   Wave-22 mailbox block drove END-TO-END on its first outing: the
+   roaming killer killed the Q2 pick (ll_question_two never revealed —
+   the ~20s post-pick kill again), block 1's submit didn't fire, and
+   the drive's dual-path design correctly took the **v1 direct-bind
+   path**: Safety Mailbox -> BindEmail DIRECTLY (the [info]
+   discriminator worked) -> **[ok] email bind v1 served (POST
+   users/bind/email) for qa33000@local.test** — first on-device
+   verdict for the bind. The restart-aware re-walks recovered from two
+   more killer strikes; password/check served again; zero FAILs.
+2. **Step-1 endpoint CORRECTED**: "[info] no emails/verify call" led to
+   the jadx decode: BindEmail's 'Next' fires `k.a(true)` ->
+   e.b.e.g.a -> **UserApi.sendEmailCode** = IUserApi:240
+   `@POST("/user/api/v1/emails/{email}")` with **NO @Path binding** —
+   Retrofit sends the path LITERALLY with `{email}` in it and the
+   email rides as `?email=`. Device logcat: `REQ POST
+   /user/api/v1/emails/{email}` -> `RES code=1`. The verify-code
+   variant (emails/verify/{email}) belongs to the SafeSetting
+   email-BOUND question-verify chain (ca.d.a -> sendEmailVerifyCode) —
+   a future drive surface; its claim stays (host-tested + literal),
+   on-device verdict pending that chain.
+3. Server log detail: the REQ/RES lines log the RAW request URI — for
+   this route that IS the literal `/user/api/v1/emails/{email}`, so one
+   string serves as both runtime marker and claim literal.
+4. Claim extractor gotcha (documented in the drive): the claim
+   extractor reads COMMENTS too — a trailing-slash `emails/` string in
+   a comment phantom-claimed emails/password/reset for one regen
+   (caught + fixed in the same session; final state has password/reset
+   client:False).
+5. Phone-bind family CLOSED as unreachable: BindPhoneFragment
+   (e.b.f.e) has exactly ONE launch site (AccountSafeViewModel.k()) and
+   its row (fragment_account_safe binding_5) is visibility=GONE with NO
+   ViewModel observable able to reveal it; sms/send/{phone}'s only
+   caller is the same unreachable fragment. Host-tested-only is FINAL
+   for this build.
+
+COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 155 -> 156.
