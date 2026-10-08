@@ -131,6 +131,17 @@ if inv:
              and r.get("status") == 0]
     check("rejected invite leaves the feed", greq_b.get("code") == 1
           and still == [], str(greq_b)[:130])
+    # re-invite after reject: a fresh requestId is issued (the rejected
+    # request does not block) — the Wave-29b ui chain depends on this
+    call("POST", "/msg/api/v1/msg/group/chat/add",
+         {"groupId": gid, "memberIds": [gf_id]}, headers=hdr)
+    greq_d = call("GET", "/msg/api/v1/msg/group/chat/request/list?pageNo=1&pageSize=20",
+                  headers=gf_hdr)
+    inv_d = next((r for r in ((greq_d.get("data") or {}).get("data") or [])
+                  if isinstance(r, dict) and r.get("type") == 2
+                  and r.get("groupId") == gid and r.get("status") == 0), None)
+    check("re-invite after reject reaches the feed", inv_d is not None
+          and inv_d["requestId"] != inv["requestId"], str(greq_d)[:140])
 
 # transfer chain: fresh group, friend joins via invite, ownership moves
 g2 = call("POST", "/msg/api/v2/msg/group/chat",

@@ -4091,36 +4091,16 @@ def main():
               readd29.get("code") == 1 and fagr29.get("code") == 1,
               "%s | %s" % (str(readd29)[:80], str(fagr29)[:80]))
 
-        # the group reject contract: the pending Wave-26 re-invite is
-        # declined by the invitee and leaves the request feed
-        greq29 = fcall("GET",
-                       "/msg/api/v1/msg/group/chat/request/list?pageNo=1&pageSize=20",
-                       headers=gf_hdr)
-        inv29 = next((r for r in ((greq29.get("data") or {}).get("data") or [])
-                      if isinstance(r, dict) and r.get("type") == 2
-                      and r.get("groupId") == gid
-                      and r.get("status") == 0), None)
-        if inv29:
-            grej29 = fcall("PUT", "/msg/api/v1/msg/group/chat/reject",
-                           {"groupId": gid,
-                            "requestId": inv29["requestId"]},
-                           headers=gf_hdr)
-            check("C: group reject declines the pending invite",
-                  grej29.get("code") == 1, str(grej29)[:120])
-            greq29b = fcall("GET",
-                            "/msg/api/v1/msg/group/chat/request/list?pageNo=1&pageSize=20",
-                            headers=gf_hdr)
-            still29 = [r for r in ((greq29b.get("data") or {}).get("data") or [])
-                       if isinstance(r, dict) and r.get("type") == 2
-                       and r.get("groupId") == gid
-                       and r.get("requestId") == inv29["requestId"]
-                       and r.get("status") == 0]
-            check("C: rejected invite leaves the pending feed",
-                  greq29b.get("code") == 1 and still29 == [],
-                  str(greq29b)[:130])
-        # the transfer contract: a fresh group, the friend joins through
-        # the invite->agreement chain, the owner hands the group over,
-        # the deposed owner's re-transfer fails, then both quit
+        # the group reject + transfer contract, self-contained in ONE
+        # fresh group (Wave 26's owner-quit DELETES its group once the
+        # kicked membership empties it — the run-37779565912 lesson:
+        # its leftover re-invite dies with the group, so a reject that
+        # rides it silently skips; run 37780195013 lesson: groupJson
+        # ownerId is a STRING and the per-user detail view flips isPay).
+        # Chain: direct-add queues invite #1 -> the invitee REJECTS it
+        # (leaves the feed) -> re-invite queues invite #2 -> the invitee
+        # accepts -> the owner transfers -> the deposed owner's
+        # re-transfer fails -> the new owner's quit deletes the group.
         g29 = fcall("POST", "/msg/api/v2/msg/group/chat",
                     {"cost": 0, "currency": 1, "memberIds": [],
                      "userId": qa_uid_num,
@@ -4138,11 +4118,45 @@ def main():
                            if isinstance(r, dict) and r.get("type") == 2
                            and r.get("groupId") == g29id
                            and r.get("status") == 0), None)
-            joined29 = False
             if inv29b:
+                grej29 = fcall("PUT", "/msg/api/v1/msg/group/chat/reject",
+                               {"groupId": g29id,
+                                "requestId": inv29b["requestId"]},
+                               headers=gf_hdr)
+                check("C: group reject declines the pending invite",
+                      grej29.get("code") == 1, str(grej29)[:120])
+                greq29d = fcall("GET",
+                                "/msg/api/v1/msg/group/chat/request/list?pageNo=1&pageSize=20",
+                                headers=gf_hdr)
+                still29 = [r for r in ((greq29d.get("data") or {})
+                                       .get("data") or [])
+                           if isinstance(r, dict) and r.get("type") == 2
+                           and r.get("groupId") == g29id
+                           and r.get("status") == 0]
+                check("C: rejected invite leaves the pending feed",
+                      greq29d.get("code") == 1 and still29 == [],
+                      str(greq29d)[:130])
+            else:
+                print("  [info] C: no pending invite in the friend's "
+                      "feed — reject chain skipped (%s)"
+                      % str(greq29c)[:100])
+            # invite #2: the REJECTED request does not block a fresh
+            # invite (a new requestId with status 0 is issued)
+            fcall("POST", "/msg/api/v1/msg/group/chat/add",
+                  {"groupId": g29id, "memberIds": [gf_id]}, headers=auth_hdr)
+            greq29e = fcall("GET",
+                            "/msg/api/v1/msg/group/chat/request/list?pageNo=1&pageSize=20",
+                            headers=gf_hdr)
+            inv29c = next((r for r in ((greq29e.get("data") or {})
+                                       .get("data") or [])
+                           if isinstance(r, dict) and r.get("type") == 2
+                           and r.get("groupId") == g29id
+                           and r.get("status") == 0), None)
+            joined29 = False
+            if inv29c:
                 gacc29 = fcall("PUT", "/msg/api/v1/msg/group/chat/agreement",
                                {"groupId": g29id,
-                                "requestId": inv29b["requestId"],
+                                "requestId": inv29c["requestId"],
                                 "userId": qa_uid_num}, headers=gf_hdr)
                 acc29_ids = [m.get("userId") for m in
                              ((gacc29.get("data") or {}).get("groupMembers")
@@ -4150,6 +4164,9 @@ def main():
                 joined29 = (gacc29.get("code") == 1 and gf_id in acc29_ids)
                 check("C: invitee agreement joins the transfer group",
                       joined29, str(gacc29)[:130])
+            else:
+                print("  [info] C: re-invite after reject did not reach "
+                      "the feed (%s)" % str(greq29e)[:100])
             if joined29:
                 gtr29 = fcall("PUT", "/msg/api/v1/msg/group/chat/transfer",
                               {"groupId": g29id, "userId": gf_id},
