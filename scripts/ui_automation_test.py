@@ -3398,6 +3398,75 @@ def main():
           and (ads2.get("data") or {}).get("picUrl") == "",
           str(ads2)[:120])
 
+    # ------------------------------------------------- Wave 25a: the
+    # dress-buy v1 family through the live session (fcall tier, DYNAMIC
+    # ids + exact wallet math). Client: the store type page fires GET
+    # new/shop/decorations/{typeId} (on-device traffic showed typeId 8),
+    # a product tap reads GET shop/decorations/details/{id} and
+    # recommends/{id}, and the v1 buy buttons are PUT shop/decorations/
+    # buy/{id} (single, none-envelope) and PUT shop/decorations/buy?
+    # decorationId=csv (multi -> decorationPurchaseStatus + goldsNeed/
+    # diamondsNeed). Unknown-id buys are rejected (code 0). NOTE: the
+    # server intentionally allows re-purchase (DressShop.buy has no
+    # owned-check — each buy re-deducts), so no re-buy assertion.
+    shop8 = fcall("GET",
+                  "/shop/api/v1/new/shop/decorations/8?os=android&engineVersion=1",
+                  headers={"language": "en"})
+    s_rows = [d for d in (shop8.get("data") or [])
+              if isinstance(d, dict) and d.get("id")
+              and d.get("hasPurchase") == 0 and d.get("currency") == 2
+              and 0 < (d.get("price") or 0) <= 40000]
+    check("C: shop type-8 page serves affordable unowned dresses",
+          shop8.get("code") == 1 and len(s_rows) >= 3, str(shop8)[:120])
+    if len(s_rows) >= 3:
+        d1, d2, d3 = s_rows[0], s_rows[1], s_rows[2]
+        sdet = fcall("GET", "/shop/api/v1/shop/decorations/details/%d"
+                     % d1["id"], headers=auth_hdr)
+        check("C: dress details echo (id+price)",
+              sdet.get("code") == 1
+              and (sdet.get("data") or {}).get("id") == d1["id"]
+              and (sdet.get("data") or {}).get("price") == d1["price"],
+              str(sdet)[:120])
+        srec = fcall("GET", "/shop/api/v1/shop/decorations/recommends/%d"
+                     % d1["id"], headers=auth_hdr)
+        rec_ids = [d.get("id") for d in (srec.get("data") or [])
+                   if isinstance(d, dict)]
+        check("C: dress recommends exclude the base id",
+              srec.get("code") == 1 and 0 < len(rec_ids) <= 6
+              and d1["id"] not in rec_ids, str(srec)[:120])
+        wpre = fcall("GET", "/pay/api/v1/wealth/user",
+                     headers=auth_hdr).get("data", {})
+        b1 = fcall("PUT", "/shop/api/v1/shop/decorations/buy/%d" % d1["id"],
+                   None, headers=auth_hdr)
+        wmid = fcall("GET", "/pay/api/v1/wealth/user",
+                     headers=auth_hdr).get("data", {})
+        check("C: dressBuyOne deducts the exact price",
+              b1.get("code") == 1 and b1.get("data") is None
+              and wmid.get("golds", 0) == wpre.get("golds", 0) - d1["price"],
+              "%s | w %s -> %s" % (str(b1)[:100], wpre, wmid))
+        poor = fcall("PUT", "/shop/api/v1/shop/decorations/buy/3000009990",
+                     None, headers=auth_hdr)
+        check("C: dressBuyOne unknown dress rejected", poor.get("code") != 1,
+              str(poor)[:100])
+        wmid2 = fcall("GET", "/pay/api/v1/wealth/user",
+                      headers=auth_hdr).get("data", {})
+        need_g = (d2.get("price") or 0) + (d3.get("price") or 0)
+        b2 = fcall("PUT", "/shop/api/v1/shop/decorations/buy?decorationId=%d,%d"
+                   % (d2["id"], d3["id"]), None, headers=auth_hdr)
+        b2d = b2.get("data") or {}
+        stat = b2d.get("decorationPurchaseStatus") or {}
+        wpost = fcall("GET", "/pay/api/v1/wealth/user",
+                      headers=auth_hdr).get("data", {})
+        check("C: dressBuyMany buys both + exact combined deduction",
+              b2.get("code") == 1
+              and stat.get(str(d2["id"])) is True
+              and stat.get(str(d3["id"])) is True
+              and b2d.get("goldsNeed") == need_g
+              and wpost.get("golds", 0) == wmid2.get("golds", 0) - need_g,
+              "%s | w %s -> %s" % (str(b2)[:140], wmid2, wpost))
+    else:
+        print("  [info] C: shop type-8 rows short for the dress-buy chain")
+
     # ------------------------------------------------- Wave 23e: buy->wear
     # chain through the REAL server state (fcall tier, verb-aware claims).
     # The DressBuyDialog is GL-only on the emulator (run 37742955965: the
