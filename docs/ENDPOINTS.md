@@ -2398,3 +2398,26 @@ Engine 10068 untouched. NO GameServer work.
 COVERAGE: 334/334/0-defaults/329 host-tested; client_asserted 334
 (suite-claimed; verdicts pending the 29d deep run).
 Engine 10068 untouched. NO GameServer work.
+
+### Session 42 FINAL — Wave 29d verdict-backed (read FIRST next session)
+
+- Run 37789036373 (508752f, budget 5, wip-59): UI AUTOMATION PASS,
+  ZERO fails, wall ~9 min (the DEEP-TIME MANDATE holds on a real
+  dispatch). EVERY Wave-29d chain [ok] on device: the video acks,
+  the throwaway device-account auth lifecycle (imei login -> renew
+  -> record echo -> login-out -> re-login persistence -> account
+  modify re-key -> user/register echo -> report acks -> upload
+  honest rejection -> phone bind/password/unbind -> sms family),
+  and the whole qa-session misc sweep (prefect +500 flip chain,
+  sharing +200 + same-day rejection, record-ads +100, clan
+  advertising +150 wallet-untouched, id-card str-0, join/switch,
+  frequently-game, gift-suit claimed-empty, invalid-check
+  fresh/taken, bind email + v2 unbind, appreciation + 2005,
+  friend/status 2, team members, preheat, shop v1 wildcard, vip
+  empty list, worldcup honest fail, /v1/follow loopback dispatch,
+  datareport x3, group mail add via the real group row).
+- client_asserted 334/334 — VERDICT-BACKED, the sweep is complete.
+
+COVERAGE: 334/334/0-defaults/329 host-tested; client_asserted 334
+(all verdict-backed on wip-59).
+Engine 10068 untouched. NO GameServer work.

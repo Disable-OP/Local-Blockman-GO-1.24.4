@@ -3403,3 +3403,59 @@
   shop buyGameProp/payGame, msg transfer/reject, friend unfriend,
   video praise/dislike — all mapped for the next session).
 - Engine 10068 untouched (mandate honored). NO GameServer work.
+
+## Session 42 — Wave 29d: full-coverage sweep, deep-time mandate verified live (2026-10-08)
+
+- DEEP-TIME MANDATE (user order, top priority) VERIFIED VIA API: the
+  budget-5 default deep dispatches wall 9.5-9.9 min across runs
+  37755394303..37784092404 (the 30-35 min waits are gone; only
+  deliberate budget>5 verdict harvests take longer). No further time
+  work needed — do not raise the default.
+- Wave 29d landed (commit 508752f): a 46-check fcall block in
+  ui_automation_test.py (29c recharge -> 24a suit gap) asserts every
+  remaining unasserted route: client_asserted 289 -> 334/334.
+  - video praise/dislike honest zero acks + play-amount telemetry;
+  - throwaway DEVICE-ACCOUNT auth lifecycle (self-contained; the qa
+    token never drops): imei-only app login -> renew -> login/change/
+    record echo -> login-out -> re-login persistence -> account/
+    modify re-key -> user/register nickname echo -> report push/
+    status -> upload honest no-multipart rejection -> bind/phone ->
+    phone password -> unbind/phone -> sms/send + refound;
+  - qa-session misc: player/info, id-card GET+POST, join/switch
+    GET+POST, frequently/game, clan advertising GET+PUT (+150,
+    wallet untouched — honest literal pin), prefect check->fill->
+    claim(+500)->re-claim rejected, sharing/reward (+200, re-claim
+    rejected), record/ads (+100), gift-suit claimed-empty, account/
+    invalid/check (fresh/taken), bind email + DELETE users/{id}/
+    emails v2, appreciation first+2005-repeat, friend/status self 2,
+    team/member, preheat echo, shop v1 wildcard, vip empty list,
+    worldcup honest fail, /v1/follow dispatch (mg token, loopback
+    gaddr), datareport ping/event/funnel, group mail add (real
+    group-list row).
+- SERVER BUG HUNT: none this wave — scripts/rig29d.py (46/46 OK on a
+  fresh HostTest boot) preflighted every chain BEFORE dispatching
+  (the rig29b lesson institutionalized). One suite-shape fix en
+  route: /msg/group/chat/list returns a PageData OBJ (rows in
+  data.data) — the mail-add hop reads the inner list.
+- Host suite 582/582 (+2): DELETE /user/api/v2/users/{userId}/emails
+  pinned on both tiers (was the last host_tested=False route).
+- Docs: ENDPOINTS.md Wave-29d section, NEXT_SESSION_README.md
+  session-42 delta, COVERAGE.json regenerated (329 host-tested).
+- Deep verdict run DISPATCHED on 508752f (37789036373, budget 5,
+  wip-59 asset — no server changes, so no build-release needed).
+- Engine 10068 untouched (mandate honored). NO GameServer work.
+
+## Session 42 (cont.) — 29d VERDICT-BACKED end-to-end (2026-10-08 14:15 UTC)
+
+- Run 37789036373 (508752f): UI AUTOMATION PASS, ZERO fails, ~9 min
+  wall. All 46 Wave-29d chains [ok] on device; client_asserted
+  334/334 is verdict-backed — every implemented route of the local
+  API is now asserted through the real client path.
+- The DEEP-TIME mandate is closed live on my own dispatch: 9 minutes
+  wall, budget 5, no harvest input.
+- ENDPOINTS.md session-42 FINAL section written.
+- Next session candidates: the 3 stubborn UI flows (F2 Modify, LM
+  answer-field, password/modify tap) remain the only non-asserted
+  surfaces (evidence-only by design); RongCloud offline shim
+  decision; keep CI green on every push.
+- Engine 10068 untouched (mandate honored). NO GameServer work.
