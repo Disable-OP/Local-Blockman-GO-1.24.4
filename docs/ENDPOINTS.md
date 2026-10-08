@@ -1883,3 +1883,24 @@ COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 156
    next claims must come from NEW surfaces — this wave targets
    shop/buy + using/{id} (+ the dressList family the wardrobe chips
    fire).
+
+### Wave 23a (session 37 cont.) — RUN-21 verdicts: card found via bgView, dialog shape still gating the buy
+
+1. Deep run 37732017659 (40 min): UI AUTOMATION PASS. The bgView
+   fallback WORKED — the store product card was found and tapped
+   ([storeprod] shows bgView 720x330 + ivBigPic 357x329 — the buy
+   dialog opened). But the dialog's action controls did not render
+   into the dump in time (no text buttons, no radios) and the raw
+   Button-fallback tap at (632,1134) produced NO buy POST — the
+   wallet stayed 50000/50000 (dressitem dump).
+2. Fix: the buy hunt now includes "Confirm" (decorate_new_dress_buy_
+   confirm is the dialog's action text, dialog_dress_buy.xml), waits a
+   second beat (5s re-dump) for the GL-backed content, and dumps the
+   dialog texts ([buydlg]) when the controls still miss — next run
+   gets the real control map either way.
+3. The dressitem probe now dumps the WARDROBE screen (gold/diamond
+   counters + ivShopEnter visible) — the wardrobe chip grids were
+   empty ("No dressing in use now") because the buy never landed;
+   the chain re-arms once the buy fires.
+
+COVERAGE unchanged: 334/334/0/334 host-tested; client_asserted 156.

@@ -980,8 +980,26 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
                         screen.tap_node(forever)
                         time.sleep(1)
                     buy = screen.find(texts=["Buy", "Buy Now", "Purchase",
-                                             "Get"],
-                                      contains=["buy", "purchase"])
+                                             "Get", "Confirm"],
+                                      contains=["buy", "purchase",
+                                                "confirm"])
+                    if not (buy and buy.center):
+                        # run-21: the GL-backed dialog content can render
+                        # AFTER ivBigPic — re-dump once before falling back
+                        time.sleep(5)
+                        buy = screen.find(texts=["Buy", "Buy Now",
+                                                 "Purchase", "Get",
+                                                 "Confirm"],
+                                          contains=["buy", "purchase",
+                                                    "confirm"])
+                    if not (buy and buy.center):
+                        # wave 23 evidence: dump the dialog texts so the
+                        # next run can target the real controls
+                        for x in screen.dump():
+                            if x.text or x.desc:
+                                print("  [buydlg] %s | text=%r desc=%r" % (
+                                    x.res.rsplit("/", 1)[-1] if x.res else "",
+                                    x.text[:24], x.desc[:24]))
                     if not (buy and buy.center):
                         # the DressBuyDialog is databinding-driven: its two
                         # action Buttons carry no guaranteed text — fall back
