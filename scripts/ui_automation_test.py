@@ -605,6 +605,78 @@ def ui_create_clan(adb, screen, package, tag):
     return posted, uname
 
 
+# ---------------------------------------------------------------------------
+# Deep-phase TIME BUDGET (user mandate 2026-10-08: "lower the DEEP test
+# redroid time ... I am sick of always waiting 30-35 minutes ... TIME IS
+# PRECIOUS"). --deep-budget-min caps the wall time of the deep phases ONLY
+# (the fast core: Phase A visitor / P / C registration / D upgrade and the
+# final assertions always run, budget or not).
+#   deep-drive A + Phase B  -> non-raising deep_go() gates (they sit BEFORE
+#                              the core C/D phases, so they must never abort
+#                              the registration chain)
+#   Phase E .. LM           -> budget_gate() raises DeepBudgetSkip once the
+#                              budget is gone; the suite catches it right
+#                              before the fast-mode else and keeps going
+# 0 (default when run by hand) = unlimited, the historical behaviour.
+class DeepBudgetSkip(Exception):
+    """Raised by budget_gate() when the deep-phase budget is exhausted."""
+
+
+_DEEP_STATE = {"budget": 0.0, "deadline": None}
+
+
+def _deep_deadline():
+    """Lazily start the deep-budget clock at the FIRST deep phase."""
+    if _DEEP_STATE["budget"] <= 0:
+        return None
+    if _DEEP_STATE["deadline"] is None:
+        _DEEP_STATE["deadline"] = time.time() + _DEEP_STATE["budget"]
+    return _DEEP_STATE["deadline"]
+
+
+def deep_left():
+    """Seconds of deep budget left (inf when unlimited)."""
+    dl = _deep_deadline()
+    return float("inf") if dl is None else dl - time.time()
+
+
+def deep_go(label, est_min):
+    """NON-raising gate for the pre-core deep phases (deep-drive A, Phase B):
+    True -> run; False -> skip (budget exhausted or estimate cannot fit).
+    Must NEVER raise: these phases sit before the core C/D registration
+    chain and an abort there would kill the whole suite."""
+    if _DEEP_STATE["budget"] <= 0:
+        return True
+    left = deep_left()
+    if left <= 0 or left < est_min * 60:
+        print("  [skip budget] %s (%.1f min left, needs ~%s min)"
+              % (label, max(left, 0.0) / 60.0, est_min))
+        return False
+    return True
+
+
+def budget_gate(label, est_min):
+    """RAISING gate for the E..LM deep block: DeepBudgetSkip aborts the
+    remaining deep phases (caught once right before the fast-mode else;
+    the final assertions + crash scan still run)."""
+    if _DEEP_STATE["budget"] <= 0:
+        return
+    left = deep_left()
+    if left <= 45 or left < est_min * 60:
+        print("  [skip budget] %s (%.1f min left, needs ~%s min) - "
+              "remaining deep phases skipped"
+              % (label, max(left, 0.0) / 60.0, est_min))
+        raise DeepBudgetSkip(label)
+
+
+def clamp_deep(deadline):
+    """Clamp a poll ceiling to the deep budget wall (no wait overruns it)."""
+    dl = _deep_deadline()
+    if dl is None:
+        return deadline
+    return min(deadline, dl)
+
+
 def deep_drive(adb, screen, package, activity, tag, paths_before):
     """Deeper UI driving: visit labeled Me-tab rows (Inbox / Top Up /
     Ranking), the game-category tab (rb_2, with a safe row probe),
@@ -2354,6 +2426,12 @@ def main():
     ap.add_argument("--package", default="com.disabngo.blockynexus")
     ap.add_argument("--activity",
                     default="com.disabngo.blockynexus.view.activity.start.StartActivity")
+    ap.add_argument("--deep-budget-min", type=float,
+                    default=float(os.environ.get("DEEP_BUDGET_MIN", "0") or 0),
+                    help="minutes allowed for the deep phases (deep-drive "
+                         "A / B / E-O / LM). 0 = unlimited (historical "
+                         "~20-30 min full suite). The deep CI workflow "
+                         "passes 5 by default so its wall stays ~12-14 min.")
     ap.add_argument("--mode", default=os.environ.get("UI_MODE", "fast"),
                     choices=["fast", "full"],
                     help="fast = CI core (~5 min); full = all deep phases")
@@ -2363,7 +2441,13 @@ def main():
     # final assertions. "full" adds every deep-drive phase (B, E-O) for
     # evidence-gathering sessions (dispatch with UI_MODE=full / --mode full).
     deep = (args.mode == "full")
+    _DEEP_STATE["budget"] = max(0.0, float(args.deep_budget_min)) * 60.0
     print("== MODE: %s ==" % args.mode)
+    if _DEEP_STATE["budget"] > 0:
+        print("== deep budget: %.0f min (deep phases only; core A/P/C/D + "
+              "assertions always run) ==" % args.deep_budget_min)
+    else:
+        print("== deep budget: unlimited ==")
 
     adb = Adb(args.serial)
     screen = Screen(adb)
@@ -2403,11 +2487,11 @@ def main():
     # register-endpoint gate failed on a rotated-out buffer)
     paths_mid = []
     navigate_all_tabs(adb, screen, args.package, "A")
-    if deep:
+    if deep and deep_go("deep-drive A (Me-tab rows)", 4):
         deep_drive(adb, screen, args.package, args.activity, "A",
                    set(paths_early))
     else:
-        print("  [skip] deep_drive (fast mode)")
+        print("  [skip] deep_drive (fast mode or deep budget)")
     paths_a = sorted(set(paths_early) | set(localapi_paths(adb)))
     visitor_hits = [p for p in paths_a if any(
         k in p for k in ("/tourist", "/visitor", "/auth-token", "/login"))]
@@ -2613,7 +2697,7 @@ def main():
     print("== PHASE B: profile edit through the Personal Info editor ==")
     nickname = "qa%05d" % (int(time.time()) % 100000)
     guest_edited = False
-    if deep:
+    if deep and deep_go("Phase B (profile editor)", 3):
 
         def tap_label(screen, label):
             """Tap the node carrying `label` (Personal Info rows are llItem
@@ -3270,6 +3354,8 @@ def main():
     # reproducible - repeat the identical drive here; a POST now names
     # the visitor silence as a client-side GUEST GATE.
     if deep:
+      try:
+        budget_gate("PHASE E (registered clan create)", 2.5)
         print("== PHASE E: registered-session UI clan creation ==")
         posted_e, clan_name_e = ui_create_clan(adb, screen, args.package,
                                                "E-clanui")
@@ -3296,6 +3382,7 @@ def main():
         # (base/member/currency/bulletin are all real handlers). Discovery
         # first: node dumps + endpoint evidence; the hard requirement is only
         # that the app stays alive.
+        budget_gate("PHASE F (own-clan surfaces + G walks)", 4)
         print("== PHASE F: registered-session OWN-CLAN surfaces ==")
         # Session 17: the UI create is ICON-GATED (jadx, PATCH_PLAN Phase 7a -
         # TribeCreateModel requires the gallery+crop icon; the submit never
@@ -3516,7 +3603,7 @@ def main():
                             # (tapping it re-shows it — Ta label -> f() ->
                             # H()+Ta(true).show()), until a homepage marker or
                             # the budget ends.
-                            settle_deadline = time.time() + 100
+                            settle_deadline = clamp_deep(time.time() + 100)
                             guide_polls = 0
                             label_tapped = False
                             while time.time() < settle_deadline:
@@ -4893,6 +4980,7 @@ def main():
         # tracked >= 10 DISTINCT authenticated online minutes for this user
         # (wave-6c handler); this drive runs after the F/G walks, late in the
         # run, so the budget has already accrued. NO GameServer work.
+        budget_gate("Phase H (activity-task claim)", 1.5)
         print("== Phase H: activity-task claim (weekend task dialog) ==")
         # the quoted literal keeps docs/COVERAGE.json's client_asserted
         # detection honest (the assertion really is in this script)
@@ -5096,6 +5184,7 @@ def main():
         # surface has never been exercised by the client; the drive asserts
         # the on-open pair and records every /collect/exchange/ path the
         # client actually fires (error-driven evidence for the next wave).
+        budget_gate("Phase I (scrap screen)", 1.5)
         print("== Phase I: scrap screen (collect & exchange) ==")
         i_rv_path = "/activity/api/v1/collect/exchange/reward/value"
         i_cl_marker = "/collect/exchange/card/list"
@@ -5207,6 +5296,7 @@ def main():
                 # the client resolves {version} to v2 at runtime). Both
                 # routes are real ScrapBag.java handlers host-tested since
                 # Phase 3; the bag DIALOG has never been client-exercised.
+                budget_gate("Phase J (scrap bag dialog)", 1)
                 print("== Phase J: scrap bag dialog ==")
                 # bare path literals keep gen_coverage's client_asserted
                 # detection exact (prefix matching against the RoutingTable)
@@ -5328,6 +5418,7 @@ def main():
                 # api/v1/collect/exchange/description — handler scrapRule).
                 # Both dialogs close via iv_close (dialog_scrap_history /
                 # dialog_scrap_rule layouts).
+                budget_gate("Phase K (scrap record + rule)", 1.5)
                 print("== Phase K: scrap record + rule dialogs ==")
                 # The three menu buttons (ll_library/ll_record/ll_rule) are
                 # 50dp ConstraintLayouts ALL constrained to parent-end — they
@@ -5487,6 +5578,7 @@ def main():
         # GET /ranking/api/v1/ranking/user/info (rankType inherited from
         # the podium's page: week here; the template's TWO pager pages
         # (period, area) + (period, global) both fetch on open).
+        budget_gate("Phase L (rank podium + gDiamond)", 1.5)
         print("== Phase L: rank home podium + gDiamond template ==")
         l_home_lit = "/ranking/api/v1/ranking/region/home/page/info"
         l_user_lit = "/ranking/api/v1/ranking/user/info"
@@ -5652,6 +5744,7 @@ def main():
         # PrivilegeCenterViewModel.initData() calls VipApi.getSubscribeInfo
         # -> GET /pay/api/v1/sub/info/get (exactly one call site in the
         # whole vip package, so a phase-local 0->N is sound).
+        budget_gate("Phase M (VIP privilege center)", 1.5)
         print("== Phase M: VIP privilege center (item2) ==")
         m_vip_lit = "/pay/api/v1/sub/info/get"
         # run 37499606354 evidence: the privilege-center flow ALSO fetches
@@ -5756,6 +5849,7 @@ def main():
         # (activity_overview_rank.xml): flipping it re-fetches region/home/
         # page/info?rankType=overall and the inherited period drives the
         # templates' overall variants.
+        budget_gate("Phase N (rank rows 2+3)", 1.5)
         print("== Phase N: rank podium rows 2+3 (active, clan) ==")
         n_lits = [
             "/ranking/api/v1/active/region/weekly/rank",
@@ -5962,6 +6056,7 @@ def main():
         # log in via runner-side fcalls). The form: editName + edit_password
         # (login_activity_login.xml). The registered D-phase credentials
         # (qa_uid_d / password_d) are reused so the session stays valid.
+        budget_gate("Phase O (client-UI login)", 2)
         print("== Phase O: account switch + client-UI login ==")
         o_login_lit = "/user/api/v1/login"
 
@@ -6135,9 +6230,12 @@ def main():
         # account (bind state), which is why it runs on the fully-registered
         # Phase-D session at the very end of the suite. The final
         # assertions + crash scan below need no valid session.
+        budget_gate("PHASE LM (login-module flows)", 4)
         print("== PHASE LM: login-module flows (Setting -> Security) ==")
         login_module_drive(adb, screen, args.package, args.activity, "LM",
                            password_d)
+      except DeepBudgetSkip as _bs:
+        print("  [skip budget] deep phases stopped after: %s" % _bs)
     else:
         print("  [skip] Phases E-O deep drives (fast mode)")
 

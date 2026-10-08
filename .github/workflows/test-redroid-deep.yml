@@ -1,23 +1,31 @@
 name: test-redroid-deep
-# MANUAL deep-drive validation run (--mode full). This is the deliberate
-# diff decision the fast workflow's header reserves: the user mandate
-# 2026-10-07 ("lower the test redroid time ... 5 minutes only ... TIME IS
-# PRECIOUS") is enforced in test-redroid.yml and stays FAST-ONLY — that
-# workflow runs on every dispatch and after every build-release and must
-# never exceed ~5 minutes.
+# MANUAL deep-drive validation run (--mode full) — now TIME-BUDGETED.
+# User mandate 2026-10-08 ("lower the DEEP test redroid time ... I am sick
+# of always waiting 30-35 minutes ... TIME IS PRECIOUS"): the deep suite
+# runs under a deep-phase budget (--deep-budget-min, default 5). Expected
+# wall with the default budget: ~12-14 min total
+#   (infra ~4 min + fast core ~4 min + deep phases <=5 min + diagnostics ~1 min).
+# The deep-phase budget is enforced INSIDE scripts/ui_automation_test.py:
+#   - deep-drive A / Phase B  -> non-raising gates before the core chain
+#   - Phase E .. LM           -> DeepBudgetSkip, caught gracefully
+# Over-budget deep phases are SKIPPED ([skip budget] lines in the log); the
+# run stays green, the final assertions + crash scan + coverage report still
+# execute, and diagnostics are always uploaded.
 #
-# THIS workflow exists so the deep-drive phases (B, E-O in
-# scripts/ui_automation_test.py — the only remaining client_asserted
-# growth surface) can still be validated on-device when there is deep
-# work to verify. It NEVER triggers automatically: no push, no PR, no
-# workflow_run. It is dispatched by hand at most a few times per session
-# and the agent keeps working while it runs — nobody waits on it.
+# The fast workflow (test-redroid.yml) stays FAST-ONLY (~5 min wall) per the
+# user mandate 2026-10-07 and is untouched.
 #
-# Expected wall: ~25-35 min (infra ~4 min + full suite ~20-30 min).
-# Timeout 45 min so a wedged run still terminates cleanly.
+# Need the LEGACY full audit (~25-35 min, every deep phase)? Dispatch with
+# deep_budget_min = 0 (unlimited). The suite's own budget is the wall; the
+# job/step timeouts below scale accordingly.
 
 on:
   workflow_dispatch:
+    inputs:
+      deep_budget_min:
+        description: 'Minutes for deep phases (0 = legacy unlimited full suite)'
+        default: '5'
+        required: false
 
 permissions:
   contents: read
@@ -25,7 +33,7 @@ permissions:
 jobs:
   redroid-deep-test:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
+    timeout-minutes: ${{ fromJSON(inputs.deep_budget_min || '5') == 0 && 45 || 16 }}
     env:
       PACKAGE: com.disabngo.blockynexus
       ACTIVITY: com.disabngo.blockynexus.view.activity.start.StartActivity
@@ -87,16 +95,19 @@ jobs:
             exit 1
           fi
 
-      - name: Run UI automation suite (FULL deep-drive mode)
-        # --mode full: every deep phase. Hard cap 38 min (the job allows 45;
-        # leave the diagnostics steps room to always run).
-        timeout-minutes: 38
+      - name: Run UI automation suite (budgeted deep-drive mode)
+        # Deep-phase budget enforced inside the suite itself; this step
+        # timeout is the backstop. Legacy unlimited runs (input 0) get the
+        # old 40-min backstop; budgeted runs get 9 min (5-min deep budget +
+        # core overrun headroom, diagnostics steps always run after).
+        timeout-minutes: ${{ fromJSON(inputs.deep_budget_min || '5') == 0 && 40 || 9 }}
         run: |
           python3 scripts/ui_automation_test.py \
             --serial localhost:5555 \
             --package "$PACKAGE" \
             --activity "$ACTIVITY" \
-            --mode full
+            --mode full \
+            --deep-budget-min "${{ inputs.deep_budget_min || '5' }}"
 
       - name: Collect diagnostics
         if: always()
