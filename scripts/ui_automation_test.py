@@ -2534,6 +2534,14 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                     else:
                         print("  [info] no password/check call")
                     new_pw = "NewQA%05d" % (int(time.time()) % 100000)
+                    # run 37801448616: the check serves but the modify POST
+                    # never fires - name the hop with a state dump BEFORE
+                    # the new-password fills (form? dialog? empty screen?)
+                    for _n in screen.dump():
+                        if _n.text or _n.cls.endswith("EditText"):
+                            print("  [pw-pre] %s | %r | clickable=%s" % (
+                                _n.res.rsplit("/", 1)[-1] if _n.res else "",
+                                (_n.text or "")[:26], _n.clickable))
                     # Run 8 evidence: the ChangePassword form can show ONE
                     # visible EditText at a time (the confirm field appears
                     # after the new password is entered — TextWatcher-driven
@@ -2547,6 +2555,10 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                         else:
                             # confirm field may replace the old one in place
                             fill_edit(0, new_pw)
+                        # post-fill evidence: what the fields now carry
+                        for _n in edit_nodes():
+                            print("  [pw-fill] field len=%d" % len(
+                                _n.text or ""))
                     if confirm_button():
                         time.sleep(8)
                         alive_or_recover("%s-modifypw" % tag)
