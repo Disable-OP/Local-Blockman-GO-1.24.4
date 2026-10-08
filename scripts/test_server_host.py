@@ -1215,6 +1215,31 @@ def main():
         check("kick member", gkick.get("code") == 1
               and not any(m["userId"] == uid4 for m in gkick["data"]["groupMembers"]),
               str(gkick)[:200])
+        # reject flow: the kicked member re-applies, the owner declines; the
+        # stored request flips status 0 -> 3 (Wave 29b dispatcher fix: the
+        # groupRejectReq token now really dispatches — a missed branch used
+        # to answer ok from the unknown-name fall-through without flipping)
+        ga2 = call("POST", "/msg/api/v1/msg/group/chat/apply?groupId=%d&msg=again" % gid,
+                   None, headers=h4)
+        check("group re-apply pending", ga2.get("code") == 1, str(ga2)[:80])
+        greq2 = call("GET", "/msg/api/v1/msg/group/chat/request/list?pageNo=1&pageSize=10",
+                     headers=h2)
+        greq2_rows = [r for r in greq2.get("data", {}).get("data", [])
+                      if r.get("type") == 1 and r.get("status") == 0]
+        check("owner sees the pending re-apply", greq2.get("code") == 1
+              and len(greq2_rows) == 1 and greq2_rows[0]["requestId"] > 0,
+              str(greq2)[:180])
+        grej = call("PUT", "/msg/api/v1/msg/group/chat/reject",
+                    {"groupId": gid, "requestId": greq2_rows[0]["requestId"]},
+                    headers=h2)
+        check("reject join request", grej.get("code") == 1, str(grej)[:80])
+        greq3 = call("GET", "/msg/api/v1/msg/group/chat/request/list?pageNo=1&pageSize=10",
+                     headers=h2)
+        still_pend = [r for r in greq3.get("data", {}).get("data", [])
+                      if r.get("requestId") == greq2_rows[0]["requestId"]
+                      and r.get("status") == 0]
+        check("rejected request leaves the pending feed",
+              greq3.get("code") == 1 and still_pend == [], str(greq3)[:180])
         gmut = call("PUT", "/msg/api/v1/msg/group/chat/forbidden?groupId=%d" % gid, None,
                     headers=h2)
         check("mute all toggled", gmut.get("code") == 1

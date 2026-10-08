@@ -2238,3 +2238,39 @@ Engine 10068 untouched. NO GameServer work.
 
 COVERAGE: 334/334/0-defaults/328 host-tested; client_asserted 271.
 Engine 10068 untouched. NO GameServer work.
+
+### Wave 29b (session 41) — wardrobe roundtrip, social removal, chat-room, videostars
+
+1. Wave 29b decoration using roundtrip (fcall tier, dynamic gift-suit
+   ids): PUT using/new (multiClothe, echo list covers the pair), PUT
+   using (useSuitDecoration re-wear + unowned-id rejection), DELETE
+   using (removeSuitDecoration unwears the list, b still worn), DELETE
+   using/{id} (removeDecoration, data.id echo + unknown-id rejection),
+   DELETE using/new (multiUnclothe, wardrobe back to empty). Every
+   step re-reads the worn list — real state transitions, not echoes.
+2. Wave 29b social chains: DELETE /friend/api/v1/friends (unfriend
+   removes BOTH sides, re-unfriend fails, friendship restored), group
+   reject (the Wave-26 pending re-invite declined by the invitee and
+   it leaves the feed), group transfer (fresh group -> invite ->
+   agreement -> transfer hands ownership over: ownerId echo is the
+   STRING contract, identities flip 2/0 -> 0/2; the deposed owner's
+   re-transfer fails; the new owner's quit deletes the emptied group).
+3. Wave 29b misc: POST chat/room + DELETE chat/room (idempotent
+   re-delete), videostars family (config/get shapes, getbycode with
+   the DETERMINISTIC seeded "BG"+userId code + unknown-code
+   rejection, billing/list page, cashapply money echo + zero-amount
+   rejection, exchange zero-profit wallet-unchanged roundtrip).
+4. REAL SERVER BUG (found by the host-rig precheck, NOT by CI): the
+   dispatcher checked "groupReject" while the routing table supplies
+   H:groupRejectReq — the branch was dead and every PUT reject fell
+   through to the unknown-name handler, which answered
+   {"code":1,"message":"ok"} WITHOUT flipping the stored request.
+   A silent fake-endpoint. Fixed (dispatcher token aligned with the
+   route); host suite pins the real state flip (re-apply -> owner
+   feed -> reject -> the request leaves the pending feed, status
+   0->3); 580/578 host checks green after rebuild.
+5. CONTRACT LESSON: groupJson serializes ownerId as a STRING (client
+   model parity) — asserts compare str(ownerId).
+
+COVERAGE: 334/334/0-defaults/328 host-tested; client_asserted 286.
+Engine 10068 untouched. NO GameServer work.

@@ -134,7 +134,7 @@ final class Handlers {
         if ("groupAck".equals(name)) return envelope("none", null);
         if ("groupMuteAll".equals(name)) return groupMuteAll(ctx, store);
         if ("groupAccept".equals(name)) return groupAccept(ctx, store);
-        if ("groupReject".equals(name)) return groupRejectReq(ctx, store);
+        if ("groupRejectReq".equals(name)) return groupRejectReq(ctx, store);
         if ("groupUnban".equals(name)) return groupUnban(ctx, store);
         if ("groupQuit".equals(name)) return groupQuit(ctx, store);
         if ("groupKick".equals(name)) return groupKick(ctx, store);

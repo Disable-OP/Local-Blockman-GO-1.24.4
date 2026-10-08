@@ -5,7 +5,7 @@
   "implemented": 334,
   "default": 0,
   "host_tested": 328,
-  "client_asserted": 271
+  "client_asserted": 286
  },
  "endpoints": [
   {
@@ -38,7 +38,7 @@
    "status": "implemented",
    "handler": "removeSuitDecoration",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "DELETE",
@@ -46,7 +46,7 @@
    "status": "implemented",
    "handler": "multiUnclothe",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "DELETE",
@@ -54,7 +54,7 @@
    "status": "implemented",
    "handler": "friendDelete",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "DELETE",
@@ -70,7 +70,7 @@
    "status": "implemented",
    "handler": "deleteChatRoom",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -1134,7 +1134,7 @@
    "status": "implemented",
    "handler": "starCodeBilling",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -1142,7 +1142,7 @@
    "status": "implemented",
    "handler": "starCodeConfig",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -1150,7 +1150,7 @@
    "status": "implemented",
    "handler": "starCodeGetByCode",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -1342,7 +1342,7 @@
    "status": "implemented",
    "handler": "getChatRoom",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1886,7 +1886,7 @@
    "status": "implemented",
    "handler": "useSuitDecoration",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
@@ -1894,7 +1894,7 @@
    "status": "implemented",
    "handler": "multiClothe",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
@@ -1974,7 +1974,7 @@
    "status": "implemented",
    "handler": "groupRejectReq",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
@@ -1998,7 +1998,7 @@
    "status": "implemented",
    "handler": "groupTransfer",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
@@ -2062,7 +2062,7 @@
    "status": "implemented",
    "handler": "starCodeCashApply",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
@@ -2070,7 +2070,7 @@
    "status": "implemented",
    "handler": "starCodeExchange",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
@@ -2086,7 +2086,7 @@
    "status": "implemented",
    "handler": "removeDecoration",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "DELETE",

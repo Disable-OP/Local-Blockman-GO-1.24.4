@@ -2045,3 +2045,33 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   phone-password); (2) the three stubborn UI flows (F2 Modify button,
   LM answer-field gate, password/modify tap); (3) the headPic-picker
   drive. NO GameServer work.
+
+## Session 41 delta (Wave 29b — read FIRST next session)
+
+- Wave 29b COMPLETE (+15 honest claims, 271 -> 286): the five
+  decoration using-variants (multiClothe/multiUnclothe/useSuit/
+  removeSuit/removeDecoration with real worn-list roundtrips),
+  friend unfriend (both sides + re-add), group reject + transfer
+  (string ownerId contract), chat-room lifecycle, videostars family
+  (config/getbycode-with-deterministic-BG-code/billing/cashapply/
+  exchange).
+- REAL SERVER BUG fixed: the dispatcher checked "groupReject" but the
+  routing table supplies H:groupRejectReq — dead branch, every PUT
+  reject fell through to the unknown-name handler answering ok
+  WITHOUT state. Found by the host-rig precheck (rig caught it before
+  any CI run). Dispatcher aligned; host suite pins the flip
+  (re-apply -> reject -> leaves the pending feed); 580/580 green.
+- Rigs: scripts/rig29b_part1.py (wardrobe, 10/10) + rig29b_part2.py
+  (social/chat/videostars, 22/22) — run them before dispatching if
+  you touch DressShop/GroupChat/Friend/videostars again.
+- CONTRACT: groupJson ownerId is a STRING (compare str()); chat-room
+  create is POST (not GET); apply has no kicked-member block (kick
+  then re-apply is the reject-flow driver).
+- NEXT (priority order): (1) read the Wave-29b deep-run verdicts (C
+  lines "C: multiClothe..."/"C: unfriend..."/"C: group transfer..."/
+  "C: videostars..."); (2) Wave 29c = shop buyGameProp v3 + payGame
+  v2 + pay v2/v4 recharge; (3) Wave 29d = video praise/dislike/
+  report-play + user misc (login/change/record, id-card, join/switch,
+  frequently-game, clan advertising, prefect rewards, sms/send);
+  (4) the three stubborn UI flows (F2 Modify, LM answer-field,
+  password/modify tap). NO GameServer work.

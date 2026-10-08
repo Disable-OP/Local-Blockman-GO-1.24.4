@@ -3970,6 +3970,278 @@ def main():
           suit_own.get("code") == 1
           and len(suit_own.get("data") or []) >= 1, str(suit_own)[:120])
 
+    # ------------------------------------------------- Wave 29b: the
+    # wardrobe roundtrip + social-removal chains (fcall tier, all ids
+    # DYNAMIC). Client: the DressingRoom owns the five using-variants —
+    # PUT using/new (multiClothe), DELETE using/new (multiUnclothe),
+    # PUT using (useSuitDecoration), DELETE using (removeSuitDecoration)
+    # and DELETE using/{id} (removeDecoration); the Friend sheet owns
+    # DELETE friends (unfriend); the Group sheet owns PUT reject (the
+    # invitee declines their pending invitation) and PUT transfer (the
+    # owner hands the group over). Server contracts verified in
+    # DressShop/GroupChat/Friend before a single assert was written.
+    d29 = [d for d in (p5.get("data") or [])
+           if isinstance(d, dict) and d.get("id")]
+    if len(d29) >= 2:
+        a29, b29 = d29[0]["id"], d29[1]["id"]
+        # 1) multiClothe wears BOTH ids; the echo list covers them
+        mc29 = fcall("PUT", "/decoration/api/v1/decorations/using/new?ids=%d,%d"
+                     % (a29, b29), None, headers=auth_hdr)
+        mc_ids29 = [x.get("id") for x in (mc29.get("data") or [])
+                    if isinstance(x, dict)]
+        check("C: multiClothe wears the id pair (echo list covers)",
+              mc29.get("code") == 1 and a29 in mc_ids29 and b29 in mc_ids29,
+              str(mc29)[:150])
+        worn29 = fcall("GET", "/decoration/api/v1/decorations/using",
+                       headers=auth_hdr)
+        worn_ids29 = [x.get("id") for x in (worn29.get("data") or [])
+                      if isinstance(x, dict)]
+        check("C: worn list holds both multiClothe ids",
+              worn29.get("code") == 1 and a29 in worn_ids29
+              and b29 in worn_ids29, str(worn29)[:150])
+        # 2) useSuitDecoration re-wears ONE (idempotent, ownership-checked)
+        us29 = fcall("PUT", "/decoration/api/v1/decorations/using?ids=%d" % a29,
+                     None, headers=auth_hdr)
+        us_ids29 = [x.get("id") for x in (us29.get("data") or [])
+                    if isinstance(x, dict)]
+        check("C: useSuitDecoration re-wears the owned id",
+              us29.get("code") == 1 and a29 in us_ids29, str(us29)[:150])
+        us_bad29 = fcall("PUT",
+                         "/decoration/api/v1/decorations/using?ids=999991",
+                         None, headers=auth_hdr)
+        check("C: useSuitDecoration rejects an unowned id",
+              us_bad29.get("code") != 1, str(us_bad29)[:110])
+        # 3) removeSuitDecoration unwears the id LIST
+        rs29 = fcall("DELETE", "/decoration/api/v1/decorations/using?ids=%d"
+                     % a29, None, headers=auth_hdr)
+        worn29b = fcall("GET", "/decoration/api/v1/decorations/using",
+                        headers=auth_hdr)
+        worn_ids29b = [x.get("id") for x in (worn29b.get("data") or [])
+                       if isinstance(x, dict)]
+        rs_ids29 = [x.get("id") for x in (rs29.get("data") or [])
+                    if isinstance(x, dict)]
+        check("C: removeSuitDecoration unwears the list (b still worn)",
+              rs29.get("code") == 1 and a29 in rs_ids29
+              and a29 not in worn_ids29b and b29 in worn_ids29b,
+              "%s | worn %s" % (str(rs29)[:110], worn_ids29b))
+        # 4) removeDecoration unwears ONE (echo carries the id)
+        rd29 = fcall("DELETE", "/decoration/api/v1/decorations/using/%d" % b29,
+                     None, headers=auth_hdr)
+        check("C: removeDecoration unwears one (data.id echo)",
+              rd29.get("code") == 1
+              and (rd29.get("data") or {}).get("id") == b29, str(rd29)[:130])
+        rd_bad29 = fcall("DELETE",
+                         "/decoration/api/v1/decorations/using/999992",
+                         None, headers=auth_hdr)
+        check("C: removeDecoration rejects an unknown id",
+              rd_bad29.get("code") != 1, str(rd_bad29)[:110])
+        # 5) multiUnclothe unwears the list (re-worn first for a real diff)
+        fcall("PUT", "/decoration/api/v1/decorations/using/new?ids=%d,%d"
+              % (a29, b29), None, headers=auth_hdr)
+        mu29 = fcall("DELETE",
+                     "/decoration/api/v1/decorations/using/new?ids=%d,%d"
+                     % (a29, b29), None, headers=auth_hdr)
+        worn29c = fcall("GET", "/decoration/api/v1/decorations/using",
+                        headers=auth_hdr)
+        worn_final29 = [x.get("id") for x in (worn29c.get("data") or [])
+                        if isinstance(x, dict)]
+        check("C: multiUnclothe unwears the pair (wardrobe back to empty)",
+              mu29.get("code") == 1 and a29 not in worn_final29
+              and b29 not in worn_final29,
+              "%s | worn %s" % (str(mu29)[:110], worn_final29))
+    else:
+        print("  [info] C: fewer than 2 gift-suit dresses for the "
+              "wardrobe roundtrip")
+
+    # Wave 29b social chains: unfriend + group reject + group transfer.
+    # The Wave-26 friend (gf_*) is unused by every later phase — Phase F
+    # registers its own accounts — so the friendship is safe to burn here
+    # (and is re-established at the end for state hygiene).
+    if gf_id > 0 and "gf_hdr" in locals():
+        fl29 = fcall("GET", "/friend/api/v1/friends?pageNo=1&pageSize=20",
+                     headers=auth_hdr)
+        fl_ids29 = [f.get("userId") for f in ((fl29.get("data") or {})
+                                              .get("data") or [])
+                    if isinstance(f, dict)]
+        check("C: friend list holds the Wave-26 friend",
+              fl29.get("code") == 1 and gf_id in fl_ids29, str(fl29)[:140])
+        unf29 = fcall("DELETE",
+                      "/friend/api/v1/friends?friendId=%d" % gf_id, None,
+                      headers=auth_hdr)
+        fl29b = fcall("GET", "/friend/api/v1/friends?pageNo=1&pageSize=20",
+                      headers=auth_hdr)
+        fl_ids29b = [f.get("userId") for f in ((fl29b.get("data") or {})
+                                               .get("data") or [])
+                     if isinstance(f, dict)]
+        check("C: unfriend removes BOTH sides (list drops the friend)",
+              unf29.get("code") == 1 and gf_id not in fl_ids29b,
+              "%s | list %s" % (str(unf29)[:90], fl_ids29b))
+        unf29b = fcall("DELETE",
+                       "/friend/api/v1/friends?friendId=%d" % gf_id, None,
+                       headers=auth_hdr)
+        check("C: re-unfriend fails (not friends)",
+              unf29b.get("code") != 1, str(unf29b)[:110])
+        # restore the friendship (state hygiene for the restarted app)
+        readd29 = fcall("POST", "/friend/api/v1/friends",
+                        {"friendId": gf_id, "msg": "qa-readd"},
+                        headers=auth_hdr)
+        fagr29 = fcall("PUT", "/friend/api/v1/friends/%d/agreement" % qa_uid_num,
+                       None, headers=gf_hdr)
+        check("C: friendship restored after the roundtrip",
+              readd29.get("code") == 1 and fagr29.get("code") == 1,
+              "%s | %s" % (str(readd29)[:80], str(fagr29)[:80]))
+
+        # the group reject contract: the pending Wave-26 re-invite is
+        # declined by the invitee and leaves the request feed
+        greq29 = fcall("GET",
+                       "/msg/api/v1/msg/group/chat/request/list?pageNo=1&pageSize=20",
+                       headers=gf_hdr)
+        inv29 = next((r for r in ((greq29.get("data") or {}).get("data") or [])
+                      if isinstance(r, dict) and r.get("type") == 2
+                      and r.get("groupId") == gid
+                      and r.get("status") == 0), None)
+        if inv29:
+            grej29 = fcall("PUT", "/msg/api/v1/msg/group/chat/reject",
+                           {"groupId": gid,
+                            "requestId": inv29["requestId"]},
+                           headers=gf_hdr)
+            check("C: group reject declines the pending invite",
+                  grej29.get("code") == 1, str(grej29)[:120])
+            greq29b = fcall("GET",
+                            "/msg/api/v1/msg/group/chat/request/list?pageNo=1&pageSize=20",
+                            headers=gf_hdr)
+            still29 = [r for r in ((greq29b.get("data") or {}).get("data") or [])
+                       if isinstance(r, dict) and r.get("type") == 2
+                       and r.get("groupId") == gid
+                       and r.get("requestId") == inv29["requestId"]
+                       and r.get("status") == 0]
+            check("C: rejected invite leaves the pending feed",
+                  greq29b.get("code") == 1 and still29 == [],
+                  str(greq29b)[:130])
+        # the transfer contract: a fresh group, the friend joins through
+        # the invite->agreement chain, the owner hands the group over,
+        # the deposed owner's re-transfer fails, then both quit
+        g29 = fcall("POST", "/msg/api/v2/msg/group/chat",
+                    {"cost": 0, "currency": 1, "memberIds": [],
+                     "userId": qa_uid_num,
+                     "groupName": "CI29b%05d" % (int(time.time()) % 100000)},
+                    headers=auth_hdr)
+        g29id = (g29.get("data") or {}).get("groupId", 0)
+        if g29.get("code") == 1 and g29id > 0:
+            fcall("POST", "/msg/api/v1/msg/group/chat/add",
+                  {"groupId": g29id, "memberIds": [gf_id]}, headers=auth_hdr)
+            greq29c = fcall("GET",
+                            "/msg/api/v1/msg/group/chat/request/list?pageNo=1&pageSize=20",
+                            headers=gf_hdr)
+            inv29b = next((r for r in ((greq29c.get("data") or {})
+                                       .get("data") or [])
+                           if isinstance(r, dict) and r.get("type") == 2
+                           and r.get("groupId") == g29id
+                           and r.get("status") == 0), None)
+            joined29 = False
+            if inv29b:
+                gacc29 = fcall("PUT", "/msg/api/v1/msg/group/chat/agreement",
+                               {"groupId": g29id,
+                                "requestId": inv29b["requestId"],
+                                "userId": qa_uid_num}, headers=gf_hdr)
+                acc29_ids = [m.get("userId") for m in
+                             ((gacc29.get("data") or {}).get("groupMembers")
+                              or [])]
+                joined29 = (gacc29.get("code") == 1 and gf_id in acc29_ids)
+                check("C: invitee agreement joins the transfer group",
+                      joined29, str(gacc29)[:130])
+            if joined29:
+                gtr29 = fcall("PUT", "/msg/api/v1/msg/group/chat/transfer",
+                              {"groupId": g29id, "userId": gf_id},
+                              headers=auth_hdr)
+                g29d = gtr29.get("data") or {}
+                g29_members = {m.get("userId"): m.get("identity")
+                               for m in (g29d.get("groupMembers") or [])}
+                check("C: group transfer hands ownership over",
+                      gtr29.get("code") == 1
+                      and str(g29d.get("ownerId")) == str(gf_id)
+                      and g29_members.get(gf_id) == 2
+                      and g29_members.get(qa_uid_num) == 0,
+                      str(gtr29)[:150])
+                gtr_bad29 = fcall("PUT", "/msg/api/v1/msg/group/chat/transfer",
+                                  {"groupId": g29id, "userId": qa_uid_num},
+                                  headers=auth_hdr)
+                check("C: deposed owner cannot transfer again",
+                      gtr_bad29.get("code") != 1, str(gtr_bad29)[:110])
+                # cleanup: gf (now owner) quits; an owner quit with no
+                # remaining members deletes the group
+                fq29 = fcall("PUT",
+                             "/msg/api/v1/msg/group/chat/quit?groupId=%d"
+                             % g29id, None, headers=gf_hdr)
+                check("C: owner quit deletes the emptied group",
+                      fq29.get("code") == 1, str(fq29)[:100])
+        else:
+            print("  [info] C: transfer group not created (%s)"
+                  % str(g29)[:80])
+
+    # Wave 29b misc: the chat-room lifecycle + the videostars config
+    # family (star code is DETERMINISTIC server-side: "BG"+userId).
+    cr29 = fcall("POST", "/game/api/v1/game/chat/room?roomName=qa29room",
+                 None, headers=auth_hdr)
+    cr29_id = (cr29.get("data") or {}).get("roomId", "")
+    check("C: chat room served (roomId bound to the name)",
+          cr29.get("code") == 1 and cr29_id
+          and (cr29.get("data") or {}).get("roomName") == "qa29room",
+          str(cr29)[:120])
+    crd29 = fcall("DELETE", "/game/api/v1/game/chat/room?roomId=%s" % cr29_id,
+                  None, headers=auth_hdr)
+    crd29b = fcall("DELETE", "/game/api/v1/game/chat/room?roomId=%s" % cr29_id,
+                   None, headers=auth_hdr)
+    check("C: chat room delete acked (idempotent re-delete)",
+          crd29.get("code") == 1 and crd29b.get("code") == 1,
+          "%s | %s" % (str(crd29)[:80], str(crd29b)[:80]))
+    sc29 = fcall("GET", "/user/api/v1/videostars/config/get", headers=auth_hdr)
+    sc_d29 = sc29.get("data") or {}
+    check("C: videostars config served (answering + introduce)",
+          sc29.get("code") == 1 and isinstance(sc_d29.get("answering"), list)
+          and isinstance(sc_d29.get("introduce"), list), str(sc29)[:130])
+    # the deterministic star code: config/get seeded "BG"+userId, so the
+    # by-code lookup resolves THIS user and echoes the same code back
+    sg29 = fcall("GET", "/user/api/v1/videostars/getbycode?starCode=BG%d"
+                 % qa_uid_num, headers=auth_hdr)
+    sg_d29 = sg29.get("data") or {}
+    check("C: getbycode resolves the seeded star code",
+          sg29.get("code") == 1 and sg_d29.get("userId") == qa_uid_num
+          and sg_d29.get("starCode") == "BG%d" % qa_uid_num, str(sg29)[:140])
+    sg_bad29 = fcall("GET",
+                     "/user/api/v1/videostars/getbycode?starCode=BG0",
+                     headers=auth_hdr)
+    check("C: getbycode rejects an unknown code",
+          sg_bad29.get("code") != 1, str(sg_bad29)[:100])
+    sb29 = fcall("GET",
+                 "/user/api/v1/videostars/billing/list/get?pageNo=1&pageSize=20",
+                 headers=auth_hdr)
+    sb_d29 = sb29.get("data") or {}
+    check("C: videostars billing page served (todayProfit + page)",
+          sb29.get("code") == 1 and "todayProfit" in sb_d29
+          and isinstance((sb_d29.get("data") or {}).get("data"), list),
+          str(sb29)[:130])
+    sca29 = fcall("PUT", "/user/api/v1/videostars/cashapply", {"money": 10},
+                  headers=auth_hdr)
+    sca_d29 = sca29.get("data") or {}
+    check("C: cashapply records the payout request (money echo)",
+          sca29.get("code") == 1 and sca_d29.get("money") == 10
+          and sca_d29.get("userId") == qa_uid_num, str(sca29)[:140])
+    sca_bad29 = fcall("PUT", "/user/api/v1/videostars/cashapply", {"money": 0},
+                      headers=auth_hdr)
+    check("C: cashapply rejects a zero amount",
+          sca_bad29.get("code") != 1, str(sca_bad29)[:100])
+    wpre29 = fcall("GET", "/pay/api/v1/wealth/user", headers=auth_hdr)
+    sex29 = fcall("PUT", "/user/api/v1/videostars/exchange", {},
+                  headers=auth_hdr)
+    wpost29 = fcall("GET", "/pay/api/v1/wealth/user", headers=auth_hdr)
+    check("C: exchange converts zero profit (wallet unchanged)",
+          sex29.get("code") == 1
+          and (wpost29.get("data") or {}).get("diamonds")
+          == (wpre29.get("data") or {}).get("diamonds"),
+          "%s | w %s -> %s" % (str(sex29)[:80], wpre29.get("data"),
+                               wpost29.get("data")))
+
     # ------------------------------------------------- Wave 24a: suitDetail
     # + suitListByIds through the live session (fcall tier, DYNAMIC ids).
     # Client contract (Retrofit getDressSuit / getSuitById): a suit-card
