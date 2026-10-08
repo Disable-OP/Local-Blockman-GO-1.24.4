@@ -1940,3 +1940,38 @@ COVERAGE unchanged: 334/334/0/334 host-tested; client_asserted 156.
 
 COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 157
 (dressList). Engine 10068 untouched. NO GameServer work.
+
+### Wave 23c (session 38 cont.) — budget shakedown: two failed runs, three root causes, all fixed
+
+1. Run 37738096151 (edc0558, budget 5) FAILED in 9 min: Phase B was
+   budget-skipped and Phase D crashed — UnboundLocalError on
+   open_personal_info_editor (the editor helpers are defined INSIDE the
+   Phase B if-block; python if-blocks do not scope). Fix: b_ran flag
+   gates Phase D's editor re-drive; outcome_d pre-init closes the
+   sibling-if latent path (commit 4921217).
+2. Run 37735834002 (0fb09b8, run 22, 35 min) FAIL = G's inviteFriend
+   (POST 0->0 — the invite UI tap never fired; UI flake, NOT a server
+   gap; the empty invitee msg list is correct for a non-sent invite).
+   [buydlg] evidence: at +5s the dialog had wallet counters + type tabs
+   only, price fields 0, no action controls -> Wave 23c buy hunt: ID
+   candidates (btn_confirm family) + two 10s GL beats (commit e5eedbf).
+3. Run 37739443414 (4921217) FAILED at the 9-min STEP backstop —
+   healthy otherwise: Phase A alone is ~7 min on guest-GPU (visitor
+   boot + tabs + deep-drive A). Backstop 9 -> 12 min, job 16 -> 18
+   (commit 65936d0).
+4. DRESSLIST CORRECTION (the wave's real discovery): the Dressing tab
+   (rb_2) is the WORN-items manager — fresh visitors get the
+   client-local empty state (tvLoadFailed 'No dressing in use now') and
+   the four chips + second-level radios (rbAll/rbSuit/rbOnesies/rbCloth/
+   rbPants/rbShoes/rbHair/rbEmoticon — present on-device, correcting
+   Wave 19's 'absent' note) fire ZERO /decoration traffic. dressList
+   (GET /decoration/api/{version}/decorations/{typeId}) has NEVER fired
+   on-device -> the Wave 23b claim was REVERTED (client_asserted back
+   to 156). The store's rbSuit (dress-mode entry) gained a 3x4s retry —
+   it was GL-missing, silently dropping the 4 dress-mode GET gates.
+5. Buy chain status: dialog opens every run (ivBigPic); the action
+   control needs the item content to render (price 0 = still loading).
+   The hardened hunt (ids + 20s patience) is dispatched on 65936d0.
+
+COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 156
+(dressList claim honestly withdrawn). NO GameServer work.
