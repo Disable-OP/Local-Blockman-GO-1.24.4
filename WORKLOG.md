@@ -3484,3 +3484,16 @@
   (F2 Modify, LM answer-field, password/modify tap); RongCloud stays
   offline-shim per the session-7 decision; keep CI green.
 - Engine 10068 untouched (mandate honored). NO GameServer work.
+
+## Session 44 — F2 form-killer root-caused (our own BACK) + IME-guard fix (2026-10-08)
+
+- The "stubborn" F2 Modify pass was never a client gate: run 37751313202's
+  dump proves the edit form was CLOSED by the drive's own unconditional
+  post-tag BACK (the IME was already down) before the submit hunt —
+  the hunt dumped the clan homepage. Root-caused, fixed (13cc493):
+  ime_visible() guards on all four post-typing BACKs + a form-presence
+  evidence line + the LM Q1 reveal scroll.
+- Budget-15 verdict run 37793212847 dispatched on 13cc493 (docs commit
+  44c1bdc rides along). Verdicts next session step.
+- Coverage/COVERAGE.json untouched (no new claims; drive mechanics only).
+- Engine 10068 untouched (mandate honored). NO GameServer work.
