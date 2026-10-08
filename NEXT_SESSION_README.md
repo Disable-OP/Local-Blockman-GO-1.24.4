@@ -1950,3 +1950,24 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   jadx decompile for dialog_dress_buy.xml coordinates (GL-dialog blind
   taps) and for the remaining user/api (49) unasserted surfaces. NO
   GameServer work.
+
+## Session 39 delta (Wave 24a — read FIRST next session)
+
+- Fleet run 37746581644 (budget 15) FAILED on config, not server: the
+  flat 12-min STEP timeout killed it mid-Phase-F (A/B/C/D/F GREEN).
+  Backstops now scale with deep_budget_min (0→45/40, >5→40/32, else
+  18/12) — commit f6068be.
+- E-clanui submit is a multi-candidate hunt now; read the NEXT fleet
+  run's [info] E-clanui submit try lines: if still no POST after all
+  tries, the UPLOAD PROFILE (headPic) gate is the prime suspect — the
+  failure dump now prints bounds to target it.
+- Wave 24a: suitDetail + suitListByIds client_asserted (161). If the
+  next run's C-phase lines are green, both are verdict-backed.
+- TOOLING: command-output text eats literal [m substrings — verify
+  suspicious "corruption" with od/tokenize before editing files.
+- NEXT (priority order): (1) read the new budget-15 fleet run's
+  E..N verdicts (first run where those phases actually execute);
+  (2) G invite re-verify with the split gate; (3) if E-clanui still
+  fails, drive the UPLOAD PROFILE picker path; (4) the 47 unasserted
+  user/api surfaces — mine call sites from docs/ENDPOINTS.md rows and
+  extend Phase C fcalls the same dynamic-id way. NO GameServer work.

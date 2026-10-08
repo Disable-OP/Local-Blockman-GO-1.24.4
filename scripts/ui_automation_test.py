@@ -3281,6 +3281,43 @@ def main():
     check("C: gift suit claimed into wardrobe", p4.get("data") is True
           and p5.get("code") == 1 and len(p5.get("data", [])) >= 3, str(p5)[:150])
 
+    # ------------------------------------------------- Wave 24a: suitDetail
+    # + suitListByIds through the live session (fcall tier, DYNAMIC ids).
+    # Client contract (Retrofit getDressSuit / getSuitById): a suit-card
+    # tap on the store suit page fires GET /shop/api/v1/new/shop/suit/
+    # info/{suitId} and the SuitInfo model carries suitId/price/
+    # hasPurchase/buyTime + the SingleDressInfo component lists
+    # (decorationInfoList / shopDecorationInfos); getSuitById filters by
+    # repeated suitIds params. The UI hop stays evidence-only (GL-only
+    # card page — Wave 23c probe); the server contract is what the local
+    # API must own (host Phase 5 asserts the same shapes).
+    suit_rows = [s for s in (p3.get("data") or [])
+                 if isinstance(s, dict) and s.get("suitId")]
+    gift0 = (p3.get("data") or [{}])[0].get("suitId")
+    det = next((s for s in suit_rows if s.get("suitId") != gift0), None)
+    if det:
+        det_id = det["suitId"]
+        sdet = fcall("GET", "/shop/api/v1/new/shop/suit/info/%d" % det_id,
+                     headers=auth_hdr)
+        sd_d = sdet.get("data") or {}
+        comp = sd_d.get("decorationInfoList") or []
+        check("C: suitDetail serves the dynamic suit "
+              "(echo+components+unowned)",
+              sdet.get("code") == 1 and sd_d.get("suitId") == det_id
+              and len(comp) >= 1 and all(c.get("id") for c in comp)
+              and sd_d.get("hasPurchase") == 0 and sd_d.get("buyTime") == ""
+              and (sd_d.get("price") or 0) > 0, str(sdet)[:150])
+        want = [s["suitId"] for s in suit_rows[:2]]
+        q = "&".join("suitIds=%d" % i for i in want)
+        sby = fcall("GET", "/shop/api/v1/new/shop/suit/list/info?" + q,
+                    headers=auth_hdr)
+        got = [s.get("suitId") for s in (sby.get("data") or [])
+               if isinstance(s, dict)]
+        check("C: suitListByIds filters the served catalog",
+              sby.get("code") == 1 and got == want, str(sby)[:150])
+    else:
+        print("  [info] C: no catalog suits for the suitDetail chain")
+
     # ------------------------------------------------- Wave 23e: buy->wear
     # chain through the REAL server state (fcall tier, verb-aware claims).
     # The DressBuyDialog is GL-only on the emulator (run 37742955965: the

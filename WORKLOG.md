@@ -3314,3 +3314,20 @@
 - Scope hardening: b_ran flag + outcome_d pre-init (budget-skip
   UnboundLocalError class audited across all phases).
 - Engine 10068 untouched (mandate honored). NO GameServer work.
+
+## Session 39 — fleet verdicts read, budget-scaled backstops, E-clanui hunt, Wave 24a (2026-10-08)
+
+- Fleet run 37746581644 (budget 15) verdicts: A/P/B/C/D/F GREEN on
+  device; failure = flat 12-min step timeout (config bug), G..N never
+  ran. All 20 discovered paths already claimed — zero server gaps.
+- Backstops scale with deep_budget_min now (job 40/step 32 for fleet
+  harvests; 18/12 default mandate kept). E-clanui submit = multi-
+  candidate hunt (text/cover/bottom tries, per-try POST windows,
+  toasts, bounds-carrying failure dump; headPic gate suspect named).
+- Wave 24a: suitDetail + suitListByIds asserted on-device via Phase C
+  fcalls with dynamic catalog ids (echo/components/unowned-wallet
+  shape + exact filtered order). client_asserted 159 -> 161.
+- Tooling lesson: `[m` substrings in command output get eaten by the
+  display pipeline — od/tokenize are the ground truth.
+- Fleet harvest re-dispatched on the Wave 24a commit (budget 15).
+- Engine 10068 untouched (mandate honored). NO GameServer work.

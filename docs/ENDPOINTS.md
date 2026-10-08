@@ -1998,3 +1998,40 @@ COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 159.
 G invite gate split (server contract hard / nav flake = evidence,
 d850409). Deep CI stable at ~10 min GREEN (runs C/D/E). Engine 10068
 untouched. NO GameServer work.
+
+### Wave 24a (session 39) — suitDetail + suitListByIds promoted to client_asserted (fcall tier)
+
+1. Fleet run 37746581644 (budget 15, a92d395) READ: A/P/B/C/D/F all
+   GREEN on device — Phase C alone re-validated ~35 server surfaces
+   (register→login→auth-token→set-psd→catalog→tribe create/donate/
+   dissolve→groups→dispatch token+gaddr→suit shop→gift suit→wear PUT→
+   dressBuyV2 wallet deduction→mail roundtrip). The run FAILED only on
+   the flat 12-min STEP timeout mid-Phase-F (G..N never started) — a
+   workflow-config bug, NOT a server gap: all 20 run-discovered paths
+   map onto already-claimed templated routes.
+2. Workflow fix (f6068be): backstops now scale with deep_budget_min
+   (0→45/40, >5→40/32, else 18/12). The default ~10-min mandate run is
+   untouched (18/12).
+3. E-clanui submit rewritten as a multi-candidate hunt: the single
+   covering-RelativeLayout high tap has NEVER fired the POST (the green
+   'E-clanui' line of run 37259412423 was Phase C's API-level create).
+   New hunt: direct 'Create a clan' text taps + covering clickables +
+   bottom-quarter clickables, each with its own POST-growth window +
+   confirm-dialog taps + toast scans; failure dump now carries bounds;
+   UPLOAD PROFILE (headPic) called out as the prime gate suspect.
+4. Wave 24a claims: Phase C now asserts (fcall tier, DYNAMIC ids from
+   the served catalog) GET /shop/api/v1/new/shop/suit/info/{suitId}
+   (suitDetail: code==1, suitId echo, SingleDressInfo component list,
+   hasPurchase==0, buyTime=="" unowned, price>0 — mirrors the Retrofit
+   getDressSuit / SuitInfo model) and GET /shop/api/v1/new/shop/suit/
+   list/info?suitIds=A&suitIds=B (suitListByIds: exact filtered
+   catalog order). Host Phase 5 already asserted the same shapes.
+   client_asserted 159 -> 161.
+5. TOOLING LESSON: the agent's command-output channel eats literal
+   `[m` substrings (ANSI-escape-style sanitization) — a VALID
+   `[m for m in ...]` comprehension displayed as broken. od/tokenize/
+   ast views (where [ and m are separated) are the ground truth;
+   verify with those before assuming disk corruption.
+
+COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 161.
+Engine 10068 untouched. NO GameServer work.

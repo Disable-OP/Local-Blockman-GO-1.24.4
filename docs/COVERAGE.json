@@ -5,7 +5,7 @@
   "implemented": 334,
   "default": 0,
   "host_tested": 334,
-  "client_asserted": 159
+  "client_asserted": 161
  },
  "endpoints": [
   {
@@ -1014,7 +1014,7 @@
    "status": "implemented",
    "handler": "suitListByIds",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -2414,7 +2414,7 @@
    "status": "implemented",
    "handler": "suitDetail",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
