@@ -3923,11 +3923,6 @@ def main():
           dl8.get("code") == 1 and len(dl_rows) == 10
           and all(d.get("id") and "price" in d for d in dl_rows),
           str(dl8)[:130])
-    suit_own = fcall("GET", "/decoration/api/v1/new/decorations/users/%d/suit"
-                     % qa_uid_num, headers=auth_hdr)
-    check("C: owned-suit list holds the gift suit",
-          suit_own.get("code") == 1
-          and len(suit_own.get("data") or []) >= 1, str(suit_own)[:120])
     vlist = fcall("GET", "/video/api/v1/app/video/list/all",
                   headers=auth_hdr)
     v_rows = [v for v in (vlist.get("data") or [])
@@ -3969,6 +3964,11 @@ def main():
                % ((p3.get("data") or [{}])[0].get("suitId", 600001)), {}, headers=auth_hdr)
     check("C: gift suit claimed into wardrobe", p4.get("data") is True
           and p5.get("code") == 1 and len(p5.get("data", [])) >= 3, str(p5)[:150])
+    suit_own = fcall("GET", "/decoration/api/v1/new/decorations/users/%d/suit"
+                     % qa_uid_num, headers=auth_hdr)
+    check("C: owned-suit list holds the gift suit",
+          suit_own.get("code") == 1
+          and len(suit_own.get("data") or []) >= 1, str(suit_own)[:120])
 
     # ------------------------------------------------- Wave 24a: suitDetail
     # + suitListByIds through the live session (fcall tier, DYNAMIC ids).
