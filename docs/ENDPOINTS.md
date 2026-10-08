@@ -1825,3 +1825,35 @@ client_asserted 153 -> 155.
    for this build.
 
 COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 155 -> 156.
+
+### Wave 22b (session 37 cont.) — RUN-20 verdicts: the v2 verify chain GREEN end-to-end
+
+1. Deep run 37727810637 (f62b30b, 35 min): UI AUTOMATION PASS. The
+   question submit SURVIVED the killer this run ("Setting successful"
+   dialog rendered with ID/10001 + Q1/A1/Q2/A2 — full [qs-end2]
+   evidence), so the Safety Mailbox tap took the **v2 path**: [ok]
+   identity-verify screen open (questions set) -> section 2 revealed
+   (right:true) -> client chained into BindEmail -> [ok] **email code
+   served (POST emails/{email})** -> [ok] **email bind v2 served (POST
+   {version}/users/bind/email) — the FIRST v2-bind verdict**.
+2. **REQ-log truth discovered**: NanoHTTPD's getUri() never includes
+   the query string — REQ lines are query-less. The run-19-style
+   ?userId=/complete=/type=1 markers can NEVER match. The precise
+   per-answer markers are the BODY prefixes
+   (`body={"answer":"LocalQA-One"` / `-Two`), observed verbatim in the
+   run-20 logcat. The drive markers are fixed accordingly; the
+   GET-type=1 gate is downgraded to [info] (the verify screen
+   rendering the SAVED questions is the real type=1 verdict — the
+   [qv] dump now prints those rows).
+3. Empirical client contract (run-20 logcat, body-only POSTs):
+   `POST /user/api/v1/users/secret/question body={"answer":...,"id":...,
+   "question":...}` — the @Query userId/complete never reach the wire
+   on this build (AccountCenter.userId unset for the local session);
+   the server reads the body and validates against the stored
+   questions, which is why the chain worked.
+4. Two killer strikes (12651->13783 mid-questions, ->15664 before the
+   password flow) both recovered via the restart-aware re-walks;
+   password/check served again; zero FAILs; 78 unique endpoints hit.
+
+COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 156
+(all claims verdict-honest).

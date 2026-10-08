@@ -1845,3 +1845,25 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   (needs a run where the killer spares the Q2 pick+submit window);
   after two green runs promote the bind evidence lines to
   verdict-backed claims in the wave notes. NO GameServer work.
+
+## Session 37 FINAL delta (Wave 22b — run-20 verdicts, read first next session)
+
+- Deep run 20 (37727810637) PASSED with the v2 verify chain GREEN
+  end-to-end: identity-verify -> answer-1 right (section 2 revealed) ->
+  answer-2 right -> BindEmail chained -> emails/{email} served ->
+  **users/bind/email v2 SERVED**. Wave 22 is verdict-complete on BOTH
+  paths (v1 in run 19, v2 in run 20).
+- REQ-log truth: NanoHTTPD getUri() never logs query strings — use
+  BODY-based markers (run-20 logcat shows body={"answer":...} for the
+  verify POSTs). Markers fixed; GET-type=1 gate is [info] + [qv] dump
+  (screen state = the verdict).
+- Empirical: the verify POSTs hit the wire with NO query params on this
+  build; the server's body-validation is the contract that works.
+- client_asserted 156. Engine 10068 untouched. Fast CI green (3.9 min).
+- NEXT (priority order): (1) Wave 23 candidate = daily-tasks/sign-in
+  drive (new/daily/tasks, dairy/tasks/{type}, claimTask, signIn —
+  reachable from the Me tab); (2) the password/modify form tap still
+  needs one clean pass (check gate green 3x, modify tap keeps landing
+  in killer windows); (3) emails/verify/{email}'s on-device verdict
+  needs the email-BOUND question-verify chain (future surface). NO
+  GameServer work.

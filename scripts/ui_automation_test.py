@@ -2035,10 +2035,20 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                 screen.tap_node(mbox)
                 time.sleep(5)
                 alive_or_recover("%s-mailbox" % tag)
-                if req_seen("REQ GET " + qa_verify_lit + "?type=1"):
-                    ok("LM: saved-question fetch served (GET users/secret/"
-                       "question?type=1)")
+                # NanoHTTPD's getUri() never logs the query string — the
+                # ?type=1 is invisible in the REQ line. The type=1 verdict
+                # is the SCREEN STATE: the verify screen renders the
+                # SAVED questions the server returned.
+                if req_seen("REQ GET " + qa_verify_lit):
+                    print("  [info] LM: saved-question GET fired (log URIs "
+                          "are query-less; screen state is the type=1 "
+                          "verdict)")
                 texts_now = [(n.text or "") for n in screen.dump()]
+                for n in screen.dump():
+                    if n.text and ("Question" in n.text
+                                   or "childhood" in n.text
+                                   or "first pet" in n.text):
+                        print("  [qv] %r" % n.text[:40])
                 on_verify = any(
                     "mail safety question" in t.lower()
                     or t.startswith("Question 1") for t in texts_now)
@@ -2054,8 +2064,11 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                         if confirm_button():  # 'Next'
                             time.sleep(6)
                             alive_or_recover("%s-qverify1" % tag)
+                            # query strings never reach the REQ log; the
+                            # answer value in the BODY is the precise
+                            # per-answer marker (run-20 logcat evidence)
                             qa1 = req_seen("REQ POST " + qa_verify_lit
-                                           + "?userId=")
+                                           + ' body={"answer":"LocalQA-One"')
                             if qa1:
                                 ok("LM: answer-1 verify served (POST users/"
                                    "secret/question, authUserQuestion)")
@@ -2080,10 +2093,11 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                                         screen.tap_node(done)
                                         time.sleep(6)
                                         alive_or_recover("%s-qverify2" % tag)
-                                        if req_seen("complete=1"):
+                                        if req_seen("REQ POST " + qa_verify_lit
+                                                    + ' body={"answer":'
+                                                    '"LocalQA-Two"'):
                                             ok("LM: answer-2 verify served "
-                                               "(POST users/secret/question "
-                                               "complete=1)")
+                                               "(POST users/secret/question)")
                                         # the client CHAINS into BindEmail
                                         time.sleep(3)
                                         if not edit_nodes():
@@ -2132,8 +2146,8 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                                 b1 = req_seen("REQ POST " + email_bind_lit)
                                 if b2:
                                     ok("LM: email bind v2 served (POST "
-                                       "{version}/users/bind/email with "
-                                       "?answer=) for %s" % email)
+                                       "{version}/users/bind/email) for %s"
+                                       % email)
                                 elif b1:
                                     ok("LM: email bind v1 served (POST users/"
                                        "bind/email) for %s" % email)
