@@ -3383,3 +3383,23 @@
   timeout, stale-dex fetch), E-clanui verdict closed (client headPic
   gate), H..N/O/LM verdicts harvested green, Phase G verdict-complete.
 - Engine 10068 untouched (mandate honored). NO GameServer work.
+
+## Session 40 — Waves 28+29: security/events/platform sweeps, extractor round 2 (2026-10-08)
+
+- client_asserted 193 -> 271 (+78): account-security chains (bind/
+  verify/unbind roundtrip, password modify/set with end-to-end logins,
+  secret-question save/verify/reset), type-1 group join + recall,
+  event sweep (campaign sign-in, halloween, bgtube sign-up flow,
+  worldCup inactive), platform/game-hall read sweep (22 docs + ranking
+  boards + game-detail family + dressList + video detail).
+- Extractor round 2: concrete_paths full-literal capture with {fmt}/
+  {fmt+} normalization (multi-segment board values), prose dropped;
+  host_tested honest recount 334 -> 328 (6 prefix phantoms removed,
+  all 6 now client_asserted).
+- Runs: one FAIL (owned-suit ordering) fixed and re-validated;
+  37775214948 PASS zero fails.
+- Remaining unasserted: ~63 (user misc 33 incl. videostars/id-card/
+  report family, decoration unwear roundtrips, pay v2/v4 recharge,
+  shop buyGameProp/payGame, msg transfer/reject, friend unfriend,
+  video praise/dislike — all mapped for the next session).
+- Engine 10068 untouched (mandate honored). NO GameServer work.

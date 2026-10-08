@@ -2025,3 +2025,23 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   password/modify tap (three stubborn UI flows with evidence lines);
   (3) the headPic-picker drive for the clan-create UI gate (events-
   buffer toast text now captured). NO GameServer work.
+
+## Session 40 delta (read FIRST next session)
+
+- client_asserted 271; host_tested honest 328 (6 prefix phantoms
+  removed — they are client_asserted via Wave 28 instead). Two green
+  runs this session; latest PASS = 37775214948 (c15a4c2).
+- Extractor: concrete_paths full-literal capture with {fmt}/{fmt+}
+  normalization — any NEW %-formatted probe list literal now claims
+  router-faithfully; prose tails are dropped by design.
+- NEXT (priority order): (1) the remaining ~63 unasserted surfaces —
+  decoration using/unwear roundtrips (PUT using, PUT using/new,
+  DELETE using/{id}, DELETE using/new, DELETE using), friend unfriend
+  (DELETE /friend/api/v1/friends), msg transfer/reject, shop
+  buyGameProp (v3) + payGame (v2), pay v2/v4 recharge, video
+  praise/dislike/report-play, user misc (videostars 6, id-card,
+  report/push+status, join/switch, frequently-game, clan advertising,
+  login/change/record, prefect rewards, sms/send/{phone},
+  phone-password); (2) the three stubborn UI flows (F2 Modify button,
+  LM answer-field gate, password/modify tap); (3) the headPic-picker
+  drive. NO GameServer work.

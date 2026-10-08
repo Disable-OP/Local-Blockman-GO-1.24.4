@@ -2203,3 +2203,38 @@ Run 37768393688 (budget 5, b653f95): UI AUTOMATION PASS, ZERO fails —
 
 COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 193.
 Engine 10068 untouched. NO GameServer work.
+
+### Waves 28 + 29a (session 40) — security/email, event sweep, group join, platform reads
+
+1. Wave 28a (b7cff6f): the account-security chain — bind->verify->
+   unbind roundtrip on the session account (settings v2 unbound->bound,
+   tipsEmail mask ""->x***@local.test->"", users/verify/email
+   authCode, security/verify/email + /reset, DELETE emails/{userId});
+   password chains on a throwaway (modify v1+v2 with end-to-end
+   re-logins, wrong-old rejection, both set-password routes,
+   secret-question save/verify/reset via authCode, unbind/user/
+   security, no-enumeration email reset); the type-1 group join flow
+   (apply -> owner feed -> owner agreement admits) + recall/message.
+2. Wave 28c: event sweep — campaign sign-in day-1 claim + re-claim
+   rejection (7012 family), turntable isFree, halloween candy state +
+   exchange/task-reward/reward-exchange contracts, bgtube REAL sign-up
+   flow (status 0->1, linkCount 0->1), worldCup inactive cluster +
+   bet closed.
+3. Wave 29a (6fd34dd + c15a4c2): 22-doc platform read sweep, 4 ranking
+   boards, the 8-doc game-detail family, flow/game/auth engine token,
+   dressList type-8 (the Wave-23c-reverted surface now honestly driven
+   with 10 generated rows), owned-suit list after the gift claim,
+   video detail/more via dynamic video id.
+4. EXTRACTOR (6fd34dd): concrete_paths now reads FULL literals —
+   %-formatted probes normalize to {fmt} (single-segment, fcall-style)
+   / {fmt+} (multi-segment: the host ranking loop passes
+   'active/global/weekly' as one %s) resolved router-faithfully,
+   prose tails dropped. Honest recounts: host_tested 334 -> 328 (6
+   truncated-prefix phantoms removed; all 6 client_asserted via Wave
+   28 instead), one client de-claim (type-page route — phantom prefix;
+   implemented + host-tested, awaiting a real probe).
+5. Runs: 37773935586 FAIL (1 — owned-suit assert raced the gift claim;
+   relocated c15a4c2) then 37775214948 PASS (zero fails).
+
+COVERAGE: 334/334/0-defaults/328 host-tested; client_asserted 271.
+Engine 10068 untouched. NO GameServer work.
