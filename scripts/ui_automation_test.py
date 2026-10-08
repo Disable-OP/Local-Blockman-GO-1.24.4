@@ -2534,20 +2534,46 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                     else:
                         print("  [info] no password/check call")
                     new_pw = "NewQA%05d" % (int(time.time()) % 100000)
-                    # run 37801448616: the check serves but the modify POST
-                    # never fires - name the hop with a state dump BEFORE
-                    # the new-password fills (form? dialog? empty screen?)
+                    # RUN 37806521212 DECODE (the [pw-pre] dump finally
+                    # named it): the Modify Password form is a TWO-STEP
+                    # WIZARD. Step 1: title 'Modify Password', Username/ID
+                    # labels, tvPassword (OLD password, client PRE-FILLED),
+                    # submit = 'NEXT' -> POST password/check. The old drive
+                    # refilled tvPassword with the NEW password and re-tapped
+                    # NEXT - the check fired with the WRONG old password,
+                    # step 2 never appeared, the modify POST could never
+                    # fire. RULE: after the check, NEVER put the new
+                    # password into a field that still holds the old one.
                     for _n in screen.dump():
                         if _n.text or _n.cls.endswith("EditText"):
                             print("  [pw-pre] %s | %r | clickable=%s" % (
                                 _n.res.rsplit("/", 1)[-1] if _n.res else "",
                                 (_n.text or "")[:26], _n.clickable))
-                    # Run 8 evidence: the ChangePassword form can show ONE
-                    # visible EditText at a time (the confirm field appears
-                    # after the new password is entered — TextWatcher-driven
-                    # visibility). Fill whatever is visible, re-dump, fill
-                    # again until two distinct fields are typed.
-                    if fill_edit(0, new_pw):
+                    # step-1 settle: give the wizard a beat to advance on the
+                    # successful check, then decide from the FIELD CONTENT
+                    # (step 1's tvPassword carries the old password; step 2
+                    # starts empty). If still on step 1, ONE more NEXT tap
+                    # with the (correct) old password is safe.
+                    _eds = edit_nodes()
+                    if _eds and (_eds[0].text or "") == old_password:
+                        print("  [pw-wiz] still on step 1 (field holds the "
+                              "old password) - NEXT once more")
+                        confirm_button()
+                        time.sleep(6)
+                        _eds = edit_nodes()
+                    _st1 = screen.find(ids=["tvTemplateTitle"])
+                    print("  [pw-step2] title=%r edits=%d" % (
+                        _st1.text if _st1 else None, len(_eds)))
+                    for _n in screen.dump():
+                        if _n.text or _n.cls.endswith("EditText"):
+                            print("  [pw-step2] %s | %r | clickable=%s" % (
+                                _n.res.rsplit("/", 1)[-1] if _n.res else "",
+                                (_n.text or "")[:26], _n.clickable))
+                    # step 2 fills: Run-8 TextWatcher pattern - fill what is
+                    # visible, re-dump, fill the newly revealed field. Both
+                    # wizard steps are handled: whatever fields step 2
+                    # shows, they get new_pw (never the old password).
+                    if _eds and fill_edit(0, new_pw):
                         time.sleep(2)
                         eds_now = edit_nodes()
                         if len(eds_now) > 1:
@@ -2567,7 +2593,8 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                             ok("LM: password modify served (POST password/"
                                "modify)")
                         else:
-                            print("  [info] no password/modify call")
+                            print("  [info] no password/modify call "
+                                  "(step-2 submit shape? see [pw-step2])")
             back(1)
             time.sleep(1)
     else:
