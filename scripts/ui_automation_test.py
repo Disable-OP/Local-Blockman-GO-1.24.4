@@ -5940,24 +5940,37 @@ def main():
                                        if (x.text or "") in ("Modify", "MODIFY")
                                        and x.center), None)
                         if modify:
-                            screen.tap_node(modify)
-                            time.sleep(4)
-                            f_alive("F2-edit-submit")
-                            puts_after = put_tribe_count()
-                            # session 20: ONE bounded re-tap when the first
-                            # MODIFY tap missed (run 37409714321: puts 0->0
-                            # with everything else green - tap timing, not
-                            # a contract break)
-                            if puts_after <= puts_before:
-                                modify2 = next(
+                            # run 37796083466: BOTH center taps landed alive
+                            # yet the PUT never left the device (0->0) while
+                            # run 37793212847 accepted the first tap - the
+                            # tap-registration race (run-37409714321 family)
+                            # plus docked-button geometry (the create form's
+                            # submit bar centers UNDER the 48px nav bar, 5q
+                            # v5). Alternate center and 25%-height taps over
+                            # THREE fresh-dump attempts; stop at first growth.
+                            puts_after = puts_before
+                            for attempt, mode in enumerate(
+                                    ("center", "high", "center")):
+                                m = modify if attempt == 0 else next(
                                     (x for x in screen.dump()
                                      if (x.text or "") in ("Modify", "MODIFY")
                                      and x.center), None)
-                                if modify2:
-                                    screen.tap_node(modify2)
-                                    time.sleep(4)
-                                    f_alive("F2-edit-submit-retry")
-                                    puts_after = put_tribe_count()
+                                if not m:
+                                    break
+                                if mode == "high":
+                                    screen.tap_node_high(m)
+                                else:
+                                    screen.tap_node(m)
+                                time.sleep(4)
+                                f_alive("F2-edit-submit%s" % (
+                                    "" if attempt == 0 else "-retry%d"
+                                    % attempt))
+                                puts_after = put_tribe_count()
+                                print("  [evidence] F2: submit tap %d (%s) "
+                                      "-> PUT count %d"
+                                      % (attempt, mode, puts_after))
+                                if puts_after > puts_before:
+                                    break
                             print("  [evidence] F2: PUT count %d -> %d"
                                   % (puts_before, puts_after))
                             if live_hdr:
