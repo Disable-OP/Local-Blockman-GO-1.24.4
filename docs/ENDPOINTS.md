@@ -2035,3 +2035,32 @@ untouched. NO GameServer work.
 
 COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 161.
 Engine 10068 untouched. NO GameServer work.
+
+### Wave 24b (session 39 cont.) — daily-tasks family client_asserted + extractor honesty fix
+
+1. Phase C now asserts the daily-tasks/ads family through the live
+   registered session (fcall tier, dynamic uid): GET new/daily/tasks
+   (7-entry chain, count>=1 after the v2 sign-in), GET dairy/tasks/
+   {type} (taskMap 1..7), PUT tasks/{type} (IDEMPOTENT re-claim:
+   rewardQuantity 0 + wallet unchanged — the rewarding first-claim path
+   stays host-tested), GET {userId}/daily/tasks/ads/config (currency 2
+   + quantity 200), PUT {userId}/daily/tasks/ads (+200 golds, exact
+   wallet math) and PUT daily/sign/ads (quantity 300, picUrl "").
+2. EXTRACTOR HONESTY FIX (gen_coverage.fcall_claims): %-formatted fcall
+   URLs were captured only up to the % and the truncated prefix then
+   enjoyed the trailing-slash probe privilege — phantom-claiming
+   unrelated siblings (this wave caught GET /user/api/v1/users/
+   security/bind/email being claimed by the ads/config probe).
+   Formatted literals are now %-segment-normalized and matched
+   ROUTER-STYLE (segment-wise template match) — no prefix privilege.
+3. HONEST RECOUNT: client_asserted 161 -> 147. Gained 6 genuine Wave
+   24b claims; removed 20 phantom claims that existed ONLY via broken
+   prefix captures (17 GET /game/api/v1/games/* siblings, PUT
+   decorations/using/new, GET v2 verify/user/security/settings, GET
+   games/{gameId}) — all verified as host-tested-only (no device probe
+   ever targeted them). This mirrors the Wave 23c dressList revert:
+   the count follows the evidence, not the maximum.
+
+COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 147
+(honest recount after the fcall-claims extractor fix). Engine 10068
+untouched. NO GameServer work.

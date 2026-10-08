@@ -3318,6 +3318,72 @@ def main():
     else:
         print("  [info] C: no catalog suits for the suitDetail chain")
 
+    # ------------------------------------------------- Wave 24b: daily
+    # tasks + ads-reward family through the live session (fcall tier).
+    # Client: the Me-tab task center polls new/daily/tasks (7-day sign
+    # chain: count/hours/minutes/seconds + tasks[type/currency/count/
+    # status]), week tasks read dairy/tasks/{type} (taskMap 1..7), the
+    # claim popup reads the RechargeEntity from PUT tasks/{type}, and
+    # the ad-button surfaces are GET {userId}/daily/tasks/ads/config
+    # (currency/quantity/remainTime), PUT {userId}/daily/tasks/ads
+    # (RechargeEntity +200, cap 5/day) and PUT daily/sign/ads
+    # (picUrl+quantity 300, cap 3/day). NOTE: Phase C's v2 sign-in (r11)
+    # already marked today, so the tasks/{type} PUT here asserts the
+    # IDEMPOTENT re-claim (rewardQuantity 0, wallet unchanged) — the
+    # rewarding first-claim path is host-tested. The ads counter starts
+    # fresh on the registered account, so the two ads grants here are
+    # deterministic (+200 then +300, both golds).
+    tasks0 = fcall("GET", "/user/api/v1/users/new/daily/tasks",
+                   headers=auth_hdr)
+    t_d = tasks0.get("data") or {}
+    check("C: new/daily/tasks 7-day chain shape",
+          tasks0.get("code") == 1 and len(t_d.get("tasks") or []) == 7
+          and all(tt.get("type") == i + 1 for i, tt in
+                  enumerate(t_d.get("tasks") or []))
+          and t_d.get("count", 0) >= 1, str(tasks0)[:150])
+    week0 = fcall("GET", "/user/api/v1/users/dairy/tasks/1", headers=auth_hdr)
+    w_map = (week0.get("data") or {}).get("taskMap") or {}
+    check("C: dairy/tasks taskMap 1..7 signed prefix",
+          week0.get("code") == 1
+          and sorted(w_map) == [str(i) for i in range(1, 8)]
+          and all(w_map[k] in (0, 1) for k in w_map), str(week0)[:150])
+    wpre = fcall("GET", "/pay/api/v1/wealth/user",
+                 headers=auth_hdr).get("data", {})
+    recl = fcall("PUT", "/user/api/v1/users/tasks/1", None, headers=auth_hdr)
+    wpost = fcall("GET", "/pay/api/v1/wealth/user",
+                  headers=auth_hdr).get("data", {})
+    check("C: tasks/1 re-claim is idempotent (reward 0, wallet kept)",
+          recl.get("code") == 1
+          and (recl.get("data") or {}).get("rewardQuantity") == 0
+          and wpost.get("golds", 0) == wpre.get("golds", 0)
+          and (recl.get("data") or {}).get("userId") == qa_uid_num,
+          "%s | w %s -> %s" % (str(recl)[:120], wpre, wpost))
+    acfg = fcall("GET", "/user/api/v1/users/%d/daily/tasks/ads/config"
+                 % qa_uid_num, headers=auth_hdr)
+    check("C: tasks/ads/config served (currency/quantity)",
+          acfg.get("code") == 1
+          and (acfg.get("data") or {}).get("currency") == 2
+          and (acfg.get("data") or {}).get("quantity") == 200,
+          str(acfg)[:120])
+    wpre = fcall("GET", "/pay/api/v1/wealth/user",
+                 headers=auth_hdr).get("data", {})
+    ads1 = fcall("PUT", "/user/api/v1/users/%d/daily/tasks/ads" % qa_uid_num,
+                 None, headers=auth_hdr)
+    wmid = fcall("GET", "/pay/api/v1/wealth/user",
+                 headers=auth_hdr).get("data", {})
+    check("C: daily/tasks/ads grants +200 golds (RechargeEntity)",
+          ads1.get("code") == 1
+          and (ads1.get("data") or {}).get("rewardQuantity") == 200
+          and wmid.get("golds", 0) == wpre.get("golds", 0) + 200,
+          "%s | w %s -> %s" % (str(ads1)[:120], wpre, wmid))
+    ads2 = fcall("PUT", "/user/api/v1/users/daily/sign/ads", None,
+                 headers=auth_hdr)
+    check("C: daily/sign/ads grants 300 (picUrl+quantity)",
+          ads2.get("code") == 1
+          and (ads2.get("data") or {}).get("quantity") == 300
+          and (ads2.get("data") or {}).get("picUrl") == "",
+          str(ads2)[:120])
+
     # ------------------------------------------------- Wave 23e: buy->wear
     # chain through the REAL server state (fcall tier, verb-aware claims).
     # The DressBuyDialog is GL-only on the emulator (run 37742955965: the

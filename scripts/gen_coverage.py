@@ -58,12 +58,24 @@ def concrete_paths(source):
 
 def fcall_claims(source):
     """(verb, path) pairs from fcall("VERB", "/path...") probes — verb-aware
-    claims (wave 15 honesty fix). The path keeps its query part stripped
-    and is matched with the same equality/prefix rules as the literals."""
+    claims (wave 15 honesty fix). The full string literal is captured
+    (query stripped) and %-format segments are normalized into {fmt}
+    template placeholders BEFORE matching, so a formatted fcall URL
+    claims its route TEMPLATE the way the router dispatches a real
+    request (wave 24a honesty fix: the old capture stopped at the % and
+    handed the truncated prefix the trailing-slash probe privilege —
+    which phantom-claimed unrelated siblings like
+    GET /user/api/v1/users/security/bind/email). Genuine trailing-slash
+    literals (deliberate prefix probes, no % anywhere) keep the prefix
+    rule; formatted literals are matched segment-wise only."""
     out = set()
-    for m in re.finditer(r'fcall\("(\w+)",\s*"(/[A-Za-z0-9\-._{}/]+)',
-                         source):
-        out.add((m.group(1).upper(), m.group(2)))
+    for m in re.finditer(r'fcall\("(\w+)",\s*"([^"]*)"', source):
+        verb = m.group(1).upper()
+        p = m.group(2).split("?")[0]
+        if "%" in p:
+            p = "/".join("{fmt}" if "%" in s else s for s in p.split("/"))
+        if len(p) > 4:
+            out.add((verb, p))
     return out
 
 

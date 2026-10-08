@@ -5,7 +5,7 @@
   "implemented": 334,
   "default": 0,
   "host_tested": 334,
-  "client_asserted": 161
+  "client_asserted": 147
  },
  "endpoints": [
   {
@@ -622,7 +622,7 @@
    "status": "implemented",
    "handler": "getSystemAnnouncementInfo",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",
@@ -630,7 +630,7 @@
    "status": "implemented",
    "handler": "getGameResource",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",
@@ -638,7 +638,7 @@
    "status": "implemented",
    "handler": "getUpgradeInfo",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",
@@ -646,7 +646,7 @@
    "status": "implemented",
    "handler": "friendPlayList",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",
@@ -654,7 +654,7 @@
    "status": "implemented",
    "handler": "recentlyPlayList",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",
@@ -662,7 +662,7 @@
    "status": "implemented",
    "handler": "resCheck",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",
@@ -670,7 +670,7 @@
    "status": "implemented",
    "handler": "getStopServiceAnnouncementInfo",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",
@@ -678,7 +678,7 @@
    "status": "implemented",
    "handler": "getUGCGameList",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",
@@ -686,7 +686,7 @@
    "status": "implemented",
    "handler": "ugcStatus",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",
@@ -702,7 +702,7 @@
    "status": "implemented",
    "handler": "recommendation",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",
@@ -710,7 +710,7 @@
    "status": "implemented",
    "handler": "getGameByType",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",
@@ -1110,7 +1110,7 @@
    "status": "implemented",
    "handler": "newDailyTasks",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -1158,7 +1158,7 @@
    "status": "implemented",
    "handler": "securitySettings",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",
@@ -1894,7 +1894,7 @@
    "status": "implemented",
    "handler": "multiClothe",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "PUT",
@@ -2054,7 +2054,7 @@
    "status": "implemented",
    "handler": "getSignAdsReward",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
@@ -2326,7 +2326,7 @@
    "status": "implemented",
    "handler": "getPartyCreateGameConfig",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",
@@ -2334,7 +2334,7 @@
    "status": "implemented",
    "handler": "teamMembers",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",
@@ -2342,7 +2342,7 @@
    "status": "implemented",
    "handler": "getGameUpdateContentList",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",
@@ -2350,7 +2350,7 @@
    "status": "implemented",
    "handler": "getGameUpdateContent",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",
@@ -2358,7 +2358,7 @@
    "status": "implemented",
    "handler": "gamePreheat",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",
@@ -2366,7 +2366,7 @@
    "status": "implemented",
    "handler": "miniGameDetail",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",
@@ -2382,7 +2382,7 @@
    "status": "implemented",
    "handler": "getGameMyRank",
    "host_tested": true,
-   "client_asserted": true
+   "client_asserted": false
   },
   {
    "verb": "GET",
@@ -2462,7 +2462,7 @@
    "status": "implemented",
    "handler": "weekTasks",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -2470,7 +2470,7 @@
    "status": "implemented",
    "handler": "getAdsRewardInfo",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -2662,7 +2662,7 @@
    "status": "implemented",
    "handler": "claimTask",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
@@ -2670,7 +2670,7 @@
    "status": "implemented",
    "handler": "getAdsReward",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
