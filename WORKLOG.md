@@ -3331,3 +3331,16 @@
   display pipeline — od/tokenize are the ground truth.
 - Fleet harvest re-dispatched on the Wave 24a commit (budget 15).
 - Engine 10068 untouched (mandate honored). NO GameServer work.
+
+## Session 39 (cont.) — Wave 24c: budget-15 fleet PASS, G verdict-complete, E gate closed (2026-10-08)
+
+- Run 37751313202 PASS 19m15s: backstop scaling validated; Phase G
+  fully client-asserted on device (setIdentity/removeMember/invite
+  roundtrip/freeVerify toggle + third member); Phase E closed as the
+  client-side headPic gate (toasts fire, no POST, form complete);
+  Phase H budget-skipped (0.0 left).
+- >5 tier backstops 45/38 (7d085fd); events-buffer toast-text capture
+  added to the E-clanui failure branch.
+- Budget-25 harvest dispatched on 7d085fd (includes Wave 24a/24b
+  Phase C assertions: suitDetail, suitListByIds, daily-tasks family).
+- Engine 10068 untouched (mandate honored). NO GameServer work.

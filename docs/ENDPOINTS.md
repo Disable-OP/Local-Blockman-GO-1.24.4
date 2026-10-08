@@ -2064,3 +2064,37 @@ Engine 10068 untouched. NO GameServer work.
 COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 147
 (honest recount after the fcall-claims extractor fix). Engine 10068
 untouched. NO GameServer work.
+
+### Wave 24c (session 39 cont.) — budget-15 fleet PASS: Phase G verdict-complete on device
+
+1. Run 37751313202 (f6068be, budget 15) PASSED in 19m15s — the
+   budget-scaled backstops work (the flat-12-min killer is gone).
+2. Phase G VERDICTS (all client-asserted on device, confirming the
+   existing clan-management claims):
+   - setIdentity: elder promotion via the Manage Members UI, server
+     role=10.
+   - removeMember (clanKick): member gone from the server list.
+   - inviteFriend: POST 0->1 with the split gate — the run-22 flake is
+     resolved; the invitee sees the type-2 invite message on the
+     server (message roundtrip asserted).
+   - freeVerify: toggle taps [1,0,1] followed by the server exactly,
+     PUTs 0->3.
+   - Third member joined via the API (hqa dynamic nick).
+3. Phase E VERDICT CLOSED: the multi-candidate submit hunt fired both
+   tries dead-on the 'Create a clan' button text (199,1118,385,1161)
+   and its covering RelativeLayout — toasts RAISED both times, no POST.
+   With the form fully filled (name/tag/intro verified), this is a
+   CLIENT-SIDE headPic (UPLOAD PROFILE) gate, not a server gap. The
+   failure dump now carries full bounds and the events-buffer toast
+   text is captured for a future headPic-picker drive. The local API
+   contract for POST /clan/api/v2/clan/tribe is fully owned (Phase C/F
+   create clans server-side with real state).
+4. Phase F/F2: owner dashboard, clan homepage, Notice Board, edit-clan
+   form (name + tag edited) all GREEN; the F2 'Modify' button was not
+   found (form dump only — evidence line for a future pass).
+5. Phase H (activity-task claim) budget-skipped at 0.0 min left — the
+   25-min harvest (7d085fd) is dispatched to reach H..N/O/LM.
+
+COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 147
+(honest count; G verdicts confirm existing claims — no inflation).
+Engine 10068 untouched. NO GameServer work.
