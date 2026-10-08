@@ -1672,3 +1672,17 @@ COVERAGE: 334/334/0-defaults; host rig 570/570; client_asserted 152.
    the Q2 hunt; [qs-end] gets a pause+re-dump stale guard.
 3. Run 13 = UI AUTOMATION PASS (4 consecutive green deep runs on the LM
    phases; question-GET gate verdict-backed 4x).
+
+### Wave 21e (session 36 cont.) — run-14 verdict: the ESC trap
+
+1. Run 14 re-confirmed fa.i alive post-pick ([q1-state] identical to
+   run 13), then the screen REALLY closed (the stale-dump guard showed
+   SafeSetting on a fresh dump). Root cause found: fill_edit's
+   keyevent 111 (ESC) dispatches as BACK on templates with an
+   onBackPressed handler — fa.i opens its "sure to exit" TwoButtonDialog
+   and the following scroll swipe tapped its confirm -> finish().
+2. Fix: fill_edit no longer sends ESC. It closes ONLY the soft keyboard,
+   guarded by dumpsys input_method (mInputShown) — one BACK reaches the
+   IME first when it is up, and the activity never sees a key event.
+3. Run 14 otherwise PASS-grade (single FAIL = the known G inviteFriend
+   flake).

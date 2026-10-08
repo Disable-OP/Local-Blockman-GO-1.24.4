@@ -132,6 +132,11 @@ class Adb:
     def key(self, keycode):
         self.sh("input keyevent %s" % keycode)
 
+    def ime_visible(self):
+        """True when the soft keyboard is up (dumpsys input_method)."""
+        return "mInputShown=true" in self.sh(
+            "dumpsys input_method | grep mInputShown")
+
     def pid(self, package):
         return self.sh("pidof %s" % package).strip()
 
@@ -1581,8 +1586,13 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
             adb.key(67)  # DEL
         adb.text(value)
         time.sleep(0.4)
-        adb.key(111)  # ESC hides the keyboard
-        time.sleep(0.8)
+        # run-14 evidence: keyevent 111 (ESC) behaves as BACK on templates
+        # with an onBackPressed handler (fa.i shows the exit dialog, and a
+        # later swipe confirmed it — finish()). Dismiss ONLY the IME: a
+        # single BACK closes the keyboard first when it is actually up.
+        if adb.ime_visible():
+            adb.key(4)
+            time.sleep(0.8)
         return True
 
     def confirm_button():
