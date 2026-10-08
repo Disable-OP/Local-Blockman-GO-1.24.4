@@ -2322,3 +2322,25 @@ Engine 10068 untouched. NO GameServer work.
 
 COVERAGE: 334/334/0-defaults/328 host-tested; client_asserted 289.
 Engine 10068 untouched. NO GameServer work.
+
+### Session 41 FINAL — full-green validation (read FIRST next session)
+
+- Run 37784092404 (8c34a62, budget 5, wip-59): UI AUTOMATION PASS,
+  ZERO fails — the Wave-29b reject chain [ok] on device (the
+  dispatcher fix is verdict-backed end-to-end), the Wave-29c
+  per-user isPay flip [ok] (auth-headers fix verdict-backed), every
+  29b/29c chain green: wardrobe roundtrips, unfriend, reject ->
+  re-invite -> accept -> transfer, chat-room, videostars, premium
+  game + game props + recharge v4. Wall ~9.5 min (mandate holds).
+- RELEASE-PIPELINE RULE (infra): build-release.yml is MANUAL. Pushes
+  do NOT build releases and deep runs fetch the newest ASSET by
+  updated_at — so any push carrying SERVER changes must be followed
+  by a build-release dispatch BEFORE a deep run, or the run silently
+  tests the previous APK (wip-58 cost runs 37781338019 + one
+  cancelled). wip-59 (13:22:48Z) carries everything through 8c34a62.
+- client_asserted 271 -> 289 (Wave 29b +15, Wave 29c +3), all
+  verdict-backed. 45 unasserted remain (Wave 29d + the 3 stubborn
+  UI flows).
+
+COVERAGE: 334/334/0-defaults/328 host-tested; client_asserted 289.
+Engine 10068 untouched. NO GameServer work.
