@@ -538,65 +538,91 @@ def ui_create_clan(adb, screen, package, tag):
                 else:
                     print("  [info] %s: no btn_confirm; BACKing out" % tag)
                     back()
-    # submit: the clickable node covering the 'Create a clan' text below
-    # the title bar, tapped HIGH inside its bounds (v6 nav-bar fix)
-    subs_text = [x for x in screen.dump()
+    # submit: MULTI-CANDIDATE hunt (fleet run 37746581644 lesson: the single
+    # "covering RelativeLayout high tap" never fired the POST — the green
+    # 'E-clanui' line of run 37259412423 was Phase C's API-level create,
+    # not a UI POST). Try, each with its own POST window:
+    #   1) direct tap on each 'Create a clan' text node below the title bar
+    #   2) high tap on the clickables covering it (v6 nav-bar fix)
+    #   3) high tap on up to two other bottom-quarter clickables
+    # After every tap: tap a confirm-dialog button if one popped, scan
+    # toasts, then require POST /clan/api/v2/clan/tribe count to GROW
+    # (v4 lesson: full-buffer compare — tails are Phase-C contaminated).
+    d_all = screen.dump()
+    subs_text = [x for x in d_all
                  if (x.text or "") == "Create a clan" and x.center
                  and x.center[1] > 400]
-    target = None
-    if subs_text:
-        st = subs_text[-1]
-        sc = st.center
-        cands = [x for x in screen.dump()
-                 if x.clickable and x.bounds
-                 and x.bounds[0] <= sc[0] <= x.bounds[2]
-                 and x.bounds[1] <= sc[1] <= x.bounds[3]]
-        target = cands[-1] if cands else None
+    tries = []
+    for st in subs_text[-2:]:
+        tries.append((st, False))
+        cov = [x for x in d_all
+               if x.clickable and x.bounds and st.center
+               and x.bounds[0] <= st.center[0] <= x.bounds[2]
+               and x.bounds[1] <= st.center[1] <= x.bounds[3]]
+        if cov:
+            tries.append((cov[-1], True))
+    for b in [x for x in d_all
+              if x.clickable and x.center
+              and 980 < x.center[1] < 1200][-2:]:
+        if not any(b.bounds == t[0].bounds for t in tries):
+            tries.append((b, True))
     posted = False
-    if target:
-        print("  [info] %s: submitting via %s bounds=%s (high tap)"
-              % (tag, target.res.rsplit("/", 1)[-1] if target.res
-                 else target.cls, target.bounds))
-        # Evidence-bounded posted detection (v4 lesson): a plain full-buffer
-        # grep is CONTAMINATED by Phase C's API-level create of the same
-        # route (run 37259412423 'E-clanui' ok was Phase C's line, not a UI
-        # POST — no clan existed server-side and both recommendation dumps
-        # were byte-identical). Snapshot BEFORE the tap and require the
-        # match count to GROW, plus the typed-name signature.
+    if tries:
         prelog = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
-        screen.tap_node_high(target)
-        time.sleep(2)
-        tlog = adb.raw("logcat", "-d", "-t", "300", timeout=60)
-        toasts = [ln.split(": ", 1)[-1] for ln in tlog.splitlines()
-                  if "toast" in ln.lower() and "LocalAPI" not in ln][:4]
-        if toasts:
-            print("  [info] %s: toast lines around submit: %s"
-                  % (tag, toasts))
-        for rid in ["btnSure", "btn_ok", "btnOk", "btn_confirm"]:
-            c = screen.find(ids=[rid])
-            if c and c.center:
-                screen.tap_node(c)
-                break
-        time.sleep(5)
-        if alive("%s-submit" % tag):
+        pre_ct = prelog.count("POST /clan/api/v2/clan/tribe")
+        for node, high in tries[:6]:
+            label = node.res.rsplit("/", 1)[-1] if node.res else node.cls
+            print("  [info] %s: submit try %s bounds=%s (%s tap)"
+                  % (tag, label, node.bounds, "high" if high else "text"))
+            try:
+                if high:
+                    screen.tap_node_high(node)
+                else:
+                    screen.tap_node(node)
+            except Exception as exc:
+                print("  [info] %s: tap %s failed: %s" % (tag, label, exc))
+                continue
+            time.sleep(2)
+            for rid in ["btnSure", "btn_ok", "btnOk", "btn_confirm"]:
+                c = screen.find(ids=[rid])
+                if c and c.center:
+                    screen.tap_node(c)
+                    break
+            time.sleep(3)
+            tlog = adb.raw("logcat", "-d", "-t", "300", timeout=60)
+            toasts = [ln.split(": ", 1)[-1] for ln in tlog.splitlines()
+                      if "toast" in ln.lower() and "LocalAPI" not in ln][:4]
+            if toasts:
+                print("  [info] %s: toasts after %s: %s"
+                      % (tag, label, toasts))
             clog = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
-            grew = (clog.count("POST /clan/api/v2/clan/tribe")
-                    > prelog.count("POST /clan/api/v2/clan/tribe"))
+            if clog.count("POST /clan/api/v2/clan/tribe") > pre_ct:
+                posted = True
+                ok("%s: UI clan creation hit POST /clan/api/v2/clan/"
+                   "tribe via %s (name=%s)" % (tag, label, uname))
+                break
+        if alive("%s-submit" % tag) and not posted:
+            clog = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+            grew = (clog.count("POST /clan/api/v2/clan/tribe") > pre_ct)
             typed = ("REQ POST /clan/api/v2/clan/tribe" in clog
                      and uname in clog)
-            posted = grew or typed
-            if posted:
+            if grew or typed:
+                posted = True
                 ok("%s: UI clan creation hit POST /clan/api/v2/clan/"
                    "tribe (name=%s, grew=%s, typed=%s)"
                    % (tag, uname, grew, typed))
             else:
-                print("  [info] %s: no clan-create POST observed"
-                      " (bounded evidence: grew=False typed=False)" % tag)
-            for x in screen.dump():
-                if x.res or x.text or x.desc:
-                    print("  %s-dump] %s | text=%r" % (
-                        tag, x.res.rsplit("/", 1)[-1] if x.res else "",
-                        x.text[:28]))
+                print("  [info] %s: no clan-create POST after %d submit "
+                      "tries (grew=False typed=False; UPLOAD PROFILE "
+                      "headPic gate suspected: %s)"
+                      % (tag, len(tries[:6]),
+                         any((x.text or "") == "UPLOAD PROFILE"
+                             for x in d_all)))
+                for x in screen.dump():
+                    if x.res or x.text or x.desc:
+                        print("  %s-dump] %s | text=%r bounds=%s" % (
+                            tag, x.res.rsplit("/", 1)[-1] if x.res else "",
+                            x.text[:28], x.bounds))
     else:
         print("  [skip] %s: no clickable submit candidate" % tag)
     back()
