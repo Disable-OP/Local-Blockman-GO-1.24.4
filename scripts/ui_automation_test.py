@@ -4270,9 +4270,12 @@ def main():
     # per-game ownedProps, re-buy rejected, exact wallet deduction).
     # The premium fixture (game 5043, isPay=1, 800 diamonds) is seeded
     # by ensurePremium on every boot — the detail read below PROVES the
-    # fixture before anything buys it.
+    # fixture before anything buys it. Detail reads carry the auth
+    # interceptors (the client's real shape — run-37780195013 lesson:
+    # the per-user owned view only flips isPay for an authenticated
+    # caller, so the post-buy read needs the session headers).
     pd43 = fcall("GET", "/game/api/v2/games/5043?appVersion=4003",
-                 headers={"language": "en"})
+                 headers=auth_hdr)
     pd_d = pd43.get("data") or {}
     pay43 = pd_d.get("gamePayInfo") or {}
     check("C: premium game detail carries the pay info",
@@ -4327,7 +4330,7 @@ def main():
           and str(pg_d.get("orderId") or "").startswith("ORD"),
           "%s | w %s -> %s" % (str(pg)[:140], wpre2, wpost2))
     pd43b = fcall("GET", "/game/api/v2/games/5043?appVersion=4003",
-                  headers={"language": "en"})
+                  headers=auth_hdr)
     check("C: owned premium game serves isPay=0 (per-user view)",
           pd43b.get("code") == 1 and (pd43b.get("data") or {}).get("isPay") == 0,
           str(pd43b)[:120])
