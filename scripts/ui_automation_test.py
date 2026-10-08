@@ -3319,63 +3319,99 @@ def main():
               "%s | %s" % (str(fadd)[:80], str(fagr)[:80]))
         ga = fcall("POST", "/msg/api/v1/msg/group/chat/add",
                    {"groupId": gid, "memberIds": [gf_id]}, headers=auth_hdr)
-        ga_members = [m.get("userId")
-                      for m in ((ga.get("data") or {}).get("groupMembers")
-                                or [])]
-        check("C: group direct-add puts the friend in the group",
-              ga.get("code") == 1 and gf_id in ga_members, str(ga)[:140])
-        gsm = fcall("PUT", "/msg/api/v1/msg/group/chat/set/manager",
-                    {"groupId": gid, "memberIds": [gf_id],
-                     "operationType": 1}, headers=auth_hdr)
-        check("C: group set/manager promotes the member",
-              gsm.get("code") == 1, str(gsm)[:120])
-        gname = "CIGrp%05d" % (int(time.time()) % 100000)
-        gm = fcall("PUT", "/msg/api/v1/msg/group/chat/modify",
-                   {"groupId": gid, "groupName": gname}, headers=auth_hdr)
-        check("C: group modify renames the group",
-              gm.get("code") == 1
-              and (gm.get("data") or {}).get("groupName") == gname,
-              str(gm)[:120])
-        gmu = fcall("PUT", "/msg/api/v1/msg/group/chat/forbidden?groupId=%d"
-                    % gid, None, headers=auth_hdr)
-        check("C: group mute-all toggles on",
-              gmu.get("code") == 1
-              and (gmu.get("data") or {}).get("muteAll") == 1,
-              str(gmu)[:120])
-        gba = fcall("POST",
-                    "/msg/api/v1/msg/group/chat/forbidden/member?groupId=%d&memberId=%d&minute=10"
-                    % (gid, gf_id), None, headers=auth_hdr)
-        gba_members = {m.get("userId"): m.get("banStatus")
-                       for m in ((gba.get("data") or {})
-                                 .get("groupMembers") or [])}
-        check("C: group ban flags the member (banStatus 1)",
-              gba.get("code") == 1 and gba_members.get(gf_id) == 1,
-              str(gba)[:140])
-        gun = fcall("PUT",
-                    "/msg/api/v1/msg/group/chat/remove/forbidden/member?groupId=%d&memberId=%d"
-                    % (gid, gf_id), None, headers=auth_hdr)
-        gun_members = {m.get("userId"): m.get("banStatus")
-                       for m in ((gun.get("data") or {})
-                                 .get("groupMembers") or [])}
-        check("C: group unban clears the flag (banStatus 0)",
-              gun.get("code") == 1 and gun_members.get(gf_id) == 0,
-              str(gun)[:140])
-        gki = fcall("PUT", "/msg/api/v1/msg/group/chat/kickOut",
-                    {"groupId": gid, "memberIds": [gf_id]},
-                    headers=auth_hdr)
-        gki_members = [m.get("userId")
-                       for m in ((gki.get("data") or {}).get("groupMembers")
-                                 or [])]
-        check("C: group kick removes the member",
-              gki.get("code") == 1 and gf_id not in gki_members,
-              str(gki)[:140])
+        check("C: group direct-add serves the group (invite queued)",
+              ga.get("code") == 1, str(ga)[:140])
+        # GroupChat.invite contract: a REGISTERED target gets a type-2
+        # joinRequest (the direct member insert is citizens-only), the
+        # invitee sees it in their request feed and accepts it with
+        # PUT agreement (operator = invitee).
+        greq_f = fcall("GET",
+                       "/msg/api/v1/msg/group/chat/request/list?pageNo=1&pageSize=20",
+                       headers=gf_hdr)
+        reqs_f = (greq_f.get("data") or {}).get("data") or []
+        inv = next((r for r in reqs_f if isinstance(r, dict)
+                    and r.get("inviteeId") == gf_id
+                    and r.get("status") == 0), None)
+        check("C: group invitation reaches the friend's feed",
+              greq_f.get("code") == 1 and inv is not None,
+              str(greq_f)[:140])
+        joined = False
+        if inv:
+            gacc = fcall("PUT", "/msg/api/v1/msg/group/chat/agreement",
+                         {"groupId": gid, "requestId": inv["requestId"],
+                          "userId": qa_uid_num}, headers=gf_hdr)
+            acc_members = [m.get("userId") for m in
+                           ((gacc.get("data") or {}).get("groupMembers")
+                            or [])]
+            joined = (gacc.get("code") == 1 and gf_id in acc_members)
+            check("C: invitee agreement joins the group", joined,
+                  str(gacc)[:140])
+        if joined:
+            gsm = fcall("PUT", "/msg/api/v1/msg/group/chat/set/manager",
+                        {"groupId": gid, "memberIds": [gf_id],
+                         "operationType": 1}, headers=auth_hdr)
+            check("C: group set/manager promotes the member",
+                  gsm.get("code") == 1, str(gsm)[:120])
+            gname = "CIGrp%05d" % (int(time.time()) % 100000)
+            gm = fcall("PUT", "/msg/api/v1/msg/group/chat/modify",
+                       {"groupId": gid, "groupName": gname},
+                       headers=auth_hdr)
+            check("C: group modify renames the group",
+                  gm.get("code") == 1
+                  and (gm.get("data") or {}).get("groupName") == gname,
+                  str(gm)[:120])
+            gmu = fcall("PUT", "/msg/api/v1/msg/group/chat/forbidden?groupId=%d"
+                        % gid, None, headers=auth_hdr)
+            check("C: group mute-all toggles on",
+                  gmu.get("code") == 1
+                  and (gmu.get("data") or {}).get("muteAll") == 1,
+                  str(gmu)[:120])
+            gba = fcall("POST",
+                        "/msg/api/v1/msg/group/chat/forbidden/member?groupId=%d&memberId=%d&minute=10"
+                        % (gid, gf_id), None, headers=auth_hdr)
+            gba_members = {m.get("userId"): m.get("banStatus")
+                           for m in ((gba.get("data") or {})
+                                     .get("groupMembers") or [])}
+            check("C: group ban flags the member (banStatus 1)",
+                  gba.get("code") == 1 and gba_members.get(gf_id) == 1,
+                  str(gba)[:140])
+            gun = fcall("PUT",
+                        "/msg/api/v1/msg/group/chat/remove/forbidden/member?groupId=%d&memberId=%d"
+                        % (gid, gf_id), None, headers=auth_hdr)
+            gun_members = {m.get("userId"): m.get("banStatus")
+                           for m in ((gun.get("data") or {})
+                                     .get("groupMembers") or [])}
+            check("C: group unban clears the flag (banStatus 0)",
+                  gun.get("code") == 1 and gun_members.get(gf_id) == 0,
+                  str(gun)[:140])
+            gki = fcall("PUT", "/msg/api/v1/msg/group/chat/kickOut",
+                        {"groupId": gid, "memberIds": [gf_id]},
+                        headers=auth_hdr)
+            gki_members = [m.get("userId")
+                           for m in ((gki.get("data") or {})
+                                     .get("groupMembers") or [])]
+            check("C: group kick removes the member",
+                  gki.get("code") == 1 and gf_id not in gki_members,
+                  str(gki)[:140])
+        else:
+            print("  [info] C: friend did not join the group — the "
+                  "management chain is skipped (no false FAILs)")
         ginv = fcall("POST", "/msg/api/v1/msg/group/chat/invite?groupId=%d&memberIds=%d"
                      % (gid, gf_id), None, headers=auth_hdr)
         check("C: group mail-invite served (none envelope)",
               ginv.get("code") == 1, str(ginv)[:100])
+        greq_f2 = fcall("GET",
+                        "/msg/api/v1/msg/group/chat/request/list?pageNo=1&pageSize=20",
+                        headers=gf_hdr)
+        reqs_f2 = (greq_f2.get("data") or {}).get("data") or []
+        check("C: re-invite reaches the friend's feed (pending)",
+              greq_f2.get("code") == 1
+              and any(isinstance(r, dict) and r.get("inviteeId") == gf_id
+                      and r.get("status") == 0 for r in reqs_f2),
+              str(greq_f2)[:140])
         greq = fcall("GET", "/msg/api/v1/msg/group/chat/request/list?pageNo=1&pageSize=20",
                      headers=auth_hdr)
-        check("C: group request list page served",
+        check("C: group request list page served (owner view)",
               greq.get("code") == 1
               and isinstance((greq.get("data") or {}).get("data"), list),
               str(greq)[:120])
@@ -3608,14 +3644,22 @@ def main():
     if sku1:
         wpre = fcall("GET", "/pay/api/v1/wealth/user",
                      headers=auth_hdr).get("data", {})
-        rc = fcall("POST", "/pay/api/v1/pay/users/recharge", {"sku": sku1},
+        # v2 is the CREDITING recharge; v1 is the pure IAP ack (ackPost,
+        # none envelope) — run 37757026640 lesson (the +1000 assert on
+        # v1 correctly failed: no crediting happens there).
+        rc = fcall("POST", "/pay/api/v2/pay/users/recharge", {"sku": sku1},
                    headers=auth_hdr)
         wpost = fcall("GET", "/pay/api/v1/wealth/user",
                       headers=auth_hdr).get("data", {})
-        check("C: recharge v1 credits the pack (+1000 golds)",
+        check("C: recharge v2 credits the pack (+1000 golds)",
               rc.get("code") == 1
               and wpost.get("golds", 0) == wpre.get("golds", 0) + 1000,
               "%s | w %s -> %s" % (str(rc)[:120], wpre, wpost))
+        ack = fcall("POST", "/pay/api/v1/pay/users/recharge",
+                    {"sku": sku1, "purchaseToken": "qa-ack"},
+                    headers=auth_hdr)
+        check("C: recharge v1 is the pure IAP ack (none envelope)",
+              ack.get("code") == 1 and "data" not in ack, str(ack)[:100])
         ph = fcall("GET", "/pay/api/v1/wealth/record/users/%d" % qa_uid_num,
                    headers=auth_hdr)
         ph_d = ph.get("data") or {}
