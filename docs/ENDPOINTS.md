@@ -1904,3 +1904,39 @@ COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 156
    the chain re-arms once the buy fires.
 
 COVERAGE unchanged: 334/334/0/334 host-tested; client_asserted 156.
+
+### Wave 23b (session 38) — deep CI time-budget mandate + dressList promotion
+
+1. USER MANDATE (2026-10-08): "lower the DEEP test redroid time ... I am
+   sick of always waiting 30-35 minutes". Implemented a deep-phase TIME
+   BUDGET inside scripts/ui_automation_test.py: `--deep-budget-min` (env
+   DEEP_BUDGET_MIN, 0 = legacy unlimited). deep-drive A / Phase B use
+   NON-RAISING gates (they precede the core C/D registration chain);
+   Phase E..LM raise DeepBudgetSkip once the budget is gone, caught
+   right before the fast-mode else, so the final assertions + crash
+   scan + coverage still run. The 100s clan settle poll is clamped to
+   the budget wall (clamp_deep). test-redroid-deep.yml now takes a
+   dispatch input `deep_budget_min` (default 5): expected wall
+   ~12-14 min (infra ~4 + core ~4 + deep <=5 + diagnostics ~1); job
+   timeout 45->16 / suite step 38->9 for budgeted runs, legacy 45/40
+   kept for input 0 (full audit). The fast workflow stays FAST-ONLY
+   (~5 min, 2026-10-07 mandate, untouched).
+2. dressList PROMOTED: the wardrobe's 4 first-level chips
+   (rb_clothes/rb_accessories/rb_character/rb_function) switch the
+   per-type page whose load fires GET /decoration/api/{version}/
+   decorations/{typeId}. The drive now records its taps and claims the
+   family ONCE with a hard check() (verb+digit regex — cannot touch
+   the /using or new/decorations siblings), guarded on >=1 chip tapped.
+   dress-guide-config stays evidence-only (one-time/cached).
+3. SUIT-CARD DISCOVERY PROBE: on the store suit page the drive now
+   taps the first card candidate (ConstraintLayout/bgView roots — the
+   run-21 buy-hunt lesson) hunting the suitDetail GET (new/shop/suit/
+   info/{suitId}). Evidence-only first pass; a claim lands after a run
+   proves the hop deterministic.
+4. Deep budget validation: run 37738096151 (edc0558) dispatched with
+   deep_budget_min=5 — first budgeted run; read its wall time and
+   [skip budget] lines, then tune the per-phase estimates if phases
+   were skipped too early.
+
+COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 157
+(dressList). Engine 10068 untouched. NO GameServer work.

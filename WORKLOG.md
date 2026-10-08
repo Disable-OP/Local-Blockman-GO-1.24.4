@@ -3261,3 +3261,35 @@
   pushed; run 22 dispatched.
 - Engine 10068 untouched (mandate honored). 6 commits this session:
   f838ccf, f62b30b, e746eff, 52d7d0d, 0fb09b8 (+docs).
+
+## Session 38 — deep CI time budget + Wave 23b dressList promotion (2026-10-08)
+
+- USER MANDATE FIRST: "lower the DEEP test redroid time ... I am sick of
+  always waiting 30-35 minutes, just make it 10 minutes". Implemented a
+  deep-phase budget: `--deep-budget-min` in scripts/ui_automation_test.py
+  (env DEEP_BUDGET_MIN; 0 = legacy unlimited). deep-drive A / Phase B =
+  non-raising deep_go() gates (they precede the core C/D registration
+  chain and must never abort it); Phase E..LM = budget_gate() raising
+  DeepBudgetSkip, caught once right before the fast-mode else so the
+  final assertions + crash scan + coverage still run. The 100s clan
+  settle poll clamped to the budget wall (clamp_deep). Workflow input
+  `deep_budget_min` default 5 -> expected wall ~12-14 min (infra ~4 +
+  core ~4 + deep <=5 + diag ~1); job 45->16, suite step 38->9 (budgeted)
+  with legacy 45/40 kept for input 0. Fast workflow untouched (5-min
+  mandate 2026-10-07 holds). Commit edc0558, pushed, run 37738096151
+  dispatched with the default budget = first validation.
+- Fresh-sandbox verification (artifacts were gone): re-built the server
+  from source (build_server_dex.sh) and re-ran the FULL host rig —
+  576/576 PASS. Server claims verified, not trusted.
+- Wave 23b: dressList (GET /decoration/api/{version}/decorations/
+  {typeId}) promoted to a hard verdict gate after the 4 wardrobe chips
+  (guarded on >=1 chip tapped; verb+digit regex cannot touch the /using
+  or new/decorations siblings). dress-guide-config = evidence-only.
+  Store suit page gained a best-effort suit-card probe (run-21
+  ConstraintLayout/bgView lesson) hunting the suitDetail GET — discovery
+  pass, evidence-only, no literal claim yet. gen_coverage re-run:
+  client_asserted 156 -> 157. Commit 2152eff pushed.
+- Docs: ENDPOINTS.md Wave 23b, NEXT_SESSION_README.md session-38 delta,
+  this entry. webDevReview scheduled task created (fixed_rate 3600s,
+  priority 15, prompt "Continue") for cross-session continuation.
+- Engine 10068 untouched (mandate honored). NO GameServer work.

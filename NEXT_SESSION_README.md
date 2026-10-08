@@ -1888,3 +1888,29 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   dressList/dressSuitList surfaces behind the wardrobe chips; then the
   email-BOUND question-verify chain for emails/verify/{email}'s
   verdict. NO GameServer work.
+
+## Session 38 delta (Wave 23b — read FIRST next session)
+
+- USER MANDATE EXECUTED FIRST: deep CI run time-budgeted. --deep-budget-min
+  (default via workflow input 5) caps ONLY the deep phases; core A/P/C/D +
+  assertions always run. Expected wall ~12-14 min instead of 30-35. Non-
+  raising gates before the core chain; DeepBudgetSkip (caught once) for
+  E..LM; 100s settle clamped. deep_budget_min=0 restores the legacy full
+  audit. First budgeted run = 37738096151 (edc0558, dispatched 06:31Z) —
+  READ ITS WALL TIME + [skip budget] LINES, tune per-phase estimates if
+  phases skipped too early (estimates: A 4, B 3, E 2.5, F 4, H/I/L/M/N
+  1.5, J 1, K 1.5, O 2, LM 4).
+- Wave 23b: dressList (GET /decoration/api/{version}/decorations/{typeId})
+  PROMOTED to a hard verdict gate after the 4 wardrobe chips (guarded on
+  >=1 chip tapped). Suit-card discovery probe added on the store suit page
+  (evidence-only; suitDetail claim needs a deterministic proof first).
+  client_asserted 156 -> 157. Commit 2152eff.
+- Run 22 (37735834002, 0fb09b8) = the [buydlg]-fix run — read its verdicts
+  FIRST: if the buy POST landed (wallet moved off 50000), Wave 23's
+  buy->wear chain is unblocked; the wear claim (PUT using/{id}) verdict
+  code is already in the drive.
+- NEXT (priority order): (1) read run 22 + 37738096151 verdicts; (2) if
+  buy landed, next dispatch (with 2152eff) asserts dressList + suit-card
+  evidence in the same run; (3) if buy still missed, mine the [buydlg]
+  dump for the real control ids; (4) tune deep-budget estimates from the
+  budgeted run's phase timings. NO GameServer work.
