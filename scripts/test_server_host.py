@@ -676,8 +676,8 @@ def main():
         rc2 = call("POST", "/pay/api/v2/pay/users/recharge?type=android",
                    {"sku": sku, "purchaseData": "local", "signature": "local",
                     "isSub": False}, headers={"Access-Token": tok1, "userId": str(uid1)})
-        check("recharge credits wallet", rc2.get("code") == 1
-              and rc2.get("data", {}).get("rewardQuantity", 0) > 0, str(rc2)[:150])
+        check("recharge credits wallet (face value 1000)", rc2.get("code") == 1
+              and rc2.get("data", {}).get("rewardQuantity", 0) == 1000, str(rc2)[:150])
         w1 = call("GET", "/pay/api/v1/wealth/user", headers={"Access-Token": tok1, "userId": str(uid1)})
         check("wallet grew", w1.get("data", {}).get("golds", 0)
               == w0["data"]["golds"] + rc2["data"]["rewardQuantity"], str(w1)[:120])

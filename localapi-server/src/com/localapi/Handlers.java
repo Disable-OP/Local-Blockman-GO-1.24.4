@@ -2536,8 +2536,13 @@ final class Handlers {
             p.put("desc", "Local purchase — credits your wallet instantly.");
             p.put("currency", (int) d[2]);
             p.put("price", (double) d[4]);
-            p.put("diamonds", (int) d[3]);
-            p.put("golds", (int) d[3]);
+            // face-value seeding (budget-30 run 37758897572 lesson):
+            // both fields used to carry d[3], so recharge's
+            // qty = golds + diamonds DOUBLE-CREDITED every pack (a
+            // 1000-gold pouch granted 2000). A gold pack carries its
+            // value in golds only; a diamond pack in diamonds only.
+            p.put("diamonds", (int) d[2] == 1 ? (int) d[3] : 0);
+            p.put("golds", (int) d[2] == 2 ? (int) d[3] : 0);
             p.put("gift", (int) d[5]);
             p.put("month", ((String) d[0]).startsWith("local.vip") ? 1 : 0);
             p.put("level", ((String) d[0]).equals("local.vip.2") ? 2 : 1);
