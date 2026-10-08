@@ -1971,3 +1971,36 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   fails, drive the UPLOAD PROFILE picker path; (4) the 47 unasserted
   user/api surfaces — mine call sites from docs/ENDPOINTS.md rows and
   extend Phase C fcalls the same dynamic-id way. NO GameServer work.
+
+## Session 39 FINAL delta (Waves 24-27 — read FIRST next session)
+
+- client_asserted 147 -> 193 across Waves 24a-27 (46 genuine on-device
+  claims, 0 phantoms; the 20 phantom prefix claims from the old
+  extractor were removed in Wave 24b — the count follows the evidence).
+- Extractor is now ROUTER-FAITHFUL: %-formatted fcall URLs normalize to
+  template segments (whole-segment % -> {fmt}; mid-segment % matches
+  embedded route wildcards via the static-frame rule — the real router
+  turns {name} into ([^/]+) regex).
+- CONTRACT LESSONS banked this session: (1) v1 users/recharge = pure
+  IAP ack (ackPost), v2 = crediting recharge; (2) GroupChat.invite
+  queues a type-2 joinRequest for registered targets (direct insert is
+  citizens-only); the invitee accepts via PUT agreement; (3)
+  requestFeed entries carry the INVITER as userId (no inviteeId);
+  (4) the clan-create UI has a client-side headPic gate (toasts fire,
+  no POST — form complete; events-buffer toast-text capture added for
+  a future headPic-picker drive); (5) the game-detail video walk is a
+  guest-GPU flake (split gate: [ok] when seen, [evidence] when missed).
+- Deep CI: default budget-5 runs ~10 min GREEN (mandate holds); fleet
+  harvests scale backstops 45/38. Run 37754592525 harvested H..N ALL
+  GREEN on device (activity-task claim wallet delta=300, scrap
+  surfaces, rank podium, VIP, 6 ranking boards). Budget-30 run on
+  f7430f2 in flight at session end (O+LM; its two group-feed asserts
+  are the pre-ac95af4 version — read as known-broken).
+- NEXT (priority order): (1) read the budget-30 run verdicts (O/LM +
+  everything else); (2) dispatch a budget-5 validation on 73bb655 to
+  green the group invite-accept chain + recharge v2 + Wave 27 scrap
+  asserts; (3) remaining unasserted families: worldCup/halloween/
+  bgtube event surfaces (server-backed but config-gated in the
+  client), user security/email chains (need bind-state setup), msg
+  recall (needs a message first); (4) the F2 'Modify' button pass.
+  NO GameServer work.

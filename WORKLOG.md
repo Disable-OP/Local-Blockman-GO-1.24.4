@@ -3344,3 +3344,27 @@
 - Budget-25 harvest dispatched on 7d085fd (includes Wave 24a/24b
   Phase C assertions: suitDetail, suitListByIds, daily-tasks family).
 - Engine 10068 untouched (mandate honored). NO GameServer work.
+
+## Session 39 (cont. 4) — Waves 25a-27 + fix rounds; client_asserted 147 -> 193 (2026-10-08)
+
+- Wave 25a (5b57070): dress-buy v1 family (type-8 page, details echo,
+  recommends, buyOne exact deduction, unknown-id rejection, buyMany
+  combined deduction). +5.
+- Wave 25b (bf41cfd): pay/VIP chain (products, products/vip, recharge,
+  payHistory, v3 recharge VIP, vipBuy 30k exact, first/punch). +7.
+- Wave 25c (f07a99a): config-file sweep (11 docs) + ROUTER-FAITHFUL
+  extractor (embedded wildcards: route {name} -> ([^/]+) regex;
+  static-frame rule for mid-segment % literals). +11.
+- Wave 26 (e4b579c + f7430f2 + ac95af4): full group lifecycle with a
+  freshly registered friend — invite-accept contract honored (type-2
+  joinRequest -> friend's feed -> PUT agreement -> manage ops:
+  set/manager, modify rename, mute-all, ban/unban banStatus roundtrip,
+  kickOut, re-invite pending). +12 (+agreement).
+- Wave 27 (73bb655): scrap collect-exchange chain (seeded counts,
+  send token flow with before/after counts, card details, combine
+  10107 rejection, request targets, treasurebox, vip convert, ask/
+  receive). +9.
+- Failures diagnosed and fixed: video-gate nav flake (split per the
+  run-22 precedent), v1-recharge-is-ack contract lesson, group
+  invite/accept + requestFeed field shapes.
+- Engine 10068 untouched (mandate honored). NO GameServer work.
