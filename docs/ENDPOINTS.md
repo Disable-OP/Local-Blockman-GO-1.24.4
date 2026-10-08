@@ -2274,3 +2274,22 @@ Engine 10068 untouched. NO GameServer work.
 
 COVERAGE: 334/334/0-defaults/328 host-tested; client_asserted 286.
 Engine 10068 untouched. NO GameServer work.
+
+### Wave 29c (session 41, cont.) — paid-game + game-prop economy
+
+1. Premium fixture PROVEN before purchase: GET /game/api/v2/games/5043
+   (ensurePremium-seeded, isPay=1, gamePayInfo qty=800 currency=1).
+2. PUT /shop/api/v2/pay/game/5043 (payGame): 800 diamonds deducted
+   exactly, BuyGameResponse echoes userId + post-wallet + ORD-prefixed
+   orderId; the per-user detail view then serves isPay=0 (owned);
+   re-buy rejected. Wave 25b's vip asserts stay green with the earlier
+   v4 recharge (Math.max + >=1 semantics).
+3. GET props shelf (dynamic ids/prices/currencies) + PUT
+   /shop/api/v3/shop/game/props/new (buyGameProp): exact deduction of
+   the dynamic prop price, re-buy rejected with wallet unchanged,
+   unknown propsId rejected.
+4. POST /pay/api/v4/pay/users/recharge (rechargeVip, sku local.vip.1):
+   vip 0->1 + expireDate + gDiamonds echo.
+
+COVERAGE: 334/334/0-defaults/328 host-tested; client_asserted 289.
+Engine 10068 untouched. NO GameServer work.
