@@ -2240,3 +2240,38 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   modify served". If the modify POST lands, the LAST evidence-only
   surface of the whole local API is client-asserted end-to-end.
 - NO GameServer work.
+
+## Session 45+46 CLOSED (read FIRST — every surface verdict-backed; the 3 stubborn flows are DONE)
+
+- THE HEADLINE (run 37834788323, PASS, wip-61): "LM: password modify
+  served through the real UI (v2 route, logout-on-success followed)" —
+  the LAST evidence-only surface of the whole local API is now
+  client-asserted END-TO-END: AccountSafe -> ConfirmPasswordFragment
+  (old-pw check -> JSON-boolean right) -> ChangePasswordFragment
+  (new+confirm -> POST /user/api/v2/user/password/modify, newPassword
+  RSA) -> forced logout. F2 clan-UPDATE green in the same run.
+- HOW THE PASSWORD CHAIN WAS WON (3 commits, each evidence-proven):
+  1. 2c50bdf SERVER: password/check reads @Query("password") (the
+     client RSA-encrypts the QUERY — the body-only read answered
+     right=false for every real call; NanoHTTPD never logs queries).
+  2. 4978bb0 SERVER: the callback is OnResponseListener<Boolean>
+     (jadx f.a.c.d) — data must be a JSON BOOLEAN (the UserVerifyInfo
+     object threw in Gson -> silent onError). envelope(bool, right).
+     Host rig pins all 4 shapes; 589/589.
+  3. 6792f95+18f50e6 DRIVE: case-insensitive CONFIRM hunt
+     (textAllCaps) + alternating taps + count BOTH modify routes (the
+     client fires the V2 route) + break on the LoginActivity logout
+     navigation.
+- ALSO CLOSED: F2 clan-UPDATE (reproducible: the IME-guard +
+  alternating-tap fixes; green in 3 of the last 4 runs, the 1 miss was
+  the tap race the loop now self-heals), LM answer-field (pick
+  registers; the question screen is a roaming-killer HOTSPOT — native,
+  recovery absorbs it, do NOT chase in Java).
+- INFRA: fetch_release_asset.py paginates (51 releases dropped
+  v0.1.0-pipeline off page 1; the base-APK fetch died once — fixed).
+- COVERAGE: 334/334/0-defaults on BOTH tiers, every route now
+  asserted through the real client path INCLUDING the full
+  password-modify chain. Host suite 589/589. wip-61 asset current.
+- NEXT: nothing is failing; the API is at its practical ceiling —
+  error-driven from NEW traffic only, or the GameServer phase gate.
+  NO GameServer work.

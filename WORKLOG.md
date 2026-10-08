@@ -3528,3 +3528,20 @@
 - Commits: 13cc493 44c1bdc 9424c7e 81fd350 0e8c941 8e8a5e1. No server
   Java changes — wip-59 asset current, no rebuild/tag.
 - Engine 10068 untouched (mandate honored). NO GameServer work.
+
+## Session 45+46 CLOSED — the password chain: the last surface, verdict-backed (2026-10-08, 20:30 UTC)
+
+- Two server fixes (password/check @Query read; JSON-boolean data for
+  the OnResponseListener<Boolean> callback), one CI fix
+  (fetch_release_asset pagination), three drive fixes (wizard-aware
+  fills, case-insensitive CONFIRM hunt, v2-route marker + logout
+  break) — each landed with on-device or rig proof.
+- FINAL VERDICT run 37834788323 (PASS, wip-61): the full password
+  chain client-asserted end-to-end (check -> ChangePasswordFragment ->
+  v2 modify POST -> logout-on-success); F2 green in the same run.
+- Host suite 589/589; jadx re-armed in-sandbox (wip-60 APK + 1.5.6,
+  classes2 decompiles: ConfirmPasswordModel/Fragment, web.b,
+  ChangePasswordForm).
+- 10 commits this session pair: 2c50bdf 0361723 ff84e99 81722a6-era
+  docs 0e8c941 89f723f 4978bb0 6792f95 18f50e6 59a8409 (docs).
+- Engine 10068 untouched (mandate honored). NO GameServer work.
