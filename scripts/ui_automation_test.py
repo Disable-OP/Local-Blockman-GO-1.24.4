@@ -618,6 +618,20 @@ def ui_create_clan(adb, screen, package, tag):
                       % (tag, len(tries[:6]),
                          any((x.text or "") == "UPLOAD PROFILE"
                              for x in d_all)))
+                # The taps DO raise toasts (client-side validation) — the
+                # main buffer only carries system noise, the toast TEXT
+                # lives in the events buffer (notification_enqueue).
+                ev = adb.raw("logcat", "-d", "-b", "events", "-t", "500",
+                             timeout=60)
+                toast_txt = [ln.split(" ")[-3:] for ln in ev.splitlines()
+                             if "notification_enqueue" in ln
+                             and "toast" in ln.lower()][:6]
+                if toast_txt:
+                    print("  [info] %s: toast texts from events buffer: %s"
+                          % (tag, toast_txt))
+                else:
+                    print("  [info] %s: no toast text in the events buffer"
+                          % tag)
                 for x in screen.dump():
                     if x.res or x.text or x.desc:
                         print("  %s-dump] %s | text=%r bounds=%s" % (

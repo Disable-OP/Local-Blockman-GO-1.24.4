@@ -23,7 +23,9 @@ name: test-redroid-deep
 # killed the run mid-Phase-F before G..N could execute. Budgets > 5 are
 # deliberate verdict-harvest dispatches, so their backstops scale:
 #   budget 0  -> job 45 / step 40 (legacy unlimited)
-#   budget >5 -> job 40 / step 32 (fleet harvest, deep ~15 min + core ~11)
+#   budget >5 -> job 45 / step 38 (fleet harvest; run 37751313202 passed
+#                at 19 min with budget 15 — the bigger 25-min harvests
+#                need the extra headroom to reach H..N/O/LM)
 #   else      -> job 18 / step 12 (the ~10-min default fleet-mandated run)
 
 on:
@@ -40,7 +42,7 @@ permissions:
 jobs:
   redroid-deep-test:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: ${{ fromJSON(inputs.deep_budget_min || '5') == 0 && 45 || (fromJSON(inputs.deep_budget_min || '5') > 5 && 40 || 18) }}
+    timeout-minutes: ${{ fromJSON(inputs.deep_budget_min || '5') == 0 && 45 || (fromJSON(inputs.deep_budget_min || '5') > 5 && 45 || 18) }}
     env:
       PACKAGE: com.disabngo.blockynexus
       ACTIVITY: com.disabngo.blockynexus.view.activity.start.StartActivity
@@ -107,11 +109,12 @@ jobs:
         # timeout is the backstop. run 37739443414 lesson: the CORE Phase A
         # (visitor + tabs + deep-drive A) alone needs ~7 min on the
         # guest-GPU emulator, so a 9-min backstop killed a healthy run.
-        # Budgeted runs get 12 min; fleet harvest (input > 5) gets 32 —
+        # Budgeted runs get 12 min; fleet harvest (input > 5) gets 38 —
         # run 37746581644 died at the flat 12 min mid-Phase-F with budget
-        # 15, before the G..N phases ever started. Legacy unlimited (0)
-        # keeps 40.
-        timeout-minutes: ${{ fromJSON(inputs.deep_budget_min || '5') == 0 && 40 || (fromJSON(inputs.deep_budget_min || '5') > 5 && 32 || 12) }}
+        # 15 (before G..N ever started), and run 37751313202 passed at
+        # 19 min with budget 15; the bigger harvests need the headroom.
+        # Legacy unlimited (0) keeps 40.
+        timeout-minutes: ${{ fromJSON(inputs.deep_budget_min || '5') == 0 && 40 || (fromJSON(inputs.deep_budget_min || '5') > 5 && 38 || 12) }}
         run: |
           python3 scripts/ui_automation_test.py \
             --serial localhost:5555 \
