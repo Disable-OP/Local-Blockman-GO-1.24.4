@@ -1723,45 +1723,69 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
     def fill_q2(screen, adb):
         return pick_question_row(["ll_question_two"], "first pet")
 
-    # -- ground on the Me tab ------------------------------------------------
-    me = screen.find(ids=["rb_5"])
-    if not (me and me.center):
-        print("  [skip] LM: Me tab not reachable (no rb_5)")
-        return
-    screen.tap_node(me)
-    time.sleep(3)
-    if not alive_or_recover("%s-me" % tag):
-        return
+    # -- process-death awareness ---------------------------------------------
+    # RUN-17 SMOKING GUN: the "self-closing" question screen was the
+    # documented roaming-killer family — the app process was SIGKILLed
+    # ~20s after the pick and relaunched (the GET ran on pid 13766, the
+    # next heartbeat on pid 16263), restoring the stack to SafeSetting
+    # without fa.i. The drive therefore snapshots the pid at entry and
+    # RE-WALKS Me -> Setting -> Security whenever the pid changed.
+    pid0 = adb.pid(package)
 
-    # -- Setting row (scroll the Me list: row 8, below the fold) ------------
-    setting = None
-    for swipe in range(4):
-        setting = screen.find(texts=["Setting"])
-        if setting and setting.center:
-            break
-        adb.sh("input swipe 360 900 360 320 300")
-        time.sleep(2)
-    if not (setting and setting.center):
-        print("  [skip] LM: 'Setting' row not found after scrolling")
-        debug_dump(screen, "%s-no-setting" % tag)
-        back(1)
-        return
-    screen.tap_node(setting)
-    time.sleep(4)
-    if not alive_or_recover("%s-setting" % tag):
-        return
-    ok("LM: Setting screen open")
+    def restarted():
+        pid_now = adb.pid(package)
+        return not pid_now or (pid0 and pid_now != pid0)
 
-    # -- Security (AccountSafe) ---------------------------------------------
-    sec = screen.find(texts=["Security"])
-    if not (sec and sec.center):
-        print("  [skip] LM: 'Security' row not found on Setting")
-        debug_dump(screen, "%s-no-security" % tag)
-        back(1)
-        return
-    screen.tap_node(sec)
-    time.sleep(4)
-    if not alive_or_recover("%s-accsafe" % tag):
+    def enter_accountsafe():
+        """Ground on the Me tab and walk to the AccountSafe screen.
+        Handles a dead/relaunched process and any foreign screen."""
+        nonlocal pid0
+        if not adb.pid(package):
+            print("  [evidence] LM: process dead - relaunching")
+            if not relaunch_and_wait(adb, screen, package, activity,
+                                     "%s-relaunch" % tag):
+                return False
+            pid0 = adb.pid(package)
+        me = screen.find(ids=["rb_5"])
+        if not (me and me.center):
+            home = screen.find(ids=["rb_1"])
+            if home and home.center:
+                screen.tap_node(home)
+                time.sleep(2)
+            me = screen.find(ids=["rb_5"])
+            if not (me and me.center):
+                if not relaunch_and_wait(adb, screen, package, activity,
+                                         "%s-reme" % tag):
+                    return False
+                me = screen.find(ids=["rb_5"])
+            if not (me and me.center):
+                return False
+        screen.tap_node(me)
+        time.sleep(3)
+        setting = None
+        for _ in range(4):
+            setting = screen.find(texts=["Setting"])
+            if setting and setting.center:
+                break
+            adb.sh("input swipe 360 900 360 320 300")
+            time.sleep(2)
+        if not (setting and setting.center):
+            debug_dump(screen, "%s-no-setting" % tag)
+            return False
+        screen.tap_node(setting)
+        time.sleep(4)
+        sec = screen.find(texts=["Security"])
+        if not (sec and sec.center):
+            debug_dump(screen, "%s-no-security" % tag)
+            back(1)
+            return False
+        screen.tap_node(sec)
+        time.sleep(4)
+        return bool(adb.pid(package))
+
+    # -- enter the AccountSafe screen (restart-aware) ------------------------
+    if not enter_accountsafe():
+        print("  [skip] LM: could not reach the Account Security screen")
         return
     ok("LM: Account Security screen open")
     for n in screen.dump():
@@ -1908,7 +1932,17 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
     # -- 2) Email bind (two-step) -------------------------------------------
     # Run 8 evidence: the Email/Phone rows sit BELOW the fold on the
     # AccountSafe list (the [as] dump only reached 'Safety Settings') —
-    # scroll before hunting for them.
+    # scroll before hunting for them. RUN-17: the roaming killer may have
+    # restarted the process during the question block (the stack restores
+    # to SafeSetting) — detect and re-walk before hunting.
+    if restarted():
+        print("  [evidence] LM: process restarted during the question block "
+              "(roaming-killer family, pid %s -> %s) - re-walking"
+              % (pid0, adb.pid(package)))
+        if not enter_accountsafe():
+            print("  [skip] LM: could not re-enter Account Security")
+            return
+        ok("LM: Account Security re-entered after the restart")
     email = "qa%05d@local.test" % (int(time.time()) % 100000)
     code = "138%03d" % (int(time.time()) % 1000)
     erow = None
@@ -1954,6 +1988,13 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
 
     # -- 3) Phone bind --------------------------------------------------------
     phone = "130%08d" % (int(time.time()) % 100000000)
+    if restarted():
+        print("  [evidence] LM: process restarted before the phone bind - "
+              "re-walking (pid %s -> %s)" % (pid0, adb.pid(package)))
+        if not enter_accountsafe():
+            print("  [skip] LM: could not re-enter Account Security (phone)")
+            return
+        ok("LM: Account Security re-entered (phone)")
     prow = None
     for swipe in range(3):
         prow = screen.find(texts=["Phone number"])
@@ -1996,6 +2037,13 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
         print("  [skip] LM: 'Phone number' row not found on Account Security")
 
     # -- 4) Modify Password (LAST — rotates the credential) ------------------
+    if restarted():
+        print("  [evidence] LM: process restarted before the password flow "
+              "- re-walking (pid %s -> %s)" % (pid0, adb.pid(package)))
+        if not enter_accountsafe():
+            print("  [skip] LM: could not re-enter Account Security (pw)")
+            return
+        ok("LM: Account Security re-entered (pw)")
     # the email/phone hunts scrolled the list DOWN — Modify Password sits
     # near the TOP of AccountSafe; scroll back up before hunting (run-10:
     # the row was missed after the hunts)

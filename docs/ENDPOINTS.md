@@ -1686,3 +1686,21 @@ COVERAGE: 334/334/0-defaults; host rig 570/570; client_asserted 152.
    IME first when it is up, and the activity never sees a key event.
 3. Run 14 otherwise PASS-grade (single FAIL = the known G inviteFriend
    flake).
+
+### Wave 21h (session 36 cont.) — RUN-17 SOLVED: the "self-close" was the roaming killer
+
+1. The decisive evidence chain: [q1-t0]/[q1-t1] show fa.i alive 17s
+   after the pick; [q1-t2] shows SafeSetting at 24s with ZERO input in
+   between; the server log's close-window traffic = a single
+   POST /user/api/v1/user/mac/id — AND THE PID CHANGED (GET on 13766,
+   heartbeat on 16263). The app process was SIGKILLed and relaunched
+   (the documented roaming-killer family, 1-4x per deep run); the
+   restored stack landed on SafeSetting without fa.i. NOT a client bug.
+2. Fix: the LM drive is now process-death-aware — pid snapshot at
+   entry, restarted() checks before each section, and an
+   enter_accountsafe() re-walk (relaunch -> Me -> Setting -> Security)
+   whenever the pid changed. The email/phone/modify hunts run on the
+   re-entered screen after a kill.
+3. All prior fa.i behavior is now fully explained: the pick WORKS, the
+   answer field IS fillable, Next DOES reveal section 2 (below the
+   fold); the killer simply struck mid-flow in every deep run so far.
