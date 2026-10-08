@@ -3497,3 +3497,20 @@
   44c1bdc rides along). Verdicts next session step.
 - Coverage/COVERAGE.json untouched (no new claims; drive mechanics only).
 - Engine 10068 untouched (mandate honored). NO GameServer work.
+
+## Session 44 cont. — budget-30 harvest triage + F2 submit hardening (2026-10-08)
+
+- Run 37796083466 (budget 30, FAIL x1): the IME-guard fix HELD (form up
+  through the tag hop, no form-killer) but BOTH Modify center taps
+  landed alive with PUT 0->0 — the tap-registration race + docked-button
+  geometry (submit bar centers under the 48px nav bar). Hardened
+  (0e8c941): 3-attempt loop alternating center / 25%-height taps on
+  fresh dumps, stop at first PUT growth.
+- LM harvest (first LM execution since session 39): the roaming killer
+  struck TWICE mid-phase (12360->14814->15334) — the restart-aware
+  drive recovered both times; email code + email bind v1 [ok],
+  old-password check [ok]; the modify POST missed inside a killer
+  window; the Q1 pick registered, then the process death closed the
+  screen (the reveal scroll worked as designed).
+- Re-verification dispatched: 37801448616 (budget 30, 0e8c941).
+- Engine 10068 untouched. NO GameServer work.
