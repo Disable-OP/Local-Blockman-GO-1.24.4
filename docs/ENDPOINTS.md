@@ -2455,3 +2455,50 @@ both tiers; COVERAGE.json is fully symmetric for the first time.
 - COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 334.
   Every implemented route is now verified on BOTH tiers.
 - Engine 10068 untouched. NO GameServer work.
+
+## Session 46 (2026-10-08) — password/check + modify: the last UI surface closed end-to-end
+
+The three "stubborn" evidence-only UI flows are all verdict-backed now.
+The password chain took TWO server fixes + one drive fix, each proven by
+an on-device run:
+
+1. SERVER FIX 1 (2c50bdf): password/check read the password from the
+   BODY, but the client sends the RSA blob as @Query("password")
+   (the Wave-11 decode said so; NanoHTTPD never logs query strings, so
+   20 runs of REQ-watching could not see it). Every real call answered
+   right=false in a code=1 envelope (run 37811597325: three 72b bodies).
+2. SERVER FIX 2 (4978bb0): the client callback is
+   OnResponseListener<Boolean> (jadx com.sandbox.login.f.a.c.d) and
+   calls bool.booleanValue() — data must be a JSON BOOLEAN, not the
+   UserVerifyInfo object {"authCode","count","right"} (run 37817471283:
+   two 71b right=true bodies yet the screen never advanced — Gson
+   threw, silent onError). Same family as the Wave-11
+   account/invalid/check Boolean fix. passwordCheck now serves
+   envelope(bool, right); the @Query read stays, the body shape is the
+   documented fallback. Host rig pins all four shapes (body plaintext/
+   RSA, @Query RSA, right/wrong): 589/589.
+3. DRIVE FIXES (6792f95, 18f50e6): after the check the client advances
+   to ChangePasswordFragment (tv_password 'Enter password' +
+   tv_confirm_password 'Repeat password' + CONFIRM — run 37823815378
+   was the first advance ever). The submit button renders 'CONFIRM'
+   (textAllCaps) — confirm_button()'s case-sensitive texts missed it;
+   the drive now hunts CONFIRM case-insensitively with the F2
+   alternating-tap loop, counts BOTH modify routes (the client fires
+   the V2 route: POST /user/api/v2/user/password/modify with
+   ChangePasswordForm{oldPassword plaintext-from-bundle, newPassword
+   RSA, confirmPassword plaintext} — run 37829879205's localapi.txt
+   REQ/RES 19:43:28 code=1 6ms), and breaks when the
+   logout-on-success callback lands on LoginActivity.
+4. FINAL VERDICT (run 37834788323, PASS, wip-61):
+   "LM: password modify served through the real UI (v2 route,
+   logout-on-success followed)" — tap 0 fired the POST. F2
+   clan-UPDATE green in the same run. The whole chain — AccountSafe ->
+   ConfirmPasswordFragment (old-pw check, boolean right) ->
+   ChangePasswordFragment (new+confirm, v2 modify POST) -> forced
+   logout — is CLIENT-ASSERTED end-to-end.
+- Also this session: fetch_release_asset.py paginates all releases
+  (51 releases dropped v0.1.0-pipeline — the base-APK holder — off
+  page 1; build 37823358959 died on it).
+- Coverage count unchanged (334/334/0-defaults); v2 modify was already
+  client-asserted via the API-level fcall and is now UI-asserted too.
+  Engine 10068 untouched. NO GameServer work.
