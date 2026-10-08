@@ -2098,3 +2098,41 @@ untouched. NO GameServer work.
 COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 147
 (honest count; G verdicts confirm existing claims — no inflation).
 Engine 10068 untouched. NO GameServer work.
+
+### Wave 25b/25c + 26 (session 39 cont.) — pay/VIP, config files, group lifecycle
+
+1. Wave 25b (bf41cfd): the wallet-recharge + VIP chain asserted with
+   exact math — GET pay/products (8-product local catalog), GET
+   products/vip, POST pay/users/recharge {sku:local.golds.1} (+1000
+   golds), GET wealth/record/users/{userId} (the pay record appears),
+   POST pay/v3/users/recharge {sku:local.vip.1} (vip=1 + expireDate),
+   PUT shop/user/buy/vip?productId=local.vipgold.1m (30000 golds exact
+   deduction + VIP extension), GET first/punch/reward. Fresh accounts
+   start 50k golds (StateStore) so the VIP stays affordable.
+2. Wave 25c (f07a99a): the /config/files/* family swept (11 docs, one
+   fcall each) — plus a ROUTER-FAITHFUL extractor upgrade: the real
+   router turns {name} into ([^/]+) regex INCLUDING embedded ones
+   (indiegame-{gameId} serves indiegame-12345), so template_match now
+   applies an embedded-wildcard rule (static frames around the
+   wildcard must agree) and fcall_claims keeps mid-segment % segments
+   intact. The two indiegame-{gameId} routes claim cleanly; no
+   phantom siblings (a literal without % can never match an embedded
+   template).
+3. Wave 26 (e4b579c): the FULL group-chat lifecycle with a freshly
+   registered friend (register -> friendship): info/price/invite-count
+   reads; direct add puts the friend in groupMembers; set/manager
+   (operationType 1); modify renames (dynamic name roundtrip);
+   forbidden mutes all (muteAll 0->1); forbidden/member bans
+   (banStatus 1); remove/forbidden/member unbans (0); kickOut removes;
+   mail-invite POST served; request/list pageData served. Semantics
+   verified against GroupChat.java (identity 2 = owner, banUntil
+   window, canManage).
+4. Run 37755394303 (budget 5, Waves 24a/25a aboard) FAILED on ONE
+   verdict: the deep-drive A walk missed the game-detail VIDEO tab —
+   first miss in 6 runs, guest-GPU nav flake. Gate split per the
+   run-22 precedent (67f241e): [ok] when seen, [evidence] when the
+   walk misses it; the server contract stays host-hard.
+
+COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 182
+(147 -> 182 across Waves 24a-26: 35 genuine on-device claims, 0
+phantoms). Engine 10068 untouched. NO GameServer work.
