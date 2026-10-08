@@ -2585,16 +2585,53 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                         for _n in edit_nodes():
                             print("  [pw-fill] field len=%d" % len(
                                 _n.text or ""))
-                    if confirm_button():
-                        time.sleep(8)
-                        alive_or_recover("%s-modifypw" % tag)
-                        m_seen = req_seen("REQ POST " + pw_modify_lit)
+                    # SUBMIT: run 37823815378 evidence - the button renders
+                    # 'CONFIRM' (textAllCaps) and confirm_button()'s
+                    # case-sensitive texts=["Confirm",...] missed it; the
+                    # Button-class fallback tapped something else (no POST).
+                    # Hunt CONFIRM explicitly (case-insensitive) and use the
+                    # F2 alternating-tap loop (docked-bar geometry, 5q v5).
+                    _sub = None
+                    for _x in screen.dump():
+                        if (( _x.text or "").upper() == "CONFIRM"
+                                and _x.center and _x.clickable):
+                            _sub = _x
+                            break
+                    if _sub is None:
+                        _sub = next(
+                            (x for x in screen.dump()
+                             if x.center and x.clickable
+                             and (x.res or "").rsplit("/", 1)[-1] in
+                             ("btn_confirm", "btnSure", "btn_ok")), None)
+                    if _sub is not None:
+                        m_seen = False
+                        for _att, _mode in enumerate(("center", "high",
+                                                      "center")):
+                            if _mode == "high":
+                                screen.tap_node_high(_sub)
+                            else:
+                                screen.tap_node(_sub)
+                            time.sleep(6)
+                            alive_or_recover("%s-modifypw" % tag)
+                            m_seen = req_seen("REQ POST " + pw_modify_lit)
+                            print("  [evidence] pw submit tap %d (%s) -> "
+                                  "modify POST seen=%s"
+                                  % (_att, _mode, m_seen))
+                            if m_seen:
+                                break
+                            _sub = next(
+                                (x for x in screen.dump()
+                                 if (x.text or "").upper() == "CONFIRM"
+                                 and x.center and x.clickable), None) or _sub
                         if m_seen:
                             ok("LM: password modify served (POST password/"
                                "modify)")
                         else:
                             print("  [info] no password/modify call "
                                   "(step-2 submit shape? see [pw-step2])")
+                    else:
+                        print("  [info] no CONFIRM button found on the "
+                              "change-password form (see [pw-step2])")
             back(1)
             time.sleep(1)
     else:
