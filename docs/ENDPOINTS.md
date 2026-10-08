@@ -2136,3 +2136,29 @@ Engine 10068 untouched. NO GameServer work.
 COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 182
 (147 -> 182 across Waves 24a-26: 35 genuine on-device claims, 0
 phantoms). Engine 10068 untouched. NO GameServer work.
+
+### Wave 26 fix round (session 39 cont. 3) — invite-accept flow + v2 crediting recharge
+
+1. Run 37757026640 (budget 5, first run with Waves 25b/25c/26) FAILed
+   with 5 verdicts — every one a REAL contract lesson, zero flakes:
+   - GroupChat.invite: a REGISTERED target receives a type-2
+     joinRequest (the direct member insert is citizens-only). The
+     chain now reads the friend's request feed, accepts via
+     PUT /msg/api/v1/msg/group/chat/agreement (operator = invitee,
+     requestId from the feed) and only then drives the management
+     ops. client_asserted gains PUT group/chat/agreement.
+   - requestFeed entries carry the INVITER as `userId` (there is NO
+     inviteeId field) — the invitee-side identification is
+     type==2 + userId==inviter + groupId + status==0 (ac95af4).
+   - POST /pay/api/v1/pay/users/recharge is the pure IAP ACK
+     (ackPost, none envelope, no crediting); the CREDITING recharge
+     is v2. Wave 25b's +1000 assert moved to v2 (client_asserted
+     gains POST v2 recharge); v1 is now asserted AS the ack.
+2. Non-joined groups degrade to [info] lines, not false FAILs.
+3. Budget-30 harvest 37758897572 dispatched on f7430f2 (O+LM +
+   H..N repeat); the group-feed asserts on that run are the pre-fix
+   version (read as known-broken); a budget-5 validation on ac95af4
+   follows.
+
+COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 184.
+Engine 10068 untouched. NO GameServer work.
