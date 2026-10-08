@@ -2293,3 +2293,32 @@ Engine 10068 untouched. NO GameServer work.
 
 COVERAGE: 334/334/0-defaults/328 host-tested; client_asserted 289.
 Engine 10068 untouched. NO GameServer work.
+
+### Wave 29b/29c run verdicts (session 41, cont.)
+
+1. Run 37779565912 (463f777, budget 5) PASSED: every Wave-29b line
+   [ok] ON DEVICE — the five using-variants with real worn-list
+   roundtrips, the unfriend roundtrip, the transfer chain (string
+   ownerId), chat-room lifecycle, the videostars family. EXCEPT the
+   reject sub-chain: silently skipped (no [info] print) — root cause
+   run-lesson #1 below.
+2. Run-lesson #1 (group lifetime): Wave 26's owner-quit DELETES the
+   group once the kicked membership empties it — its leftover
+   re-invite dies with the group, so a reject that rides Wave 26's
+   leftover silently skips. FIX (b1314c6): the reject chain is now
+   self-contained in the Wave-29b group (invite #1 -> reject ->
+   re-invite -> accept -> transfer); re-invite-after-reject proven on
+   the rig (a fresh requestId is issued; the rejected one does not
+   block). Skips now print [info].
+3. Run 37780195013 (5c4b6fd) FAILED on ONE line: the post-buy premium
+   detail still served isPay=1 — run-lesson #2 (detail-view auth):
+   gameDetailUserView flips isPay to 0 ONLY for an authenticated
+   caller (the client always sends its auth interceptors; the fcall
+   had language-only headers). FIX (58801f3): both premium-detail
+   reads carry auth_hdr. Everything else 29c [ok] on device:
+   fixture pay-info proof, prop shelf, buyGameProp exact deduction +
+   re-buy wallet-unchanged + unknown rejection, payGame 800-diamond
+   buy + ORD echo + re-buy rejection, recharge v4 VIP.
+
+COVERAGE: 334/334/0-defaults/328 host-tested; client_asserted 289.
+Engine 10068 untouched. NO GameServer work.
