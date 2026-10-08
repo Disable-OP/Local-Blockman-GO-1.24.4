@@ -2296,3 +2296,32 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   facts section at the top of this file if a NEW-traffic decode is
   ever needed.
 - NO GameServer work.
+
+## Session 48 delta (read FIRST — reset #2 survived with ONE command; double fresh budget-5 PASS; traffic mining clean)
+
+- The sandbox was RESET AGAIN, harsher than session 47: .javatools,
+  my-project/{work,tools,scripts} ALL gone, bare headless JRE 21 only
+  (no javac). The repo + localapi-server/build survived; the token is
+  in remote.origin.url (disable-op-bot:TOKEN form — release_and_test.sh
+  greps x-access-token and will NOT find it in this clone; extract with
+  `sed -n 's|https://disable-op-bot:\([^@]*\)@.*|\1|p'`).
+- RE-ARM IN ONE COMMAND (proven): `bash scripts/build_server_dex.sh`
+  fetches the pinned toolchain into .javatools/ and rebuilds classes +
+  host + classes6.dex on the bare JRE (ECJ compiles; 245,940-byte dex).
+  Then `python3 scripts/test_server_host.py` -> 589/589.
+- FRESH VERDICTS: run 37839880791 (ea5809f) PASS ~9.4 min wall; run
+  37841977993 (334f5b6, current HEAD) PASS — suite step 8m33s, wall
+  9m48s. The ~10-min DEEP mandate holds; budget>5/0 stay opt-in.
+- TRAFFIC MINING (both runs' diagnostics, 870+1844 REQ/RES): zero
+  [err], zero unknown routes, zero app FATAL, zero 4xx/5xx; all
+  non-code=1 RES lines are deliberate business error codes (7012/8103/
+  5008/2005/code=0 negative paths). Throwable E-lines = our own
+  breadcrumb probes; RongIM onError = documented RongCloud offline-shim
+  stance; the app-process death = known native roaming-killer
+  (recovered). ONE tool-side FATAL (uiautomator dump NPE in the
+  platform dumper) is already classified by the suite as not-an-app-
+  crash and absorbed by Screen.dump()'s 3x retry.
+- State unchanged: 334/334 on BOTH tiers, 0 defaults, host 589/589,
+  wip-61 asset current, no server Java changes, no rebuild, no tag.
+- NEXT unchanged: nothing is failing — error-driven from NEW traffic
+  only, or the GameServer phase gate. NO GameServer work.

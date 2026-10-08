@@ -3569,3 +3569,48 @@
   rebuild, no tag. Nothing failing; next work remains error-driven
   from NEW traffic only, or the GameServer phase gate.
 - Engine 10068 untouched (mandate honored). NO GameServer work.
+
+## Session 48 — reset #2 re-arm proven one-command + double fresh budget-5 verdicts + NEW-traffic mining clean (2026-10-08, ~21:00 UTC)
+
+- The sandbox was RESET AGAIN — this time harsher: /home/z/.javatools,
+  /home/z/my-project/{work,tools,scripts} are ALL gone and only a bare
+  headless JRE 21 remains (no javac, no jar). The repo at
+  /home/z/Local-Blockman-GO-1.24.4 and localapi-server/build survived;
+  the git token is intact in remote.origin.url (disable-op-bot:TOKEN
+  form — note: scripts/release_and_test.sh still greps the
+  x-access-token form and would NOT find the token in this clone).
+- TOOLCHAIN RE-ARM IS NOW A PROVEN ONE-COMMAND OPERATION:
+  `bash scripts/build_server_dex.sh` auto-downloads the pinned toolchain
+  (ecj 3.33.0, nanohttpd 2.3.1, r8 8.3.37, android-stubs, json
+  20231013) into .javatools/ and rebuilds classes + host + classes6.dex
+  (245,940 bytes) on the bare JRE — ECJ is the compiler, no JDK needed.
+- Host suite re-verified in the fresh sandbox: 589 passed / 0 failed
+  (watchdog takeover, standby, bind race, in-process resurrect,
+  persistence across restart — all green).
+- TWO fresh budget-5 DEEP verdicts this session: run 37839880791
+  (ea5809f, session 47's dispatch) PASS at ~9.4 min wall, and run
+  37841977993 (334f5b6, dispatched this session) PASS — suite step
+  8 min 33 s, total wall 9 min 48 s. The ~10-min DEEP mandate holds
+  live on the current HEAD; budget>5 / 0 stay opt-in only.
+- NEW-TRAFFIC MINING of BOTH runs' diagnostics (870 + 1844 REQ/RES
+  lines): zero [err] lines, zero unknown routes, zero app FATAL, zero
+  4xx/5xx. Every non-code=1 RES line is a DELIBERATE business error
+  code (7012 already-signed, 8103 no-clan, 5008 insufficient-funds,
+  2005 already-appreciated, code=0 negative paths). The
+  java.lang.Throwable E-lines are the project's own client-side
+  breadcrumb probes (onResume/onPause/getRongToken); RongIM onError
+  remains the documented RongCloud offline-shim stance (session 7);
+  the single app-process death is the known native roaming-killer
+  (drive recovered both times).
+- One tool-side FATAL in run 37841977993's logcat: the platform's own
+  `uiautomator dump` NPE'd inside AccessibilityNodeInfoDumper
+  (childNafCheck, null content-description) — NOT an app crash; the
+  suite already classifies it ("[evidence] tool-side FATAL ... not an
+  app crash") and Screen.dump()'s 3x retry absorbs it. Final verdict
+  lines: "[ok] no app FATAL EXCEPTION", "UI AUTOMATION: PASS".
+- COVERAGE.json re-read: 334 routes, implemented = host_tested =
+  client_asserted on all 334, 0 defaults. No server Java changes, no
+  rebuild, no tag — wip-61 asset remains current.
+- Nothing failing. Next work stays error-driven from NEW traffic only,
+  or the GameServer phase gate.
+- Engine 10068 untouched (mandate honored). NO GameServer work.
