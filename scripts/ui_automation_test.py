@@ -3427,6 +3427,70 @@ def main():
                % g1.get("data", {}).get("groupId", 0), None, headers=auth_hdr)
     check("C: group quit", g3.get("code") == 1, str(g3)[:100])
 
+    # ------------------------------------------------- Wave 27: the
+    # scrap collect-exchange chain through the live session (fcall
+    # tier). Client: Phase I/J proved the collect surfaces on device
+    # (reward value, card list/combine taps, bag pages, records). Here
+    # the server-owned state chain: per-scrap counts (fresh backpacks
+    # seed 2..9 of each s1..s6 — deterministic), the send flow (POST
+    # scrap/send decrements + returns a "send-<hex>" token), card
+    # details for a dynamic card, the combine error contract, the
+    # request-targets page (citizens), treasurebox/vip-convert shapes
+    # and the ask/receive acks.
+    n0 = fcall("GET", "/activity/api/v1/collect/exchange/user/scrap/s1",
+               headers=auth_hdr)
+    check("C: scrap s1 count served (seeded >=2)",
+          n0.get("code") == 1 and (n0.get("data") or 0) >= 2,
+          str(n0)[:100])
+    st0 = fcall("GET", "/activity/api/v1/collect/exchange/user/scrap/s2",
+                headers=auth_hdr)
+    snd = fcall("POST", "/activity/api/v1/collect/exchange/scrap/send?scrapId=s2",
+                None, headers=auth_hdr)
+    st1 = fcall("GET", "/activity/api/v1/collect/exchange/user/scrap/s2",
+                headers=auth_hdr)
+    check("C: scrap send decrements + returns a send token",
+          snd.get("code") == 1
+          and str(snd.get("data") or "").startswith("send-")
+          and (st1.get("data") or 0) == (st0.get("data") or 0) - 1,
+          "%s | s2 %s -> %s" % (str(snd)[:80], st0.get("data"),
+                                st1.get("data")))
+    cd = fcall("GET", "/activity/api/v1/collect/exchange/card/details?cardId=c1",
+               headers=auth_hdr)
+    check("C: scrap card details served (cardName+scrapResponses)",
+          cd.get("code") == 1
+          and (cd.get("data") or {}).get("cardName")
+          and isinstance((cd.get("data") or {}).get("scrapResponses"),
+                         list), str(cd)[:120])
+    bad = fcall("POST",
+                "/activity/api/v1/collect/exchange/user/combine/card?cardId=nope&amount=1",
+                None, headers=auth_hdr)
+    check("C: combine unknown card rejected (10107)",
+          bad.get("code") == 10107, str(bad)[:100])
+    tgt = fcall("GET", "/activity/api/v1/collect/exchange/card/details/scrap",
+                headers=auth_hdr)
+    check("C: scrap request targets page served (citizens)",
+          tgt.get("code") == 1
+          and (tgt.get("data") or {}).get("totalSize", 0) >= 1,
+          str(tgt)[:120])
+    tb = fcall("GET", "/activity/api/v1/collect/exchange/treasurebox/timeline",
+               headers=auth_hdr)
+    check("C: treasurebox timeline served (boxList)",
+          tb.get("code") == 1
+          and "boxList" in (tb.get("data") or {}), str(tb)[:100])
+    vc = fcall("GET", "/activity/api/v1/collect/exchange/user/vip/convert",
+               headers=auth_hdr)
+    check("C: vip convert info served (vip+newVip)",
+          vc.get("code") == 1
+          and set(vc.get("data") or {}) >= {"vip", "newVip"},
+          str(vc)[:100])
+    ska = fcall("GET", "/activity/api/v1/collect/exchange/scrap/ask",
+                headers=auth_hdr)
+    check("C: scrap ask served", ska.get("code") == 1, str(ska)[:80])
+    srcv = fcall("GET", "/activity/api/v1/collect/exchange/scrap/receive",
+                 headers=auth_hdr)
+    check("C: scrap receive served", srcv.get("code") == 1,
+          str(srcv)[:80])
+
     # Phase 5 surface: dispatch bridge (token -> loopback dispatch) + suit gift
     p1 = fcall("GET", "/game/api/v2/game/auth?typeId=%s&targetId=%d&gameVersion=1"
                % (first_game, qa_uid_num), headers=auth_hdr)
