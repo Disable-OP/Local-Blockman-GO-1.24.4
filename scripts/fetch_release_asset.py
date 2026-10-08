@@ -30,7 +30,18 @@ def main():
     name, out = sys.argv[1], sys.argv[2]
     if not TOKEN:
         sys.exit("error: GH_TOKEN not set")
-    releases = json.load(api(f"{API}/repos/{REPO}/releases?per_page=50"))
+    # Paginate ALL releases: the repo grows one wip release per build and
+    # the base APK lives on the OLDEST release (v0.1.0-pipeline) — with 51
+    # releases a flat per_page=50 page-1 listing dropped it and the build
+    # died with "asset not found" (run 37823358959). Walk every page.
+    releases = []
+    page = 1
+    while True:
+        batch = json.load(api(f"{API}/repos/{REPO}/releases?per_page=100&page={page}"))
+        releases.extend(batch)
+        if len(batch) < 100:
+            break
+        page += 1
     # Pick the release whose APK ASSET was UPLOADED most recently.
     # Release created_at is unreliable here: several tags share
     # backdated timestamps (wip-57 and wip-58 both read
