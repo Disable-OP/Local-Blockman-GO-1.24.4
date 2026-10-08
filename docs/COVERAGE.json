@@ -5,7 +5,7 @@
   "implemented": 334,
   "default": 0,
   "host_tested": 334,
-  "client_asserted": 170
+  "client_asserted": 182
  },
  "endpoints": [
   {
@@ -750,7 +750,7 @@
    "status": "implemented",
    "handler": "groupPrice",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -758,7 +758,7 @@
    "status": "implemented",
    "handler": "groupInfo",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -766,7 +766,7 @@
    "status": "implemented",
    "handler": "groupInviteCount",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -782,7 +782,7 @@
    "status": "implemented",
    "handler": "groupRequestList",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "GET",
@@ -1358,7 +1358,7 @@
    "status": "implemented",
    "handler": "groupInviteDirect",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1374,7 +1374,7 @@
    "status": "implemented",
    "handler": "groupBanMember",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1382,7 +1382,7 @@
    "status": "implemented",
    "handler": "groupInvite",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
@@ -1942,7 +1942,7 @@
    "status": "implemented",
    "handler": "groupMuteAll",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
@@ -1950,7 +1950,7 @@
    "status": "implemented",
    "handler": "groupKick",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
@@ -1958,7 +1958,7 @@
    "status": "implemented",
    "handler": "groupModify",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
@@ -1982,7 +1982,7 @@
    "status": "implemented",
    "handler": "groupUnban",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
@@ -1990,7 +1990,7 @@
    "status": "implemented",
    "handler": "groupSetManager",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "PUT",
