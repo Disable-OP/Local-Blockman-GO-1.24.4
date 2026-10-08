@@ -2122,3 +2122,32 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   answer-field, password/modify tap) stay best-effort; RongCloud stays
   offline-shim (session-7 decision, do not reopen without client
   evidence); anything else error-driven from real device runs.
+
+## Session 44 delta (read FIRST next session — F2 form-killer root-caused + fixed)
+
+- RUN 37751313202 (the last budget-15 PASS) finally explained the "stubborn"
+  F2 flow. The [ok] chain ended at "tag added (dialog closed)"; the
+  F2-form] dump then shows the CLAN HOMEPAGE (DONATE/Task/Shop/...) —
+  the edit form was already gone when the drive hunted the Modify
+  button. ROOT CAUSE: the post-tag unconditional BACK ("drop the
+  keyboard", run-37418335203 note) fired while the IME was ALREADY
+  closed (the tag-input BACK above it is unconditional too), so it
+  popped the EDIT FORM and returned to the homepage. The form-killer
+  was our own BACK, not the client.
+- FIX (13cc493, scripts-only): every post-typing BACK in the F2 block is
+  now adb.ime_visible()-guarded (name field x2, tag dialog input,
+  post-confirm); a form-presence evidence line (tv_title !=
+  'Edit Clan') prints BEFORE the submit hunt so a future close names
+  its hop; the LM Q1 answer field gets ONE bounded reveal scroll before
+  the "[info] selection visibility gated" verdict (run-13
+  below-the-fold pattern).
+- Dispatched test-redroid-deep 37793212847 on 13cc493 (budget 15 — F2
+  executes inside Phase F; backstops 45/38). READ ITS VERDICTS FIRST:
+  expect "F2: PUT count 0 -> 1" + the server name read-back [ok]. If the
+  new [evidence] line fires instead, the tag hop itself closes the form
+  — decode EditTextDialog's confirm listener next.
+- LM answer-field + password/modify tap stay pending a budget-30
+  dispatch (LM runs after O; budget 15 stops around H). The DEEP-TIME
+  MANDATE is untouched: default budget-5 dispatches still wall ~10 min;
+  budget 15/30 are deliberate opt-in harvests.
+- NO GameServer work.
