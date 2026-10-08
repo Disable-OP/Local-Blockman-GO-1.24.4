@@ -1704,3 +1704,26 @@ COVERAGE: 334/334/0-defaults; host rig 570/570; client_asserted 152.
 3. All prior fa.i behavior is now fully explained: the pick WORKS, the
    answer field IS fillable, Next DOES reveal section 2 (below the
    fold); the killer simply struck mid-flow in every deep run so far.
+
+### Wave 21i (session 36 cont.) — RUN-18: the question submit fired END-TO-END; client_asserted 153
+
+1. Run 18 (671ba2e + wip-56): **the full secret-question submit is
+   CLIENT-ASSERTED** — pick Q1 (DPAD) -> answer -> Next -> pick Q2
+   (DPAD) -> answer -> Confirm -> **POST
+   /user/api/v1/users/secret/question/setting (v1) served**. The
+   roaming killer struck FOUR times during the phase (13678 -> 14854 ->
+   16718 -> 17440) and the restart-aware re-walk recovered EVERY time.
+   password/check green again. UI AUTOMATION: PASS.
+2. Client-surface discovery: the AccountSafe screen in this build does
+   NOT render Email/Phone rows (only Modify Password / Safety Settings
+   + tips) — the email bind's live entry is SafeSetting's **"Safety
+   Mailbox"** row (ca.g.h()). The drive will re-target it next session;
+   the AccountSafe "Email"/"Phone number" hunts are removed then too.
+3. The password/modify gate still waits for a green form interaction
+   (the check gate is verdict-backed; the modify tap landed during a
+   killer window this run).
+4. Claim promotion: POST /user/api/{version}/users/secret/question/
+   setting claimed via template_match (only a POST exists on the path).
+
+COVERAGE: 334/334/0-defaults/334 host-tested; host rig 570/570;
+client_asserted 152 -> 153.

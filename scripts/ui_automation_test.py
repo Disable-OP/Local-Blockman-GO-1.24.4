@@ -1836,7 +1836,12 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
                 # @Query). The popup rows render the CATALOG strings the
                 # server just served, so a row tap targets the first
                 # catalog entry's text prefix.
-                qs_lit = "/user/api/v1/users/secret/question/set" + "ting"
+                # run-18 VERDICT: the full submit fired end-to-end (pick Q1
+                # -> answer -> Next -> pick Q2 -> answer -> Confirm) and the
+                # POST was served — the literal is now full and claims the
+                # {version} template via template_match (only a POST exists
+                # on the path, so no verb-blind sibling risk).
+                qs_lit = "/user/api/v1/users/secret/question/setting"
                 if fill_q1(screen, adb):
                     # answer 1 = first visible EditText (appears once the
                     # question selection registered); dump when it doesn't

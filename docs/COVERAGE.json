@@ -5,7 +5,7 @@
   "implemented": 334,
   "default": 0,
   "host_tested": 334,
-  "client_asserted": 152
+  "client_asserted": 153
  },
  "endpoints": [
   {
@@ -2574,7 +2574,7 @@
    "status": "implemented",
    "handler": "questionSetting",
    "host_tested": true,
-   "client_asserted": false
+   "client_asserted": true
   },
   {
    "verb": "POST",
