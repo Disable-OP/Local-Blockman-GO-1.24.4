@@ -1867,3 +1867,24 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   in killer windows); (3) emails/verify/{email}'s on-device verdict
   needs the email-BOUND question-verify chain (future surface). NO
   GameServer work.
+
+## Session 37 delta 3 (Wave 23a — run-21 + read FIRST next session)
+
+- Deep run 21 (37732017659, 40 min) PASSED: the bgView fallback FOUND
+  the store card (item_new_dress_shop roots are ConstraintLayout — the
+  old detectors only took Frame/Linear/RecyclerView) and the buy dialog
+  opened (ivBigPic). But its action controls missed the dump (GL
+  render lag) -> the fallback tap produced no buy POST (wallet
+  untouched 50000/50000).
+- Fix pushed (0fb09b8): buy hunt includes "Confirm" (the dialog's
+  action text), a 5s re-dump beat for the GL content, and a [buydlg]
+  text dump when controls still miss. Run 22 dispatched on it — READ
+  ITS [buydlg]/5m VERDICTS FIRST, then finish the buy->wear chain
+  (wear verdicts already cover PUT using/{id}).
+- Run-20/21 traffic diffs vs COVERAGE: zero hit-but-unclaimed routes.
+  Wave 22 is verdict-complete (v1 run-19, v2 run-20; client_asserted
+  156). Fast CI green throughout (3.9 min).
+- NEXT after the buy lands: the wear PUT claims using/{id};
+  dressList/dressSuitList surfaces behind the wardrobe chips; then the
+  email-BOUND question-verify chain for emails/verify/{email}'s
+  verdict. NO GameServer work.

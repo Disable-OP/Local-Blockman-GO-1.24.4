@@ -3243,3 +3243,21 @@
   {version} bind v2 claimed; phone bind honestly dropped to
   host-tested-only).
 - Engine 10068 untouched. GameServer not started (mandate honored).
+
+## Session 37 cont. — runs 19/20/21 + Wave 23 (shop-buy -> wear)
+
+- Run 19 PASS: Wave-22 v1 path driven (email bind v1 SERVED — first
+  on-device verdict). Run 20 PASS: v2 verify chain GREEN end-to-end
+  (bind v2 SERVED). Wave 22 verdict-complete; client_asserted 156.
+- REQ-log truth: query strings never logged (NanoHTTPD getUri()) —
+  markers moved to body prefixes; GET-type=1 gate = [info] + [qv]
+  screen-state evidence.
+- Phone-bind family closed: structurally unreachable (GONE row, no
+  visibility observable, single launch site). Host-tested-only FINAL.
+- Wave 23: card detectors fixed (ConstraintLayout roots + bgView
+  fallback); buy verdict covers dressBuyOne/dressBuyV2; wear verdict
+  covers using/{id}. Run 21: card found, dialog opened, controls
+  missed the dump -> Confirm text + re-dump beat + [buydlg] evidence
+  pushed; run 22 dispatched.
+- Engine 10068 untouched (mandate honored). 6 commits this session:
+  f838ccf, f62b30b, e746eff, 52d7d0d, 0fb09b8 (+docs).
