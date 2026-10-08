@@ -1975,3 +1975,26 @@ COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 157
 
 COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 156
 (dressList claim honestly withdrawn). NO GameServer work.
+
+### Wave 23e (session 38 final) — buy->wear chain VERDICT-COMPLETE on device
+
+1. The DressBuyDialog is GL-ONLY on the emulator: run 37742955965
+   proved the product-card tap (post banner-rejection + rbCloth type
+   page) opens a dialog with ZERO accessibility nodes; the wave-23a
+   ivBigPic 'dialog marker' was the card image all along. The UI hunt
+   stays as the discovery channel (a future wave can compute
+   dialog_dress_buy.xml blind coordinates from a fresh decompile).
+2. Phase C now asserts the chain the server must own (fcall tier,
+   DYNAMIC ids, pre-validated 7/7 on the host rig):
+   wear PUT /decoration/api/v1/decorations/using/{id} (data.id echo)
+   -> GET using holds the worn target; POST /shop/api/v1/new/shop/
+   decorations/buy (buySuitList, cheapest served suit) ->
+   suitPurchaseStatus true + exact wallet deduction.
+3. Run 37744807797 (3d25349) PASSED in 9.75 min: all three [ok] lines
+   landed on-device (wear PUT, worn list, buy+wallet). Wave 23's
+   buy->wear chain is COMPLETE at the API tier. 77 unique endpoints.
+
+COVERAGE: 334/334/0-defaults/334 host-tested; client_asserted 159.
+G invite gate split (server contract hard / nav flake = evidence,
+d850409). Deep CI stable at ~10 min GREEN (runs C/D/E). Engine 10068
+untouched. NO GameServer work.

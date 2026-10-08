@@ -3293,3 +3293,24 @@
   this entry. webDevReview scheduled task created (fixed_rate 3600s,
   priority 15, prompt "Continue") for cross-session continuation.
 - Engine 10068 untouched (mandate honored). NO GameServer work.
+
+## Session 38 (cont.) — budget shakedown + Wave 23 complete (2026-10-08)
+
+- Deep CI final state: runs C/D/E (37741051215 / 37742955965 /
+  37744807797) ALL GREEN at 9.5-10.9 min with the 5-min deep budget —
+  the 30-40 min waits are gone. Step backstop 12 / job 18; deep_budget
+  _min=0 restores the legacy full audit.
+- Wave 23 verdict-complete: the buy->wear chain is asserted on-device
+  through the real embedded server (fcall tier, dynamic ids, wallet
+  math) — wear PUT using/{id}, worn-list roundtrip, dressBuyV2 buy +
+  exact deduction. client_asserted 156 -> 159.
+- Key discoveries this session: (1) the Dressing tab is the WORN-items
+  manager (zero /decoration traffic on fresh visitors; second-level
+  radios DO exist — corrects Wave 19); (2) the recommend feed's only
+  card is a 720-wide banner (bgView fallback was tapping it in runs
+  21/22/C); (3) the DressBuyDialog is GL-only (no accessibility nodes);
+  (4) the G invite FAIL in run 22 was a UI nav flake — the gate is now
+  split (server contract hard / flake = evidence).
+- Scope hardening: b_ran flag + outcome_d pre-init (budget-skip
+  UnboundLocalError class audited across all phases).
+- Engine 10068 untouched (mandate honored). NO GameServer work.

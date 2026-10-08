@@ -1932,3 +1932,21 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 - Run dispatched on 65936d0 (budget 5). READ FIRST: wall time, buy
   verdicts ([buydlg]/5m lines), the 4 dress-mode GET gates, G invite
   flake recurrence. NO GameServer work.
+
+## Session 38 FINAL (Wave 23e — read FIRST next session)
+
+- Deep CI: STABLE ~10 min GREEN x3 (C/D/E runs). Budget 5 default;
+  0 = legacy full audit; step 12 / job 18.
+- Wave 23 COMPLETE (run 37744807797): wear PUT using/{id} + worn-list
+  roundtrip + dressBuyV2 buy with exact wallet deduction, all [ok] on
+  device with DYNAMIC ids (host-rig precheck 7/7 first). GL-only buy
+  dialog documented; UI hunt = discovery channel only.
+- client_asserted 159. Dressing-tab + banner + invite-split discoveries
+  documented in ENDPOINTS.md Wave 23c/23e.
+- NEXT (priority order): (1) run one deep_budget_min=15 dispatch to let
+  the mid-phase fleet (E/F/G, H..N) run under budget and harvest their
+  verdicts; (2) G invite re-verify with the split gate; (3) the suit-card
+  suitDetail discovery -> claim if deterministic; (4) consider a fresh
+  jadx decompile for dialog_dress_buy.xml coordinates (GL-dialog blind
+  taps) and for the remaining user/api (49) unasserted surfaces. NO
+  GameServer work.
