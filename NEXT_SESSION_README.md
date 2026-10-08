@@ -2275,3 +2275,24 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 - NEXT: nothing is failing; the API is at its practical ceiling —
   error-driven from NEW traffic only, or the GameServer phase gate.
   NO GameServer work.
+
+## Session 47 delta (read FIRST — fresh-sandbox health re-verified; ~10-min DEEP wall re-confirmed live)
+
+- The sandbox was RESET (the /home/z/my-project/work decompile tree is
+  gone; the repo, .javatools and localapi-server/build survived).
+  Nothing was lost that matters: every verdict lives in CI + docs.
+- The DEEP-TIME MANDATE stays CLOSED: test-redroid-deep.yml default
+  (budget 5, job 18 / step 12) + DeepBudgetSkip in the suite are the
+  committed state; a fresh default dispatch (run 37839880791, ea5809f)
+  PASSED with an 8.3-min suite step / ~9.4-min total wall. Do NOT
+  raise the default; budget>5 remains opt-in verdict harvests only.
+- Fresh-sandbox host suite: 589/589 (0 failed) — persistence across
+  restart, watchdog takeover, standby, bind race, resurrect all green.
+- COVERAGE.json: 334/334 on BOTH tiers, 0 defaults. Server source has
+  zero TODO/FIXME markers.
+- NEXT unchanged: nothing is failing; the API is at its practical
+  ceiling — error-driven from NEW traffic only, or the GameServer
+  phase gate. The decompile tree can be re-armed per the Environment
+  facts section at the top of this file if a NEW-traffic decode is
+  ever needed.
+- NO GameServer work.

@@ -3545,3 +3545,27 @@
 - 10 commits this session pair: 2c50bdf 0361723 ff84e99 81722a6-era
   docs 0e8c941 89f723f 4978bb0 6792f95 18f50e6 59a8409 (docs).
 - Engine 10068 untouched (mandate honored). NO GameServer work.
+
+## Session 47 — fresh-sandbox re-verification + fresh budget-5 verdict (2026-10-08, ~20:50 UTC)
+
+- The sandbox was RESET (the /home/z/my-project/work decompile tree is
+  gone; the repo, .javatools and localapi-server/build survived). All
+  verdicts live in CI + docs, so nothing of value was lost.
+- DEEP-TIME mandate re-verified WITHOUT any code change: the budget-5
+  default in test-redroid-deep.yml (job 18 / step 12 backstops,
+  DeepBudgetSkip in the suite) is the committed state — nothing to
+  fix, do not raise the default.
+- Host suite re-run in the fresh sandbox: 589/589, 0 failed —
+  persistence-across-restart, watchdog takeover, standby, bind race,
+  in-process resurrect all green.
+- COVERAGE.json re-read: 334 routes, implemented = host_tested =
+  client_asserted on all 334, 0 defaults. Zero TODO/FIXME markers in
+  the server source.
+- Fresh verdict dispatched on ea5809f (docs-only HEAD): run 37839880791
+  PASS — UI automation green, suite step 8.3 min, total wall ~9.4 min
+  (boot 0.1 min, install 0.0 min). The ~10-min DEEP wall is confirmed
+  live again on a default budget-5 dispatch.
+- State unchanged: wip-61 asset current, no server Java changes, no
+  rebuild, no tag. Nothing failing; next work remains error-driven
+  from NEW traffic only, or the GameServer phase gate.
+- Engine 10068 untouched (mandate honored). NO GameServer work.
