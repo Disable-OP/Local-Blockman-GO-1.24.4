@@ -3194,3 +3194,27 @@
 - Releases wip-53..56 fast-validated GREEN (runs 189-192, 3.7-4.0 min).
   The 5-minute Redroid mandate held ALL session. Host rig 570/570.
   client_asserted 152. NO GameServer work; Engine 10068 untouched.
+
+### Session 36 (Wave 21 — the question submit goes end-to-end; roaming killer tamed)
+
+- Mandate check: fast runs 187-193 all GREEN 3.7-4.2 min. The 5-minute
+  Redroid mandate holds.
+- Wave 21a-21i (8 commits, 5c0c7a9..85c911a): DPAD popup selection;
+  scroll-aware AccountSafe hunts; the ESC->BACK trap removed (fill_edit
+  closes only the IME via dumpsys mInputShown); reveal-scroll for the
+  question form's below-fold section 2; delta-based pick verification;
+  and finally the RUN-17 SOLUTION — the fa.i "self-close" was the
+  roaming killer (server-log PID change is the smoking gun) — the LM
+  drive is now process-death-aware with enter_accountsafe() re-walks.
+- RUN-18 CAPSTONE: question picked x2 (DPAD), answers filled, Next
+  revealed section 2, Confirm fired, and POST
+  /user/api/v1/users/secret/question/setting (v1) was SERVED — the full
+  flow is client-asserted. The killer struck 4x during the phase; the
+  drive recovered from every one. password/check green (3rd verdict).
+  client_asserted 152 -> 153 (the {version} setting template claimed).
+- Client-surface discovery: AccountSafe renders NO Email/Phone rows in
+  this build; the email entry is SafeSetting's "Safety Mailbox" row.
+  Next session re-targets the email bind there and takes one more pass
+  at the password/modify form interaction.
+- Deep runs this session: 11-18 (8 runs; PASS on 11/13/16/17/18).
+  NO GameServer work; Engine 10068 untouched. Host rig 570/570.

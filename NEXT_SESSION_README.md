@@ -1762,3 +1762,30 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   min — the 5-minute mandate held ALL session). Deep: run 8 FAIL(1 G
   flake), run 9 FAIL(2 A timing flakes), run 10 PASS.
 - Engine 10068 untouched (mandate honored).
+
+## Session 36 delta (Wave 21 — read first next session)
+
+- Run-18 CAPSTONE: the secret-question submit is CLIENT-ASSERTED end-to
+  -end (pick Q1 via DPAD -> answer -> Next -> pick Q2 -> answer ->
+  Confirm -> POST /user/api/v1/users/secret/question/setting v1
+  served). client_asserted 153. The roaming killer struck FOUR times
+  during the phase and the restart-aware drive recovered every time
+  (pid snapshot + restarted() checks + enter_accountsafe() re-walk).
+- SOLVED MYSTERIES (do not re-litigate): (1) the fa.i "self-close" was
+  the roaming killer — the server log's PID change (13766->16263) is
+  the proof; (2) the popup row tap never worked because the popup is a
+  FOCUSABLE PopupWindow+ListView — dump-coordinate taps miss it — DPAD
+  DOWN+ENTER is the mechanism; (3) ESC (keyevent 111) dispatches BACK
+  on onBackPressed templates — fill_edit now closes only the IME via a
+  dumpsys mInputShown guard.
+- NEXT (priority order): (1) re-target the email bind at SafeSetting's
+  "Safety Mailbox" row (the AccountSafe Email/Phone rows DO NOT render
+  in this build — remove those hunts); (2) the password/modify form
+  tap needs one more evidence pass (the check gate is green 3x; the
+  modify tap landed in killer windows); (3) the phone bind surface is
+  still unmapped in this build (host-tested only); (4) after two green
+  runs, consider promoting emails/verify/{email}+users/bind/email
+  evidence when the Safety Mailbox flow drives them.
+- Fast CI: 187-193 all 3.7-4.2 min GREEN — the 5-minute mandate holds.
+  Deep: 15 runs total this arc, PASS on 10/11/13/16/17/18.
+- Engine 10068 untouched (mandate honored).
