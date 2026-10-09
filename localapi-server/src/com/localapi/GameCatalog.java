@@ -44,17 +44,19 @@ final class GameCatalog {
         }
         // migration: pre-ScriptSetting catalogs (fake ids/names, engine-1
         // flag wrong) regenerate from the seed; fresh boots without a seed
-        // keep their generated catalog but still get the engine fix + the
-        // version marker.
+        // keep their generated catalog. The version marker is ONLY set when
+        // a seed actually replaced the games — otherwise a no-seed boot
+        // would stamp v3 and a seed arriving LATER (an APK upgrade) would
+        // never regenerate (proven by the migration host test).
         if (root.optInt("catalogVersion", 0) < CATALOG_VERSION) {
             JSONArray seeded = seedFromScriptSetting(store);
             if (seeded != null) {
                 root.put("games", seeded);
+                root.put("catalogVersion", CATALOG_VERSION);
                 L.i("catalog migrated to v" + CATALOG_VERSION + " ("
                         + seeded.length() + " real games)");
+                dirty = true;
             }
-            root.put("catalogVersion", CATALOG_VERSION);
-            dirty = true;
         }
         if (!root.has("citizens")) {
             root.put("citizens", generateCitizens());

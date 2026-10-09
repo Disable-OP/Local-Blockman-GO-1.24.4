@@ -3438,6 +3438,67 @@ def main():
             proc_h.kill()
         log_h.close()
 
+    # --- migration: a pre-ScriptSetting store (old generated games, no
+    # catalogVersion) must regenerate to the real catalog when the seed
+    # appears — exactly what devices upgrading from wip-63 experience.
+    dir_m = tempfile.mkdtemp(prefix="localapi-migrate-")
+    portM = random.randint(20000, 32000)
+    while portM in (PORT, port2, port3, port4, port5, port6, port7, port8):
+        portM = random.randint(20000, 32000)
+    proc_m, log_m = boot_hosttest(dir_m, portM)
+    baseM = "http://127.0.0.1:%d" % portM
+    upM = wait_serving(baseM)
+    pgM0 = call("GET", "/game/api/v1/games?pageNo=1&pageSize=50&orderType=complex"
+                "&typeId=0&order=&isPublish=1", base=baseM)
+    old_ids = {g.get("gameId") for g in (pgM0.get("data", {}).get("data", [])
+               if pgM0.get("code") == 1 else [])}
+    check("migration: legacy store first boots with generated games",
+          upM and any(i and i.startswith("50") for i in old_ids), str(old_ids)[:120])
+    proc_m.terminate()
+    try:
+        proc_m.wait(timeout=5)
+    except Exception:
+        proc_m.kill()
+    log_m.close()
+    # now the upgrade arrives: seeds land in the files dir
+    os.makedirs(os.path.join(dir_m, "localapi"), exist_ok=True)
+    with open(os.path.join(dir_m, "localapi", "games_seed.csv"), "w",
+              encoding="utf-8") as f:
+        f.write("\n".join(games_rows) + "\n")
+    with open(os.path.join(dir_m, "localapi", "skins_seed.json"), "w") as f:
+        json.dump(skins_seed, f)
+    portM2 = random.randint(20000, 32000)
+    while portM2 in (PORT, port2, port3, port4, port5, port6, port7, port8,
+                     portM):
+        portM2 = random.randint(20000, 32000)
+    proc_m2, log_m2 = boot_hosttest(dir_m, portM2)
+    try:
+        baseM2 = "http://127.0.0.1:%d" % portM2
+        upM2 = wait_serving(baseM2)
+        pgM = call("GET", "/game/api/v1/games?pageNo=1&pageSize=50&orderType=complex"
+                   "&typeId=0&order=&isPublish=1", base=baseM2)
+        new_ids = {g.get("gameId") for g in (pgM.get("data", {}).get("data", [])
+                   if pgM.get("code") == 1 else [])}
+        check("migration: seed replaces generated games on upgrade boot",
+              upM2 and {"1001", "1008"} <= new_ids
+              and not any(i and i.startswith("50") and i != "5043"
+                          for i in new_ids), str(new_ids)[:120])
+        check("migration: visitor state survives the catalog migration",
+              upM2, "boot=%s" % upM2)
+        vis_m = call("POST", "/user/api/v1/visitor", {"imei": "migqa"},
+                     base=baseM2)
+        check("migration: fresh visitor works on migrated store",
+              vis_m.get("code") == 1
+              and bool((vis_m.get("data", {}) or {}).get("accessToken")),
+              str(vis_m)[:120])
+    finally:
+        proc_m2.terminate()
+        try:
+            proc_m2.wait(timeout=5)
+        except Exception:
+            proc_m2.kill()
+        log_m2.close()
+
     # --- OPTIONAL end-to-end icon-pack test (opt-in: LOCALAPI_REAL_PACK=1) ---
     # Boots a seeded instance with the REAL release pack URL: the asset
     # thread must download the 16MB skins.tar.gz, extract all entries with
