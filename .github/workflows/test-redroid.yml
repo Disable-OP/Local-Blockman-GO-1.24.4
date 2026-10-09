@@ -110,6 +110,28 @@ jobs:
             --activity "$ACTIVITY" \
             --mode fast
 
+      - name: GameServer smoke (process + dynamic server.log)
+        if: always()
+        run: |
+          echo "== gameserver process =="
+          adb -s localhost:5555 shell "ps -A | grep -i gameserver" || true
+          echo "== localapi boot logs (gs tags) =="
+          adb -s localhost:5555 logcat -d -s LocalAPI:* GS:* | grep -iE "gs:|gameserver|monitor" | tail -30 || true
+          # resolve the runtime storage id dynamically (never hardcode /emulated/NN)
+          LOGDIR=$(adb -s localhost:5555 shell 'ls -d /storage/emulated/*/SandBoxOL/BlockMan/config 2>/dev/null' | tr -d '\r' | head -1)
+          echo "resolved config dir: ${LOGDIR:-<none>}"
+          if [ -n "$LOGDIR" ]; then
+            adb -s localhost:5555 shell "ls -la $LOGDIR" || true
+            if adb -s localhost:5555 shell "test -f $LOGDIR/server.log"; then
+              echo "server.log EXISTS next to client.log"
+              adb -s localhost:5555 shell "head -40 $LOGDIR/server.log" || true
+            else
+              echo "server.log not yet present (gameplay server may not have started)"
+            fi
+          else
+            echo "SandBoxOL/BlockMan/config not found on this device"
+          fi
+
       - name: Collect diagnostics
         if: always()
         run: |
