@@ -37,7 +37,43 @@ public final class LocalServer {
     private LocalServer() {}
 
     public static void startIfNeeded(Context context) {
-        start(context.getApplicationContext().getFilesDir(), PORT);
+        Context app = context.getApplicationContext();
+        File filesDir = app.getFilesDir();
+        // Seed assets ship inside the APK (tiny data, NOT the streamed icon
+        // bytes): the real skin catalog capture + the client's own game
+        // ScriptSetting. They are copied into the files dir once so the
+        // Context-free boot core (and the host rig) can read them.
+        copySeedAsset(app, "localapi/skins.json",
+                new File(new File(filesDir, "localapi"), "skins_seed.json"));
+        copySeedAsset(app, "localapi/ScriptSetting.csv",
+                new File(new File(filesDir, "localapi"), "games_seed.csv"));
+        start(filesDir, PORT);
+    }
+
+    /**
+     * Copy one APK asset into the files dir (refresh when the asset size
+     * changes — i.e. when a newer APK ships a newer seed). Best effort:
+     * a missing asset only means the catalogs stay on their fallback paths.
+     */
+    private static void copySeedAsset(Context app, String asset, File dst) {
+        try {
+            java.io.InputStream in = app.getAssets().open(asset);
+            long expect = in.available();
+            if (dst.exists() && dst.length() == expect) {
+                in.close();
+                return;
+            }
+            java.io.FileOutputStream out = new java.io.FileOutputStream(dst);
+            byte[] buf = new byte[65536];
+            int n;
+            while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+            out.close();
+            in.close();
+            L.i("seed asset copied: " + asset + " -> " + dst.getName()
+                    + " (" + dst.length() + " bytes)");
+        } catch (Throwable t) {
+            L.e("seed asset " + asset + " unavailable: " + t);
+        }
     }
 
     /**
@@ -132,6 +168,7 @@ public final class LocalServer {
             StateStore store = new StateStore(filesDir);
             GameCatalog.ensure(store);   // generate catalog once, then it's plain state
             GameCatalog.drift(store);    // evolve online counts across boots
+            Skins.ensure(store);         // real skin catalog + icon-pack thread
             LocalHttpd server = new LocalHttpd(port, store);
             server.start(15000, true);
             httpd = server;

@@ -69,6 +69,23 @@ echo "== build_server_dex.sh =="
 bash "$REPO/scripts/build_server_dex.sh"
 SERVER_DEX="$REPO/localapi-server/build/classes6.dex"
 
+# --- seed assets (data-only, never icon bytes) ---
+# localapi/skins.json       — real skin catalog capture (1.6 MB)
+# localapi/ScriptSetting.csv — the client's own game list w/ real ids (4 KB)
+# The server copies them into its files dir at boot; icons are streamed
+# from the downloaded pack, NOT shipped here.
+echo "== seed assets =="
+SEEDS="$BUILD/apktool_out/assets/localapi"
+mkdir -p "$SEEDS"
+for pair in "skin.json:skins.json" "ScriptSetting.csv:ScriptSetting.csv"; do
+  src="${pair%%:*}"; dst="${pair##*:}"
+  if [ -f "$REPO/$src" ]; then
+    cp -f "$REPO/$src" "$SEEDS/$dst"
+  else
+    echo "WARNING: seed $REPO/$src missing — ${dst} not shipped" >&2
+  fi
+done
+
 # --- rebuild ---
 echo "== apktool b =="
 java -jar "$TOOLS/apktool.jar" b "$BUILD/apktool_out" -o "$BUILD/patched-unsigned.apk"

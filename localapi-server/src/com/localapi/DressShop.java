@@ -6,9 +6,13 @@ import org.json.JSONObject;
 /**
  * Decoration ("dress") + dress-shop domain for the local API.
  *
- * Per-typeId dress catalogs are GENERATED once on first request and persisted
- * (root.dresses[typeId]); ownership/wearing lives in each user's wardrobe
- * state. Buying really deducts currency from the user's wallet.
+ * Catalog resolution: when the real skin catalog is seeded (Skins — the
+ * 1165-skin 1.24.4 backend capture), it is the single catalog source and
+ * the per-typeId lists come straight from it with iconUrl rewritten to the
+ * local streaming endpoint. Otherwise the legacy generated catalogs
+ * (root.dresses[typeId]) apply. Ownership/wearing lives in each user's
+ * wardrobe state in BOTH cases. Buying really deducts currency from the
+ * user's wallet at the item's real price.
  */
 final class DressShop {
 
@@ -18,6 +22,8 @@ final class DressShop {
 
     /** Generate (once) and return the dress catalog for one typeId. */
     static synchronized JSONArray ensureType(StateStore store, long typeId) {
+        JSONArray real = Skins.byType(typeId);
+        if (real != null && real.length() > 0) return real;
         JSONObject all = store.root().optJSONObject("dresses");
         if (all == null) {
             all = new JSONObject();
@@ -57,8 +63,10 @@ final class DressShop {
         return list;
     }
 
-    /** Find a dress anywhere in the persisted catalogs. */
+    /** Find a dress anywhere in the persisted catalogs (real skins first). */
     static synchronized JSONObject byId(StateStore store, long dressId) {
+        JSONObject skin = Skins.byId(dressId);
+        if (skin != null) return skin;
         JSONObject all = store.root().optJSONObject("dresses");
         if (all == null) return null;
         JSONArray keys = all.names();
@@ -74,25 +82,37 @@ final class DressShop {
         return null;
     }
 
-    /** SingleDressInfo JSON from a stored dress (plus ownership flags). */
+    /**
+     * SingleDressInfo JSON from a stored dress (plus ownership flags).
+     * Real skin fields stored by the catalog seed are PRESERVED (occupy
+     * positions, quality, camera, voucher prices, ...) — the defaults below
+     * only fill what a generated legacy item lacks. The iconUrl always
+     * points at the local streaming endpoint; the original CDN url stays
+     * in the store only (the icon proxy reads it from there).
+     */
     static JSONObject singleJson(StateStore store, JSONObject user, JSONObject d) {
         JSONObject out = new JSONObject(d.toString());
-        out.put("decorationInfoList", new JSONArray());
-        out.put("limitedTimes", new JSONArray());
-        out.put("tag", new JSONArray());
-        out.put("occupyPosition", new JSONArray());
-        out.put("suitId", 0);
-        out.put("suitPrice", 0);
-        out.put("remainingDays", 0);
-        out.put("orderField", 0);
-        out.put("isActivity", 0);
-        out.put("isDressRec", false);
-        out.put("isRecommend", 0);
-        out.put("blankType", 0);
-        out.put("clanLevel", 0);
-        out.put("buySuccess", false);
-        out.put("activityFlag", "");
+        if (!out.has("decorationInfoList")) out.put("decorationInfoList", new JSONArray());
+        if (!out.has("limitedTimes")) out.put("limitedTimes", new JSONArray());
+        if (!out.has("tag")) out.put("tag", new JSONArray());
+        if (!out.has("occupyPosition")) out.put("occupyPosition", new JSONArray());
+        if (!out.has("suitId")) out.put("suitId", 0);
+        if (!out.has("suitPrice")) out.put("suitPrice", 0);
+        if (!out.has("remainingDays")) out.put("remainingDays", 0);
+        if (!out.has("orderField")) out.put("orderField", 0);
+        if (!out.has("isActivity")) out.put("isActivity", 0);
+        if (!out.has("isDressRec")) out.put("isDressRec", false);
+        if (!out.has("isRecommend")) out.put("isRecommend", 0);
+        if (!out.has("blankType")) out.put("blankType", 0);
+        if (!out.has("clanLevel")) out.put("clanLevel", 0);
+        if (!out.has("buySuccess")) out.put("buySuccess", false);
+        if (!out.has("activityFlag")) out.put("activityFlag", "");
+        if (!out.has("itemType")) out.put("itemType", 1);
+        if (!out.has("quantity")) out.put("quantity", 1);
         out.put("hasPurchase", owned(store, user, d.optLong("id")) ? 1 : 0);
+        if (Skins.byId(d.optLong("id")) != null) {
+            out.put("iconUrl", Skins.iconUrl(d.optLong("id")));
+        }
         return out;
     }
 

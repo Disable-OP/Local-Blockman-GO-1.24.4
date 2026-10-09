@@ -1034,3 +1034,26 @@ Bookkeeping:
 - COVERAGE.json: 334 discovered / 334 implemented / 0 default / 334
   host-tested / client_asserted 144. No implemented route lacks a host test.
 - Engine 10068 GameServer remains FORBIDDEN this phase. NO GameServer work.
+
+## Session 50 (2026-10-09) — data-accuracy wave: real skins, real games, engine-1
+
+User-directed priorities executed this session (API-first mandate held;
+NO GameServer work):
+
+1. ONE BRANCH: main absorbed local-api (364 commits) + its 10 CI-sync
+   commits; the repo is single-branch now — every workflow/script
+   reference points at `main`.
+2. Real skins: 1165-skin catalog capture seeded from skin.json (repo root
+   → APK asset), served through the existing dress endpoints with real
+   fields preserved and iconUrl rewritten to the local streaming route.
+3. Icon streaming: icon bytes left the APK (they never entered it) —
+   packed to skins.tar.gz/.xz on release `localapi-assets`, downloaded
+   once per device by the SkinsAssets thread, extracted, streamed at
+   `/localapi/skins/icons/<id>.png` with CDN-proxy fallback.
+4. Real games: the hall catalog now seeds from the client's own
+   ScriptSetting.csv (59 real games, real ids/names/maps), migrated via
+   catalogVersion 3. `isNewEngine` forced to 0 everywhere (engine-1
+   mandate) and the dispatch bridge emits the engine-form script id.
+5. Next (per the standing error-driven loop): on-device verdict of the
+   seeded catalogs (build → test-redroid on main), then NEW-traffic
+   mining from the deep runs. The GameServer phase gate is unchanged.

@@ -2352,3 +2352,28 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   NPE). Current asset: wip-63. Host suite: 597/597.
 - NEXT unchanged: error-driven from NEW traffic only, or the GameServer
   phase gate. NO GameServer work.
+
+## Session 50 delta (read FIRST — one branch; real skins + icons streaming; real games; engine-1)
+
+- REPO SHAPE CHANGED: single branch `main` (local-api merged in, remote
+  deleted). Clone/checkout main; all workflows + release_and_test.sh
+  point at main.
+- NEW SURFACE: `GET /localapi/skins/icons/<id>.png` streams skin icons —
+  cache-first (files/localapi/skins/img/<id>.png), CDN-proxy fallback,
+  code=0 miss envelope. Icon bytes live ONLY on release
+  `localapi-assets` (skins.tar.gz runtime + skins.tar.xz canonical);
+  the APK ships seeds (skins.json, ScriptSetting.csv) but never icons.
+- CATALOGS ARE REAL NOW: dressList etc. serve the 1165-skin capture
+  (Skins store file, own save path); the hall serves 59 real games from
+  ScriptSetting.csv (real ids g1008→"1008", remark names, real maps,
+  scriptType for the engine bridge). catalogVersion=3 migration runs on
+  old stores' first boot.
+- ENGINE MANDATE: isNewEngine=0 on every game everywhere. Dispatch
+  emits the engine-form id (g####) + real default map.
+- HOST SUITE 613/613 hermetic; LOCALAPI_REAL_PACK=1 adds the full
+  download→extract→stream e2e (615). Ports stay under 32000.
+- NEXT: (1) build-release on main → on-device verdict of the seeded
+  catalogs (fast suite asserts dressList/games traffic as usual; watch
+  for SKINICON lines + icon-pack download logs); (2) error-driven from
+  NEW traffic only; (3) GameServer phase gate unchanged — NO GameServer
+  work yet.

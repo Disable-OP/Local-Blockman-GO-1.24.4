@@ -1,17 +1,28 @@
 package com.localapi;
 
+import java.io.File;
+import java.util.Locale;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
  * Game catalog + living-world state for the local API.
  *
- * Nothing is hardcoded per-request: on first boot the catalog is GENERATED
- * (categories, games, shop props, rank boards, citizen players) and persisted
- * into StateStore, after which it is ordinary editable server state that
- * survives restarts. Handlers query it like a real backend would.
+ * Nothing is hardcoded per-request: the catalog is SEEDED once (from the
+ * client's own ScriptSetting.csv when present — the real Blockman GO game
+ * list with real script ids) and persisted into StateStore, after which it
+ * is ordinary editable server state that survives restarts. Handlers query
+ * it like a real backend would.
+ *
+ * Engine mandate (user directive): the 1.24.4 client bundles ONLY the
+ * engine-1 runtime — every game ships isNewEngine = 0 so game start always
+ * boots the old engine that the APK actually carries.
  */
 final class GameCatalog {
+
+    /** 3 = real ScriptSetting catalog, engine-1 (isNewEngine=0) everywhere. */
+    private static final int CATALOG_VERSION = 3;
 
     private GameCatalog() {}
 
@@ -26,7 +37,23 @@ final class GameCatalog {
             dirty = true;
         }
         if (!root.has("games")) {
-            root.put("games", generateGames(root.optJSONArray("categories")));
+            JSONArray seeded = seedFromScriptSetting(store);
+            root.put("games", seeded != null ? seeded
+                    : generateGames(root.optJSONArray("categories")));
+            dirty = true;
+        }
+        // migration: pre-ScriptSetting catalogs (fake ids/names, engine-1
+        // flag wrong) regenerate from the seed; fresh boots without a seed
+        // keep their generated catalog but still get the engine fix + the
+        // version marker.
+        if (root.optInt("catalogVersion", 0) < CATALOG_VERSION) {
+            JSONArray seeded = seedFromScriptSetting(store);
+            if (seeded != null) {
+                root.put("games", seeded);
+                L.i("catalog migrated to v" + CATALOG_VERSION + " ("
+                        + seeded.length() + " real games)");
+            }
+            root.put("catalogVersion", CATALOG_VERSION);
             dirty = true;
         }
         if (!root.has("citizens")) {
@@ -99,7 +126,7 @@ final class GameCatalog {
         g.put("gamePayInfo", pay);
         g.put("turntableStatus", 0);
         g.put("turntableRemainCount", 0);
-        g.put("isNewEngine", 1);
+        g.put("isNewEngine", 0);
         g.put("isUgcGame", 0);
         g.put("gameUgcType", "");
         g.put("currentPage", 0);
@@ -156,6 +183,160 @@ final class GameCatalog {
     }
 
     // ----------------------------------------------------------- generation
+
+    /**
+     * Real-catalog seed from the client's OWN ScriptSetting.csv (the APK's
+     * assets/resources/Media/Scripts/ScriptSetting.csv, copied by
+     * LocalServer.startIfNeeded into <files>/localapi/games_seed.csv).
+     * Every enabled row becomes a real catalog game: the real script id
+     * (g1008 -> gameId "1008"), the real default map, and the engine-form
+     * script id kept in "scriptType" for the dispatch bridge. Rows the
+     * client itself disables or that are dev templates are skipped.
+     * Returns null when no seed file exists (host rigs without fixtures).
+     */
+    private static JSONArray seedFromScriptSetting(StateStore store) {
+        File seed = new File(store.baseDir(), "games_seed.csv");
+        if (!seed.exists() || seed.length() == 0) return null;
+        JSONArray categories = store.root().optJSONArray("categories");
+        String text;
+        try {
+            text = slurp(seed);
+        } catch (Throwable t) {
+            L.e("catalog: games_seed.csv unreadable: " + t);
+            return null;
+        }
+        String[] lines = text.split("\r?\n");
+        long now = System.currentTimeMillis();
+        JSONArray games = new JSONArray();
+        int index = 0;
+        for (int li = 0; li < lines.length; li++) {
+            String line = lines[li].trim();
+            if (line.isEmpty()) continue;
+            if (li < 2) continue; // english + chinese header rows
+            String[] c = line.split("\t");
+            if (c.length < 9) continue;
+            String scriptType = c[0].trim();
+            if (!scriptType.matches("g[0-9]+")) continue;
+            String name = c[2].trim();
+            String mapName = c[4].trim();
+            String remark = c[8].trim();
+            // dev templates are never player-facing games. NOTE: the Enable
+            // column is the client-side SCRIPT auto-enable flag, NOT the
+            // hall catalog — real BG lists every game in the hall even when
+            // the script row ships Enable=0, so no enable filtering here.
+            if (name.equals("Sample") || name.equals("Template")
+                    || name.equals("GameTool")) {
+                continue;
+            }
+            long gameId = Long.parseLong(scriptType.substring(1));
+            JSONObject g = new JSONObject();
+            g.put("gameId", String.valueOf(gameId));
+            String title = displayName(name);
+            g.put("gameTitle", title);
+            g.put("gameName", title);
+            g.put("remark", remark);            // the original display name
+            g.put("scriptType", scriptType);    // engine ScriptSetting key
+            g.put("mapName", mapName);          // real default map
+            g.put("gameCoverPic", "");
+            g.put("bannerPic", new JSONArray());
+            g.put("gameBannerVideoInfos", new JSONArray());
+            g.put("gameDetail", remark + " — running locally on your own server.");
+            long typeId = categoryIdFor(name, categories);
+            JSONArray types = new JSONArray();
+            types.put(categoryNameFor(categories, typeId));
+            g.put("gameTypes", types);
+            g.put("appreciate", false);
+            g.put("gameMode", 1);
+            g.put("visitorEnter", 1);
+            g.put("version", 1);
+            g.put("isRankOnline", 1);
+            g.put("isShopOnline", 1);
+            g.put("isOpenParty", 1);
+            g.put("isPay", 0);
+            g.put("turntableStatus", 0);
+            g.put("turntableRemainCount", 0);
+            g.put("isNewEngine", 0);   // engine-1 only — the bundled runtime
+            g.put("isUgcGame", 0);
+            g.put("gameUgcType", "");
+            g.put("currentPage", 0);
+            g.put("currentSize", 0);
+            g.put("resVersion", 1);
+            g.put("pageType", 0);
+            g.put("typeId", typeId);
+            g.put("createTime", now - (200L - index) * 86_400_000L);
+            g.put("complexNum", 60 + (index * 41) % 480);
+            g.put("praiseNumber", 150 + (index * 97) % 4200);
+            g.put("onlineNumber", 40 + (index * 59) % 2600);
+            g.put("index", index++);
+            JSONObject latest = new JSONObject();
+            latest.put("cresVersion", 1);
+            latest.put("dresVersion", 1);
+            latest.put("gresVersion", 1);
+            g.put("latestResVersions", latest);
+            games.put(g);
+        }
+        if (games.length() == 0) return null;
+        L.i("catalog: seeded " + games.length() + " real games from ScriptSetting");
+        return games;
+    }
+
+    /** CamelCase script name -> display name ("BedWar" -> "Bed War"). */
+    private static String displayName(String scriptName) {
+        return scriptName
+                .replaceAll("([a-z0-9])([A-Z])", "$1 $2")
+                .replaceAll("([A-Z]+)([A-Z][a-z])", "$1 $2");
+    }
+
+    /**
+     * Hall category for a real game, from its script name. Keeps the six
+     * persisted category tabs; assignment is heuristic (the seed carries no
+     * category column) and stays editable state after seeding.
+     */
+    private static long categoryIdFor(String scriptName, JSONArray categories) {
+        String n = scriptName.toLowerCase(Locale.US);
+        boolean parkour = n.contains("parkour") || n.equals("tntrun");
+        boolean sandbox = n.contains("skyblock") || n.contains("blockcity")
+                || n.contains("tycoon") || n.contains("ranchers")
+                || n.contains("lifting") || n.contains("bird")
+                || n.contains("tinytown") || n.contains("lschampion");
+        boolean shooter = n.contains("pixelgun") || n.contains("gunbattle")
+                || n.contains("gbstrike") || n.equals("chicken")
+                || n.contains("watchcar");
+        boolean role = n.contains("murder") || n.contains("hideandseek")
+                || n.contains("hashidden") || n.contains("haschase")
+                || n.contains("hashall") || n.contains("jailbreak");
+        long want = parkour ? 101L : sandbox ? 102L : role ? 104L
+                : shooter ? 105L : 103L;
+        for (int i = 0; categories != null && i < categories.length(); i++) {
+            JSONObject c = categories.optJSONObject(i);
+            if (c != null && c.optLong("typeId") == want) return want;
+        }
+        return categories == null || categories.length() == 0 ? want
+                : categories.optJSONObject(0).optLong("typeId");
+    }
+
+    private static String categoryNameFor(JSONArray categories, long typeId) {
+        for (int i = 0; categories != null && i < categories.length(); i++) {
+            JSONObject c = categories.optJSONObject(i);
+            if (c != null && c.optLong("typeId") == typeId) {
+                return c.optString("typeName");
+            }
+        }
+        return "";
+    }
+
+    private static String slurp(File f) throws Exception {
+        java.io.FileInputStream in = new java.io.FileInputStream(f);
+        try {
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[65536];
+            int n;
+            while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
+            return new String(bos.toByteArray(), "UTF-8");
+        } finally {
+            in.close();
+        }
+    }
 
     private static JSONArray generateCategories() {
         String[][] defs = {
@@ -216,7 +397,7 @@ final class GameCatalog {
             g.put("isPay", 0);
             g.put("turntableStatus", 0);
             g.put("turntableRemainCount", 0);
-            g.put("isNewEngine", 1);
+            g.put("isNewEngine", 0);
             g.put("isUgcGame", ugc ? 1 : 0);
             g.put("gameUgcType", ugc ? "ugc" : "");
             g.put("currentPage", 0);

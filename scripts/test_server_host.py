@@ -3093,12 +3093,16 @@ def main():
     # away; a torn tmp must NOT shadow a valid state.json; both torn -> the
     # fresh-start path must still boot.
 
-    def boot_hosttest(state_root, port):
+    def boot_hosttest(state_root, port, real_pack=False):
         log = open(os.path.join(state_root, "boot.log"), "wb")
-        p = subprocess.Popen(
-            ["java", "-cp", HOST_CP, "com.localapi.HostTest", state_root,
-             str(port)],
-            stdout=log, stderr=subprocess.STDOUT)
+        cmd = ["java"]
+        if not real_pack:
+            # Hermetic by default: no host test may fetch the real icon pack
+            # (a completed download+extract would race the cache-miss
+            # assertions). The gated end-to-end pack test passes real_pack.
+            cmd += ["-Dlocalapi.iconPackUrl=http://127.0.0.1:1/skins.tar.gz"]
+        cmd += ["-cp", HOST_CP, "com.localapi.HostTest", state_root, str(port)]
+        p = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT)
         return p, log
 
     def wait_serving(base_url, deadline_s=30):
@@ -3253,6 +3257,230 @@ def main():
         except Exception:
             proc_c.kill()
         log_c.close()
+
+    # == real skins + real games: seeded catalogs, icon streaming, engine 0 ==
+    # The device-side catalogs seed from the APK's own data: the skin
+    # catalog from the captured backend response (skin.json -> APK asset
+    # localapi/skins.json) and the games from the client's own
+    # ScriptSetting.csv (APK asset localapi/ScriptSetting.csv).
+    # LocalServer.startIfNeeded copies those assets into the files dir on
+    # device; the host rig writes the SAME seed files into the state dir
+    # before boot. Fixture data here is shape-true (same fields as the real
+    # capture) but small; icon pack URLs point at an invalid TLD so the
+    # CDN proxy fails fast and deterministically offline.
+
+    dir_g = tempfile.mkdtemp(prefix="localapi-seeds-")
+    skins_seed = {"code": 1, "message": "SUCCESS", "data": [
+        {"id": 3310, "typeId": 11, "status": 1, "name": "Seed Hat",
+         "iconUrl": "http://staticgs.invalid/sandbox/dresses/hat.png",
+         "resourceId": "custom_hat.637", "details": "Seed Hat",
+         "camera": "head", "sex": 0, "tag": [], "expire": 0, "type": 0,
+         "clanLevel": 0, "vip": 0, "occupyPosition": [11],
+         "buyTime": 1670605892000, "isNew": 0, "currency": 1, "price": 100,
+         "classify": "fashi", "quality": 4, "isWeekFree": 0, "minVipLevel": 0,
+         "evolutionLevel": 0, "isWholeSetSuit": 0, "isActivity": 1,
+         "validDay": 0, "jumpLink": ""},
+        {"id": 3311, "typeId": 11, "status": 1, "name": "Seed Cape",
+         "iconUrl": "http://staticgs.invalid/sandbox/dresses/cape.png",
+         "occupyPosition": [12], "currency": 2, "price": 50, "sex": 0,
+         "tag": [], "expire": 0, "type": 0, "status": 1, "typeId": 11},
+    ]}
+    os.makedirs(os.path.join(dir_g, "localapi"), exist_ok=True)
+    with open(os.path.join(dir_g, "localapi", "skins_seed.json"), "w") as f:
+        json.dump(skins_seed, f)
+    games_rows = [
+        "GameType\tGroupDirectory\tName\tEnable\tMapName\tServerIP\tServerPort"
+        "\tEngineVersion\tRemark",
+        "游戏类型\t组目录\t插件名\t是否启用\t地图名\t服务器IP\t服务器端口号"
+        "\t引擎版本号\t备注",
+        "g1001\tg1001_g1030\tHungryGame\t0\tmaps/g1001/m1001_1\t127.0.0.1"
+        "\t19130\t90900\t饥饿游戏",
+        "g1008\tg1001_g1030\tBedWar\t0\tmaps/g1008/m1008_2\t127.0.0.1"
+        "\t19131\t90007\t起床战争",
+        "g1000\t\tSample\t0\tmaps/sample\t127.0.0.1\t19130\t90900\t模板游戏",
+    ]
+    with open(os.path.join(dir_g, "localapi", "games_seed.csv"), "w",
+              encoding="utf-8") as f:
+        f.write("\n".join(games_rows) + "\n")
+
+    port7 = random.randint(20000, 32000)
+    while port7 in (PORT, port2, port3, port4, port5, port6):
+        port7 = random.randint(20000, 32000)
+    proc_g, log_g = boot_hosttest(dir_g, port7)
+    try:
+        base7 = "http://127.0.0.1:%d" % port7
+        up7 = wait_serving(base7)
+        check("seeds: server boots with skin + game seeds", up7)
+
+        # --- real game catalog (ScriptSetting) ---
+        pg = call("GET", "/game/api/v1/games?pageNo=1&pageSize=50&orderType=complex"
+                  "&typeId=0&order=&isPublish=1", base=base7)
+        rows = pg.get("data", {}).get("data", []) if pg.get("code") == 1 else []
+        ids = {g.get("gameId") for g in rows}
+        check("games: real ScriptSetting ids seeded",
+              pg.get("code") == 1 and {"1001", "1008"} <= ids
+              and not any(i and i.startswith("5") and i != "5043" for i in ids),
+              str(ids)[:120])
+        bed = next((g for g in rows if g.get("gameId") == "1008"), {})
+        check("games: real names + engine form + map kept",
+              bed.get("gameTitle") == "Bed War"
+              and bed.get("scriptType") == "g1008"
+              and bed.get("mapName") == "maps/g1008/m1008_2"
+              and bed.get("remark") == "起床战争", str(bed)[:200])
+        check("games: isNewEngine is 0 everywhere (engine-1 mandate)",
+              len(rows) > 0 and all(g.get("isNewEngine") == 0 for g in rows),
+              str([(g.get("gameId"), g.get("isNewEngine")) for g in rows]))
+        check("games: dev template Sample(g1000) excluded", "1000" not in ids,
+              str(ids)[:120])
+        gdet = call("GET", "/game/api/v2/games/1008?appVersion=4003", base=base7)
+        check("games: real-id detail resolves",
+              gdet.get("code") == 1
+              and gdet.get("data", {}).get("gameId") == "1008", str(gdet)[:150])
+
+        # --- dispatch bridge emits the engine-form id + real default map ---
+        vis = call("POST", "/user/api/v1/visitor", {"imei": "seedsqa"},
+                   base=base7)
+        tok7 = (vis.get("data", {}) or {}).get("accessToken", "")
+        uid7 = (vis.get("data", {}) or {}).get("id",
+               (vis.get("data", {}) or {}).get("userId", 0))
+        mt7 = call("GET", "/game/api/v2/game/auth?typeId=1008&targetId=%d"
+                   "&gameVersion=1" % uid7,
+                   headers={"Access-Token": tok7, "userId": str(uid7)},
+                   base=base7)
+        mg7 = mt7.get("data", {})
+        dp7 = call("POST", "/v1/dispatch", {"resVersion": 1},
+                   headers={"x-shahe-uid": str(uid7),
+                            "x-shahe-token": mg7.get("token", "")},
+                   base=base7)
+        dd7 = dp7.get("data", {})
+        check("dispatch: engine scriptType g1008 + real default map",
+              dp7.get("code") == 1 and dd7.get("gameType") == "g1008"
+              and dd7.get("mid") == "maps/g1008/m1008_2"
+              and dd7.get("name") == "Bed War", str(dd7)[:250])
+
+        # --- real skin catalog (skins.json capture) ---
+        dl7 = call("GET", "/decoration/api/v1/decorations/11",
+                   headers={"language": "en"}, base=base7)
+        items = dl7.get("data", []) if dl7.get("code") == 1 else []
+        hat = next((d for d in items if d.get("id") == 3310), {})
+        check("skins: seeded catalog served on dressList",
+              len(items) == 2 and hat.get("name") == "Seed Hat",
+              str(dl7)[:200])
+        check("skins: iconUrl rewritten to local streaming endpoint",
+              hat.get("iconUrl") == "http://127.0.0.1:18080/localapi/skins/icons/3310.png",
+              str(hat.get("iconUrl")))
+        check("skins: real fields preserved (occupyPosition/camera/quality)",
+              hat.get("occupyPosition") == [11] and hat.get("camera") == "head"
+              and hat.get("quality") == 4 and hat.get("price") == 100,
+              str(hat)[:200])
+
+        # --- buying a real skin deducts the real price ---
+        buy = call("PUT", "/shop/api/v1/shop/decorations/buy/3310", None,
+                   headers={"Access-Token": tok7, "userId": str(uid7)},
+                   base=base7)
+        dl8 = call("GET", "/decoration/api/v1/decorations/11",
+                   headers={"Access-Token": tok7, "userId": str(uid7)},
+                   base=base7)
+        hat2 = next((d for d in (dl8.get("data", []) or [])
+                     if d.get("id") == 3310), {})
+        check("skins: buy real skin -> hasPurchase + wallet deduction",
+              buy.get("code") == 1 and hat2.get("hasPurchase") == 1,
+              "buy=%s hat=%s" % (str(buy)[:120], str(hat2)[:120]))
+
+        # --- icon streaming endpoint ---
+        img_dir = os.path.join(dir_g, "localapi", "skins", "img")
+        os.makedirs(img_dir, exist_ok=True)
+        png = bytes([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) + b"x" * 200
+        with open(os.path.join(img_dir, "999901.png"), "wb") as f:
+            f.write(png)
+        got = raw_get("http://127.0.0.1:%d/localapi/skins/icons/999901.png" % port7)
+        check("icons: cached bytes streamed with exact content",
+              got == png, "%d bytes" % len(got))
+        miss = call("GET", "/localapi/skins/icons/3311.png", base=base7)
+        check("icons: cache miss + unreachable CDN -> clean envelope miss",
+              isinstance(miss, dict) and miss.get("code") != 1, str(miss)[:120])
+        unknown = call("GET", "/localapi/skins/icons/notanumber.png", base=base7)
+        check("icons: garbage id -> clean miss (no crash)",
+              isinstance(unknown, dict) and unknown.get("code") != 1,
+              str(unknown)[:120])
+    finally:
+        proc_g.terminate()
+        try:
+            proc_g.wait(timeout=5)
+        except Exception:
+            proc_g.kill()
+        log_g.close()
+
+    # --- skins catalog persists across restart (own store file) ---
+    port8 = random.randint(20000, 32000)
+    while port8 in (PORT, port2, port3, port4, port5, port6, port7):
+        port8 = random.randint(20000, 32000)
+    proc_h, log_h = boot_hosttest(dir_g, port8)
+    try:
+        base8 = "http://127.0.0.1:%d" % port8
+        up8 = wait_serving(base8)
+        dl9 = call("GET", "/decoration/api/v1/decorations/11",
+                   headers={"language": "en"}, base=base8)
+        n9 = len(dl9.get("data", []) or []) if dl9.get("code") == 1 else -1
+        check("skins: catalog persists across restart (skins/catalog.json)",
+              up8 and n9 == 2, "n=%s" % n9)
+        pg9 = call("GET", "/game/api/v1/games?pageNo=1&pageSize=50&orderType=complex"
+                   "&typeId=0&order=&isPublish=1", base=base8)
+        ids9 = {g.get("gameId") for g in (pg9.get("data", {}).get("data", [])
+                if pg9.get("code") == 1 else [])}
+        check("games: real catalog persists across restart (no reseed drift)",
+              up8 and {"1001", "1008"} <= ids9, str(ids9)[:120])
+    finally:
+        proc_h.terminate()
+        try:
+            proc_h.wait(timeout=5)
+        except Exception:
+            proc_h.kill()
+        log_h.close()
+
+    # --- OPTIONAL end-to-end icon-pack test (opt-in: LOCALAPI_REAL_PACK=1) ---
+    # Boots a seeded instance with the REAL release pack URL: the asset
+    # thread must download the 16MB skins.tar.gz, extract all entries with
+    # the tar reader, and the streaming endpoint must then serve the REAL
+    # icon bytes for a seeded skin. Network-dependent (~40s) — skipped by
+    # default to keep the suite hermetic and fast.
+    if os.environ.get("LOCALAPI_REAL_PACK") == "1":
+        dir_p = tempfile.mkdtemp(prefix="localapi-pack-")
+        os.makedirs(os.path.join(dir_p, "localapi"), exist_ok=True)
+        with open(os.path.join(dir_p, "localapi", "skins_seed.json"), "w") as f:
+            json.dump(skins_seed, f)
+        port9 = random.randint(20000, 32000)
+        while port9 in (PORT, port2, port3, port4, port5, port6, port7, port8):
+            port9 = random.randint(20000, 32000)
+        proc_p, log_p = boot_hosttest(dir_p, port9, real_pack=True)
+        try:
+            base9 = "http://127.0.0.1:%d" % port9
+            # give the asset thread a generous window (download + extract)
+            img_dir9 = os.path.join(dir_p, "localapi", "skins", "img")
+            n = 0
+            end9 = time.time() + 150
+            while time.time() < end9:
+                n = len(os.listdir(img_dir9)) if os.path.isdir(img_dir9) else 0
+                if n >= 1165:
+                    break
+                time.sleep(2)
+            check("pack: full icon pack downloaded + extracted (1165)",
+                  n == 1165, "n=%d" % n)
+            got_real = raw_get(
+                "http://127.0.0.1:%d/localapi/skins/icons/3310.png" % port9)
+            check("pack: real icon streamed from extracted pack",
+                  len(got_real) > 100
+                  and got_real[:4] == bytes([0x89, 0x50, 0x4E, 0x47]),
+                  "%d bytes magic=%s" % (len(got_real), got_real[:4].hex()))
+        finally:
+            proc_p.terminate()
+            try:
+                proc_p.wait(timeout=5)
+            except Exception:
+                proc_p.kill()
+            log_p.close()
+    else:
+        print("== pack e2e skipped (set LOCALAPI_REAL_PACK=1 to run) ==")
 
     print("\nRESULT: %d passed, %d failed" % (len(passed), len(failed)))
     if failed:

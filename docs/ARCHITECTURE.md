@@ -148,3 +148,37 @@ the real backend), so the local world mints a fixed pair:
 
 The stored password is always the plaintext the flow set. RES log lines
 carry the envelope code ("code=1") for UI-assertable acceptance checks.
+
+## Session 50 addendum — seeded catalogs + icon streaming
+
+Boot data flow (two layers: APK-embedded SEEDS, device-downloaded ICONS):
+
+```
+APK assets (data only, ~1.6 MB)
+  assets/localapi/skins.json        ← real 1165-skin backend capture
+  assets/localapi/ScriptSetting.csv ← the client's own game list (59 real games)
+        │ LocalServer.startIfNeeded (copies once, refresh on size change)
+        ▼
+<files>/localapi/skins_seed.json  +  games_seed.csv
+        │ bootOnce: Skins.ensure + GameCatalog.ensure (seed → own store, then plain state)
+        ▼
+skins/catalog.json (1165 items)    state.json games[] (real ids, isNewEngine=0)
+
+Icon bytes (NEVER in the APK):
+  GitHub release localapi-assets/skins.tar.gz   ← canonical skins.tar.xz also on the release
+        │ SkinsAssets daemon thread (download once, 3 attempts)
+        ▼
+<files>/localapi/skins/img/<id>.png   (USTAR extraction, idempotent)
+        │
+GET /localapi/skins/icons/<id>.png
+        ├─ cache hit  → stream bytes (mime sniffed)
+        ├─ cache miss → CDN proxy (item's original iconUrl), fetch-and-cache
+        └─ both fail  → code=0 miss envelope (client placeholder)
+```
+
+Invariants:
+- `isNewEngine=0` on every game in every response (engine-1 only runtime).
+- `iconUrl` in every dress response points at the loopback streaming route;
+  the original CDN url never leaves the server.
+- Seeds are data, not code paths: catalogs are editable server state after
+  the first seed (skin reseed only when the APK ships a different seed file).

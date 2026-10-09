@@ -2502,3 +2502,84 @@ an on-device run:
 - Coverage count unchanged (334/334/0-defaults); v2 modify was already
   client-asserted via the API-level fcall and is now UI-asserted too.
   Engine 10068 untouched. NO GameServer work.
+
+## Session 50 (2026-10-09) — REAL skins + REAL games: seeded catalogs, icon streaming, engine-1 mandate
+
+User directives this session drove a data-accuracy wave: the fake
+catalog (42 invented games, 10 invented dresses/typeId) is replaced by
+the client's OWN data, and skin icons leave the APK entirely.
+
+### Server-local route (not a Retrofit endpoint)
+
+| Verb | Path | Behavior |
+|---|---|---|
+| GET | `/localapi/skins/icons/<id>.png` | Streams one skin icon's bytes. Sources: (1) extracted icon cache `<files>/localapi/skins/img/<id>.png`; (2) on cache miss, the ORIGINAL CDN url stored per catalog item (transparent fetch-and-cache proxy, 6s budgets); (3) otherwise a `code=0` miss envelope. Content-type sniffed (png/jpeg/webp/gif), `Cache-Control: max-age=86400`. Served BEFORE the Retrofit routing (same layer as `/files/<id>`), logged as `SKINICON`. |
+
+### Icon streaming architecture (icons are NOT in the APK)
+
+- The catalog SEED ships in the APK as an asset: `assets/localapi/skins.json`
+  (the 1165-skin real backend capture, 1.6 MB data only).
+  `LocalServer.startIfNeeded` copies it to `<files>/localapi/skins_seed.json`
+  (refresh on asset-size change = newer APK ships newer seed).
+- Skins parses it into its OWN store file `<files>/localapi/skins/catalog.json`
+  (state.json stays lean; skin mutations never slow the shared save path).
+  Every catalog `iconUrl` is rewritten per-response to
+  `http://127.0.0.1:18080/localapi/skins/icons/<id>.png`.
+- Icon BYTES ship on the GitHub release `localapi-assets`:
+  `skins.tar.gz` (runtime fetch — platform gzip inflater, zero extra dex
+  dependency) + `skins.tar.xz` (canonical archive, identical content).
+  On first boot a daemon thread (`SkinsAssets`) downloads the pack ONCE
+  (3 attempts) and extracts entries with a hand-rolled USTAR reader to
+  `img/<id>.png` (skip-when-size-matches → idempotent). Every failure is
+  non-fatal; the CDN proxy covers online devices meanwhile.
+- All 1165 icons were downloaded from the real CDN this session
+  (22 MB raw; 2 URLs needed percent-encoding retries), packed
+  deterministically (`--sort=name`), uploaded, and the full device path
+  was proven end-to-end in the host rig (LOCALAPI_REAL_PACK=1:
+  download → extract 1165 → stream real 3310.png bytes).
+- Tests may pin the pack URL via `-Dlocalapi.iconPackUrl=...` (hermetic suite).
+
+### Real dress/skin catalog (dressList + friends)
+
+- `DressShop.ensureType/byId` resolve through `Skins` FIRST; the legacy
+  generated catalogs remain the fallback when no seed is present (host
+  rigs without fixtures).
+- `singleJson` now PRESERVES stored real fields (occupyPosition, camera,
+  quality, voucher prices, classify, ...) and only FILLS contract fields a
+  legacy item lacks — the old code clobbered `occupyPosition`/`tag`/etc.
+  with empties, which would have broken the real skins.
+- Buying a real skin deducts its REAL price/currency from the wallet;
+  ownership stays in the user wardrobe (state.json).
+
+### Real game catalog (ScriptSetting.csv) + engine-1 mandate
+
+- The client's own `assets/resources/Media/Scripts/ScriptSetting.csv`
+  (committed at repo root; also shipped as APK asset `localapi/ScriptSetting.csv`)
+  seeds the hall: 62 real rows, minus the dev templates (Sample/Template/
+  GameTool) = **59 real games** with their REAL script ids (`g1008` →
+  gameId `1008`), real display names (Remark, e.g. 起床战争) and the real
+  default map (`maps/g1008/m1008_2`).
+- `catalogVersion` bumped to 3: existing stores migrate on next boot
+  (games regenerate; wallets/purchases/boards survive). The premium
+  `isPay` game (5043) is re-appended after the regen.
+- **`isNewEngine` = 0 everywhere** (user mandate: the 1.24.4 client only
+  carries the engine-1 runtime — ScriptSetting rows are all EngineVersion
+  90900/90007). Applies to seeded games, legacy generated games, and the
+  premium game. Every `games` response now reports engine 1.
+- The dispatch bridge (`POST /v1/dispatch`, `/v1/follow`) now emits the
+  ENGINE-form script id: the catalog keeps `scriptType` (`g1008`) and the
+  bridge round-trips the lobby's numeric gameId into it; `mid`/`mname`
+  default to the game's real map; `name` comes from `gameTitle` (the old
+  code read a nonexistent `name` field — latent bug, now fixed).
+
+### Coverage / verification
+
+- Host suite: 597 → **613** checks (+16: seed boot, real ids/names/scriptType,
+  isNewEngine=0 sweep, template exclusion, real-id detail, dispatch
+  engine-form, seeded dressList shape + icon rewrite + preserved fields,
+  real-price buy, icon stream exact-bytes, miss + garbage-id envelopes,
+  catalog persistence across restart) — 613/613.
+- Real-pack e2e (opt-in): +2 → 615/615 with `LOCALAPI_REAL_PACK=1`.
+- Retrofit surface unchanged: 334/334 implemented, 0 defaults
+  (the icon route is a server-local service, documented here, not a
+  client-callable API). Engine 10068 untouched. NO GameServer work.

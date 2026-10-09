@@ -3667,3 +3667,70 @@
   absorbed). "state recovered" absent — no torn write occurred on this
   run; the deterministic proof stays in the host suite's 3 scenarios.
   Current state: asset wip-63, host suite 597/597, HEAD 97b1958+docs.
+
+## Session 50 — one-branch repo + REAL skins/icons streaming + REAL games (engine-1) (2026-10-09)
+
+- ONE BRANCH (user directive): merged main (10 CI-sync commits, skin.json,
+  Engine-10068 archives, test-redroid-deep) INTO local-api (364 commits
+  ahead), then fast-forwarded main to the merge and DELETED remote
+  local-api. The repo is single-branch: all three workflows +
+  release_and_test.sh now reference `main` only.
+- REAL SKINS (user directive: skin.json + streamed icons, no APK bloat):
+  - Downloaded all 1165 iconUrls from the skin.json capture from the live
+    CDN (22 MB; 2 URLs needed percent-encoding — non-ascii filenames).
+  - Packed deterministically to skins.tar.xz (15.5 MB) + a gzip twin
+    skins.tar.gz (15.9 MB; the runtime fetches the gzip twin because the
+    Android platform has a gzip inflater — keeps the server dex free of a
+    bundled xz decoder). Both uploaded to release tag `localapi-assets`
+    (unauthenticated download verified; initial 404 was propagation lag).
+  - NEW Skins.java domain: catalog store `<files>/localapi/skins/catalog.json`
+    (own file — state.json save path stays lean), seeded ONCE from the APK
+    asset `localapi/skins.json` (copied by LocalServer.startIfNeeded;
+    reseed only when the seed's size stamp changes). iconUrl in every
+    response is rewritten to the loopback streaming route; the original
+    CDN url stays in the store for the proxy fallback.
+  - NEW route `GET /localapi/skins/icons/<id>.png` (LocalHttpd, before the
+    Retrofit routing): cache hit → stream (mime sniffed) → miss → CDN
+    fetch-and-cache proxy (6s budgets) → clean code=0 miss envelope.
+  - SkinsAssets daemon thread: downloads the pack once (3 attempts),
+    extracts with a hand-rolled USTAR/gzip reader (idempotent skip by
+    size). Pack URL overridable via -Dlocalapi.iconPackUrl (hermetic tests).
+  - DressShop now resolves catalogs through Skins FIRST (legacy generated
+    dresses stay the no-seed fallback) and singleJson PRESERVES real
+    fields (the old code clobbered occupyPosition/tag/etc. — would have
+    broken the real skins). Buy deducts the REAL price/currency.
+- REAL GAMES (user directive: ScriptSetting.csv has all BG games + ids;
+  New engine parameter = 0):
+  - ScriptSetting.csv extracted from the base APK
+    (assets/resources/Media/Scripts/), committed at repo root, shipped as
+    APK asset localapi/ScriptSetting.csv, copied to files at boot.
+  - GameCatalog seeds 59 real games (62 rows minus Sample/Template/
+    GameTool): real script ids (g1008 → gameId "1008"), display names
+    from Remark (kept in `remark`), real default maps (`mapName`), the
+    engine-form id kept in `scriptType`. catalogVersion → 3 migrates
+    existing stores; the premium isPay game is re-appended after regen.
+  - `isNewEngine` = 0 on EVERY game (seeded, legacy generated, premium):
+    the 1.24.4 client only carries the engine-1 runtime (all ScriptSetting
+    rows are EngineVersion 90900/90007).
+  - Dispatch bridge (`/v1/dispatch`, `/v1/follow`): emits the engine-form
+    scriptType (g1008) instead of the lobby's numeric id, defaults
+    mid/mname to the game's real map, and reads the name from gameTitle
+    (the old lookup read a nonexistent `name` key — latent bug fixed).
+- BUILD PIPELINE: build_signed_apk.sh now copies the two seed assets into
+  `assets/localapi/` (data only — skins.json 1.6 MB + ScriptSetting.csv
+  4 KB; never icon bytes).
+- HOST SUITE 597 → 613 (+16, all green): seeds boot, real ids/names/
+  scriptType/mapName, isNewEngine=0 sweep, template exclusion, real-id
+  detail, dispatch engine-form + real map, seeded dressList shape +
+  loopback icon rewrite + preserved fields, real-price buy, icon exact-
+  bytes stream, miss + garbage-id envelopes, both catalogs persist across
+  restart. Boot helper is hermetic by default (test-only pack-URL pin);
+  an OPT-IN e2e (`LOCALAPI_REAL_PACK=1`) proved the FULL device path
+  against the real release archive: download → extract 1165 → stream real
+  icon bytes (+2 → 615/615 when enabled).
+- FIXES during the wave: GameCatalog missing java.io.File import; the
+  Enable-column filter would have kept ONE game (Enable is the client-side
+  script auto-enable flag, NOT the hall catalog — no filtering); visitor
+  response carries `id` not `userId` (test-side); premium 5043 is a
+  legitimate 5xxx id (test-side).
+- Engine 10068 untouched (now ON main via the merge). NO GameServer work.

@@ -1016,10 +1016,16 @@ final class Handlers {
         String gameType = mt.optString("gameType");
         String mapName = mt.optString("mapName");
         if (mapName.isEmpty()) mapName = form.optString("mapName", "");
-        // resolve the game for name/chat-room when the token carries a typeId
+        // resolve the game for engine script id / default map / chat room
         JSONObject game = GameCatalog.byId(store, gameType);
         String name = game == null ? (follow ? "Followed Game" : "Local Game")
-                : game.optString("name");
+                : game.optString("gameTitle", "Local Game");
+        // The engine resolves scripts by the ScriptSetting GameType key
+        // (g####): the catalog keeps that exact form in "scriptType" so the
+        // lobby's numeric gameId round-trips into the engine-form id.
+        String engineType = game == null ? gameType
+                : game.optString("scriptType", gameType);
+        String defaultMap = game == null ? "" : game.optString("mapName", "");
         String croomId = game == null
                 ? GameCatalog.chatRoom(store, "game-" + (gameType.isEmpty() ? "lobby" : gameType))
                 : GameCatalog.chatRoom(store, "game-" + gameType);
@@ -1029,11 +1035,13 @@ final class Handlers {
         out.put("gaddr", "127.0.0.1:18080");
         out.put("dispUrl", LOCAL_BASE_URL);
         out.put("croomid", croomId);
-        out.put("gameType", gameType);
+        out.put("gameType", engineType);
         out.put("mid", mapName.isEmpty()
-                ? String.valueOf(1000 + (Math.abs(gameType.hashCode()) % 9000))
+                ? (defaultMap.isEmpty()
+                        ? String.valueOf(1000 + (Math.abs(gameType.hashCode()) % 9000))
+                        : defaultMap)
                 : mapName);
-        out.put("mname", mapName);
+        out.put("mname", mapName.isEmpty() ? defaultMap : mapName);
         out.put("downurl", "");
         out.put("name", name);
         out.put("region", mt.optInt("region"));

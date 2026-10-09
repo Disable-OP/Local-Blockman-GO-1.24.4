@@ -60,6 +60,15 @@ public class LocalHttpd extends NanoHTTPD {
             return serveStoredFile(uri.substring("/files/".length()));
         }
 
+        // Skin icons: streamed straight from the local icon store (extracted
+        // once from the downloaded icon pack; CDN proxy on a cache miss).
+        // Served before the Retrofit routing — the client's image loader hits
+        // this URL directly (iconUrl fields are rewritten to it).
+        if ("GET".equals(verb) && uri != null
+                && uri.startsWith("/localapi/skins/icons/")) {
+            return serveSkinIcon(uri.substring("/localapi/skins/icons/".length()));
+        }
+
         final byte[] rawBody = readBody(session);
         final String body = new String(rawBody, java.nio.charset.StandardCharsets.UTF_8);
         final byte[] fileBytes = extractMultipartFile(session, rawBody);
@@ -132,6 +141,28 @@ public class LocalHttpd extends NanoHTTPD {
         while (j < json.length() && (Character.isDigit(json.charAt(j))
                 || (j == i && json.charAt(j) == '-'))) j++;
         return (j > i) ? "code=" + json.substring(i, j) : "code=?";
+    }
+
+    /** GET /localapi/skins/icons/<id>.png — one skin icon's bytes. */
+    private Response serveSkinIcon(String name) {
+        long id = -1;
+        try {
+            id = Long.parseLong(name.replaceAll("\\.[a-zA-Z]+$", ""));
+        } catch (Throwable ignore) {
+            // falls through to the miss response
+        }
+        byte[] data = id > 0 ? Skins.iconBytes(store, id) : null;
+        if (data == null) {
+            L.i("SKINICON miss " + name);
+            return respond("{\"code\":0,\"message\":\"icon not available\"}");
+        }
+        String mime = Skins.sniffMime(data);
+        InputStream in = new ByteArrayInputStream(data);
+        Response r = newFixedLengthResponse(Response.Status.OK, mime, in, data.length);
+        r.addHeader("Access-Control-Allow-Origin", "*");
+        r.addHeader("Cache-Control", "max-age=86400");
+        L.i("SKINICON " + id + " " + data.length + "b " + mime);
+        return r;
     }
 
     /** GET /files/<id> — serve an uploaded file's bytes with its stored type. */

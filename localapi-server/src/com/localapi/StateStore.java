@@ -28,6 +28,11 @@ public final class StateStore {
         load();
     }
 
+    /** The localapi/ directory backing this store (seed files, skins, files). */
+    public File baseDir() {
+        return file.getParentFile();
+    }
+
     private void load() {
         root = new JSONObject();
         // Torn-write recovery FIRST: save() commits via state.json.tmp ->

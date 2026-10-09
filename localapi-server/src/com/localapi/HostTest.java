@@ -17,6 +17,7 @@ public final class HostTest {
         StateStore store = new StateStore(new File(args[0]));
         GameCatalog.ensure(store);
         GameCatalog.drift(store);
+        Skins.ensure(store);
         LocalHttpd httpd = new LocalHttpd(Integer.parseInt(args[1]), store);
         httpd.start(5000, false);
         System.out.println("HOSTTEST READY");
