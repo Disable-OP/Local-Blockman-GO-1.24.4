@@ -3935,3 +3935,17 @@ resource is unavailable.
   LOCALAPI_REAL_PACK=1 (real 35MB download -> md5 verify -> byte-exact).
 - Docs: ENDPOINTS assets section + check/resource row, ARCHITECTURE skin
   flow, NEXT_SESSION_README session-52 delta.
+
+- CI CHAIN (session 52): tag v0.6.2-dress -> build-release SUCCESS (APK
+  232,812,097 B, classes6.dex 275,972 B = the v31 pack server confirmed
+  inside the shipped artifact) -> chained test-redroid FAILED on ONE stale
+  automation assertion ("advertises v19 pack") — the DEVICE behavior was
+  CORRECT (diagnostics: ASSET decorate_merged_v31...zip 35549193b served
+  to the real client; dress-res v0 -> need=true target=31; later v31 ->
+  need=false; pack present 35,549,193 B). Fixed the assertion to the
+  merged v31 pack (4524938), re-dispatched fast suite: PASS.
+- ON-DEVICE VERDICT (green run 37982170273): the real 1.24.4 client
+  downloaded the FULL 35.5MB all-generations pack through the local
+  server, stored version 31, and is current (download-once holds);
+  pack persists across process restarts. Follow-up: 5-min read window
+  for slow links (42dc3ad, in source; rides the next tag).
