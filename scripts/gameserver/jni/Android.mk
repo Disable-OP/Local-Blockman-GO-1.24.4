@@ -11,7 +11,7 @@ SDP  := $(ROOT)/dev/server/dependencies
 CORE := $(ROOT)/engine-core/dev/engine/Src/Core
 LOGIC := $(ROOT)/dev/logic/Src
 SERVER := $(ROOT)/dev/server/src
-SPLITS := $(call my-dir)/splits
+SPLITS := $(abspath $(call my-dir))/splits
 
 WARNFLAGS := -Wno-logical-op-parentheses -Wno-bitwise-op-parentheses -Wno-deprecated-register \
   -Wno-shift-count-overflow -Wno-string-plus-int -Wno-tautological-compare -Wno-return-type \
@@ -20,7 +20,7 @@ WARNFLAGS := -Wno-logical-op-parentheses -Wno-bitwise-op-parentheses -Wno-deprec
   -Wno-constant-conversion -Wno-format-security -Wno-parentheses -Wno-writable-strings \
   -Wno-undefined-var-template -Wno-deprecated-declarations
 
-COMPAT := $(call my-dir)/compat/gs_compat.h
+COMPAT := $(abspath $(call my-dir))/compat/gs_compat.h
 COMMON_FLAGS := -include $(COMPAT) -DLORD_FORCE_PLATFORM=LORD_PLATFORM_LINUX -DLORD_STATIC=1 \
   -D_FORCE_INLINES -DHAVE_PTHREAD -fexceptions -frtti -pthread -fpermissive -Wno-error -Wno-format -Wno-format-security -Wno-unused-but-set-variable $(WARNFLAGS)
 
