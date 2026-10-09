@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: local-api  # tag pushes check out the tag; dispatches must use the work branch
+          ref: main  # single-branch repo
 
       - uses: actions/setup-java@v4
         with:

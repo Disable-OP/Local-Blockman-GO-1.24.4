@@ -5,7 +5,7 @@
 # x-access-token:<tok>, or a named remote (origin) with <user>:<tok>.
 set -euo pipefail
 cd "$(dirname "$0")"  # repo root
-REMOTE=$(git config branch.local-api.remote || echo origin)
+REMOTE=$(git config branch.main.remote || echo origin)
 case "$REMOTE" in
   http*) URL="$REMOTE" ;;
   *) URL=$(git config remote."$REMOTE".url || true) ;;
@@ -36,6 +36,6 @@ echo "== also upload as BlockyNexus-localapi-$TAG.apk? skip — one asset =="
 echo "== dispatch test-redroid =="
 DCODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "$AUTH" \
   -H "Accept: application/vnd.github+json" \
-  "$API/actions/workflows/test-redroid.yml/dispatches" -d "{\"ref\":\"local-api\"}")
+  "$API/actions/workflows/test-redroid.yml/dispatches" -d "{\"ref\":\"main\"}")
 echo "dispatch http: $DCODE (204 = ok)"
 echo "DONE"
