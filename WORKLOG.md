@@ -3848,3 +3848,46 @@
   default without a bundle. GameCatalog.games() widened to package-private.
 - Host suite 638/638 hermetic (+3). dex 275,956 B. Pushed; tag v0.6.1 for
   the CI verdict of the newest code.
+
+## Session 51 CLOSED — device verdict chain for the maps/skins/halls mission (2026-10-09)
+
+- TAGGED BUILDS: v0.6.0-maps (0caa185) + v0.6.1-updates (d613b70) both
+  build-release SUCCESS; their fast test-redroid runs PASSED on the new
+  APK (verified: the shipped classes6.dex = 275,460 B = this session's
+  build, not the lost wip-67 dex).
+- ON-DEVICE EVIDENCE (fast suites, arm64 Redroid Android 12):
+  * first boot downloads BOTH packs from GitHub: dress 11,007,054 B +
+    maps 47,411,314 B, `maps: pack sha256 verified`, 709 files extracted
+    (idempotent across the two app processes), 54 game bundles indexed;
+  * the REAL client pulled the 11 MB decorate pack through the local
+    server (ASSET .../10-19_decorate...zip) — the checkDressResource
+    download-once cycle works end to end;
+  * `GET /game/api/v1/games/update/list/10001` served the real
+    Map<gameId, bundleVersion> (1006 B);
+  * `game-res g1052 v1 -> m1052_2.1564366546881.zip @v1564366546`;
+  * byte-level `ASSET /sandbox/games/maps/m1008_2.1625226508247.zip
+    1275171b` (the BedWar bundle) — automation asserts PK magic;
+  * 0 UNMAPPED routes across 439 requests; code=0s are the suite's own
+    negative-path assertions.
+- MJ DEEP PHASE (new): Home-anchored real-UI join probe — tapped the game
+  card's start control (llBottom), the client drove game/auth + /v1/
+  game-map and ECHOESACTIVITY LAUNCHED (echoes=True, ActivityTaskManager
+  evidence). Verdicts: "client joined through the UI" + "engine activity
+  (Echoes) launched" — both [ok]; suite PASS. The engine's own map-zip
+  fetch (post-init) did not surface within the 40s poll — the download
+  confirmation tap inside the engine UI is the next MJ refinement; the
+  download path itself is contract-verified (GameResNewUpdater durl ->
+  unzip-merge) and byte-exact serving is proven.
+- Coverage: 334/334 implemented, 0 default, 334 host-tested. Host suite
+  638/638 hermetic (+21 this session incl. fixture-pack e2e and REAL_PACK
+  full-chain e2e: 47MB download -> sha256 verify -> extract -> 54 bundles
+  -> byte-exact BedWar serving -> real decorate pack advertised).
+- CDN-dump repo: docs/SERVER_INTEGRATION.md committed (b111cfc) — the
+  mission-4 packs now power the local API, cross-repo traceability.
+- Commits this session: 0caa185, d613b70, f973f94, 0f76f65, a04844b,
+  5955548, 217bab4, 26e703c, 7a98cc3, 2e8020c, f6e393d, 1f17548 (all on
+  main, all pushed; two infra-flaked deep dispatches retried).
+- NEXT: (1) MJ refinement — tap the engine's in-game download confirm so
+  the native map fetch lands in the same run; (2) error-driven from NEW
+  traffic; (3) RongCloud chat shim decision remains the top API-adjacent
+  gap; (4) GameServer phase gate unchanged.

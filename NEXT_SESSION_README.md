@@ -2402,3 +2402,19 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 - NEXT: (1) tag v0.6.0-maps -> build-release -> fast test-redroid verdict;
   (2) error-driven from NEW traffic only; (3) GameServer phase gate
   unchanged — API first.
+
+## Session 51 CLOSED delta (read FIRST — maps+skins+halls device-verified)
+
+- The whole mission chain is DEVICE-VERIFIED now (fast + deep runs on
+  main): packs download+verify+extract+index on first boot; the real
+  client downloads the decorate pack through the local server; real
+  update-list/version sync; byte-exact BedWar bundle serving; MJ deep
+  phase proves the real-UI join (game/auth -> /v1/game-map -> Echoes
+  launched). Release APKs: v0.6.0-maps + v0.6.1-updates (dex 275,460 B
+  confirmed in the shipped APK).
+- Automation: MJ phase (Home-anchored, llBottom start tap, 40s poll) is
+  budget-gated (3 min) — keep it discovery-first; the engine's internal
+  map-fetch confirm tap is the remaining MJ refinement.
+- Host suite 638/638 hermetic; LOCALAPI_REAL_PACK=1 = full 47MB e2e.
+- NEXT unchanged: MJ engine-download tap -> error-driven NEW traffic ->
+  RongCloud shim decision -> GameServer phase gate (still closed).
