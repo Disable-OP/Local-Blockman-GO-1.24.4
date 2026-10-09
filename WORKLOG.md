@@ -3734,3 +3734,30 @@
   response carries `id` not `userId` (test-side); premium 5043 is a
   legitimate 5xxx id (test-side).
 - Engine 10068 untouched (now ON main via the merge). NO GameServer work.
+
+## Session 50 cont. — on-device verdicts: skins+icons work first boot; games seed needed two fixes (2026-10-09)
+
+- wip-64 (47b64d9) fast test-redroid: PASS. Diagnostics PROVE the whole
+  icon pipeline on real Android, first attempt: seeds copied
+  (skins.json 1,672,632 B + ScriptSetting.csv 5,571 B), 1165-skin
+  catalog seeded, icon pack downloaded (15,871,562 B) and extracted
+  (0 -> 1165 / 1165) by the SkinsAssets thread. BUT the GAMES catalog
+  stayed legacy (43 games) all run.
+- ROOT CAUSE CHAIN (two bugs, both now fixed):
+  1. copySeedAsset ENOENT on the very first boot: files/localapi/ does
+     not exist until StateStore's constructor runs LATER in bootOnce —
+     the seed copy died with FileNotFoundException, so boot 1 ran the
+     legacy catalog (logcat: "seed asset ... unavailable: ENOENT").
+     FIX (ae5f0eb): mkdirs() the parent + atomic tmp->rename write.
+  2. (already fixed pre-wip-65, fe62dce): boot 1 stamped
+     catalogVersion=3 even without a seed, so the later seed never
+     regenerated. wip-65 (fe62dce) device run PROVES the heal: boot 1
+     ENOENT -> boot 2 "catalog: seeded 59 real games from ScriptSetting"
+     + "catalog migrated to v3 (59 real games)". With ae5f0eb the very
+     first boot seeds (no self-heal window at all).
+- Host suite 617/617 (migration section added: legacy boot -> seed
+  arrives -> regenerate; plus the fresh visitor path on the migrated
+  store). Suite found bug 2 before CI did; CI found bug 1 — both now
+  pinned by tests.
+- SHIP: wip-66 (ae5f0eb, both fixes) build dispatched; fast redroid
+  verdict is the gate for "first-boot real catalogs".
