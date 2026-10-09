@@ -1,0 +1,70 @@
+name: build-gameserver
+# Cross-compiles the C++ GameServer (engine LordCore -> Logic -> gameserver)
+# for Android arm64 and attaches the binary to the localapi-assets release.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/gameserver/**"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Install NDK r17c (gcc 4.9 + gnustl — era-matched toolchain)
+        run: |
+          cd /opt
+          wget -q https://dl.google.com/android/repository/android-ndk-r17c-linux-x86_64.zip
+          unzip -q android-ndk-r17c-linux-x86_64.zip
+          rm android-ndk-r17c-linux-x86_64.zip
+          echo "NDK=/opt/android-ndk-r17c" >> "$GITHUB_ENV"
+
+      - name: Assemble sources from archives
+        run: bash scripts/gameserver/assemble_sources.sh "$GITHUB_WORKSPACE/gswork"
+
+      - name: Patch sources
+        run: python3 scripts/gameserver/patch_sources.py "$GITHUB_WORKSPACE/gswork"
+
+      - name: ndk-build gameserver (arm64-v8a)
+        working-directory: ${{ github.workspace }}/scripts/gameserver
+        env:
+          GS_WORK: ${{ github.workspace }}/gswork
+        run: |
+          set -o pipefail
+          "$NDK/ndk-build" -j4 NDK_PROJECT_PATH=. \
+            APP_BUILD_SCRIPT=jni/Android.mk \
+            NDK_APPLICATION_MK=jni/Application.mk \
+            GS_WORK="$GS_WORK" 2>&1 | tee build.log | grep -E 'error|Error|Killed' || true
+          test -f libs/arm64-v8a/libgameserver.so || { tail -100 build.log; exit 1; }
+          file libs/arm64-v8a/libgameserver.so
+          ls -la libs/arm64-v8a/libgameserver.so
+
+      - name: Static sanity checks on the binary
+        run: |
+          B=$GITHUB_WORKSPACE/scripts/gameserver/libs/arm64-v8a/libgameserver.so
+          file "$B" | grep -q 'aarch64'
+          # required dynamic symbols / entry
+          readelf -h "$B" | grep -q 'AArch64'
+          readelf -d "$B" | grep NEEDED | head -10
+          strings -a "$B" | grep -q 'pq0194mxoqfh48L362G6R09T737E273X' && echo "secret embedded OK"
+
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          B=$GITHUB_WORKSPACE/scripts/gameserver/libs/arm64-v8a/libgameserver.so
+          cp "$B" ./libgameserver-arm64.so
+          gh release upload localapi-assets libgameserver-arm64.so --clobber || {
+            gh release create localapi-assets libgameserver-arm64.so --title "localapi assets" --notes "assets" --prerelease;
+          }
+          echo "uploaded libgameserver-arm64.so"
