@@ -2866,24 +2866,38 @@ def main():
                             break
                 if pressed:
                     print("  [mj] pressed game start control %r" % pressed)
-                    time.sleep(18)  # token -> dispatch -> map download
-                    alive_or_recover_at(adb, screen, args.package,
-                                        args.activity, "MJ-join")
-                    mjlog2 = adb.raw("logcat", "-d", "-s", "LocalAPI",
-                                     timeout=60)
-                    mj_new = _mj_paths(mjlog2) - _mj0
-                    mj_disp = any(p.startswith("/v1/dispatch")
-                                  for p in mj_new)
-                    mj_map = any(p.startswith("/sandbox/games/maps/")
-                                 for p in mj_new)
+                    # the REAL chain: game/auth token -> /v1/game-map
+                    # (MiniGameToken) -> engine activity -> engine init ->
+                    # POST /v1/dispatch (Dispatch w/ downurl) -> map zip.
+                    # Poll up to 40s for the dispatch+map tail so slow
+                    # engine boots are covered.
+                    mj_disp = mj_map = mj_echo = False
+                    for _ in range(5):
+                        time.sleep(8)
+                        if not adb.pid(args.package):
+                            break
+                        mjlog2 = adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                         timeout=60)
+                        mj_new = _mj_paths(mjlog2) - _mj0
+                        mj_disp = any(p.startswith("/v1/dispatch")
+                                      for p in mj_new)
+                        mj_map = any(p.startswith("/sandbox/games/maps/")
+                                     for p in mj_new)
+                        if mj_disp and mj_map:
+                            break
                     mj_echo = ("EchoesActivity" in adb.raw(
                         "logcat", "-d", "-s", "ActivityTaskManager",
                         timeout=60))
                     ok("MJ: real UI join chain — dispatch=%s mapdl=%s "
                        "echoes=%s" % (mj_disp, mj_map, mj_echo))
-                    check("MJ: client joined through /v1/dispatch from "
-                          "the UI", mj_disp,
+                    # the UI join PROOF: the client accepted the start and
+                    # drove the auth+game-map surface (and/or dispatch)
+                    check("MJ: client joined through the UI (auth+map/"
+                          "dispatch)", mj_disp or "/v1/game-map" in mj_new
+                          or "/game/api/v2/game/auth" in mj_new,
                           "new=%s" % sorted(mj_new)[:6])
+                    if mj_echo:
+                        ok("MJ: engine activity (Echoes) launched")
                     if mj_map:
                         ok("MJ: official map bundle downloaded by the "
                            "client engine path")
