@@ -358,6 +358,8 @@ HttpResponse envelope {code:1, message, data}).
 | GET /game/api/v2/game/auth (+/flow/game/auth, /v1/game-map) | miniGameToken | dynamic token issued into root.miniTokens; dispUrl=http://127.0.0.1:18080 (this server); requestId {uid:hex} |
 | POST /v1/dispatch + /v1/follow | dispatch | Dispatch in the client's Gson key form (gaddr/croomid/mid/mname/downurl); downurl now carries the game's official map bundle URL (MapAssets) and resVersion the bundle version |
 | GET /v1/game-res | gameResInfo | GameResInfo {durl, cdns[], resVersion}; when the game has an official map bundle in the local pack store, durl = the bundle zip on the loopback CDN and resVersion = bundle version (epoch-sec of the map's upload ts) |
+| GET /game/api/v1/games/update/list/{userId} | getGameUpdateContentList | Map<gameId, bundleVersion> for every catalog game with an official map bundle (RecommendModel queues update tips vs the client's per-user seen-version prefs) |
+| GET /game/api/v1/games/update/tip/info/app/{gameId} | getGameUpdateContent | GameUpdateContentInfo{content, count=bundleVersion} for one game; neutral {content:"",count:0} without a bundle |
 | GET /game/api/v1/games/resource/version | resCheck | {update:false} |
 | GET /decoration/api/v1/new/decorations/check/resource | dressCheckResource | DecorationResourcesResponse {needUpdate, version, url, hash, fileCount, fileSize, cdns[]} — serves the official 10-19_decorate pack (dressVersion 19, md5-pinned); needUpdate=true exactly once per client generation (download-once) |
 | GET /decoration/api/v1/decoration/versions | dressResCheck | legacy ResCheckEntity {md5:"", update:false, url:""} (the 1.24.4 client uses the check/resource surface) |

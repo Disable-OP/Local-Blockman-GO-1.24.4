@@ -77,8 +77,8 @@ final class Handlers {
         if ("buyGameProp".equals(name)) return buyGameProp(ctx, store);
         if ("payGame".equals(name)) return payGame(ctx, store);
         if ("shareRewardList".equals(name)) return shareRewardList();
-        if ("getGameUpdateContent".equals(name)) return envelope("obj", "{\"content\":\"\",\"count\":0}");
-        if ("getGameUpdateContentList".equals(name)) return envelope("obj", "{}");
+        if ("getGameUpdateContent".equals(name)) return getGameUpdateContent(ctx, store);
+        if ("getGameUpdateContentList".equals(name)) return getGameUpdateContentList(ctx, store);
         if ("getPartyCreateGameConfig".equals(name)) return getPartyCreateGameConfig(ctx, store);
         if ("getChatRoom".equals(name)) return getChatRoom(ctx, store);
         if ("deleteChatRoom".equals(name)) return deleteChatRoom(ctx, store);
@@ -1132,6 +1132,56 @@ final class Handlers {
      */
     private static String dressResCheck(Ctx ctx, StateStore store) {
         return envelope("obj", "{\"md5\":\"\",\"update\":false,\"url\":\"\"}");
+    }
+
+    /**
+     * GET /game/api/v1/games/update/list/{userId} — Map<gameId, version> of
+     * every catalog game whose OFFICIAL MAP BUNDLE is newer than the version
+     * the client already saw. The client (RecommendModel response handler)
+     * compares each value against its per-user "game.update.content.count"
+     * shared-pref and queues update tips for the newer ones. Derived from
+     * the live MapAssets index — empty until the map pack is available.
+     */
+    private static String getGameUpdateContentList(Ctx ctx, StateStore store) {
+        JSONObject out = new JSONObject();
+        JSONArray games = GameCatalog.games(store);
+        for (int i = 0; i < games.length(); i++) {
+            JSONObject g = games.optJSONObject(i);
+            if (g == null) continue;
+            String script = g.optString("scriptType", "");
+            if (!script.matches("g[0-9]+")) continue;
+            JSONObject entry = MapAssets.entryForGame(script);
+            if (entry != null) {
+                out.put(g.optString("gameId"), entry.optInt("version", 0));
+            }
+        }
+        return envelope("obj", out.toString());
+    }
+
+    /**
+     * GET /game/api/v1/games/update/tip/info/app/{gameId} —
+     * GameUpdateContentInfo{content, count} for one game. count carries the
+     * map bundle version (the client stores it as "seen" after showing the
+     * tip, which then stops advertising the update); content is a short
+     * human-readable note. Games without a bundle get the neutral default.
+     */
+    private static String getGameUpdateContent(Ctx ctx, StateStore store) {
+        String gameId = pathTail(store, ctx);
+        JSONObject game = GameCatalog.byId(store, gameId);
+        String script = game == null ? "" : game.optString("scriptType", "");
+        JSONObject entry = script.matches("g[0-9]+")
+                ? MapAssets.entryForGame(script) : null;
+        JSONObject out = new JSONObject();
+        if (entry != null) {
+            int v = entry.optInt("version", 0);
+            out.put("content", (game == null ? "Game" : game.optString("gameTitle",
+                    "Game")) + " official map updated (build " + v + ").");
+            out.put("count", v);
+        } else {
+            out.put("content", "");
+            out.put("count", 0);
+        }
+        return envelope("obj", out.toString());
     }
 
     /**

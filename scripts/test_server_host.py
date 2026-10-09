@@ -3702,6 +3702,25 @@ def main():
               and "g1008" in open(os.path.join(dir_fx, "localapi", "maps", "index.json")
                                   ).read(), "index.json")
 
+        ul_fx = call("GET", "/game/api/v1/games/update/list/%d" % uid_fx,
+                     base=base_fx)
+        uld = ul_fx.get("data", {}) if isinstance(ul_fx.get("data"), dict) else {}
+        check("maps: update list carries real bundle version",
+              ul_fx.get("code") == 1 and uld.get("1008") == exp_ver
+              and "1042" not in uld, str(ul_fx)[:200])
+        ut_fx = call("GET", "/game/api/v1/games/update/tip/info/app/1008"
+                     "?engineVersion=90900&isNew=0", base=base_fx)
+        utd = ut_fx.get("data", {}) or {}
+        check("maps: update tip count = bundle version",
+              ut_fx.get("code") == 1 and utd.get("count") == exp_ver
+              and "map updated" in (utd.get("content") or ""), str(ut_fx)[:200])
+        ut2_fx = call("GET", "/game/api/v1/games/update/tip/info/app/1042",
+                      base=base_fx)
+        check("maps: update tip neutral without bundle",
+              ut2_fx.get("code") == 1
+              and (ut2_fx.get("data", {}) or {}).get("count") == 0,
+              str(ut2_fx)[:150])
+
         dc0 = call("GET", "/decoration/api/v1/new/decorations/check/resource"
                    "?resVersion=0&engineVersion=90900", base=base_fx)
         dc0d = dc0.get("data", {})

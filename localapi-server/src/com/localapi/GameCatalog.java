@@ -537,7 +537,7 @@ final class GameCatalog {
 
     // -------------------------------------------------------------- queries
 
-    private static JSONArray games(StateStore store) {
+    static JSONArray games(StateStore store) {
         return store.root().optJSONArray("games");
     }
 

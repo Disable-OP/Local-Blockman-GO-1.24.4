@@ -3837,3 +3837,14 @@
 - dex rebuilt (275,460 B); asset URLs now all resolve (packs uploaded).
 - NEXT: tag v0.6.0-maps -> build-release -> test-redroid verdict; then
   error-driven NEW traffic; GameServer phase gate unchanged.
+
+## Session 51 cont. — real game-update list/tips from the map index (2026-10-09)
+
+- getGameUpdateContentList (GET /game/api/v1/games/update/list/{userId}) is
+  REAL now: Map<gameId, bundleVersion> derived from the live MapAssets index
+  (client RecommendModel queues update tips vs its per-user seen-prefs).
+- getGameUpdateContent (GET /game/api/v1/games/update/tip/info/app/{gameId})
+  returns GameUpdateContentInfo{content, count=bundleVersion}; neutral
+  default without a bundle. GameCatalog.games() widened to package-private.
+- Host suite 638/638 hermetic (+3). dex 275,956 B. Pushed; tag v0.6.1 for
+  the CI verdict of the newest code.
