@@ -43,13 +43,23 @@ jobs:
           GS_WORK: ${{ github.workspace }}/gswork
         run: |
           set -o pipefail
-          "$NDK/ndk-build" -j4 NDK_PROJECT_PATH=. \
+          # -j2: giant template TUs peak ~3.5GB each; -j4 OOM-kills even 16GB runners
+          "$NDK/ndk-build" -j2 NDK_PROJECT_PATH=. \
             APP_BUILD_SCRIPT=jni/Android.mk \
             NDK_APPLICATION_MK=jni/Application.mk \
-            GS_WORK="$GS_WORK" 2>&1 | tee build.log | grep -E 'error|Error|Killed' || true
-          test -f libs/arm64-v8a/libgameserver.so || { tail -100 build.log; exit 1; }
+            GS_WORK="$GS_WORK" > build.log 2>&1 || true
+          tail -40 build.log
+          test -f libs/arm64-v8a/libgameserver.so || { dmesg 2>/dev/null | tail -5 || true; exit 1; }
           file libs/arm64-v8a/libgameserver.so
           ls -la libs/arm64-v8a/libgameserver.so
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ndk-build-log
+          path: scripts/gameserver/build.log
+          retention-days: 7
 
       - name: Static sanity checks on the binary
         run: |
