@@ -4214,9 +4214,9 @@ def main():
     m2 = fcall("GET", "/decoration/api/v1/new/decorations/check/resource"
                "?resVersion=0&engineVersion=90900", headers=auth_hdr)
     m2d = m2.get("data", {}) or {}
-    check("C: decorate resource check advertises v19 pack",
-          m2.get("code") == 1 and m2d.get("version") == 19
-          and str(m2d.get("hash", "")) == "a6109fdd8022452b2ffb85ebb6df5abf",
+    check("C: decorate resource check advertises merged v31 pack",
+          m2.get("code") == 1 and m2d.get("version") == 31
+          and str(m2d.get("hash", "")) == "ae133c31151484813ee4b605a1859c7c",
           str(m2)[:200])
     m3 = fcall("GET", "/game/api/v1/games/update/list/%d" % qa_uid_num,
                headers=auth_hdr)
