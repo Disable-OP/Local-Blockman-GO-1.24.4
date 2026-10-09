@@ -2818,7 +2818,8 @@ def main():
                     break
             if _card and screen.tap_node(_card):
                 time.sleep(8)      # game detail renders its full surface
-                alive_or_recover("MJ-gamedetail")
+                alive_or_recover_at(adb, screen, package, activity,
+                                    "MJ-gamedetail")
                 pressed = None
                 for _lbl in ("Start", "PLAY", "Play", "GO", "Enter"):
                     _pn = screen.find(texts=[_lbl])
@@ -2829,7 +2830,8 @@ def main():
                 if pressed:
                     print("  [mj] pressed game start control %r" % pressed)
                     time.sleep(18)  # token -> dispatch -> map download
-                    alive_or_recover("MJ-join")
+                    alive_or_recover_at(adb, screen, package, activity,
+                                        "MJ-join")
                     mjlog2 = adb.raw("logcat", "-d", "-s", "LocalAPI",
                                      timeout=60)
                     mj_new = _mj_paths(mjlog2) - _mj0
