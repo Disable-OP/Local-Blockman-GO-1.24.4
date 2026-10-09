@@ -55,4 +55,33 @@ if [ ! -d behaviac-src ]; then
 fi
 test -d behaviac-src/src
 
+# --- curl 7.55.1 (the bundled src/android/curl is 7.55-era code with 7.52
+#     headers; the client used a prebuilt libcurl.a. We build a real tree.) ---
+if [ ! -f curl-7.55.1/lib/curl_config.h ]; then
+  if [ ! -d curl-7.55.1 ]; then
+    curl -sL --retry 3 -o curl-7.55.1.tar.xz \
+      https://github.com/curl/curl/releases/download/curl-7_55_1/curl-7.55.1.tar.xz
+    tar -xJf curl-7.55.1.tar.xz && rm -f curl-7.55.1.tar.xz
+  fi
+  test -n "${NDK:-}" || { echo "NDK env must point at android-ndk-r17c" >&2; exit 1; }
+  WRAP="$WORK/gswrap"; mkdir -p "$WRAP"
+  for t in gcc g++; do
+    printf '#!/bin/sh\nexec "%s/toolchains/aarch64-linux-android-4.9/prebuilt/linux-x86_64/bin/aarch64-linux-android-%s" --sysroot=%s/platforms/android-21/arch-arm64 -isystem %s/sysroot/usr/include -isystem %s/sysroot/usr/include/aarch64-linux-android "$@"\n' \
+      "$NDK" "$t" "$NDK" "$NDK" "$NDK" > "$WRAP/aarch64-linux-android-$t"
+    chmod +x "$WRAP/aarch64-linux-android-$t"
+  done
+  ( cd curl-7.55.1 \
+    && PATH="$WRAP:$PATH" CC=aarch64-linux-android-gcc \
+       CPP="aarch64-linux-android-gcc -E" cross_compiling=yes \
+       ./configure --build=x86_64-pc-linux-gnu --host=aarch64-linux-android \
+         --disable-shared --enable-static --without-ssl --without-zlib \
+         --without-libidn2 --without-libssh2 --without-nghttp2 --without-libpsl \
+         --without-brotli --disable-ldap --disable-ldaps --disable-rtsp \
+         --disable-ftp --disable-file --disable-dict --disable-telnet \
+         --disable-tftp --disable-pop3 --disable-imap --disable-smtp \
+         --disable-gopher --disable-manual > configure.log 2>&1 )
+  test -f curl-7.55.1/lib/curl_config.h || { tail -30 curl-7.55.1/configure.log >&2; exit 1; }
+  echo "curl 7.55.1 configured (http-only static)"
+fi
+
 echo "sources assembled at $WORK"
