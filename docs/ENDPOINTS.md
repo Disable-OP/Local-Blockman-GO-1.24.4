@@ -356,8 +356,11 @@ HttpResponse envelope {code:1, message, data}).
 | POST /game/api/v1/game/chat/room | getChatRoom | persistent roomId per roomName |
 | PUT /game/api/v1/games/{gameId}/appreciation | appreciation | increments praiseNumber, returns new total |
 | GET /game/api/v2/game/auth (+/flow/game/auth, /v1/game-map) | miniGameToken | dynamic token issued into root.miniTokens; dispUrl=http://127.0.0.1:18080 (this server); requestId {uid:hex} |
-| GET /v1/game-res | gameResInfo | GameResInfo with the loopback CDN as base source + query resVersion echo |
+| POST /v1/dispatch + /v1/follow | dispatch | Dispatch in the client's Gson key form (gaddr/croomid/mid/mname/downurl); downurl now carries the game's official map bundle URL (MapAssets) and resVersion the bundle version |
+| GET /v1/game-res | gameResInfo | GameResInfo {durl, cdns[], resVersion}; when the game has an official map bundle in the local pack store, durl = the bundle zip on the loopback CDN and resVersion = bundle version (epoch-sec of the map's upload ts) |
 | GET /game/api/v1/games/resource/version | resCheck | {update:false} |
+| GET /decoration/api/v1/new/decorations/check/resource | dressCheckResource | DecorationResourcesResponse {needUpdate, version, url, hash, fileCount, fileSize, cdns[]} — serves the official 10-19_decorate pack (dressVersion 19, md5-pinned); needUpdate=true exactly once per client generation (download-once) |
+| GET /decoration/api/v1/decoration/versions | dressResCheck | legacy ResCheckEntity {md5:"", update:false, url:""} (the 1.24.4 client uses the check/resource surface) |
 | GET /game/api/v1/games/app-engine/upgrade | getUpgradeInfo | {needUpgrade:false} |
 | GET /game/api/v1/games/app-engine/check-update | getGameResource | [] (nothing to update) |
 | PUT /game/api/v1/games/engine | countUploadVersion | engine-version telemetry recorded into root.engineReports (last 20 kept), ack |
@@ -379,6 +382,44 @@ citizen players (rank boards + friend recommendations), per-game prop shops,
 per-game rank boards. onlineNumber drifts per boot hour. Nothing is hardcoded
 per-request; after generation the catalog is ordinary editable server state.
 Delete state.json to regenerate.
+
+## Official map + skin-resource assets (mission: playable local games)
+
+The engine's map bundles and the skin renderer's decorate resources come from
+the official CDN dump (repo Blockman-GO-CDN-dump-Indexing, mission 4), hosted
+as release assets on `localapi-assets` (public, no credentials on device):
+
+- `maps.tar.gz` (47,411,314 B, sha256 e86ac824...243) — 707 files, one map
+  bundle per real 1.24.4-era game (post-2020-12-12 versions preferred,
+  newest-batch fallback), mirroring the original CDN object keys
+  `sandbox/games/maps/<mapid>.<unix_ms>.<file>` plus `_manifest/`.
+- `10-19_decorate.1607431823179.zip` (11,007,054 B, md5 a6109fdd...5abf) —
+  the skin-resource generation the 1.24.4 catalog (dressVersion 19) renders.
+
+Pipeline (MapAssets.java / DressRes.java, background threads at boot):
+download -> checksum verify (pinned sha256 / md5) -> extract (local store
+under files/localapi/maps|dress) -> index (newest `<mapid>.<ts>.zip` per
+mapId via _manifest/games.csv) -> serve. Serving is byte-exact from the
+verified pack (GET /sandbox/games/maps/<key>, /sandbox/dresses/dress-
+resources/<key>), so a downloaded bundle is provably in sync with the
+GitHub-hosted maps; each map zip additionally carries its own
+checksums.md5, which the native engine verifies on extraction, and the
+index (index.json) persists so restarts serve without re-downloading.
+
+Client wiring (verified from the 1.24.4 dex):
+- join flow: GameResInfo.durl (/v1/game-res) or Dispatch.mapUrl
+  (Gson "downurl", POST /v1/dispatch) -> GameResNewUpdater downloads the
+  zip and unzip-merges into the engine map root; native engine path:
+  EnterRealmsResult.mapUrl -> JNI download -> onMapDownloadSuccess ->
+  resetGameDispatch.
+- skin flow: IDecorationApi.checkDressResource -> DecorationResourcesResponse
+  -> needUpdate=true downloads the decorate zip once and stores version 19.
+
+Halls (GameCatalog v4): g1046 "Bedwars" (gameplay g1008), g1042 "Pixel Hall"
+(gameplay g1043/g1044/g1045/g1053), g1058 "Lucky Block Hall" (gameplay
+g1054) are flagged isLobby=1 and carry realPlayGameList
+(List<RealPlayGame>{gameId,gameName}) — the client Game entity fields the
+hall UI reads; every other game gets isLobby=0.
 
 ## Known limitations / uncertainty (documented, not assumed)
 

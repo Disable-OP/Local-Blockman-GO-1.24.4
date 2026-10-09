@@ -18,6 +18,8 @@ public final class HostTest {
         GameCatalog.ensure(store);
         GameCatalog.drift(store);
         Skins.ensure(store);
+        MapAssets.ensure(store);   // gated by -Dlocalapi.mapPackUrl (hermetic
+        DressRes.ensure(store);    // suites block it; REAL_PACK e2e allows it)
         LocalHttpd httpd = new LocalHttpd(Integer.parseInt(args[1]), store);
         httpd.start(5000, false);
         System.out.println("HOSTTEST READY");

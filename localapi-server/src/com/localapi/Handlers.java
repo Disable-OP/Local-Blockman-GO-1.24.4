@@ -92,6 +92,8 @@ final class Handlers {
         if ("followGameAuth".equals(name)) return miniGameToken(ctx, store);
         if ("miniGameMap".equals(name)) return miniGameToken(ctx, store);
         if ("gameResInfo".equals(name)) return gameResInfo(ctx, store);
+        if ("dressCheckResource".equals(name)) return dressCheckResource(ctx, store);
+        if ("dressResCheck".equals(name)) return dressResCheck(ctx, store);
         if ("resCheck".equals(name)) return envelope("obj", "{\"md5\":\"\",\"update\":false,\"url\":\"\"}");
         if ("getUpgradeInfo".equals(name)) return envelope("obj", "{\"needUpgrade\":false,\"downloadUrl\":\"\",\"hash\":\"\",\"resVersion\":1}");
         if ("getGameResource".equals(name)) return envelope("list", "[]");
@@ -1042,10 +1044,19 @@ final class Handlers {
                         : defaultMap)
                 : mapName);
         out.put("mname", mapName.isEmpty() ? defaultMap : mapName);
-        out.put("downurl", "");
+        // Map bundle for the engine: Dispatch.mapUrl (Gson "downurl") feeds
+        // EnterRealmsResult.mapUrl — the native engine downloads the zip from
+        // there, verifies the map's own checksums.md5, then calls
+        // JNI onMapDownloadSuccess -> resetGameDispatch. Key names MUST stay
+        // in the client's Gson form (gaddr/croomid/mid/mname/downurl).
+        JSONObject mapEntry = engineType.matches("g[0-9]+")
+                ? MapAssets.entryForGame(engineType) : null;
+        out.put("downurl", mapEntry == null ? "" : MapAssets.durlFor(mapEntry));
         out.put("name", name);
         out.put("region", mt.optInt("region"));
-        out.put("resVersion", (int) form.optLong("resVersion", 1));
+        out.put("resVersion", mapEntry != null
+                ? mapEntry.optInt("version", 1)
+                : (int) form.optLong("resVersion", 1));
         out.put("signature", mt.optString("signature"));
         out.put("timestamp", mt.optLong("timestamp"));
         JSONObject reqIds = new JSONObject();
@@ -1054,12 +1065,18 @@ final class Handlers {
         return envelope("obj", out.toString());
     }
 
-    /** GET /v1/game-res — GameResInfo with the loopback CDN as the base source. */
+    /**
+     * GET /v1/game-res — GameResInfo. The base loopback CDN stays (client
+     * CdnConfigDetail list), and when the requested game has an official
+     * map bundle in the local store, "durl" points at the bundle zip — the
+     * client's GameResNewUpdater downloads THAT url, unzip-merges it into
+     * the engine map root and the engine loads the map from disk.
+     */
     private static String gameResInfo(Ctx ctx, StateStore store) {
         String rv = ctx.query("resVersion");
+        String gameType = ctx.query("gameType");
+        long clientV = rv == null || rv.isEmpty() ? 0 : parseLong(rv, 0);
         JSONObject out = new JSONObject();
-        out.put("durl", LOCAL_BASE_URL);
-        out.put("resVersion", rv == null || rv.isEmpty() ? 1 : (int) parseLong(rv, 1));
         JSONArray cdns = new JSONArray();
         JSONObject local = new JSONObject();
         local.put("base", true);
@@ -1069,7 +1086,52 @@ final class Handlers {
         local.put("url", LOCAL_BASE_URL);
         cdns.put(local);
         out.put("cdns", cdns);
+        // resolve the game's engine-form script id ("1008" -> g1008; an
+        // unknown name resolves via the catalog's scriptType)
+        String script = gameType == null ? "" : gameType.trim();
+        if (script.matches("[0-9]+")) script = "g" + script;
+        if (!script.matches("g[0-9]+")) {
+            JSONObject game = GameCatalog.byId(store, script);
+            if (game != null) script = game.optString("scriptType", script);
+        }
+        JSONObject entry = script.isEmpty() ? null : MapAssets.entryForGame(script);
+        if (entry != null) {
+            int v = entry.optInt("version", (int) clientV);
+            out.put("durl", MapAssets.durlFor(entry));
+            out.put("resVersion", v);
+            L.i("game-res " + script + " v" + clientV + " -> "
+                    + entry.optString("zipName") + " @v" + v);
+        } else {
+            out.put("durl", "");
+            out.put("resVersion", (int) Math.max(1, clientV));
+        }
         return envelope("obj", out.toString());
+    }
+
+    /**
+     * GET /decoration/api/v1/new/decorations/check/resource — the decorate
+     * (skin resource) pack check. IDecorationApi.checkDressResource;
+     * response = DecorationResourcesResponse {needUpdate, version, url,
+     * hash, fileCount, fileSize, cdns[]}. needUpdate=true exactly once per
+     * client generation: the client downloads the zip, stores version 19,
+     * and future checks answer false.
+     */
+    private static String dressCheckResource(Ctx ctx, StateStore store) {
+        long clientV = parseLong(ctx.query("resVersion"), 0);
+        JSONObject res = DressRes.checkResponse(store, clientV);
+        L.i("dress-res v" + clientV + " -> need=" + res.optBoolean("needUpdate")
+                + " target=" + res.optInt("version"));
+        return envelope("obj", res.toString());
+    }
+
+    /**
+     * GET /decoration/api/v1/decoration/versions — IDecorationApi.resCheck;
+     * response = ResCheckEntity {md5, update, url}. The 1.24.4 client uses
+     * the newer check/resource surface for the decorate pack; this legacy
+     * shape stays a truthful "no update".
+     */
+    private static String dressResCheck(Ctx ctx, StateStore store) {
+        return envelope("obj", "{\"md5\":\"\",\"update\":false,\"url\":\"\"}");
     }
 
     /**

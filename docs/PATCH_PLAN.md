@@ -1057,3 +1057,24 @@ NO GameServer work):
 5. Next (per the standing error-driven loop): on-device verdict of the
    seeded catalogs (build → test-redroid on main), then NEW-traffic
    mining from the deep runs. The GameServer phase gate is unchanged.
+
+## Mission addendum (session 51): official maps + skin resources + halls
+
+Status: IMPLEMENTED + host-verdicted (641/641 incl. REAL_PACK e2e).
+Recovered from the unpushed wip-67 dex (the session that built it never
+pushed the source) and re-implemented cleanly with two deliberate fixes:
+
+1. Dispatch keys stay in the CLIENT's Gson form (gaddr/croomid/mid/mname/
+   downurl) — the wip-67 dex emitted gAddr/chatRoomId/mapId/mapName/mapUrl
+   keys that the Dispatch model (@c("gaddr") etc.) would silently drop.
+2. miniGameToken keeps targetId=<USER id> (the client Retrofit signature is
+   @Query("targetId") long); game selection rides typeId like the live tests.
+
+Delivered: MapAssets.java (pack download/sha256-verify/ustar-extract/index/
+serve), DressRes.java (decorate pack + DecorationResourcesResponse),
+GameCatalog v4 halls (isLobby + realPlayGameList + hall names), dispatch
+downurl + game-res durl wiring, LocalHttpd /sandbox/* serving, release
+assets maps.tar.gz + 10-19_decorate zip uploaded to localapi-assets, host
+suite +24 checks (halls, fixture pack e2e, dress check cycle) and the
+opt-in LOCALAPI_REAL_PACK=1 full real-pack e2e (download 47MB → sha256
+verify → extract → index 54 games → serve BedWar bundle byte-exact).

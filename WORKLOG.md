@@ -3789,3 +3789,51 @@
   REAL dress grid + SKINICON streaming for the first time on-device;
   then error-driven from NEW traffic only; the GameServer phase gate is
   unchanged (API first).
+
+## Session 51 — official maps + skin resources + halls (wip-67 recovered, fixed, verdict-backed) (2026-10-09)
+
+- CONTEXT: release `wip-67` (on the CDN-dump repo) was built by a session
+  that never pushed its source (remote HEAD still 085a7d3). The dex was
+  decompiled and the work RECOVERED: MapAssets.java (official map packs),
+  DressRes.java (skin decorate resources), GameCatalog hall traits,
+  dispatch/game-res map URLs. Re-implemented cleanly from the decompiled
+  logic with TWO deliberate fixes (see PATCH_PLAN "Mission addendum"):
+  1. Dispatch keys stay in the client Gson form (gaddr/croomid/mid/mname/
+     downurl) — the wip-67 dex emitted camelCase keys the Dispatch model
+     would silently drop (regression caught BEFORE it shipped).
+  2. miniGameToken keeps targetId=<USER id> per the client Retrofit
+     signature; game selection rides typeId (existing live tests hold).
+- ASSETS HOSTED: maps.tar.gz (47,411,314 B, sha256 e86ac824...243) +
+  10-19_decorate.1607431823179.zip (11,007,054 B, md5 a6109fdd...5abf)
+  uploaded to release `localapi-assets` (public — device needs no creds).
+  Pack provenance: CDN-dump repo mission 4 (3,455-file capture, 1 map per
+  real game, post-2020-12-12 preferred; 707-file serving subset).
+- SERVER: MapAssets (download -> sha256 verify -> ustar extract -> index
+  newest mapId zip -> serve /sandbox/games/maps/*), DressRes (pack + 
+  DecorationResourcesResponse), GameCatalog v4 halls: g1046 "Bedwars"
+  (gameplay g1008), g1042 "Pixel Hall" (g1043/44/45/53), g1058 "Lucky
+  Block Hall" (g1054) — isLobby=1 + realPlayGameList (client Game entity
+  fields); dispatch downurl + game-res durl wired to the bundles;
+  LocalHttpd serves /sandbox/{games/maps,games/plugins,dresses/
+  dress-resources}/*; HostTest/LocalServer boot the asset threads.
+- CLIENT CONTRACTS VERIFIED FROM THE 1.24.4 DEX: Dispatch Gson mapping;
+  EchoesGLSurfaceView dispatch.onSuccess (mapUrl -> EnterRealmsResult ->
+  native engine -> JNI onMapDownloadSuccess -> resetGameDispatch);
+  GameResNewUpdater (gameResInfo.durl -> DownloadClient -> unzip-merge);
+  IDecorationApi.checkDressResource -> DecorationResourcesResponse fields;
+  Game.realPlayGameList (List<RealPlayGame>); map zips carry their own
+  checksums.md5 (engine-side verification layer).
+- HOST SUITE 617 -> 641 (+24): w16 dress check now real (resVersion form),
+  halls section (g1046/g1042/g1058 traits, gameDetail isLobby), synthetic
+  pack fixture section (sha256 pinning, extraction, index.json, game-res
+  durl, dispatch downurl, byte-exact serving incl. zip magic + inner
+  checksums.md5, dress check v0/v19 cycle, byte-exact dress serving),
+  REAL_PACK e2e extended: REAL maps.tar.gz downloaded -> sha256 verified
+  -> extracted -> 54 game bundles indexed -> BedWar bundle serves (PK
+  magic), real decorate pack advertised (md5 + v19).
+- Suite stays hermetic: boot_hosttest blocks mapPackUrl/dressPackUrl like
+  iconPackUrl (the first run accidentally downloaded the REAL packs into
+  the fixture state — proof the URL+sha256 work, then blocked properly).
+- dex rebuilt (275,460 B); asset URLs now all resolve (packs uploaded).
+- NEXT: tag v0.6.0-maps -> build-release -> test-redroid verdict; then
+  error-driven NEW traffic; GameServer phase gate unchanged.

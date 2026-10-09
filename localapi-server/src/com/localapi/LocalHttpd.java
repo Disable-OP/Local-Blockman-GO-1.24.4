@@ -69,6 +69,16 @@ public class LocalHttpd extends NanoHTTPD {
             return serveSkinIcon(uri.substring("/localapi/skins/icons/".length()));
         }
 
+        // Official map/skin-resource assets (MapAssets/DressRes): the engine
+        // and the dress updater download zips/csv/yml from the original CDN
+        // object-key paths — served here from the local pack store.
+        if ("GET".equals(verb) && uri != null
+                && (uri.startsWith("/sandbox/games/maps/")
+                    || uri.startsWith("/sandbox/games/plugins/")
+                    || uri.startsWith("/sandbox/dresses/dress-resources/"))) {
+            return serveAsset(uri);
+        }
+
         final byte[] rawBody = readBody(session);
         final String body = new String(rawBody, java.nio.charset.StandardCharsets.UTF_8);
         final byte[] fileBytes = extractMultipartFile(session, rawBody);
@@ -141,6 +151,43 @@ public class LocalHttpd extends NanoHTTPD {
         while (j < json.length() && (Character.isDigit(json.charAt(j))
                 || (j == i && json.charAt(j) == '-'))) j++;
         return (j > i) ? "code=" + json.substring(i, j) : "code=?";
+    }
+
+    /**
+     * GET /sandbox/games/maps/<key> and /sandbox/dresses/dress-resources/<key>
+     * — official map + decorate assets served from the local packs (packs are
+     * sha256/md5-verified against the release manifests, so bytes served are
+     * the bytes on GitHub). key is the original CDN object key minus the
+     * leading slash; dress-resource requests resolve to the decorate pack.
+     */
+    private Response serveAsset(String uri) {
+        byte[] data = uri.startsWith("/sandbox/dresses/dress-resources/")
+                ? DressRes.packBytes(store)
+                : MapAssets.fileBytes(store, uri.substring(1));
+        if (data == null) {
+            L.i("ASSET miss " + uri);
+            return respond("{\"code\":0,\"message\":\"asset not available\"}");
+        }
+        String lower = uri.toLowerCase(java.util.Locale.US);
+        String mime;
+        if (lower.endsWith(".zip")) {
+            mime = "application/zip";
+        } else if (lower.endsWith(".csv")) {
+            mime = "text/csv";
+        } else if (lower.endsWith(".yml") || lower.endsWith(".yaml")) {
+            mime = "text/yaml";
+        } else if (lower.endsWith(".md5") || lower.endsWith(".ini")
+                || lower.endsWith(".txt")) {
+            mime = "text/plain";
+        } else {
+            mime = "application/octet-stream";
+        }
+        InputStream in = new ByteArrayInputStream(data);
+        Response r = newFixedLengthResponse(Response.Status.OK, mime, in, data.length);
+        r.addHeader("Access-Control-Allow-Origin", "*");
+        r.addHeader("Cache-Control", "max-age=86400");
+        L.i("ASSET " + uri + " " + data.length + "b " + mime);
+        return r;
     }
 
     /** GET /localapi/skins/icons/<id>.png — one skin icon's bytes. */

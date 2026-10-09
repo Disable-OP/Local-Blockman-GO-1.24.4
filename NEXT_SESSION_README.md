@@ -2377,3 +2377,28 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   for SKINICON lines + icon-pack download logs); (2) error-driven from
   NEW traffic only; (3) GameServer phase gate unchanged — NO GameServer
   work yet.
+
+## Session 51 delta (read FIRST — official maps + skin resources + halls shipped)
+
+- RECOVERED LOST WORK: wip-67's source was never pushed; decompiled its
+  classes6.dex and re-implemented cleanly: MapAssets.java (official map
+  packs), DressRes.java (skin decorate pack), GameCatalog v4 halls.
+  TWO FIXES vs the lost dex: dispatch keys stay client-Gson (gaddr/
+  croomid/mid/mname/downurl — wip-67's camelCase keys would be dropped by
+  the Dispatch model); miniGameToken keeps targetId=<USER id> (client
+  signature is @Query("targetId") long).
+- ASSETS: maps.tar.gz + 10-19_decorate.1607431823179.zip are ON release
+  `localapi-assets` now (public). Pack sha256/md5 pinned in the server.
+- HALLS: g1046 "Bedwars" -> gameplay g1008; g1042 "Pixel Hall" ->
+  g1043/g1044/g1045/g1053; g1058 "Lucky Block Hall" -> g1054. isLobby=1 +
+  realPlayGameList on catalog rows (GameCatalog v4, idempotent ensure).
+- MAP FLOW: /v1/game-res durl + /v1/dispatch downurl -> bundle zip on the
+  loopback CDN (/sandbox/games/maps/...); engine verifies each zip's own
+  checksums.md5. SKIN FLOW: checkDressResource -> v19 decorate pack
+  (download-once), served at /sandbox/dresses/dress-resources/....
+- HOST SUITE 641/641 (hermetic; LOCALAPI_REAL_PACK=1 adds the full REAL
+  47MB map-pack e2e: download -> sha256 verify -> extract -> 54 bundles ->
+  byte-exact BedWar serving). boot_hosttest blocks all three pack URLs.
+- NEXT: (1) tag v0.6.0-maps -> build-release -> fast test-redroid verdict;
+  (2) error-driven from NEW traffic only; (3) GameServer phase gate
+  unchanged — API first.

@@ -186,6 +186,8 @@ public final class LocalServer {
             GameCatalog.ensure(store);   // generate catalog once, then it's plain state
             GameCatalog.drift(store);    // evolve online counts across boots
             Skins.ensure(store);         // real skin catalog + icon-pack thread
+            MapAssets.ensure(store);     // official map packs (engine bundles)
+            DressRes.ensure(store);      // decorate/skin resource pack
             LocalHttpd server = new LocalHttpd(port, store);
             server.start(15000, true);
             httpd = server;

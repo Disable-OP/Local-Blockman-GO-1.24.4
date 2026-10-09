@@ -2239,9 +2239,12 @@ def main():
         check("w16 decoration versions", dv16.get("code") == 1
               and "md5" in dv16.get("data", {}) and dv16["data"].get("update") is False,
               str(dv16)[:120])
-        cr16 = call("GET", "/decoration/api/v1/new/decorations/check/resource", None, w16h1)
+        cr16 = call("GET", "/decoration/api/v1/new/decorations/check/resource"
+                    "?resVersion=19&engineVersion=90900", None, w16h1)
         check("w16 dress check resource", cr16.get("code") == 1
-              and cr16.get("data", {}).get("needUpdate") is False, str(cr16)[:120])
+              and cr16.get("data", {}).get("needUpdate") is False
+              and int(cr16.get("data", {}).get("version", 0)) >= 1,
+              str(cr16)[:160])
         fu16 = call("GET", "/decoration/api/v1/decorations/%d/using" % uid1, None, w16h1)
         check("w16 friend using list", fu16.get("code") == 1
               and isinstance(fu16.get("data"), list), str(fu16)[:120])
@@ -3093,14 +3096,20 @@ def main():
     # away; a torn tmp must NOT shadow a valid state.json; both torn -> the
     # fresh-start path must still boot.
 
-    def boot_hosttest(state_root, port, real_pack=False):
+    def boot_hosttest(state_root, port, real_pack=False, extra_props=None):
         log = open(os.path.join(state_root, "boot.log"), "wb")
         cmd = ["java"]
         if not real_pack:
             # Hermetic by default: no host test may fetch the real icon pack
             # (a completed download+extract would race the cache-miss
             # assertions). The gated end-to-end pack test passes real_pack.
-            cmd += ["-Dlocalapi.iconPackUrl=http://127.0.0.1:1/skins.tar.gz"]
+            # Same blocking for the map/dress pack threads (wip-67 mission:
+            # those threads must never touch the network from the suite).
+            cmd += ["-Dlocalapi.iconPackUrl=http://127.0.0.1:1/skins.tar.gz",
+                    "-Dlocalapi.mapPackUrl=http://127.0.0.1:1/maps.tar.gz",
+                    "-Dlocalapi.dressPackUrl=http://127.0.0.1:1/dress.zip"]
+        if extra_props:
+            cmd += extra_props
         cmd += ["-cp", HOST_CP, "com.localapi.HostTest", state_root, str(port)]
         p = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT)
         return p, log
@@ -3499,6 +3508,237 @@ def main():
             proc_m2.kill()
         log_m2.close()
 
+    # --- mission: official map packs + halls + decorate resources (wip-67) ---
+    # Hermetic end-to-end over a SYNTHETIC pack (same tar.gz shape as the
+    # real release asset): proves sha256 pinning, tar extraction, per-game
+    # zip indexing, /sandbox serving, game-res durl, dispatch downurl, hall
+    # traits and the decorate check cycle — without touching the network.
+    import io as _io
+    import tarfile as _tarfile
+    import zipfile as _zipfile
+    import hashlib as _hashlib
+
+    map_zip_name = "m1008_2.1625226508247.zip"
+    map_loose_name = "m1008_2.1620821623626.checksums.md5"
+    zip_buf = _io.BytesIO()
+    with _zipfile.ZipFile(zip_buf, "w", _zipfile.ZIP_STORED) as z:
+        z.writestr("AppProps.csv", "key,value\nbed,1\n")
+        z.writestr("checksums.md5",
+                   "11111111111111111111111111111111  AppProps.csv\n")
+    map_zip_bytes = zip_buf.getvalue()
+    man_rows = [
+        "key,bytes,etag_md5,sha256",
+        "sandbox/games/maps/%s,%d,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,%s"
+        % (map_zip_name, len(map_zip_bytes), "b" * 64),
+        "sandbox/games/maps/%s,64,cccccccccccccccccccccccccccccccc,%s"
+        % (map_loose_name, "d" * 64),
+    ]
+    games_rows_fixture = [
+        "scriptType,name,mapName,mapId,class,fileClasses,postClasses",
+        "g1008,BedWar,maps/g1008/m1008_2,m1008_2,post,3,1",
+        "g1046,BedWar,maps/g1046/m1046_2,m1046_2,post,2,1",
+    ]
+    tgz_buf = _io.BytesIO()
+    with _tarfile.open(fileobj=tgz_buf, mode="w:gz") as t:
+        def _add(name, data):
+            info = _tarfile.TarInfo(name)
+            info.size = len(data)
+            t.addfile(info, _io.BytesIO(data))
+        _add("_manifest/manifest.csv", ("\n".join(man_rows) + "\n").encode())
+        _add("_manifest/games.csv", ("\n".join(games_rows_fixture) + "\n").encode())
+        _add("sandbox/games/maps/" + map_zip_name, map_zip_bytes)
+        _add("sandbox/games/maps/" + map_loose_name, b"deadbeef" * 8)
+    fixture_bytes = tgz_buf.getvalue()
+    fixture_sha = _hashlib.sha256(fixture_bytes).hexdigest()
+
+    dir_fx = tempfile.mkdtemp(prefix="localapi-maps-")
+    os.makedirs(os.path.join(dir_fx, "localapi"), exist_ok=True)
+    # pre-placed pack file: MapAssets finds it, verifies the pinned sha256,
+    # extracts and indexes — no network at all (min-bytes lowered so the
+    # small synthetic pack passes the truncation guard).
+    os.makedirs(os.path.join(dir_fx, "localapi", "maps"), exist_ok=True)
+    with open(os.path.join(dir_fx, "localapi", "maps", "maps.tar.gz"), "wb") as f:
+        f.write(fixture_bytes)
+    # minimal real ScriptSetting-shaped seed (tab-separated, 9 columns)
+    with open(os.path.join(dir_fx, "localapi", "games_seed.csv"), "w",
+              encoding="utf-8") as f:
+        f.write("GameType\tGroupDirectory\tName\tEnable\tMapName\tServerIP"
+                "\tServerPort\tEngineVersion\tRemark\n")
+        f.write("\xe6\xb8\xb8\xe6\x88\x8f\xe7\xb1\xbb\xe5\x9e\x8b".encode()
+                .decode("utf-8", "ignore") + "\n")
+        for row in [
+            ("g1008", "g1001_g1030", "BedWar", "0", "maps/g1008/m1008_2",
+             "127.0.0.1", "19130", "90007", "\xe8\xb5\xb7\xe5\xba\x8a\xe6\x88\x98\xe4\xba\x89"),
+            ("g1042", "g1031_g1060", "PixelGunHall", "1", "maps/g1042/m1042_1",
+             "127.0.0.1", "19130", "90900", "\xe5\x83\x8f\xe7\xb4\xa0\xe5\xb0\x84\xe5\x87\xbb\xe5\xa4\xa7\xe5\x8e\x85"),
+            ("g1043", "g1031_g1060", "PixelGunGame", "0", "maps/g1043/m1043_1",
+             "127.0.0.1", "19130", "90900", "\xe5\x83\x8f\xe7\xb4\xa0"),
+            ("g1044", "g1031_g1060", "PixelGunGame", "0", "maps/g1044/m1044_1",
+             "127.0.0.1", "19130", "90900", "\xe5\x83\x8f\xe7\xb4\xa0"),
+            ("g1045", "g1031_g1060", "PixelGunGame", "0", "maps/g1045/m1045_1",
+             "127.0.0.1", "19130", "90900", "\xe5\x83\x8f\xe7\xb4\xa0"),
+            ("g1046", "g1001_g1030", "BedWar", "0", "maps/g1046/m1046_2",
+             "127.0.0.1", "19131", "90900", "\xe8\xb5\xb7\xe5\xba\x8a\xe5\xa4\xa7\xe5\x8e\x85"),
+            ("g1053", "g1031_g1060", "PixelGunGame", "0", "maps/g1053/m1053_1",
+             "127.0.0.1", "19130", "90900", "\xe5\x83\x8f\xe7\xb4\xa0\xe5\x90\x83\xe9\xb8\xa1"),
+            ("g1054", "g1001_g1030", "LuckyBlockGame", "0", "maps/g1054/m1054_1",
+             "127.0.0.1", "19130", "90900", "LuckyBlock"),
+            ("g1058", "g1001_g1030", "LuckyBlockHall", "1", "maps/g1058/m1058_1",
+             "127.0.0.1", "19131", "90900", "LuckyBlockHall"),
+        ]:
+            f.write("\t".join(row) + "\n")
+    # decorate pack fixture (a real zip, >= dressPackMinBytes override)
+    dzip_buf = _io.BytesIO()
+    with _zipfile.ZipFile(dzip_buf, "w", _zipfile.ZIP_STORED) as z:
+        z.writestr("10-19_decorate/file0.png", b"\x89PNG\r\n\x1a\n" + b"0" * 2048)
+        z.writestr("10-19_decorate/file1.png", b"\x89PNG\r\n\x1a\n" + b"1" * 2048)
+    os.makedirs(os.path.join(dir_fx, "localapi", "dress"), exist_ok=True)
+    with open(os.path.join(dir_fx, "localapi", "dress",
+                           "10-19_decorate.1607431823179.zip"), "wb") as f:
+        f.write(dzip_buf.getvalue())
+    port_fx = random.randint(20000, 32000)
+    while port_fx in (PORT, port2, port3, port4, port5, port6, port7, port8):
+        port_fx = random.randint(20000, 32000)
+    proc_fx, log_fx = boot_hosttest(dir_fx, port_fx, extra_props=[
+        "-Dlocalapi.mapPackSha256=" + fixture_sha,
+        "-Dlocalapi.mapPackMinBytes=256",
+        "-Dlocalapi.dressPackMinBytes=1024",
+    ])
+    try:
+        base_fx = "http://127.0.0.1:%d" % port_fx
+        up_fx = wait_serving(base_fx)
+        check("maps: fixture instance boots", up_fx, "boot=%s" % up_fx)
+
+        pg_fx = call("GET", "/game/api/v1/games?pageNo=1&pageSize=50"
+                     "&orderType=complex&typeId=0&order=&isPublish=1",
+                     base=base_fx)
+        rows_fx = (pg_fx.get("data", {}).get("data", [])
+                   if pg_fx.get("code") == 1 else [])
+        by_id_fx = {str(g.get("gameId")): g for g in rows_fx}
+        g1046 = by_id_fx.get("1046", {})
+        g1042 = by_id_fx.get("1042", {})
+        g1008 = by_id_fx.get("1008", {})
+        check("halls: g1046 Bedwars isLobby=1",
+              g1046.get("isLobby") == 1 and g1046.get("gameName") == "Bedwars",
+              str(g1046)[:150])
+        check("halls: g1046 realPlayGameList offers g1008",
+              [str(x.get("gameId")) for x in (g1046.get("realPlayGameList")
+                                              or [])] == ["1008"],
+              str(g1046.get("realPlayGameList"))[:150])
+        check("halls: g1042 Pixel Hall isLobby=1 + 4 gameplay ids",
+              g1042.get("isLobby") == 1 and g1042.get("gameName") == "Pixel Hall"
+              and [str(x.get("gameId")) for x in
+                   (g1042.get("realPlayGameList") or [])]
+                  == ["1043", "1044", "1045", "1053"],
+              str(g1042)[:200])
+        check("halls: gameplay game g1008 isLobby=0 (no flag leak)",
+              g1008.get("isLobby") == 0 and "realPlayGameList" not in g1008,
+              str(g1008)[:120])
+        gd_fx = call("GET", "/game/api/v2/games/1046", base=base_fx)
+        check("halls: gameDetail 1046 carries isLobby=1",
+              gd_fx.get("code") == 1
+              and (gd_fx.get("data", {}) or {}).get("isLobby") == 1,
+              str(gd_fx)[:150])
+
+        exp_ver = 1625226508247 // 1000
+        # durl (like dispUrl) is the ON-DEVICE loopback base (port 18080);
+        # the host rig replays it on its own port for byte-exact serving.
+        exp_durl = ("http://127.0.0.1:18080/sandbox/games/maps/"
+                    + map_zip_name)
+        serve_durl = "http://127.0.0.1:%d/sandbox/games/maps/%s" % (
+            port_fx, map_zip_name)
+        gr_fx = call("GET", "/v1/game-res?gameType=g1008&engineVersion=90900"
+                     "&resVersion=1", base=base_fx)
+        gdx = gr_fx.get("data", {})
+        check("maps: game-res g1008 durl -> indexed bundle",
+              gr_fx.get("code") == 1 and gdx.get("durl") == exp_durl
+              and gdx.get("resVersion") == exp_ver, str(gr_fx)[:220])
+        gr_fx2 = call("GET", "/v1/game-res?gameType=1008&engineVersion=90900"
+                      "&resVersion=1", base=base_fx)
+        check("maps: game-res numeric gameType resolves too",
+              gr_fx2.get("code") == 1
+              and (gr_fx2.get("data", {}) or {}).get("durl") == exp_durl,
+              str(gr_fx2)[:220])
+
+        reg_fx = call("POST", "/user/api/v1/visitor", {"imei": "mapfx"},
+                      base=base_fx)
+        tok_fx = (reg_fx.get("data", {}) or {}).get("accessToken", "")
+        uid_fx = ((reg_fx.get("data", {}) or {}).get("userId")
+                  or (reg_fx.get("data", {}) or {}).get("id") or 0)
+        # client contract: miniGameToken(typeId=<game>, targetId=<USER id>)
+        mt_fx = call("GET", "/game/api/v2/game/auth?typeId=g1008&targetId=%d"
+                     "&gameVersion=1" % uid_fx,
+                     headers={"Access-Token": tok_fx, "userId": str(uid_fx)},
+                     base=base_fx)
+        dp_fx = call("POST", "/v1/dispatch", {"resVersion": 1},
+                     headers={"x-shahe-uid": str(uid_fx),
+                              "x-shahe-token": (mt_fx.get("data", {}) or {})
+                              .get("token", "")},
+                     base=base_fx)
+        ddx = (dp_fx.get("data", {}) or {})
+        check("maps: dispatch downurl carries the map bundle",
+              dp_fx.get("code") == 1 and ddx.get("downurl") == exp_durl
+              and ddx.get("resVersion") == exp_ver
+              and ddx.get("gaddr") == "127.0.0.1:18080", str(ddx)[:250])
+
+        served = raw_get(serve_durl)
+        check("maps: bundle served byte-exact (repo sync)",
+              served == map_zip_bytes,
+              "%d vs %d bytes" % (len(served), len(map_zip_bytes)))
+        with _zipfile.ZipFile(_io.BytesIO(served)) as z:
+            inner = set(z.namelist())
+        check("maps: served zip carries the map's own checksums.md5",
+              "checksums.md5" in inner, str(inner))
+        served_md5 = raw_get("http://127.0.0.1:%d/sandbox/games/maps/%s"
+                             % (port_fx, map_loose_name))
+        check("maps: loose map file served from pack",
+              served_md5 == b"deadbeef" * 8, "%d bytes" % len(served_md5))
+        miss_fx = call("GET", "/sandbox/games/maps/m9999_1.1.zip",
+                       base=base_fx)
+        check("maps: unknown asset -> code 0 miss envelope",
+              miss_fx.get("code") == 0, str(miss_fx)[:120])
+        check("maps: index persisted on disk",
+              os.path.isfile(os.path.join(dir_fx, "localapi", "maps", "index.json"))
+              and "g1008" in open(os.path.join(dir_fx, "localapi", "maps", "index.json")
+                                  ).read(), "index.json")
+
+        dc0 = call("GET", "/decoration/api/v1/new/decorations/check/resource"
+                   "?resVersion=0&engineVersion=90900", base=base_fx)
+        dc0d = dc0.get("data", {})
+        check("dress: v0 client needs the decorate pack",
+              dc0.get("code") == 1 and dc0d.get("needUpdate") is True
+              and dc0d.get("version") == 19 and dc0d.get("hash")
+              and dc0d.get("url") == "http://127.0.0.1:18080"
+              + "/sandbox/dresses/dress-resources/"
+              + "10-19_decorate.1607431823179.zip"
+              and dc0d.get("fileCount") == 2, str(dc0)[:250])
+        dc19 = call("GET", "/decoration/api/v1/new/decorations/check/resource"
+                    "?resVersion=19&engineVersion=90900", base=base_fx)
+        check("dress: v19 client is current (download-once)",
+              dc19.get("code") == 1
+              and (dc19.get("data", {}) or {}).get("needUpdate") is False,
+              str(dc19)[:160])
+        dress_bytes = raw_get("http://127.0.0.1:%d/sandbox/dresses/"
+                              "dress-resources/10-19_decorate."
+                              "1607431823179.zip" % port_fx)
+        check("dress: pack served byte-exact",
+              dress_bytes == dzip_buf.getvalue(),
+              "%d vs %d" % (len(dress_bytes), dzip_buf.tell()))
+        dv_fx = call("GET", "/decoration/api/v1/decoration/versions?version=1",
+                     base=base_fx)
+        check("dress: legacy versions route shape",
+              dv_fx.get("code") == 1
+              and "md5" in (dv_fx.get("data", {}) or {})
+              and (dv_fx.get("data", {}) or {}).get("update") is False,
+              str(dv_fx)[:160])
+    finally:
+        proc_fx.terminate()
+        try:
+            proc_fx.wait(timeout=5)
+        except Exception:
+            proc_fx.kill()
+        log_fx.close()
+
     # --- OPTIONAL end-to-end icon-pack test (opt-in: LOCALAPI_REAL_PACK=1) ---
     # Boots a seeded instance with the REAL release pack URL: the asset
     # thread must download the 16MB skins.tar.gz, extract all entries with
@@ -3533,6 +3773,44 @@ def main():
                   len(got_real) > 100
                   and got_real[:4] == bytes([0x89, 0x50, 0x4E, 0x47]),
                   "%d bytes magic=%s" % (len(got_real), got_real[:4].hex()))
+            # --- REAL maps + decorate packs (same opt-in gate) ---
+            # maps.tar.gz (47MB, sha256-pinned) must extract+index, the
+            # g1008 BedWar bundle must serve, and the decorate check must
+            # advertise the real 10-19 pack. Budget: download ~60MB.
+            maps_dir9 = os.path.join(dir_p, "localapi", "maps")
+            end_maps = time.time() + 240
+            while time.time() < end_maps:
+                idx_ok = os.path.isfile(os.path.join(maps_dir9, "index.json"))
+                if idx_ok:
+                    break
+                time.sleep(3)
+            if os.path.isfile(os.path.join(maps_dir9, "index.json")):
+                idx9 = json.load(open(os.path.join(maps_dir9, "index.json")))
+                games9 = idx9.get("games", {})
+                check("pack: real map pack indexed (%d games)"
+                      % len(games9), len(games9) >= 50, str(len(games9)))
+                bed = games9.get("g1008", {})
+                check("pack: g1008 BedWar bundle indexed",
+                      bed.get("zipName", "").startswith("m1008_2."),
+                      str(bed)[:150])
+                if bed.get("zipName"):
+                    z9 = raw_get("http://127.0.0.1:%d/sandbox/games/maps/%s"
+                                 % (port9, bed["zipName"]))
+                    check("pack: real BedWar bundle serves",
+                          len(z9) > 1000 and z9[:2] == b"PK",
+                          "%d bytes magic=%s" % (len(z9), z9[:2].hex()))
+                dres9 = call("GET", "/decoration/api/v1/new/decorations/"
+                             "check/resource?resVersion=0&engineVersion=90900",
+                             base=base9)
+                d9 = dres9.get("data", {})
+                check("pack: real decorate pack advertised",
+                      dres9.get("code") == 1 and d9.get("needUpdate") is True
+                      and d9.get("version") == 19 and d9.get("hash")
+                      == "a6109fdd8022452b2ffb85ebb6df5abf",
+                      str(dres9)[:200])
+            else:
+                check("pack: real map pack indexed", False,
+                      "index.json never appeared (download slow/blocked)")
         finally:
             proc_p.terminate()
             try:

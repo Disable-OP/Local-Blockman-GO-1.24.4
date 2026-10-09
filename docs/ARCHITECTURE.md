@@ -176,9 +176,35 @@ GET /localapi/skins/icons/<id>.png
         └─ both fail  → code=0 miss envelope (client placeholder)
 ```
 
+Map + dress asset packs (wip-67 mission, same pattern as the icon pack):
+  GitHub release localapi-assets: maps.tar.gz (sha256-pinned, 707 files)
+                                   + 10-19_decorate.1607431823179.zip (md5)
+        │ MapAssets / DressRes daemon threads (download once, 3 attempts)
+        ▼
+<files>/localapi/maps/... (ustar extract + index.json: newest
+                          <mapid>.<ts>.zip per game via _manifest/games.csv)
+<files>/localapi/dress/10-19_decorate...zip
+        │
+GET /sandbox/games/maps/<key>     → byte-exact bundle/file serving
+GET /sandbox/dresses/dress-resources/<key> → decorate pack bytes
+        │
+Client join: /v1/game-res durl + /v1/dispatch downurl (Dispatch.mapUrl)
+Skin flow: checkDressResource → DecorationResourcesResponse (v19, md5)
+
+Halls (catalog v4): g1046 Bedwars→g1008, g1042 Pixel Hall→g1043/44/45/53,
+g1058 Lucky Block Hall→g1054 — isLobby=1 + realPlayGameList on the catalog
+rows (client Game entity fields); all other games isLobby=0.
+
 Invariants:
 - `isNewEngine=0` on every game in every response (engine-1 only runtime).
 - `iconUrl` in every dress response points at the loopback streaming route;
   the original CDN url never leaves the server.
 - Seeds are data, not code paths: catalogs are editable server state after
   the first seed (skin reseed only when the APK ships a different seed file).
+
+- Packs are data with pinned checksums: a pack whose sha256/md5 does not
+  match the release manifest is deleted and re-downloaded; served bytes are
+  byte-exact with the GitHub-hosted pack (suite proves byte equality).
+- Map/dress pack threads are best-effort and never block boot or the API;
+  until a pack lands the routes answer truthful "not available" envelopes
+  (needUpdate=false, durl="") and the client keeps its placeholder state.

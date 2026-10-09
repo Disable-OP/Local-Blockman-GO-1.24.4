@@ -21,8 +21,28 @@ import org.json.JSONObject;
  */
 final class GameCatalog {
 
-    /** 3 = real ScriptSetting catalog, engine-1 (isNewEngine=0) everywhere. */
-    private static final int CATALOG_VERSION = 3;
+    /** 4 = real ScriptSetting catalog + hall traits (isLobby/realPlayGameList).
+     *  engine-1 (isNewEngine=0) everywhere. */
+    private static final int CATALOG_VERSION = 4;
+
+    /**
+     * Hall games (lobbies) of the 1.24.4 era: entering a hall game drops the
+     * player into a persistent hall scene whose sub-games are started from
+     * inside it. scriptType -> display name -> the real gameplay script ids
+     * the hall offers (ScriptSetting.csv rows of the same family):
+     *   g1046 "Bed War hall" offers the BedWar gameplay g1008
+     *   g1042 "Pixel Gun hall" offers the PixelGunGame modes g1043 (team),
+     *         g1044 (personal), g1045 (duel), g1053 (battle royale)
+     *   g1058 "Lucky Block hall" offers g1054.
+     * Halls are flagged isLobby=1 and carry realPlayGameList (the client's
+     * Game entity: List<RealPlayGame>{gameId,gameName}) so the hall UI can
+     * offer the direct entries.
+     */
+    private static final String[][] HALLS = {
+            {"g1046", "Bedwars", "g1008"},
+            {"g1042", "Pixel Hall", "g1043,g1044,g1045,g1053"},
+            {"g1058", "Lucky Block Hall", "g1054"},
+    };
 
     private GameCatalog() {}
 
@@ -48,6 +68,10 @@ final class GameCatalog {
                     : generateGames(root.optJSONArray("categories")));
             dirty = true;
         }
+        // hall traits (isLobby + realPlayGameList + hall display names) are
+        // applied to any catalog missing them — fresh seeds AND stores from
+        // earlier versions (idempotent, checked per game).
+        if (ensureHalls(root)) dirty = true;
         // migration: pre-ScriptSetting catalogs (fake ids/names, engine-1
         // flag wrong) regenerate from the seed; fresh boots without a seed
         // keep their generated catalog. The version marker is ONLY set when
@@ -59,6 +83,7 @@ final class GameCatalog {
             if (seeded != null) {
                 root.put("games", seeded);
                 root.put("catalogVersion", CATALOG_VERSION);
+                ensureHalls(root);
                 L.i("catalog migrated to v" + CATALOG_VERSION + " ("
                         + seeded.length() + " real games)");
                 dirty = true;
@@ -156,6 +181,68 @@ final class GameCatalog {
         gs.put(g);
         L.i("catalog: premium game 5043 (Mystic Vault) added");
         return true;
+    }
+
+    // ---------------------------------------------------------------- halls
+
+    /**
+     * Apply hall traits to one game: isLobby=0 everywhere by default; a hall
+     * row gets isLobby=1, its real display name and (when the scriptType map
+     * is given) its realPlayGameList — the REAL game objects of the gameplay
+     * ids, so the hall UI renders true names/ids.
+     */
+    private static void applyHallTraits(JSONObject game,
+            java.util.Map<String, JSONObject> byScript) {
+        String script = game.optString("scriptType", "");
+        game.put("isLobby", 0);
+        for (String[] hall : HALLS) {
+            if (hall[0].equals(script)) {
+                game.put("isLobby", 1);
+                game.put("gameTitle", hall[1]);
+                game.put("gameName", hall[1]);
+                JSONArray list = new JSONArray();
+                if (byScript != null) {
+                    for (String id : hall[2].split(",")) {
+                        JSONObject sub = byScript.get(id);
+                        if (sub != null) list.put(sub);
+                    }
+                }
+                game.put("realPlayGameList", list);
+            }
+        }
+    }
+
+    /**
+     * Idempotent hall-trait pass over the persisted catalog: every game
+     * without isLobby (and every hall without realPlayGameList) gets the
+     * traits. Returns true when anything changed (caller persists).
+     */
+    private static boolean ensureHalls(JSONObject root) {
+        JSONArray games = root.optJSONArray("games");
+        if (games == null) return false;
+        java.util.Map<String, JSONObject> byScript = new java.util.HashMap<String, JSONObject>();
+        for (int i = 0; i < games.length(); i++) {
+            JSONObject g = games.optJSONObject(i);
+            if (g != null) byScript.put(g.optString("scriptType", ""), g);
+        }
+        boolean dirty = false;
+        for (int i = 0; i < games.length(); i++) {
+            JSONObject g = games.optJSONObject(i);
+            if (g == null) continue;
+            String script = g.optString("scriptType", "");
+            boolean isHall = false;
+            for (String[] hall : HALLS) {
+                if (hall[0].equals(script)) isHall = true;
+            }
+            if (!g.has("isLobby") || (isHall && !g.has("realPlayGameList"))) {
+                applyHallTraits(g, byScript);
+                dirty = true;
+            }
+        }
+        if (dirty) {
+            L.i("catalog: hall traits applied (isLobby + realPlayGameList)");
+        }
+        return dirty;
     }
 
     // ---------------------------------------------------------- ownership
