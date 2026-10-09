@@ -4027,8 +4027,12 @@ def main():
     dl8 = fcall("GET", "/decoration/api/v1/decorations/8",
                 headers=auth_hdr)
     dl_rows = dl8.get("data") or []
-    check("C: dressList serves the generated type-8 catalog",
-          dl8.get("code") == 1 and len(dl_rows) == 10
+    # Session 50: the catalog may be the REAL 1165-skin capture (seeded from
+    # skin.json — typeId 8 carries 183 items) OR the legacy generated one
+    # (10/typeId) when no seed is present. Both are correct server state;
+    # the contract is non-empty + shape-true rows.
+    check("C: dressList serves the type-8 catalog (real or generated)",
+          dl8.get("code") == 1 and len(dl_rows) >= 1
           and all(d.get("id") and "price" in d for d in dl_rows),
           str(dl8)[:130])
     vlist = fcall("GET", "/video/api/v1/app/video/list/all",
@@ -4983,6 +4987,19 @@ def main():
           and (rcv.get("data") or {}).get("expireDate"), str(rcv)[:120])
     wpre = fcall("GET", "/pay/api/v1/wealth/user",
                  headers=auth_hdr).get("data", {})
+    # Session 50: with the REAL skin catalog, the store phases buy real
+    # dresses at REAL prices — the wallet no longer follows the fixture
+    # math, and the 30k VIP can legitimately be unaffordable (wip-66 run:
+    # 25,158 golds). Top up through the REAL recharge route until the VIP
+    # buy is comfortably affordable, exactly like a real player would.
+    if sku1:
+        topups = 0
+        while wpre.get("golds", 0) < 31000 and topups < 40:
+            fcall("POST", "/pay/api/v2/pay/users/recharge", {"sku": sku1},
+                  headers=auth_hdr)
+            wpre = fcall("GET", "/pay/api/v1/wealth/user",
+                         headers=auth_hdr).get("data", {})
+            topups += 1
     vb = fcall("PUT", "/shop/api/v1/shop/user/buy/vip?productId=local.vipgold.1m",
                None, headers=auth_hdr)
     wpost = fcall("GET", "/pay/api/v1/wealth/user",
