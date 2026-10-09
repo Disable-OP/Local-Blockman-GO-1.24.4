@@ -63,12 +63,29 @@ public final class LocalServer {
                 in.close();
                 return;
             }
-            java.io.FileOutputStream out = new java.io.FileOutputStream(dst);
+            // The localapi/ dir may not exist on the VERY first boot (the
+            // StateStore creates it later): wip-64 evidence — the seed copy
+            // ENOENT'd, the first boot served the legacy catalog, and only
+            // the SECOND boot could have healed it.
+            //noinspection ResultOfMethodCallIgnored
+            dst.getParentFile().mkdirs();
+            File tmp = new File(dst.getParentFile(), dst.getName() + ".tmp");
+            java.io.FileOutputStream out = new java.io.FileOutputStream(tmp);
             byte[] buf = new byte[65536];
             int n;
             while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
             out.close();
             in.close();
+            if (!tmp.renameTo(dst)) {
+                java.io.FileOutputStream out2 = new java.io.FileOutputStream(dst);
+                java.io.FileInputStream in2 = new java.io.FileInputStream(tmp);
+                byte[] buf2 = new byte[65536];
+                int n2;
+                while ((n2 = in2.read(buf2)) > 0) out2.write(buf2, 0, n2);
+                in2.close();
+                out2.close();
+                tmp.delete();
+            }
             L.i("seed asset copied: " + asset + " -> " + dst.getName()
                     + " (" + dst.length() + " bytes)");
         } catch (Throwable t) {
