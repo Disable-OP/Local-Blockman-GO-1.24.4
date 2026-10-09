@@ -66,6 +66,12 @@ patch(os.path.join(LIBS, 'include/android/curl/64/curl/curl.h'), [
     ("CURL_EXTERN char *curl_easy_unescape(CURL *handle,",
      "CURL_EXTERN char *curl_easy_unescape(struct Curl_easy *handle,"),
 ])
+patch(os.path.join(LIBS, 'include/android/curl/curl/curl.h'), [
+    ("CURL_EXTERN char *curl_easy_escape(CURL *handle,",
+     "CURL_EXTERN char *curl_easy_escape(struct Curl_easy *handle,"),
+    ("CURL_EXTERN char *curl_easy_unescape(CURL *handle,",
+     "CURL_EXTERN char *curl_easy_unescape(struct Curl_easy *handle,"),
+])
 
 # 4. ClientPeer varargs UB (LORD::String -> const char*)
 peer = os.path.join(SERVER, 'Network/ClientPeer.cpp')
