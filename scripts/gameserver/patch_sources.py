@@ -56,6 +56,17 @@ patch(os.path.join(ENGINE, 'Src/Core/Std/cpp17/string_view.h'), [
      "#if !defined(_LIBCPP_VERSION) && __cplusplus < 201703L"),
 ])
 
+# 3b. curl: the bundled sources are 7.53-era (struct Curl_easy) while the
+#     bundled headers are 7.52.1-DEV (CURL*). The client used a prebuilt
+#     libcurl.a; we build the sources, so align the two escaped-URL
+#     prototypes (the only API change that touches this build).
+patch(os.path.join(LIBS, 'include/android/curl/64/curl/curl.h'), [
+    ("CURL_EXTERN char *curl_easy_escape(CURL *handle,",
+     "CURL_EXTERN char *curl_easy_escape(struct Curl_easy *handle,"),
+    ("CURL_EXTERN char *curl_easy_unescape(CURL *handle,",
+     "CURL_EXTERN char *curl_easy_unescape(struct Curl_easy *handle,"),
+])
+
 # 4. ClientPeer varargs UB (LORD::String -> const char*)
 peer = os.path.join(SERVER, 'Network/ClientPeer.cpp')
 with open(peer, encoding='latin-1') as f:
