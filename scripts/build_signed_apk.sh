@@ -95,6 +95,24 @@ echo "== inject classes6.dex =="
 zip -q -j "$BUILD/patched-unsigned.apk" "$SERVER_DEX"
 unzip -l "$BUILD/patched-unsigned.apk" | grep -q classes6.dex || { echo "FATAL: classes6.dex missing"; exit 1; }
 
+# --- gameplay server binary (arm64) into nativeLibraryDir ---
+# Packaged as lib*.so so PackageManager extracts it into the app's
+# nativeLibraryDir — one of the few app-writable dirs an exec() is allowed
+# from. Without it the client still works (map-download phase); with it the
+# on-device GameServer starts at boot and real matches become reachable.
+echo "== inject libgameserver.so (arm64) =="
+GSSO="$BUILD/libgameserver.so"
+if python3 "$REPO/scripts/fetch_release_asset.py" libgameserver-arm64.so "$GSSO"; then
+  mkdir -p "$BUILD/libtmp/arm64-v8a"
+  cp -f "$GSSO" "$BUILD/libtmp/arm64-v8a/libgameserver.so"
+  ( cd "$BUILD/libtmp" && zip -q "$BUILD/patched-unsigned.apk" lib/arm64-v8a/libgameserver.so )
+  unzip -l "$BUILD/patched-unsigned.apk" | grep -q 'libgameserver.so' \
+    || { echo "FATAL: libgameserver.so missing from APK"; exit 1; }
+  echo "libgameserver.so injected ($(stat -c%s "$GSSO") bytes)"
+else
+  echo "WARNING: libgameserver-arm64.so unavailable on releases — APK ships without the gameplay server" >&2
+fi
+
 # --- zipalign + sign (uber-apk-signer does both; debug keystore by default) ---
 echo "== sign =="
 java -jar "$TOOLS/uber-apk-signer.jar" \
