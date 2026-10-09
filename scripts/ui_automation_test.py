@@ -2821,12 +2821,24 @@ def main():
                 alive_or_recover_at(adb, screen, args.package, args.activity,
                                     "MJ-gamedetail")
                 pressed = None
-                for _lbl in ("Start", "PLAY", "Play", "GO", "Enter"):
-                    _pn = screen.find(texts=[_lbl])
-                    if _pn and _pn.center and _pn.center[1] > 200:
-                        screen.tap_node(_pn)
-                        pressed = _lbl
+                # icon buttons carry res-ids (text is empty) — try the
+                # enter/play/start id family first, then visible texts.
+                _idre = re.compile(r"(enter|play|start|go)$", re.I)
+                for n in screen.dump():
+                    if not (n.center and n.res):
+                        continue
+                    tail = n.res.rsplit("/", 1)[-1]
+                    if _idre.search(tail):
+                        screen.tap_node(n)
+                        pressed = "id:" + tail
                         break
+                if not pressed:
+                    for _lbl in ("Start", "PLAY", "Play", "GO", "Enter"):
+                        _pn = screen.find(texts=[_lbl])
+                        if _pn and _pn.center and _pn.center[1] > 200:
+                            screen.tap_node(_pn)
+                            pressed = _lbl
+                            break
                 if pressed:
                     print("  [mj] pressed game start control %r" % pressed)
                     time.sleep(18)  # token -> dispatch -> map download
@@ -2852,8 +2864,9 @@ def main():
                            "client engine path")
                 else:
                     dumpmj = screen.dump()
-                    print("  [mj] no start control found; visible labels: %s"
-                          % [n.text[:16] for n in dumpmj[:14] if n.text])
+                    print("  [mj] no start control found; node ids: %s" %
+                          [n.res.rsplit("/", 1)[-1] for n in dumpmj[:26]
+                           if n.res])
             else:
                 print("  [mj] no game card tappable on Home this run")
         else:
