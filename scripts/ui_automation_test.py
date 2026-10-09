@@ -4067,6 +4067,50 @@ def main():
           and p2.get("data", {}).get("gaddr") == "127.0.0.1:18080"
           and ":" in (p2.get("data", {}).get("gaddr") or "")
           and p2.get("data", {}).get("croomid"), str(p2)[:200])
+    # Mission surface (maps + dress resources + halls): the asset threads
+    # download the packs on first boot, so these serve REAL data on-device.
+    m1 = fcall("GET", "/v1/game-res?gameType=%s&engineVersion=90900&resVersion=1"
+               % first_game, headers=auth_hdr)
+    m1d = m1.get("data", {}) or {}
+    check("C: game-res carries the official map bundle durl",
+          m1.get("code") == 1 and str(m1d.get("durl", "")).startswith(
+              "http://127.0.0.1:18080/sandbox/games/maps/")
+          and int(m1d.get("resVersion", 0)) > 1, str(m1)[:200])
+    m2 = fcall("GET", "/decoration/api/v1/new/decorations/check/resource"
+               "?resVersion=0&engineVersion=90900", headers=auth_hdr)
+    m2d = m2.get("data", {}) or {}
+    check("C: decorate resource check advertises v19 pack",
+          m2.get("code") == 1 and m2d.get("version") == 19
+          and str(m2d.get("hash", "")) == "a6109fdd8022452b2ffb85ebb6df5abf",
+          str(m2)[:200])
+    m3 = fcall("GET", "/game/api/v1/games/update/list/%d" % qa_uid_num,
+               headers=auth_hdr)
+    m3d = m3.get("data", {}) if isinstance(m3.get("data"), dict) else {}
+    check("C: game update list carries real map versions",
+          m3.get("code") == 1 and len(m3d) >= 40, "n=%d" % len(m3d))
+    m4 = fcall("GET", "/game/api/v1/games?pageNo=1&pageSize=60"
+               "&orderType=complex&typeId=0&order=&isPublish=1",
+               headers=auth_hdr)
+    hall_ok, hall_sub = False, []
+    for _g in (m4.get("data", {}) or {}).get("data", []) or []:
+        if str(_g.get("gameId")) == "1046":
+            hall_ok = (_g.get("isLobby") == 1
+                       and _g.get("gameName") == "Bedwars")
+            hall_sub = [str(x.get("gameId"))
+                        for x in (_g.get("realPlayGameList") or [])]
+    check("C: Bedwars hall g1046 isLobby=1 -> g1008",
+          hall_ok and hall_sub == ["1008"], "sub=%s" % hall_sub)
+    try:
+        with urllib.request.urlopen(fbase
+                                    + "/sandbox/games/maps/"
+                                    + "m1008_2.1625226508247.zip",
+                                    timeout=30) as r:
+            m5 = r.read()
+    except Exception:
+        m5 = b""
+    check("C: BedWar map bundle serves from the local pack",
+          len(m5) > 1000 and m5[:2] == b"PK",
+          "%d bytes magic=%s" % (len(m5), m5[:2].hex()))
     p3 = fcall("GET", "/shop/api/v1/new/shop/suit/decorations?os=android&engineVersion=1",
                headers={"language": "en"})
     check("C: suit shop served", p3.get("code") == 1 and len(p3.get("data", [])) >= 6,
