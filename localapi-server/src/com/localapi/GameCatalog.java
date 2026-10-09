@@ -38,6 +38,12 @@ final class GameCatalog {
         }
         if (!root.has("games")) {
             JSONArray seeded = seedFromScriptSetting(store);
+            if (seeded != null) {
+                // mark the version here too so the migration branch below
+                // doesn't re-parse the seed on the same boot (wip-66: the
+                // "seeded 59 real games" line logged twice).
+                root.put("catalogVersion", CATALOG_VERSION);
+            }
             root.put("games", seeded != null ? seeded
                     : generateGames(root.optJSONArray("categories")));
             dirty = true;

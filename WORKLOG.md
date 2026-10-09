@@ -3761,3 +3761,31 @@
   pinned by tests.
 - SHIP: wip-66 (ae5f0eb, both fixes) build dispatched; fast redroid
   verdict is the gate for "first-boot real catalogs".
+
+## Session 50 CLOSED — wip-66 verdict-backed: real catalogs on-device from FIRST boot (2026-10-09)
+
+- wip-66 (ae5f0eb) fast test-redroid verdict loop:
+  * run 37911609705 (scripts 4a15878) FAILED on exactly 2 assertions,
+    both test-side legacy-fixture expectations broken by the REAL data
+    (the server behavior was CORRECT):
+      - dressList type-8: expected the legacy 10-item generated catalog;
+        the REAL seeded catalog has 183 items for typeId 8. Fixed the
+        check to accept either (non-empty + shape-true rows).
+      - vipBuy 30000 golds: the store phases now buy REAL skins at REAL
+        prices, so the QA wallet held 25,158 < 30,000 and the server
+        honestly answered code=0 "golds not enough". Fixed by topping up
+        through the REAL recharge route (v2, +1000/pack) until the VIP
+        buy is affordable — exactly what a real player does.
+  * run 37912453966 (52f639f) PASS. Device evidence, boot 1 (pid 2208):
+    both seeds copied (no ENOENT), "catalog: seeded 59 real games from
+    ScriptSetting", icon pack downloaded attempt-1 (15,871,562 B),
+    extracted 1165/1165 — the seeded catalogs + streaming icons are the
+    shipped behavior from the FIRST boot.
+- FINAL POLISH: fresh-boot seed path now stamps catalogVersion itself
+  (no double parse/double log); dex rebuilt; host suite 617/617.
+- Current state: asset wip-66, host suite 617/617, one-branch main.
+- NEXT (unchanged priorities): deep-run verdict on wip-66 (dispatch
+  test-redroid-deep with budget 5) — its store phases will exercise the
+  REAL dress grid + SKINICON streaming for the first time on-device;
+  then error-driven from NEW traffic only; the GameServer phase gate is
+  unchanged (API first).
