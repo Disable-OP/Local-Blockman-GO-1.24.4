@@ -2853,7 +2853,8 @@ def main():
                         # llBottom spans the bottom bar: tap its center-right
                         # (the enter control sits right of the label stack)
                         if bar_y > 700:
-                            screen.tap(bar_x + 140, bar_y)
+                            adb.sh("input tap %d %d" % (bar_x + 140, bar_y),
+                                   timeout=20)
                             pressed = "llBottom-center"
                             break
                 if not pressed:
