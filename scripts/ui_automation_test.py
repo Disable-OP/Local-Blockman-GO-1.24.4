@@ -1741,46 +1741,6 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
             check("A: game detail engine config served (PUT %s)"
                   % engine_lit,
                   ("PUT %s" % engine_lit) in glog)
-            # Mission MJ probe (maps mission): press the game's play/start
-            # control and observe the REAL join chain on-device: the client
-            # fetches its token (game/auth), POSTs /v1/dispatch (Dispatch
-            # with the map bundle URL), downloads the official map zip
-            # (ASSET /sandbox/games/maps/...) and hands it to the engine.
-            # Discovery-first: the button label varies per game/layout; a
-            # navigation miss records evidence (node dump), never a FAIL.
-            def _paths(log):
-                return set(p for _, p in re.findall(r"REQ (\w+) (\S+)", log))
-            mj0 = _paths(glog)
-            pressed = None
-            for _lbl in ("Start", "PLAY", "Play", "GO", "Enter"):
-                _pn = screen.find(texts=[_lbl])
-                if _pn and _pn.center and _pn.center[1] > 200:
-                    screen.tap_node(_pn)
-                    pressed = _lbl
-                    break
-            if pressed:
-                print("  [mj] pressed game start control %r" % pressed)
-                time.sleep(16)   # token -> dispatch -> resource dl -> engine
-                alive_or_recover("%s-mapjoin" % tag)
-                mjlog = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
-                mj_new = _paths(mjlog) - mj0
-                mj_disp = any(p.startswith("/v1/dispatch") for p in mj_new)
-                mj_map = any(p.startswith("/sandbox/games/maps/")
-                             for p in mj_new)
-                mj_echo = ("EchoesActivity" in adb.raw(
-                    "logcat", "-d", "-s", "ActivityTaskManager", timeout=60)
-                    or "BlockManEchoes" in adb.raw(
-                        "logcat", "-d", "echoes", timeout=60))
-                ok("MJ: real UI join chain — dispatch=%s mapdl=%s echoes=%s"
-                   % (mj_disp, mj_map, mj_echo))
-                check("MJ: client joined through /v1/dispatch from the UI",
-                      mj_disp, "new=%s" % sorted(mj_new)[:6])
-                if mj_map:
-                    ok("MJ: official map bundle downloaded by the client")
-            else:
-                dump = screen.dump()
-                print("  [mj] no start control found; visible labels: %s"
-                      % [n.text[:16] for n in dump[:14] if n.text])
             # game-detail sub-screens (rank / comments) — best-effort probes;
             # labels may vary per game detail layout, BACK always recovers
             for sub in ("rank", "comment"):
@@ -2821,6 +2781,82 @@ def main():
                    set(paths_early))
     else:
         print("  [skip] deep_drive (fast mode or deep budget)")
+    # PHASE MJ (maps mission): from the Home hall, open a game card and
+    # press its start control — the REAL join chain on-device: game/auth
+    # token -> POST /v1/dispatch (Dispatch with the official map bundle
+    # URL) -> the client/engine downloads the map zip from the loopback
+    # CDN (ASSET /sandbox/games/maps/<mapid>.<ts>.zip) -> the engine
+    # activity takes over. Discovery-first: labels vary per game/layout;
+    # a navigation miss records evidence (node dump), never a FAIL. The
+    # /v1/dispatch gate is HARD when the join reached a game detail.
+    if deep and deep_go("PHASE MJ (real UI game join)", 3):
+        def _mj_paths(log):
+            return set(p for _, p in re.findall(r"REQ (\w+) (\S+)", log))
+        _mj0 = _mj_paths(adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60))
+        # ground at Home (rb_1) — same walk deep_drive uses
+        _home_ok = False
+        for _ in range(4):
+            if screen.find(ids=["rb_1"]):
+                _home_ok = True
+                break
+            adb.key(4)
+            time.sleep(2)
+        if _home_ok:
+            rb1mj = screen.find(ids=["rb_1"])
+            if rb1mj and screen.tap_node(rb1mj):
+                time.sleep(5)
+            _card = None
+            for n in screen.dump():
+                if not n.center:
+                    continue
+                y = n.center[1]
+                if y < 200 or y > 980:
+                    continue
+                if n.cls.endswith("RecyclerView") or n.cls.endswith(
+                        "LinearLayout"):
+                    _card = n
+                    break
+            if _card and screen.tap_node(_card):
+                time.sleep(8)      # game detail renders its full surface
+                alive_or_recover("MJ-gamedetail")
+                pressed = None
+                for _lbl in ("Start", "PLAY", "Play", "GO", "Enter"):
+                    _pn = screen.find(texts=[_lbl])
+                    if _pn and _pn.center and _pn.center[1] > 200:
+                        screen.tap_node(_pn)
+                        pressed = _lbl
+                        break
+                if pressed:
+                    print("  [mj] pressed game start control %r" % pressed)
+                    time.sleep(18)  # token -> dispatch -> map download
+                    alive_or_recover("MJ-join")
+                    mjlog2 = adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                     timeout=60)
+                    mj_new = _mj_paths(mjlog2) - _mj0
+                    mj_disp = any(p.startswith("/v1/dispatch")
+                                  for p in mj_new)
+                    mj_map = any(p.startswith("/sandbox/games/maps/")
+                                 for p in mj_new)
+                    mj_echo = ("EchoesActivity" in adb.raw(
+                        "logcat", "-d", "-s", "ActivityTaskManager",
+                        timeout=60))
+                    ok("MJ: real UI join chain — dispatch=%s mapdl=%s "
+                       "echoes=%s" % (mj_disp, mj_map, mj_echo))
+                    check("MJ: client joined through /v1/dispatch from "
+                          "the UI", mj_disp,
+                          "new=%s" % sorted(mj_new)[:6])
+                    if mj_map:
+                        ok("MJ: official map bundle downloaded by the "
+                           "client engine path")
+                else:
+                    dumpmj = screen.dump()
+                    print("  [mj] no start control found; visible labels: %s"
+                          % [n.text[:16] for n in dumpmj[:14] if n.text])
+            else:
+                print("  [mj] no game card tappable on Home this run")
+        else:
+            print("  [mj] Home (rb_1) unreachable after BACK-walk")
+
     paths_a = sorted(set(paths_early) | set(localapi_paths(adb)))
     visitor_hits = [p for p in paths_a if any(
         k in p for k in ("/tourist", "/visitor", "/auth-token", "/login"))]
