@@ -2822,8 +2822,13 @@ def main():
                                     "MJ-gamedetail")
                 pressed = None
                 # icon buttons carry res-ids (text is empty) — try the
-                # enter/play/start id family first, then visible texts.
-                _idre = re.compile(r"(enter|play|start|go)$", re.I)
+                # enter/play/start id family first (containment, not just
+                # suffix), then visible texts. One swipe-up first so the
+                # bottom action bar (where the enter button lives on the
+                # game-detail template) is on screen.
+                adb.sh("input swipe 540 800 540 400 300", timeout=20)
+                time.sleep(2)
+                _idre = re.compile(r"(enter|play|start|go|join)", re.I)
                 for n in screen.dump():
                     if not (n.center and n.res):
                         continue
@@ -2865,7 +2870,7 @@ def main():
                 else:
                     dumpmj = screen.dump()
                     print("  [mj] no start control found; node ids: %s" %
-                          [n.res.rsplit("/", 1)[-1] for n in dumpmj[:26]
+                          [n.res.rsplit("/", 1)[-1] for n in dumpmj[:80]
                            if n.res])
             else:
                 print("  [mj] no game card tappable on Home this run")
