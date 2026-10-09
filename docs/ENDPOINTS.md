@@ -361,7 +361,7 @@ HttpResponse envelope {code:1, message, data}).
 | GET /game/api/v1/games/update/list/{userId} | getGameUpdateContentList | Map<gameId, bundleVersion> for every catalog game with an official map bundle (RecommendModel queues update tips vs the client's per-user seen-version prefs) |
 | GET /game/api/v1/games/update/tip/info/app/{gameId} | getGameUpdateContent | GameUpdateContentInfo{content, count=bundleVersion} for one game; neutral {content:"",count:0} without a bundle |
 | GET /game/api/v1/games/resource/version | resCheck | {update:false} |
-| GET /decoration/api/v1/new/decorations/check/resource | dressCheckResource | DecorationResourcesResponse {needUpdate, version, url, hash, fileCount, fileSize, cdns[]} — serves the official 10-19_decorate pack (dressVersion 19, md5-pinned); needUpdate=true exactly once per client generation (download-once) |
+| GET /decoration/api/v1/new/decorations/check/resource | dressCheckResource | DecorationResourcesResponse {needUpdate, version, url, hash, fileCount, fileSize, cdns[]} — serves the merged all-generations decorate pack (target dressVersion 31, md5-pinned); needUpdate=true until the client stores 31 (download-once) |
 | GET /decoration/api/v1/decoration/versions | dressResCheck | legacy ResCheckEntity {md5:"", update:false, url:""} (the 1.24.4 client uses the check/resource surface) |
 | GET /game/api/v1/games/app-engine/upgrade | getUpgradeInfo | {needUpgrade:false} |
 | GET /game/api/v1/games/app-engine/check-update | getGameResource | [] (nothing to update) |
@@ -395,8 +395,23 @@ as release assets on `localapi-assets` (public, no credentials on device):
   bundle per real 1.24.4-era game (post-2020-12-12 versions preferred,
   newest-batch fallback), mirroring the original CDN object keys
   `sandbox/games/maps/<mapid>.<unix_ms>.<file>` plus `_manifest/`.
+- `decorate_merged_v31.1623125813504.zip` (35,549,193 B, md5
+  ae133c31151484813ee4b605a1859c7c, sha256 191db6d8...11d93) — the UNION of
+  EVERY decorate generation indexed in the sandbox.csv CDN dump
+  (sandbox/dresses/dress-resources/*.zip, 2020-03-03 .. 2021-06-08: 613
+  packs, 598 unique contents, newest-wins per path), including the
+  1.24.4-era 10-19_decorate bundle and the 7-9_decorate* ("July 9")
+  members. 1,223 files shipped; Decorate_res_config.txt aligned to shipped
+  bytes. The 292 manifest entries whose resources exist in no obtainable
+  source (face-merge/newer parts: not in any pack, not in the 72.9M-key
+  dump, not on the live CDN, not in the APK baseline) degrade gracefully —
+  the engine renders the default for that slot. Client applies the zip as
+  an overlay copy (CopyDownloadToResources: overwrite=true, no deletions),
+  so all skins from all generations load, no matter how new, and anything
+  unavailable keeps prior art.
 - `10-19_decorate.1607431823179.zip` (11,007,054 B, md5 a6109fdd...5abf) —
-  the skin-resource generation the 1.24.4 catalog (dressVersion 19) renders.
+  the 1.24.4-era generation, retained on the release for provenance (the
+  merged pack supersedes it).
 
 Pipeline (MapAssets.java / DressRes.java, background threads at boot):
 download -> checksum verify (pinned sha256 / md5) -> extract (local store

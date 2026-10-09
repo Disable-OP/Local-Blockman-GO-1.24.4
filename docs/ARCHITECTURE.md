@@ -178,18 +178,23 @@ GET /localapi/skins/icons/<id>.png
 
 Map + dress asset packs (wip-67 mission, same pattern as the icon pack):
   GitHub release localapi-assets: maps.tar.gz (sha256-pinned, 707 files)
-                                   + 10-19_decorate.1607431823179.zip (md5)
+                                   + decorate_merged_v31.1623125813504.zip (md5,
+                                   union of ALL 613 indexed dress-resource packs:
+                                   2020-03 .. 2021-06, newest-wins per path)
         │ MapAssets / DressRes daemon threads (download once, 3 attempts)
         ▼
 <files>/localapi/maps/... (ustar extract + index.json: newest
                           <mapid>.<ts>.zip per game via _manifest/games.csv)
-<files>/localapi/dress/10-19_decorate...zip
+<files>/localapi/dress/decorate_merged_v31...zip
         │
 GET /sandbox/games/maps/<key>     → byte-exact bundle/file serving
 GET /sandbox/dresses/dress-resources/<key> → decorate pack bytes
         │
 Client join: /v1/game-res durl + /v1/dispatch downurl (Dispatch.mapUrl)
-Skin flow: checkDressResource → DecorationResourcesResponse (v19, md5)
+Skin flow: checkDressResource → DecorationResourcesResponse (v31, md5);
+client overlay-copies resources/Media over each engine res root, so every
+skin from every generation loads; unobtainable face-merge parts degrade to
+default art (292 manifest entries documented in DressRes class doc)
 
 Halls (catalog v4): g1046 Bedwars→g1008, g1042 Pixel Hall→g1043/44/45/53,
 g1058 Lucky Block Hall→g1054 — isLobby=1 + realPlayGameList on the catalog

@@ -3891,3 +3891,47 @@
   the native map fetch lands in the same run; (2) error-driven from NEW
   traffic; (3) RongCloud chat shim decision remains the top API-adjacent
   gap; (4) GameServer phase gate unchanged.
+
+## Session 52 — all-generations decorate mega-pack ("all skins load") — CLOSED
+
+Mission: use the sandbox.csv decoration pack the mission calls "July 9,
+2021" (the 7-9_decorate* members — the X-Y prefix reads as a date) plus
+ALL packs before it, so every skin loads no matter how new it is or if a
+resource is unavailable.
+
+- RECON: the dump index (mission1) holds 613 dress-resource zip keys
+  (2020-03-03 .. 2021-06-08) — 598 unique contents after md5 dedup. Two
+  generations share one internal layout: old decorate101..249 + X-Y diffs,
+  then the 1.24.4-era 10-19 chain (v19) up to v31 (2021-06-08, the newest
+  real generation; NO July 2021 dress pack exists in the dump — verified
+  by streaming all 72,901,865 rows).
+- CLIENT CONTRACT re-verified from dex: DressDownloadUtils -> check/
+  resource -> download -> md5 verify (hash) -> unzip app_download ->
+  CopyDownloadToResources copies resources/Media over EACH engine res
+  root (overwrite=true, NO deletions) -> stores clothes.res.version.code.
+  Overlay semantics => a newest-wins union pack upgrades ANY prior state
+  without losing baseline art.
+- PACK: scripts/build_decorate_pack.py (sandbox side) streamed all 613
+  packs from the live CDN (0 failures), merged newest-wins per path into
+  1,223 files (1,053 Skins/decoration parts, ids 1-1700, 22 slot
+  families; boy/girl actors, Decorate cfgs, Effects, GUI imageset, langs,
+  decoration.json). finalize pass: Decorate_res_config.txt aligned to
+  shipped bytes (10 md5s corrected — those versions shipped in NO pack),
+  checksums.md5 regenerated (BSD format), zip rebuilt.
+- UNAVAILABLE-SET PROOF: 292 config entries reference files that exist in
+  NO obtainable source — not in any of the 613 packs, not as raw keys in
+  the full 72.9M-row dump stream (grep -F over 295 basenames: 0 hits,
+  control pattern verified), not on the live CDN (404s), not in the APK
+  baseline (0/290). Mostly the face-merge system (eye/mouth/nose/eyebrow/
+  cosmetics/tattoo) + newer parts. Kept in the manifest; engine renders
+  defaults for them = the graceful "if it's not available" half.
+- SHIPPING: DressRes.java -> PACK_NAME decorate_merged_v31.1623125813504.
+  zip, DRESS_VERSION 31, PACK_MD5 ae133c31151484813ee4b605a1859c7c;
+  uploaded to release localapi-assets (public). Pack-unavailable fallback
+  (needUpdate=false, truthful) unchanged.
+- TESTS: fixture updated (merged-name zip, v31 target, v19-below / v31-
+  current split), REAL_PACK e2e extended (real pack advertised + 35,549,
+  193 B byte-exact serving). Host suite 639/639 hermetic; 646/646 with
+  LOCALAPI_REAL_PACK=1 (real 35MB download -> md5 verify -> byte-exact).
+- Docs: ENDPOINTS assets section + check/resource row, ARCHITECTURE skin
+  flow, NEXT_SESSION_README session-52 delta.

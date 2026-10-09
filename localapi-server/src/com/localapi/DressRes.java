@@ -15,13 +15,29 @@ import org.json.JSONObject;
 
 /**
  * Skin/dress RESOURCE pack for the client renderer (mission: the client must
- * be able to render the skins the catalog sells).
+ * be able to render the skins the catalog sells — ALL of them, no matter how
+ * new, and degrade gracefully for anything unavailable).
  *
- * The 1.24.4-era decorate bundle on the original CDN is
- * sandbox/dresses/dress-resources/10-19_decorate.<ts>.zip — the "10-19"
- * prefix is the 2020-12(10-19) resource generation the 1.24.4 client's own
- * catalog (dressVersion 19) consumes. The pack is mirrored on the public
- * GitHub release (sha256/md5 in pack_manifest.json of the CDN-dump repo).
+ * Session 52 mega-pack: the union of EVERY decorate generation indexed in
+ * the sandbox.csv CDN dump (sandbox/dresses/dress-resources/*.zip,
+ * 2020-03-03 .. 2021-06-08 — 613 packs, 598 unique contents), merged
+ * newest-wins per path. That includes the 1.24.4-era 10-19_decorate bundle
+ * (dressVersion 19) and the 7-9_decorate* members the mission calls the
+ * "July 9" pack (the X-Y prefix reads as a date). Target version 31 is the
+ * newest real decorate generation on the original CDN (June 2021 snapshot —
+ * the closest obtainable to the mission's July 2021 request).
+ *
+ * Coverage: 1,223 shipped files; Decorate_res_config.txt is aligned to the
+ * shipped bytes (10 md5s that pointed at versions shipped in no pack were
+ * corrected). 292 manifest entries reference the face-merge/newer part set
+ * that exists in NO obtainable source (not in any of the 613 packs, not in
+ * the 72.9M-key dump, not on the live CDN, not in the APK baseline) — those
+ * degrade gracefully: the engine renders the default for the slot instead
+ * of failing, which is exactly the "no matter if it's not available" half
+ * of the mission. The client applies the zip as an overlay copy
+ * (CopyDownloadToResources, verified from the 1.24.4 APK: resources/Media/**
+ * over every engine res root, overwrite=true, no deletions), so anything
+ * the pack does not carry simply keeps the previous art.
  *
  * CLIENT CONTRACT (verified from the 1.24.4 APK):
  *   GET /decoration/api/v1/new/decorations/check/resource
@@ -29,15 +45,17 @@ import org.json.JSONObject;
  *       checkDressResource) -> DecorationResourcesResponse
  *       {needUpdate, version, url, hash, fileCount, fileSize, cdns[]}.
  *   needUpdate=true -> the client downloads <url> (via cdns fallback) once,
- *   stores the new resVersion; until the local pack is present the server
- *   answers needUpdate=false / version=<client's> so the flow never wedges.
+ *   verifies <hash> (md5 of the zip), unzips to app_download, copies
+ *   resources/Media over the res roots, stores the new resVersion; until
+ *   the local pack is present the server answers needUpdate=false /
+ *   version=<client's> so the flow never wedges.
  */
 final class DressRes {
 
-    /** The 1.24.4 client's own decorate resource generation. */
-    private static final int DRESS_VERSION = 19;
-    /** Exact CDN object key of the bundle (keeps URL parity with origin). */
-    private static final String PACK_NAME = "10-19_decorate.1607431823179.zip";
+    /** Newest real decorate generation obtainable from the original CDN. */
+    private static final int DRESS_VERSION = 31;
+    /** The merged all-generations pack (see class doc). */
+    private static final String PACK_NAME = "decorate_merged_v31.1623125813504.zip";
 
     private static final int PACK_ATTEMPTS = 3;
     private static final int PACK_CONNECT_TIMEOUT_MS = 10000;
@@ -53,7 +71,7 @@ final class DressRes {
     /** MD5 of the decorate pack (from the pack manifest; the client's
      * DecorationResourcesResponse.hash carries the same value). */
     private static final String PACK_MD5 = System.getProperty(
-            "localapi.dressPackMd5", "a6109fdd8022452b2ffb85ebb6df5abf");
+            "localapi.dressPackMd5", "ae133c31151484813ee4b605a1859c7c");
 
     private static final Object LOCK = new Object();
     private static volatile Boolean packOk;

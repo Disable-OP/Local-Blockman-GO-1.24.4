@@ -2240,7 +2240,7 @@ def main():
               and "md5" in dv16.get("data", {}) and dv16["data"].get("update") is False,
               str(dv16)[:120])
         cr16 = call("GET", "/decoration/api/v1/new/decorations/check/resource"
-                    "?resVersion=19&engineVersion=90900", None, w16h1)
+                    "?resVersion=31&engineVersion=90900", None, w16h1)
         check("w16 dress check resource", cr16.get("code") == 1
               and cr16.get("data", {}).get("needUpdate") is False
               and int(cr16.get("data", {}).get("version", 0)) >= 1,
@@ -3590,11 +3590,11 @@ def main():
     # decorate pack fixture (a real zip, >= dressPackMinBytes override)
     dzip_buf = _io.BytesIO()
     with _zipfile.ZipFile(dzip_buf, "w", _zipfile.ZIP_STORED) as z:
-        z.writestr("10-19_decorate/file0.png", b"\x89PNG\r\n\x1a\n" + b"0" * 2048)
-        z.writestr("10-19_decorate/file1.png", b"\x89PNG\r\n\x1a\n" + b"1" * 2048)
+        z.writestr("decorate_merged/file0.png", b"\x89PNG\r\n\x1a\n" + b"0" * 2048)
+        z.writestr("decorate_merged/file1.png", b"\x89PNG\r\n\x1a\n" + b"1" * 2048)
     os.makedirs(os.path.join(dir_fx, "localapi", "dress"), exist_ok=True)
     with open(os.path.join(dir_fx, "localapi", "dress",
-                           "10-19_decorate.1607431823179.zip"), "wb") as f:
+                           "decorate_merged_v31.1623125813504.zip"), "wb") as f:
         f.write(dzip_buf.getvalue())
     port_fx = random.randint(20000, 32000)
     while port_fx in (PORT, port2, port3, port4, port5, port6, port7, port8):
@@ -3726,20 +3726,26 @@ def main():
         dc0d = dc0.get("data", {})
         check("dress: v0 client needs the decorate pack",
               dc0.get("code") == 1 and dc0d.get("needUpdate") is True
-              and dc0d.get("version") == 19 and dc0d.get("hash")
+              and dc0d.get("version") == 31 and dc0d.get("hash")
               and dc0d.get("url") == "http://127.0.0.1:18080"
               + "/sandbox/dresses/dress-resources/"
-              + "10-19_decorate.1607431823179.zip"
+              + "decorate_merged_v31.1623125813504.zip"
               and dc0d.get("fileCount") == 2, str(dc0)[:250])
         dc19 = call("GET", "/decoration/api/v1/new/decorations/check/resource"
                     "?resVersion=19&engineVersion=90900", base=base_fx)
-        check("dress: v19 client is current (download-once)",
+        check("dress: v19 client still below merged v31 target",
               dc19.get("code") == 1
-              and (dc19.get("data", {}) or {}).get("needUpdate") is False,
+              and (dc19.get("data", {}) or {}).get("needUpdate") is True,
               str(dc19)[:160])
+        dc31 = call("GET", "/decoration/api/v1/new/decorations/check/resource"
+                    "?resVersion=31&engineVersion=90900", base=base_fx)
+        check("dress: v31 client is current (download-once)",
+              dc31.get("code") == 1
+              and (dc31.get("data", {}) or {}).get("needUpdate") is False,
+              str(dc31)[:160])
         dress_bytes = raw_get("http://127.0.0.1:%d/sandbox/dresses/"
-                              "dress-resources/10-19_decorate."
-                              "1607431823179.zip" % port_fx)
+                              "dress-resources/decorate_merged_v31."
+                              "1623125813504.zip" % port_fx)
         check("dress: pack served byte-exact",
               dress_bytes == dzip_buf.getvalue(),
               "%d vs %d" % (len(dress_bytes), dzip_buf.tell()))
@@ -3795,7 +3801,8 @@ def main():
             # --- REAL maps + decorate packs (same opt-in gate) ---
             # maps.tar.gz (47MB, sha256-pinned) must extract+index, the
             # g1008 BedWar bundle must serve, and the decorate check must
-            # advertise the real 10-19 pack. Budget: download ~60MB.
+            # advertise the real merged all-generations pack (35MB,
+            # v31). Budget: download ~90MB.
             maps_dir9 = os.path.join(dir_p, "localapi", "maps")
             end_maps = time.time() + 240
             while time.time() < end_maps:
@@ -3824,9 +3831,15 @@ def main():
                 d9 = dres9.get("data", {})
                 check("pack: real decorate pack advertised",
                       dres9.get("code") == 1 and d9.get("needUpdate") is True
-                      and d9.get("version") == 19 and d9.get("hash")
-                      == "a6109fdd8022452b2ffb85ebb6df5abf",
+                      and d9.get("version") == 31 and d9.get("hash")
+                      == "ae133c31151484813ee4b605a1859c7c",
                       str(dres9)[:200])
+                dzip9 = raw_get("http://127.0.0.1:%d/sandbox/dresses/"
+                                "dress-resources/decorate_merged_v31."
+                                "1623125813504.zip" % port9)
+                check("pack: real merged decorate zip serves byte-exact",
+                      len(dzip9) == 35549193 and dzip9[:2] == b"PK",
+                      "%d bytes magic=%s" % (len(dzip9), dzip9[:2].hex()))
             else:
                 check("pack: real map pack indexed", False,
                       "index.json never appeared (download slow/blocked)")

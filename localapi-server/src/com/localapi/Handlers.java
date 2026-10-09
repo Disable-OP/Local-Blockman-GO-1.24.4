@@ -1113,7 +1113,7 @@ final class Handlers {
      * (skin resource) pack check. IDecorationApi.checkDressResource;
      * response = DecorationResourcesResponse {needUpdate, version, url,
      * hash, fileCount, fileSize, cdns[]}. needUpdate=true exactly once per
-     * client generation: the client downloads the zip, stores version 19,
+     * client generation: the client downloads the zip, stores version 31,
      * and future checks answer false.
      */
     private static String dressCheckResource(Ctx ctx, StateStore store) {

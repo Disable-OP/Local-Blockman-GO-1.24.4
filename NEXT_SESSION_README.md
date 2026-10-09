@@ -2418,3 +2418,38 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 - Host suite 638/638 hermetic; LOCALAPI_REAL_PACK=1 = full 47MB e2e.
 - NEXT unchanged: MJ engine-download tap -> error-driven NEW traffic ->
   RongCloud shim decision -> GameServer phase gate (still closed).
+
+## Session 52 delta (read FIRST — all-generations decorate mega-pack shipped)
+
+- NEW MISSION (user): "Use the July 9, 2021 decoration pack inside the
+  sandbox.csv file again and all packs before so all skins LOAD in the app
+  no matter how new is it or if it's not available."
+- PACK BUILT: `decorate_merged_v31.1623125813504.zip` (35,549,193 B, md5
+  ae133c31151484813ee4b605a1859c7c, sha256 191db6d8...11d93) = the UNION of
+  EVERY dress-resource pack indexed in the dump (613 keys, 598 unique
+  contents, 2020-03-03 .. 2021-06-08, newest-wins per path) — includes the
+  1.24.4-era 10-19 bundle AND the 7-9_decorate* members (the mission's
+  "July 9" pack: the X-Y prefix reads as a date). 1,223 files; skin parts
+  span ids 1-1700 across 22 slot families (1,053 Skins/decoration files).
+- DRESS_VERSION is now 31 (the newest real decorate generation on the
+  original CDN — June 2021 snapshot; closest obtainable to "July 9 2021";
+  no July 2021 dress pack exists in the dump — verified against the full
+  72,901,865-row stream). Decorate_res_config.txt inside the pack is
+  ALIGNED to shipped bytes (10 md5s pointed at versions shipped in NO
+  pack). 292 manifest entries (face-merge/newer parts) exist in NO
+  obtainable source (verified: all packs, full dump stream, live CDN,
+  APK baseline) — they degrade gracefully (engine default art), which is
+  the "if it's not available" half of the mission; the client's overlay
+  copy (CopyDownloadToResources: overwrite=true, no deletions) covers the
+  "no matter how new" half.
+- TOOLS: /tmp is ephemeral across sandboxes — 7zz 24.09 binary +
+  reconstructed sandboxPATHS.7z (278MB, sha e279009d...) were rebuilt this
+  session; scripts/build_decorate_pack.py + finalize_decorate_pack.py in
+  the SANDBOX scripts dir (not the repo) reproduce the pack from the CDN
+  repo's index. Upload went to release `localapi-assets` (public).
+- HOST SUITE 639/639 hermetic; LOCALAPI_REAL_PACK=1 = 646/646 (real 35MB
+  pack: download -> md5 verify -> advertised v31 -> byte-exact serving).
+- NEXT: (1) tag v0.6.2-dress -> build-release -> fast test-redroid verdict
+  (device re-download of the bigger pack proves the 35MB flow on-device);
+  (2) error-driven from NEW traffic only; (3) RongCloud shim decision;
+  (4) GameServer phase gate unchanged — API first.
