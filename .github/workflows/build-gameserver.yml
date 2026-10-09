@@ -28,6 +28,11 @@ jobs:
           unzip -q android-ndk-r17c-linux-x86_64.zip
           rm android-ndk-r17c-linux-x86_64.zip
           echo "NDK=/opt/android-ndk-r17c" >> "$GITHUB_ENV"
+          # engine code carries printf-style log warnings; the NDK default
+          # -Werror=format-security turns them fatal — downgrade (matches the
+          # sandbox build config)
+          sed -i 's/-Werror=format-security/-Wno-error=format-security/g' \
+            /opt/android-ndk-r17c/build/core/default-build-commands.mk
 
       - name: Assemble sources from archives
         run: |

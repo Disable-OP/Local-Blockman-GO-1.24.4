@@ -365,6 +365,28 @@ public final class StateStore {
      * x-shahe-token when it POSTs /v1/dispatch on the dispUrl host). Kept in
      * root.miniTokens (latest 40) so dispatch can be validated for real.
      */
+    /** Same constant as Server::WEB_HTTP_SECRET (dev/server/src/Server.cpp). */
+    public static final String WEB_HTTP_SECRET = "pq0194mxoqfh48L362G6R09T737E273X";
+
+    /** SHA1(secret + userId + timestamp) — the game login token. */
+    public static String loginToken(long userId, long timestamp) {
+        try {
+            java.security.MessageDigest md =
+                    java.security.MessageDigest.getInstance("SHA-1");
+            byte[] d = md.digest((WEB_HTTP_SECRET
+                    + Long.toString(userId)
+                    + Long.toString(timestamp)).getBytes("UTF-8"));
+            StringBuilder sb = new StringBuilder(d.length * 2);
+            for (byte b : d) {
+                sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+                sb.append(Character.forDigit(b & 0xF, 16));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
     public synchronized JSONObject issueMiniToken(long userId, String gameType,
                                                   String mapName, int region) {
         JSONObject mt = root.optJSONObject("miniTokens");
@@ -378,8 +400,15 @@ public final class StateStore {
         t.put("mapName", mapName == null ? "" : mapName);
         t.put("region", region);
         t.put("requestId", Long.toHexString(System.nanoTime()));
-        t.put("signature", Long.toHexString(Double.doubleToLongBits(Math.random())));
-        t.put("timestamp", System.currentTimeMillis());
+        // The GameServer validates the login token as
+        //   SHA1(WEB_HTTP_SECRET + platformUserId + gameTimestamp)
+        // (dev/server/src/Network/C2SPacketHandles/C2SInitPacketHandles.cpp).
+        // The client echoes Dispatch.signature/timestamp into the C2S login
+        // packet, so the signature MUST be that exact hash. Same secret on
+        // both sides (Server.cpp WEB_HTTP_SECRET / GameServerManager config).
+        long tokenTs = System.currentTimeMillis() / 1000L;
+        t.put("timestamp", tokenTs);
+        t.put("signature", loginToken(userId, tokenTs));
         String key = "mg-" + userId + "-" + Long.toHexString(System.nanoTime());
         mt.put(key, t);
         // prune to the newest 40 tokens

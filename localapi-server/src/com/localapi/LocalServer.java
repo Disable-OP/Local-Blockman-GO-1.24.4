@@ -48,6 +48,20 @@ public final class LocalServer {
         copySeedAsset(app, "localapi/ScriptSetting.csv",
                 new File(new File(filesDir, "localapi"), "games_seed.csv"));
         start(filesDir, PORT);
+        // Gameplay server (engine 10068) — stage the runtime bundle, bring up
+        // the room-monitor stand-in, then launch the binary. All best-effort:
+        // failures only mean "no real match this boot", the API phase is
+        // independent. Device-only: the host test rig never reaches this.
+        Thread gs = new Thread(() -> {
+            try {
+                GameServerManager.ensure(app);
+                GameServerManager.startIfPossible(app);
+            } catch (Throwable t) {
+                L.e("gameserver boot failed: " + t);
+            }
+        }, "LocalApiGsBoot");
+        gs.setDaemon(true);
+        gs.start();
     }
 
     /**

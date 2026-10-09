@@ -40,4 +40,16 @@ public final class L {
             }
         }
     }
+    /** GameServer stdout/stderr pump — tagged separately so it is filterable. */
+    public static void gs(String msg) {
+        if (host) {
+            System.out.println("[GS] " + msg);
+        } else {
+            try {
+                android.util.Log.i("GS", msg);
+            } catch (Throwable ignore) {
+                System.out.println("[GS] " + msg);
+            }
+        }
+    }
 }

@@ -1034,7 +1034,12 @@ final class Handlers {
 
         JSONObject out = new JSONObject();
         out.put("code", 0);
-        out.put("gaddr", "127.0.0.1:18080");
+        // When the on-device GameServer is running, gaddr is its RakNet
+        // listener; the client's engine connects there for the real match.
+        // Without a running server, the legacy loopback keeps the map-download
+        // phase behavior unchanged.
+        String gameAddr = GameServerManager.gameAddr();
+        out.put("gaddr", gameAddr != null ? gameAddr : "127.0.0.1:18080");
         out.put("dispUrl", LOCAL_BASE_URL);
         out.put("croomid", croomId);
         out.put("gameType", engineType);
@@ -1062,6 +1067,15 @@ final class Handlers {
         JSONObject reqIds = new JSONObject();
         reqIds.put(String.valueOf(uid), mt.optString("requestId"));
         out.put("requestIds", reqIds);
+        // The GameServer's login gate requires the user attributes from the
+        // room monitor BEFORE the engine's C2S login lands (requestId must
+        // match Dispatch.requestIds[uid] exactly).
+        JSONObject me = store.findByUserId(uid);
+        GameServerManager.notifyDispatch(uid, mt.optString("requestId"),
+                me == null ? 1 : me.optInt("sex", 1),
+                me == null ? "" : me.optString("nickName", "Player"),
+                me == null ? 0 : me.optInt("vip", 0),
+                me == null ? "" : me.optString("country", ""));
         return envelope("obj", out.toString());
     }
 
