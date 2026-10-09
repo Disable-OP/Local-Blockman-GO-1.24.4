@@ -2823,20 +2823,39 @@ def main():
                 pressed = None
                 # icon buttons carry res-ids (text is empty) — try the
                 # enter/play/start id family first (containment, not just
-                # suffix), then visible texts. One swipe-up first so the
-                # bottom action bar (where the enter button lives on the
-                # game-detail template) is on screen.
+                # suffix), then content-desc, then the clickable children
+                # of llBottom (the game-detail template's bottom action
+                # bar), then visible texts. One swipe-up first so the
+                # bottom bar is on screen.
                 adb.sh("input swipe 540 800 540 400 300", timeout=20)
                 time.sleep(2)
                 _idre = re.compile(r"(enter|play|start|go|join)", re.I)
-                for n in screen.dump():
-                    if not (n.center and n.res):
+                _all = screen.dump()
+                for n in _all:
+                    if not n.center:
                         continue
-                    tail = n.res.rsplit("/", 1)[-1]
-                    if _idre.search(tail):
+                    tail = n.res.rsplit("/", 1)[-1] if n.res else ""
+                    desc = (n.desc or "") if hasattr(n, "desc") else ""
+                    if n.res and _idre.search(tail):
                         screen.tap_node(n)
                         pressed = "id:" + tail
                         break
+                    if desc and _idre.search(desc):
+                        screen.tap_node(n)
+                        pressed = "desc:" + desc
+                        break
+                if not pressed:
+                    for n in _all:
+                        if not (n.center and n.res
+                                and n.res.endswith("/llBottom")):
+                            continue
+                        bar_x, bar_y = n.center
+                        # llBottom spans the bottom bar: tap its center-right
+                        # (the enter control sits right of the label stack)
+                        if bar_y > 700:
+                            screen.tap(bar_x + 140, bar_y)
+                            pressed = "llBottom-center"
+                            break
                 if not pressed:
                     for _lbl in ("Start", "PLAY", "Play", "GO", "Enter"):
                         _pn = screen.find(texts=[_lbl])
@@ -2869,9 +2888,14 @@ def main():
                            "client engine path")
                 else:
                     dumpmj = screen.dump()
-                    print("  [mj] no start control found; node ids: %s" %
+                    print("  [mj] no start control found; ids: %s" %
                           [n.res.rsplit("/", 1)[-1] for n in dumpmj[:80]
                            if n.res])
+                    print("  [mj] descs: %s" %
+                          [(n.res.rsplit("/", 1)[-1] if n.res else n.cls[-16:])
+                           + ":" + (n.desc or "")[:18]
+                           for n in dumpmj[:80]
+                           if getattr(n, "desc", None)])
             else:
                 print("  [mj] no game card tappable on Home this run")
         else:
