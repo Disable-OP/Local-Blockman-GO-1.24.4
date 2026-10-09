@@ -59,7 +59,9 @@ final class DressRes {
 
     private static final int PACK_ATTEMPTS = 3;
     private static final int PACK_CONNECT_TIMEOUT_MS = 10000;
-    private static final int PACK_READ_TIMEOUT_MS = 120000;
+    /** 5 min read window: the merged pack is 35MB — slow mobile links
+     * need far more than the 2 min the 11MB-era pack was tuned for. */
+    private static final int PACK_READ_TIMEOUT_MS = 300000;
     private static final int PACK_MIN_BYTES = Integer.getInteger(
             "localapi.dressPackMinBytes", 1024 * 1024).intValue();
 
