@@ -2585,3 +2585,25 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   * If a fix is needed after run 26's verdict: prepare it, wait for run
     27 completion (~13:20Z), then push. Verdict ~20 min later.
 - Everything else (assemble/patch/build/sanity/attach steps) unchanged.
+
+## Session 55 delta 3 (read FIRST — libgameserver LINKS; one warm run from P0 closure)
+
+- RUN 26 VERDICT: THE BINARY BUILT. Log ends with
+  "Install: libgameserver => libs/arm64-v8a/libgameserver" — the link
+  succeeded; the job failed only on the step's .so filename check
+  (ndk-build installs executables WITHOUT the .so suffix). Fixed in
+  0736ce8 (normalize to libgameserver.so after build).
+- CURRENTLY IN FLIGHT: run 27 (fce9d2e) = ccache warming run (cold, from
+  11:46Z, ~90 min). It will hit the OLD filename check and "fail" — that
+  is EXPECTED and harmless: its post-step still saves the ccache. DO NOT
+  dispatch anything into the build-gameserver concurrency group until 27
+  COMPLETES (a new run would cancel it and lose the cache).
+- AFTER RUN 27 COMPLETES: dispatch build-gameserver via workflow_dispatch
+  (API POST .../actions/workflows/build-gameserver.yml/dispatches
+  {"ref":"main"}) -> run 28 = WARM (~15-20 min) with the filename fix ->
+  sanity checks -> libgameserver-arm64.so attached to localapi-assets.
+- THEN: tag v0.6.3-gameserver -> build-release (injects the .so as jniLib)
+  -> fast test-redroid (GameServer smoke step reads gs logs + server.log).
+- All ~550 TUs + link are now CI-proven. The next failure domain is
+  RUNTIME on-device (server boot, script load, map load, RakNet listen,
+  monitor connect) — the smoke step's diagnostic output is the verdict.

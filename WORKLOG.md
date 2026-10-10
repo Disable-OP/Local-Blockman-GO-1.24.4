@@ -4152,3 +4152,26 @@ resource is unavailable.
   workflow, still useful). Run 27 (fce9d2e, dispatched) = cache warming.
   RULE: never push a scripts/gameserver/** change while the warming run is
   mid-flight — the concurrency group would cancel it before the cache saves.
+
+## Session 55 cont. 2 — RUN 26 VERDICT: libgameserver LINKS AND INSTALLS (P0 reached)
+
+- Run 26 (bf66dcd) failed at the WORKFLOW STEP, not the build: the log ends
+  "Executable: libgameserver" + "Install: libgameserver =>
+  libs/arm64-v8a/libgameserver" — the link SUCCEEDED. All 208 grep "error"
+  hits are benign LordLogError macro-expansion notes (printf-style log
+  warnings already downgraded).
+- ROOT CAUSE of the step failure: ndk-build installs BUILD_EXECUTABLE
+  modules with LOCAL_MODULE_FILENAME VERBATIM (no .so suffix for
+  executables), but the step checked
+  `test -f libs/arm64-v8a/libgameserver.so`. Fixed in 0736ce8: accept
+  either filename, normalize to libgameserver.so (the name the sanity
+  step, the localapi-assets release asset, and the APK jniLib injection
+  all expect).
+- MILESTONE: the Engine 10068 GameServer now compiles AND links end-to-end
+  for arm64 with the era-matched gcc 4.9/gnustl toolchain. Remaining for
+  P0 closure: one warm CI run with the filename fix (run 28) to pass the
+  sanity checks and attach libgameserver-arm64.so to the release.
+- SEQUENCE LOCK: run 27 (warming, old filename check) must COMPLETE before
+  run 28 is dispatched — same concurrency group; dispatching early would
+  cancel 27 BEFORE its post-step saves the ccache (losing the entire warm
+  state). After 27 finishes: dispatch 28 -> ~15-20 min -> attach.
