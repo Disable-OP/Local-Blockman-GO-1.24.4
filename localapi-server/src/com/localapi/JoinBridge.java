@@ -50,9 +50,10 @@ public final class JoinBridge {
 
     private static final String TAG = "JoinBridge";
     /** Room attributes push retry budget (the monitor link must be up
-     *  BEFORE the engine's C2S login lands — the login gate matches
-     *  requestId against the pushed attrs). */
-    private static final int ATTR_PUSH_TRIES = 15;
+     *  BEFORE the engine's C2S login lands - the login gate matches
+     *  requestId against the pushed attrs). 30s: the engine's monitor
+     *  link can be mid-reconnect after an app-process churn. */
+    private static final int ATTR_PUSH_TRIES = 30;
 
     private JoinBridge() {}
 
@@ -125,11 +126,16 @@ public final class JoinBridge {
             }
 
             // startGame must run on the UI thread (startActivityForResult);
-            // the attr pushes poll the monitor link off it.
+            // the map pre-placement + attr pushes run off it.
             final long fUid = uid;
             final String fNick = nick;
             new Thread(new Runnable() {
                 @Override public void run() {
+                    // Pre-place the map bundle where MapManager::n expects
+                    // it - the engine's own downloader cannot create the
+                    // emulated-storage dir chain (run 38089237461: CreateDir
+                    // error 17 -> onDownloadMapFailure x2 -> no connect).
+                    GameServerManager.ensureEngineMap();
                     boolean pushed = false;
                     for (int i = 0; i < ATTR_PUSH_TRIES; i++) {
                         GameServerManager.notifyDispatch(fUid, requestId, 1,

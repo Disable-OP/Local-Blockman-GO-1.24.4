@@ -88,10 +88,20 @@ final class MapAssets {
 
     // ------------------------------------------------------------ lifecycle
 
+    /** The store the index/pack were built against (saved by ensure). */
+    private static volatile StateStore sStore;
+
     /** Boot hook: load a persisted index if present, then ensure the pack. */
     static void ensure(StateStore store) {
+        sStore = store;
         loadIndex(store);
         startPackThread(store);
+    }
+
+    /** The live store (null before the first ensure) — used by
+     *  GameServerManager.ensureEngineMap to reach the served map zip. */
+    static StateStore store() {
+        return sStore;
     }
 
     /** scriptType -> map bundle entry, or null (also accepts "1008" form). */

@@ -250,6 +250,10 @@ public final class LocalServer {
             Skins.ensure(store);         // real skin catalog + icon-pack thread
             MapAssets.ensure(store);     // official map packs (engine bundles)
             DressRes.ensure(store);      // decorate/skin resource pack
+            // Pre-place the client engine's map bundle (mapExistsAndValid
+            // layout) when the pack is already staged; if the pack thread
+            // is still downloading, JoinBridge retries this at join time.
+            GameServerManager.ensureEngineMap();
             LocalHttpd server = new LocalHttpd(port, store);
             server.start(15000, true);
             httpd = server;

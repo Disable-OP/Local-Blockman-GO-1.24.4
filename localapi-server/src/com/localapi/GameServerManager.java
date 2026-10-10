@@ -308,6 +308,145 @@ public final class GameServerManager {
     // ------------------------------------------------------------------
 
     /**
+     * Pre-place the engine's map bundle where the CLIENT engine's
+     * MapManager::n (mapExistsAndValid) expects it, so the engine's own
+     * downloader is never needed: its native PathUtil::CreateDir fails on
+     * the emulated-storage dir chain ("error code 17, dir [storage/emulated/]",
+     * run 38089237461) and CGame::onDownloadMapFailure aborts after two
+     * tries — the RakNet connect then never happens.
+     *
+     * Expected layout (MapManager.cpp lines 36-107):
+     *   <root>/<spelling>/BlockMan/map/m1008_2/                     (dir)
+     *   <root>/<spelling>/BlockMan/map/m1008_2/<mapNameReal>.zip    (file)
+     *   <root>/<spelling>/BlockMan/map/m1008_2/<mapNameReal>/       (extracted,
+     *                                    with a verifying checksums.md5)
+     * A stale <mapNameReal>_temp.zip (broken-transfer marker) is removed.
+     *
+     * The zip source is the same file the local server serves at
+     * /sandbox/games/maps/<zipName> (the official map bundle). Idempotent:
+     * existing byte-identical zip + extracted dir are left untouched.
+     * Both "SandboxOL" (the engine's own spelling seen in client.log) and
+     * "SandBoxOL" (the app's logdir spelling) are covered.
+     */
+    public static void ensureEngineMap() {
+        try {
+            StateStore store = MapAssets.store();
+            if (store == null) {
+                L.e("gs: ensureEngineMap: no store yet");
+                return;
+            }
+            JSONObject entry = MapAssets.entryForGame(ENGINE_GAME_ID);
+            String zipName = entry == null ? "" : entry.optString("zipName");
+            if (zipName == null || zipName.isEmpty() || !zipName.endsWith(".zip")) {
+                L.e("gs: ensureEngineMap: no map bundle entry for "
+                        + ENGINE_GAME_ID);
+                return;
+            }
+            File zip = MapAssets.resolveUri(store, "sandbox/games/maps/" + zipName);
+            if (zip == null || !zip.isFile()) {
+                L.e("gs: ensureEngineMap: bundle not staged yet (" + zipName + ")");
+                return;
+            }
+            String mapNameReal = zipName.substring(0, zipName.length() - 4);
+            int placed = 0;
+            File ext = Environment.getExternalStorageDirectory();
+            File[] roots = (ext != null)
+                    ? new File[]{ext, new File("/storage/emulated/0")}
+                    : new File[]{new File("/storage/emulated/0")};
+            for (File root : roots) {
+                if (root == null) continue;
+                for (String spelling : new String[]{"SandboxOL", "SandBoxOL"}) {
+                    File mapIdDir = new File(root,
+                            spelling + "/BlockMan/map/" + ENGINE_MAP_ID);
+                    if (placeMap(mapIdDir, zip, mapNameReal)) placed++;
+                }
+            }
+            L.i("gs: ensureEngineMap placed " + placed + " map tree(s) ("
+                    + zipName + ", " + zip.length() + " B)");
+        } catch (Throwable t) {
+            L.e("gs: ensureEngineMap failed: " + t);
+        }
+    }
+
+    /** Copy + extract the map bundle into mapIdDir. Returns true when the
+     *  extracted tree exists afterwards. Never throws. */
+    private static boolean placeMap(File mapIdDir, File zip, String mapNameReal) {
+        try {
+            if (!mapIdDir.isDirectory() && !mapIdDir.mkdirs()) {
+                L.e("gs: placeMap: mkdirs failed: " + mapIdDir);
+                return false;
+            }
+            File dstZip = new File(mapIdDir, mapNameReal + ".zip");
+            if (!dstZip.isFile() || dstZip.length() != zip.length()) {
+                copy(zip, dstZip);
+            }
+            // broken-transfer marker must not survive (mapExistsAndValid
+            // refuses to run when it exists)
+            new File(mapIdDir, mapNameReal + "_temp.zip").delete();
+            File exDir = new File(mapIdDir, mapNameReal);
+            File sum = new File(exDir, "checksums.md5");
+            if (!sum.isFile()) {
+                // wipe any partial tree first: mapExistsAndValid also checks
+                // the file COUNT against the md5 entries, so a truncated
+                // extraction would fail verification forever
+                deleteRecursive(exDir);
+                unzipZip(dstZip, exDir);
+            }
+            return exDir.isDirectory()
+                    && new File(exDir, "checksums.md5").isFile();
+        } catch (Throwable t) {
+            L.e("gs: placeMap " + mapIdDir + " failed: " + t);
+            return false;
+        }
+    }
+
+    /** Recursive delete (partial extraction cleanup). */
+    private static void deleteRecursive(File f) {
+        try {
+            File[] kids = f.listFiles();
+            if (kids != null) {
+                for (File k : kids) deleteRecursive(k);
+            }
+            f.delete();
+        } catch (Throwable ignored) {}
+    }
+
+    /** Plain zip extraction (entries keep their relative paths). */
+    private static void unzipZip(File zip, File intoDir) throws Exception {
+        java.util.zip.ZipFile zf = new java.util.zip.ZipFile(zip);
+        try {
+            java.util.Enumeration<?> en = zf.entries();
+            byte[] buf = new byte[64 * 1024];
+            while (en.hasMoreElements()) {
+                java.util.zip.ZipEntry e = (java.util.zip.ZipEntry) en.nextElement();
+                if (e.isDirectory()) continue;
+                File out = new File(intoDir, e.getName());
+                if (!out.getCanonicalPath().startsWith(
+                        intoDir.getCanonicalPath() + File.separator)) {
+                    continue; // zip-slip guard
+                }
+                File parent = out.getParentFile();
+                if (parent != null) parent.mkdirs();
+                InputStream in = null;
+                OutputStream os = null;
+                try {
+                    in = zf.getInputStream(e);
+                    os = new FileOutputStream(out);
+                    int n;
+                    while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
+                } finally {
+                    if (in != null) in.close();
+                    if (os != null) os.close();
+                }
+            }
+        } finally {
+            zf.close();
+        }
+    }
+
+    // ------------------------------------------------------------------
+
+    /**
      * The client writes client.log into SandBoxOL/BlockMan/config on the
      * FIRST emulated storage root (the user-visible path is
      * /storage/emulated/0/SandBoxOL/BlockMan/config). The <id> differs per
