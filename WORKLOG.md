@@ -4068,3 +4068,76 @@ resource is unavailable.
   implements the framed-JSON protocol + requestId-gated user-attr push.
 - RUN 24 (316ae10) in flight — first run where every compile TU is locally
   verified; link verdict expected ~90 min after 08:32:30Z.
+
+## Session 55 — link stage reached: two undefined C symbols fixed (2026-10-10)
+
+- RUN 24 (316ae10) VERDICT: failed in a C TU — gs_compat.h (force-included
+  via COMMON_FLAGS) is C++-only and C-mode TUs (curl/zlib are C) choked on
+  it. Fixed in 3cdd3e0 by __cplusplus-guarding the whole shim; CI-side
+  proof: curl + zlib compile clean in run 25.
+- RUN 25 (3cdd3e0) VERDICT — MILESTONE: the build reached the EXECUTABLE
+  LINK for the first time (all 12 static libs built: Logic, LordCore,
+  behaviac, hiredis, raknet, cpr, lua, freeimage, freetype, g3log, curl,
+  zlib). Link failed with EXACTLY two undefined symbols:
+  * luaopen_bitop  <- LuaEngine.h:60 (LuaEngine::init, after luaL_openlibs)
+  * ini_parse      <- IdMapping.cpp:16 (readConfig of id_mappings.ini)
+- ROOT CAUSE: the Logic module's LOCAL_SRC_FILES uses
+  `$(shell find $(LOGIC) -name '*.cpp')` — it skips C files. Both symbols
+  live in the only two .c files under dev/logic:
+  LuaRegister/3rd/lbitop.c (LuaBitOp) and Util/ini.c (inih). The engine's
+  own build compiled them; our generated mk silently dropped them.
+- FIX (bf66dcd): add the two files explicitly to the Logic module in
+  jni/Android.mk (commented; ndk-build compiles .c with the C toolchain).
+- LOCAL VERIFICATION: exact CI compile commands extracted via
+  `ndk-build -nB` and executed with NDK r17c gcc 4.9 — both TUs compile
+  clean (only benign C-vs-C++ option warnings: -fpermissive/-frtti/
+  -Wno-delete-non-virtual-dtor). nm confirms luaopen_bitop (T) +
+  ini_parse/ini_parse_file/ini_parse_stream/ini_parse_string (T);
+  lbitop.o's lua API deps resolve against the bundled Lua 5.1
+  (luaL_register in lauxlib.c); ini.o needs libc only. No duplicate
+  symbols anywhere (no other luaopen_bitop/ini_parse definition in the
+  tree). `ndk-build -nB` shows both objects archived into libLogic.a.
+- RUN 26 (bf66dcd) in flight — first run where the LINK inputs are fully
+  locally verified; verdict expected ~90 min after 10:54Z.
+- RUNTIME BUNDLE AUDIT (P2/P3 de-risk while CI cycles; the arm64 binary
+  cannot execute in this sandbox, so this static audit is the strongest
+  local signal): downloaded the SHIPPED release artifact
+  gameserver-runtime-g1008.tar.gz (sha f9bbf1227eac3dad... matches) and
+  audited it against the engine's startup expectations
+  (scripts/audit_runtime_bundle.py in the sandbox):
+  * PASS 15 / FAIL 0. resource.cfg 26 FileSystem entries — 13 dirs absent
+    but PROVEN benign (FileSystemArchive::load() is empty; list() ->
+    EnumFilesInDir returns on opendir()==NULL; Root.cpp setupResource
+    never fails on missing dirs). Server-read dirs (../client/Media/GUI
+    imageset/Font/LordCore) are present.
+  * scriptdir contract holds: scripts/BedWar/{ScriptMain.lua,
+    base/BaseMain.lua} + 230 lua files (merged Common+BedWar/main tree).
+  * GameSetting contract holds: g1001_g1030/BedWar/ + id_mappings.ini
+    (Server.cpp strips "Media/Scripts/" off ScriptSetting path).
+  * mapdir contract holds: maps/g1008/m1008_2 config.yml + 230 files.
+    The map's setting/ subtree misses 10 setting csvs (only
+    BlockSetting.csv ships) — PROVEN graceful: every Setting::loadSetting
+    early-returns false on CsvReader::LoadFile failure (FurnaceSetting.cpp
+    pattern), and this IS the official map zip (the real server got the
+    same bytes). dynamic/ holds the schematic set; FruitsBlock.csv absent
+    = no fruit blocks config (graceful, same reason).
+  * engineVersion.json = 10068 on both server/ and client/Media/.
+- CLIENT-SIDE MAP DELIVERY VERIFIED (P2 closure): the shipped
+  maps.tar.gz (47,411,314 B, 57 bundles) contains
+  m1008_2.1625226508247.zip — the SAME official zip the server bundle's
+  maps/g1008/m1008_2 was extracted from. Catalog seeds g1008 (gameId
+  "1008") from the client's own ScriptSetting.csv; dispatch downurl ->
+  loopback CDN bundle serving was byte-exact-verified in session 51.
+- APK WIRING RE-VERIFIED: build_signed_apk.sh injects
+  libgameserver-arm64.so from release localapi-assets as jniLib
+  (fbe7c56); GameServerManager.findBinary probes nativeLibraryDir first,
+  release download fallback second; LocalServer boots ensure()+
+  startIfPossible(); Handlers serves Dispatch.gaddr=127.0.0.1:31108 while
+  alive and pushes user attrs post-dispatch. The workflow's
+  `strings | grep pq0194...` sanity step will pass: WEB_HTTP_SECRET is a
+  compile-time const in Server.cpp:110.
+- NEXT (post run 26): green -> tag v0.6.3-gameserver -> build-release
+  (auto-injects the .so) -> fast test-redroid smoke (process + server.log
+  verdict). Red at link -> read the artifact; remaining failure domain:
+  symbol resolution from the two new C objects (low risk, verified) or
+  duplicate-symbol conflicts (verified none).

@@ -2520,3 +2520,44 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   needs the two-step auth dance (scripts/fetch_artifact.py in /home/z/
   my-project/scripts does it correctly); token = last base64 line of the
   pasted content file (decode in memory only).
+
+## Session 55 delta (read FIRST — link stage reached; two C TUs fixed; bundle audit PASS)
+
+- STATE: run 25 (3cdd3e0) reached the EXECUTABLE LINK for the first time
+  (all 12 static libs OK) and failed on EXACTLY two undefined symbols:
+  luaopen_bitop (LuaEngine.h:60) + ini_parse (IdMapping.cpp:16). Both live
+  in the only two .c files under dev/logic (LuaRegister/3rd/lbitop.c,
+  Util/ini.c) which the Logic module's `find -name '*.cpp'` skipped.
+  FIXED in bf66dcd (explicit LOCAL_SRC_FILES += in jni/Android.mk);
+  locally verified with the exact CI commands + nm. Run 26 (bf66dcd) =
+  the CI verdict.
+- RUNTIME BUNDLE AUDITED (shipped artifact, sha-verified): PASS 15/FAIL 0.
+  Key proofs: missing resource.cfg dirs are benign (empty
+  FileSystemArchive::load + EnumFilesInDir opendir-NULL return); the map's
+  missing setting/*.csv are graceful (every Setting::loadSetting
+  early-returns on LoadFile failure — and this IS the official map zip);
+  scriptdir/GameSetting/mapdir/engineVersion contracts all hold. Audit
+  script lives in the SANDBOX: /home/z/my-project/scripts/
+  audit_runtime_bundle.py (re-run after any bundle rebuild).
+- CLIENT MAP DELIVERY CLOSED (P2): maps.tar.gz (57 bundles) contains
+  m1008_2.1625226508247.zip — same official zip the server bundle uses;
+  catalog g1008 + dispatch downurl verified in session 51.
+- IF RUN 26 GREEN: the workflow auto-attaches libgameserver-arm64.so to
+  release localapi-assets. Then: tag v0.6.3-gameserver -> build-release
+  (build_signed_apk.sh injects the .so as jniLib) -> fast test-redroid
+  (GameServer smoke step prints process/gs-logs/server.log verdicts; they
+  are diagnostic-only — read them, don't assume pass).
+- IF RUN 26 RED AT LINK: read the ndk-build-log artifact. Remaining risk
+  domains: (a) unresolved lua API deps of lbitop.o — would mean the lua
+  module in Android.mk is missing a TU (it compiles lauxlib.c per run 25's
+  liblua.a step); (b) duplicate symbols (pre-verified none); (c) a THIRD
+  hidden dependency behind newly-pulled libLogic.a members (ld lists ALL
+  unresolved at once — run 25 showed only these two, so risk is low).
+- REMINDERS: full ndk-build does NOT fit the sandbox (memory); use
+  `ndk-build -nB` to extract exact commands + -fsyntax-only/full -c for
+  single TUs; CI is the build authority. PAT = last base64 line of the
+  pasted-content file — NOTE: the actual token is on line 1677
+  (github_pat_...), NOT the literal last line (which is prose); decode in
+  memory only. Push requires GH_PAT exported in the SAME shell call.
+  Concurrency: parallel cron loops may push — `git fetch` right before
+  commit, rebase if origin moved.
