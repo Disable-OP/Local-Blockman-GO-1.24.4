@@ -2624,3 +2624,11 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   GameServer smoke verdict (gs logs + server.log diagnostics).
 - Verify the caches after run 28: GET /actions/caches (expect 2 entries:
   ccache-gs-<run28> ~multiple GB + ndk-r17c-linux-x86_64).
+
+## Session 56 delta (read FIRST — first on-device SIGSEGV root-caused; patch 3i shipped)
+
+- DISPROVEN: the "argc==1 getTestRGConfig UB" diagnosis from cont. 6. The #213 tombstone shows argv[1] WAS passed; frame #12 is the linker's call_constructors — the crash is in a STATIC INITIALIZER, before main(). Same pc 0x1d26868 both runs.
+- ROOT CAUSE (decoded via dynsym-bracketing + capstone on the shipped .so, source cross-checked from the repo archives): MallocBinned::FreeInternal's FindPoolInfo MISSES (freed pointer never registered) -> `Pool->TableIndex` on NULL (asserts compiled out) -> SIGSEGV 0x2. The miss happens during RuntimeClass registration (init_array[49]) on a vector push_back realloc -> deallocate. Full evidence chain in WORKLOG.md session 56.
+- SHIPPED (488fa27): patch 3i = null-Pool guards in FreeInternal/Realloc/GetAllocationSize; untracked pointers are LOGGED (logcat tag GSALLOC) and LEAKED, never dereferenced. Verified idempotent on a fresh tree.
+- NEXT (in order): (1) watch the build-gameserver run for 488fa27 (WARM, ~15-20 min — ccache from run 28); (2) when green, tag v0.6.4-gameserver -> build-release (injects the .so) -> test-redroid smoke: EXPECT "gs: launched" + either engine boot progress in server.log or GSALLOC "untracked-free ptr=..." lines naming the culprit pointer; (3) if GSALLOC fires, decode the pointer's region (scudo libc vs allocator page) and fix the allocation-side mismatch; (4) if boot passes config/scripts/map, the next gate is RakNet listen on 31108 + monitor connect (127.0.0.1:18081), then the CLIENT dispatch -> in-game, then bots.
+- METHOD NOTE for future sessions: the stripped .so IS symbolizable — 28,959 exported dynsyms bracket unexported code well; capstone (pip, python3.13) disassembles; PLT stubs resolve via .rela.plt (plt@0x6a0e00, header 32B, entry 16B); the engine source for EVERY TU is in the repo-root archives (assemble_sources.sh layout).

@@ -4264,3 +4264,20 @@ resource is unavailable.
   engine stderr lines that don't contain those substrings — the
   redroid-diagnostics artifact (full logcat + crash.txt) is the real
   evidence source for server-side crashes.
+
+## Session 56 — first on-device SIGSEGV root-caused: MallocBinned untracked-free NULL deref (2026-10-10)
+
+- STARTING STATE: build-release #74 (8ec01b2, argv[1] config fix) GREEN; test-redroid #213 ran it. The engine STILL died with 3 identical SIGSEGVs (fault addr 0x2, ~100ms after exec) at the SAME pc as run #212 — the previous session's getTestRGConfig diagnosis is DISPROVEN: the tombstone Cmdline shows argv[1] WAS the full config JSON, and backtrace frame #12 is `linker64 soinfo::call_constructors` — the crash happens in a STATIC INITIALIZER, before main() is ever reached.
+- SYMBOLIZATION WITHOUT A SYMTAB: the stripped 50MB executable exports 28,959 dynsyms (no hidden visibility). Resolved the crash region by bracketing: pc 0x1d26868 (crash), 0x1d26720 (vcall), 0x6a25c0 (deallocateBytes thunk), 0x1545d64..0x1548168 (a RuntimeClass-registration TU), + .init_array[49] = 0x1548158 (EntityCreatureBullet.cpp's static init, per the neighboring exports).
+- CRASH DECODED (capstone on the shipped .so + the engine source from the repo archives):
+  * pc 0x1d26868 = `ldrh w1, [x4, #2]` with x4=0 = `Pool->TableIndex` with Pool==NULL
+  * = MallocBinned::FreeInternal: FindPoolInfo(ptr) walked its 17-page backward search (BINNED_ALLOC_POOL_SIZE/PageSize+1) and MISSED, then dereferenced NULL — the two `assert(Pool)` above it are compiled out under APP_OPTIM=release
+  * call chain: init_array[49] -> RuntimeClass ctor (classId at +0x10, parent at +0x18 confirmed in the disasm) -> addchild -> m_children.push_back -> realloc grow -> SA::deallocate -> BinnedAllocPolicyNoMemTrace::deallocateBytes (thunk 0x6a25b0) -> MallocBinnedMgr::Free (0x1d266ec) -> G_MB->vtable[+0x20] Free (0x1d26774) -> FindPoolInfo miss -> NULL deref
+- BINARY AUDIT (everything checked 1:1 against the source, all CONSISTENT — no miscompile found):
+  * vtable slots of the 0x40700-byte MallocBinned singleton: D1/D0/Malloc(0x1d26ae0)/Realloc(0x1d25bbc)/Free(0x1d26774); Malloc's GetPoolInfo registration path (HashBuckets init + placement-new loop + bucket insert) IS present in the binary
+  * exactly ONE G_MB global (0x30ae930; 4 refs, all in the Mgr facade thunks)
+  * hash constants (PoolBitShift 12, IndirectPoolBitShift 7, HashKeyShift 19, MaxHashBuckets 8192 from 4GB>>19, PoolMask 127, PageSize 4096) computed correctly in the lazy-init
+  * SPoolInfo layout matches the compiled strides (32B, TableIndex@+2, AllocSize@+4); operator new/delete are the standard libc pair (no global override); the >4GB AddressLimit design is chain-tolerant ("lookups just a little slower")
+  * => the miss is a RUNTIME state issue (a pointer freed through the binned allocator that was never registered), not a compile-time bug; the era release build had the same latent NULL-deref — the original Linux runtime simply never hit the miss.
+- FIX (patch 3i, 488fa27): null-Pool guards in FreeInternal (log via __android_log_print "GSALLOC" + LEAK — leaking is strictly safer than freeing a pointer of unknown ownership), Realloc (grow fresh + leak old), GetAllocationSize (return false). -llog was already linked. Applied through scripts/gameserver/patch_sources.py (anchor-checked, idempotent, verified twice on a fresh tree). Expected verdicts for the next test-redroid: either the engine boots past static init (resource.cfg -> scripts -> map -> RakNet listen) and server.log appears, or it boots and GSALLOC lines identify the exact untracked pointers — both are forward progress.
+- SANDBOX NOTE: this fresh sandbox had to re-derive the tooling: pyelftools+capstone via pip (--break-system-packages, python3.13); NDK not present (CI remains the build authority); the repo archives re-extracted for the source audit.
