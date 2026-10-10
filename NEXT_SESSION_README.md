@@ -2607,3 +2607,20 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 - All ~550 TUs + link are now CI-proven. The next failure domain is
   RUNTIME on-device (server boot, script load, map load, RakNet listen,
   monitor connect) — the smoke step's diagnostic output is the verdict.
+
+## Session 55 delta 4 (read FIRST — run 28 in flight = the complete run)
+
+- Run 27 outcome: compiled everything, job failed on the OLD filename
+  check, and actions/cache's implicit post-step save was SKIPPED on
+  failure — 0 caches saved. Lesson encoded in bb2b715: explicit
+  actions/cache/save with if: always() for ccache + NDK.
+- RUN 28 (bb2b715, dispatched ~13:53Z, COLD ~95 min) = the run to watch:
+  on success it (a) passes the sanity checks (filename normalization),
+  (b) attaches libgameserver-arm64.so to release localapi-assets, and
+  (c) saves ccache + NDK caches. After it, ALL iterations are warm
+  (~15-20 min).
+- AFTER RUN 28 GREEN: tag v0.6.3-gameserver -> build-release (APK with
+  the injected .so) -> fast test-redroid auto-runs (workflow_run) ->
+  GameServer smoke verdict (gs logs + server.log diagnostics).
+- Verify the caches after run 28: GET /actions/caches (expect 2 entries:
+  ccache-gs-<run28> ~multiple GB + ndk-r17c-linux-x86_64).

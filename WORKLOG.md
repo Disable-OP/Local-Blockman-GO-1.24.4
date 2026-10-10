@@ -4175,3 +4175,20 @@ resource is unavailable.
   run 28 is dispatched — same concurrency group; dispatching early would
   cancel 27 BEFORE its post-step saves the ccache (losing the entire warm
   state). After 27 finishes: dispatch 28 -> ~15-20 min -> attach.
+
+## Session 55 cont. 3 — run 27 lesson: cache save skipped on failure; run 28 = cold-but-complete
+
+- Run 27 (fce9d2e, warming) compiled ALL ~550 TUs with ccache and hit the
+  old filename check (expected) — job failure. LESSON: actions/cache@v4's
+  implicit post-step save is SKIPPED when the job fails ("Post Restore
+  ccache: skipped") — 58 min of compile state lost, 0 caches in the repo.
+- FIX (bb2b715): split into actions/cache/restore@v4 + explicit
+  actions/cache/save@v4 with if: always() for BOTH the ccache and the NDK
+  path; key shared via job-level env CCACHE_CACHE_KEY.
+- Run 28 (bb2b715, dispatched 13:53Z) is COLD (~95 min) but COMPLETE:
+  cold build -> filename normalization (0736ce8) -> sanity checks ->
+  libgameserver-arm64.so attached to localapi-assets (P0 closure) ->
+  ccache+NDK saved for every future run (warm = ~15-20 min).
+- The warming detour cost one cycle but bought two durable workflow
+  behaviors: caches survive failures, and the concurrency group stops
+  wasted superseded runs.
