@@ -3074,12 +3074,13 @@ def main():
     gj0_disp = gj0_local.count("REQ POST /v1/dispatch")
     gj_echo0 = gj_engine_up()
     gj_pressed = None
-    # 480s overall in BOTH modes: the join DRIVE (up to 3 cards x ~85s)
-    # runs first, and the verification poll gets the remaining >=300s.
+    # 600s overall in BOTH modes: the join DRIVE (scroll + up to 3 card
+    # tries x ~85s) runs first, and the verification poll reserves 300s.
     # History: the client's dispatch for an ONLINE game fires within
-    # seconds of the press (old MJ evidence); hall games never dispatch
-    # (no auto-match) — hence the multi-card drive.
-    gj_deadline = time.time() + 480.0
+    # seconds of the press (old MJ evidence); hall/Sandbox games never
+    # dispatch (no auto-match) — hence the multi-card drive with
+    # category filtering + scrolling.
+    gj_deadline = time.time() + 600.0
     if gj_echo0:
         ok("GJ: engine already up (EchoesActivity running) — verifying the "
            "live join instead of re-driving the UI")
@@ -3119,51 +3120,91 @@ def main():
                       "land on the legacy loopback 18080)")
             # ---- join drive: try up to 3 hall cards until the CLIENT's
             # own dispatch chain fires. DECODED (runs 38076646322 +
-            # 38079472538): HALL games (the Bedwars hall, pinned first)
-            # boot a LOCAL hall world whose room entry is GL-rendered —
-            # the client sits in the hall for the whole window with ZERO
-            # dispatch traffic (no auto-match); the "chain" seen after GJ
-            # in past runs was PHASE C's fcall sequence, not the client.
-            # NON-hall online games' "Quick in" fires game-auth ->
-            # MiniGameToken -> dispatch within seconds (the old MJ
-            # evidence) — and the dispatch PIN redirects ANY of them to
-            # the on-device BedWar room (g1008/m1008_2, gaddr 31108,
-            # server-authoritative), so any online join lands in Bedwars.
-            _cards = []
-            _seen_t = set()
-            for n in screen.dump():
-                if not (n.center and n.text):
-                    continue
-                if n.center[1] < 200 or n.center[1] > 980:
-                    continue
-                if len(n.text.strip()) < 3 or n.text in _seen_t:
-                    continue
-                _seen_t.add(n.text)
-                _cards.append(n)
-            _cards.sort(key=lambda n: 0 if re.search(
-                r"bed\s*war", n.text or "", re.I) else 1)
-            print("  [gj] card candidates: %s"
-                  % [n.text[:14] for n in _cards[:6]])
+            # 38079472538 + 38081120192): (a) HALL games (Bedwars hall,
+            # PvP Arena category) and Sandbox games boot a LOCAL engine
+            # world whose room entry is GL-rendered — ZERO dispatch
+            # traffic, no auto-match (the "chain" seen in past runs was
+            # PHASE C's fcall sequence, not the client); (b) the engine
+            # hall session traps the BACK-walk (GL menus), so later card
+            # tries never reached a detail page. NON-hall ONLINE games'
+            # "Quick in" fires game-auth -> MiniGameToken -> dispatch
+            # within seconds (old MJ evidence) — and the dispatch PIN
+            # redirects ANY of them to the on-device BedWar room
+            # (g1008/m1008_2, gaddr 31108, server-authoritative), so any
+            # online join lands in Bedwars. Candidate filter: pair each
+            # name node with the category text under it and EXCLUDE
+            # Sandbox + PvP Arena (halls) cards entirely.
+            _cat_re = re.compile(r"^(sandbox|pvp arena|role playing|"
+                                 r"parkour|casual|adventure|shooting|"
+                                 r"pixel|tower defense|obby|horror)$", re.I)
+
+            def _collect_cards():
+                """Named cards on the CURRENT screen whose paired category
+                is neither Sandbox nor PvP Arena (halls) — those never
+                dispatch (local worlds + GL-trapped halls)."""
+                nodes = [n for n in screen.dump()
+                         if n.center and 200 < n.center[1] < 980]
+                cats = [n for n in nodes if n.text
+                        and _cat_re.match(n.text.strip())]
+                out, seen = [], set()
+                for n in nodes:
+                    t = (n.text or "").strip()
+                    if len(t) < 4 or t in seen or _cat_re.match(t):
+                        continue
+                    if re.match(r"^\d+$", t) or t in ("Guess You Like",):
+                        continue
+                    cat = ""
+                    for c in cats:
+                        if c is n or not c.center:
+                            continue
+                        if abs(c.center[0] - n.center[0]) < 130 and \
+                                0 < c.center[1] - n.center[1] < 90:
+                            cat = c.text.strip()
+                            break
+                    if cat.lower() in ("sandbox", "pvp arena"):
+                        continue
+                    seen.add(t)
+                    out.append(n)
+                return out
+
+            _cards = _collect_cards()
+            _scrolled = 0
+            while len(_cards) < 3 and _scrolled < 4:
+                adb.sh("input swipe 540 900 540 300 300", timeout=20)
+                time.sleep(3)
+                _scrolled += 1
+                for n in _collect_cards():
+                    if all((n.text or "") != (k.text or "")
+                           for k in _cards):
+                        _cards.append(n)
+            print("  [gj] card candidates (online games, after %d scrolls): "
+                  "%s" % (_scrolled, [n.text[:14] for n in _cards[:6]]))
             _disp_before = adb.raw("logcat", "-d", "-s", "LocalAPI",
                                    timeout=60).count("REQ POST /v1/dispatch")
             for _ci, _card in enumerate(_cards[:3]):
                 gj_pressed = None
-                if time.time() > (gj_deadline - 240):
+                if time.time() > (gj_deadline - 300):
                     print("  [gj] join-drive deadline guard hit (card %d)"
                           % _ci)
                     break
                 if _ci > 0:
-                    # ground at Home between tries (BACK out of the hall
-                    # engine / detail first)
-                    for _ in range(4):
+                    # exit whatever the previous try opened (the engine
+                    # hall traps BACK in GL menus — forge the way home)
+                    for _ in range(3):
                         if screen.find(ids=["rb_1"]):
                             break
                         adb.key(4)
                         time.sleep(2)
+                    if not screen.find(ids=["rb_1"]):
+                        adb.sh("am start --activity-clear-top -n %s/%s"
+                               % (args.package, args.activity), timeout=30)
+                        time.sleep(6)
                     _rb1 = screen.find(ids=["rb_1"])
                     if _rb1:
                         screen.tap_node(_rb1)
                         time.sleep(3)
+                    _card = screen.find(texts=[(_card.text or "")[:20]]) \
+                        or _card
                 if not screen.tap_node(_card):
                     continue
                 screen.snap("GJ_card%d" % _ci)
