@@ -55,7 +55,16 @@ public final class LocalServer {
         Thread gs = new Thread(() -> {
             try {
                 GameServerManager.ensure(app);
-                GameServerManager.startIfPossible(app);
+                // Retry the start: the FIRST boot can still be staging the
+                // 64MB bundle when the one-shot attempt finds resource.cfg
+                // missing (run 38073049374: the first boot never started
+                // the engine at all). The serving gate inside
+                // startIfPossible makes standby iterations instant no-ops.
+                for (int i = 0; i < 12 && !GameServerManager.isAlive(); i++) {
+                    GameServerManager.startIfPossible(app);
+                    if (GameServerManager.isAlive()) break;
+                    Thread.sleep(5000);
+                }
             } catch (Throwable t) {
                 L.e("gameserver boot failed: " + t);
             }
@@ -238,6 +247,15 @@ public final class LocalServer {
     /** Host-rig only: reach the live server so a test can stop it beneath us. */
     static LocalHttpd currentServer() {
         return httpd;
+    }
+
+    /** True when THIS process's httpd is the one answering 127.0.0.1:18080.
+     *  The GameServer engine must live in the serving process only: its
+     *  room-monitor and dispatch state are in-process, so a standby
+     *  sibling spawning its own engine just steals the RakNet 31108 bind
+     *  from the holder's engine (run 38073049374 evidence). */
+    public static boolean isServingLoopback() {
+        return isUp();
     }
 
     public static boolean isRunning() {

@@ -40,6 +40,15 @@ public final class GameServerManager {
     /** RakNet listen port the engine will be pointed at via Dispatch.gaddr. */
     public static final int GAME_PORT = 31108;
 
+    /** The room this manager configures the engine with (serverConfig.json):
+     *  a BedWar g1008 room on map m1008_2. Dispatch pins every join to THIS
+     *  game while the server is alive (Handlers.dispatch) — the engine is
+     *  server-authoritative, so whatever hall card the player tapped, the
+     *  room they join runs the game the on-device server actually hosts. */
+    public static final String ENGINE_GAME_ID = "g1008";
+    public static final String ENGINE_MAP_ID = "m1008_2";
+    public static final String ENGINE_GAME_NAME = "BedWar";
+
     private static final String BUNDLE_DIR = "gameserver-bundle";
     private static final String STAGE_VERSION_FILE = "stage-version";
     private static final String STAGE_VERSION = "g1008-b2"; // bump to restage
@@ -64,6 +73,9 @@ public final class GameServerManager {
     private static File sBundleDir;
     private static File sLogDir;
     private static boolean sAttempted;
+    private static Context sAppContext;
+    private static final Object KICK_LOCK = new Object();
+    private static boolean sKickRunning;
 
     private GameServerManager() {}
 
@@ -94,6 +106,7 @@ public final class GameServerManager {
         synchronized (LOCK) {
             if (sAttempted) return;
             sAttempted = true;
+            sAppContext = context.getApplicationContext();
             try {
                 File files = context.getFilesDir();
                 sBundleDir = new File(files, BUNDLE_DIR);
@@ -128,8 +141,49 @@ public final class GameServerManager {
                 }
             } catch (Throwable t) {
                 L.e("gs: ensure failed: " + t);
+                // allow a later kick() to retry the staging (a failed 64MB
+                // download must not be permanent for this process)
+                sAttempted = false;
             }
         }
+    }
+
+    /**
+     * Lazy engine boot hook for the join moment (dispatch): the FIRST app
+     * boot can still be downloading the 64MB runtime bundle when its
+     * one-shot startIfPossible finds resource.cfg missing and gives up —
+     * and nothing ever retried in that process (run 38073049374: the first
+     * boot never started the engine at all; only the Phase-D relaunch did).
+     * Dispatch is THE join moment: retry the boot here, in the background.
+     * Idempotent: isAlive early-return + single-flight guard.
+     *
+     * @return true when a boot attempt is now in flight (the caller may
+     *         briefly wait for gameAddr() to become non-null); false when
+     *         no boot is possible (host rig / no context) or already alive.
+     */
+    public static boolean kick() {
+        if (isAlive()) return false;
+        final Context app = sAppContext;
+        if (app == null) return false;
+        synchronized (KICK_LOCK) {
+            if (sKickRunning) return true;
+            sKickRunning = true;
+        }
+        Thread t = new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    ensure(app);
+                    startIfPossible(app);
+                } catch (Throwable t2) {
+                    L.e("gs: kick failed: " + t2);
+                } finally {
+                    synchronized (KICK_LOCK) { sKickRunning = false; }
+                }
+            }
+        }, "LocalApiGsKick");
+        t.setDaemon(true);
+        t.start();
+        return true;
     }
 
     /** Launch the GameServer if the bundle + binary are ready. */
@@ -137,6 +191,18 @@ public final class GameServerManager {
         synchronized (LOCK) {
             try {
                 if (isAlive()) return;
+                // ONLY the process that actually serves the local API may
+                // own the engine: standby/watchdog sibling processes used
+                // to spawn their own engine seconds after the holder's
+                // (run 38073049374: engines at 17:51:16 + 17:51:22 from two
+                // live processes — the second lost the RakNet 31108 bind
+                // for good). The engine's monitor + dispatch state are
+                // in-process, so engine ownership MUST follow the holder.
+                if (!LocalServer.isServingLoopback()) {
+                    L.i("gs: not started (this process does not serve the "
+                            + "local API — standby sibling)");
+                    return;
+                }
                 File bin = findBinary(context);
                 File cwd = serverDir();
                 // NOTE: serverConfig.json is OWNED by this manager and is
@@ -155,8 +221,31 @@ public final class GameServerManager {
                     return;
                 }
                 MonitorServer.start();
-                sLogDir = resolveLogDir();
+                sLogDir = resolveLogDir(context);
                 writeServerConfig(cfg);
+                // Kill stale engine instances from earlier app boots FIRST:
+                // every boot spawned a new libgameserver while old ones kept
+                // running (isAlive() only tracks THIS boot's Process object).
+                // A stale engine still holding RakNet 31108 makes the fresh
+                // engine's bind fail for its WHOLE lifetime
+                // ("m_isRaknetAlive == false" in server.log, run
+                // 38073049374: two engines 6s apart, the second never
+                // listenable) — the client can then never join. Best
+                // effort: killall/pkill may not exist; errors ignored.
+                try {
+                    java.lang.Process k = Runtime.getRuntime().exec(
+                            new String[]{"killall", "libgameserver.so"});
+                    k.waitFor();
+                } catch (Throwable ignored) {}
+                try {
+                    java.lang.Process k = Runtime.getRuntime().exec(
+                            new String[]{"/system/bin/sh", "-c",
+                                    "pkill -f libgameserver.so 2>/dev/null"});
+                    k.waitFor();
+                } catch (Throwable ignored) {}
+                try { Thread.sleep(400); }
+                catch (InterruptedException ie) { Thread.currentThread().interrupt(); }
+                L.i("gs: stale engine sweep done, launching");
                 // Pass the config as argv[1] (the engine's
                 // getRGConfigFromCmdline path, main.cpp argc>1). The argc==1
                 // getTestRGConfig path reads a COMPLETELY DIFFERENT key set
@@ -220,10 +309,12 @@ public final class GameServerManager {
 
     /**
      * The client writes client.log into SandBoxOL/BlockMan/config on the
-     * FIRST emulated storage root. The <id> differs per device/profile, so it
-     * is resolved from the OS at runtime — never hardcoded.
+     * FIRST emulated storage root (the user-visible path is
+     * /storage/emulated/0/SandBoxOL/BlockMan/config). The <id> differs per
+     * device/profile, so it is resolved from the OS at runtime — never
+     * hardcoded.
      */
-    private static File resolveLogDir() {
+    private static File resolveLogDir(Context context) {
         try {
             File ext = Environment.getExternalStorageDirectory();
             if (ext != null) {
@@ -235,32 +326,23 @@ public final class GameServerManager {
         } catch (Throwable t) {
             L.e("gs: external storage resolve failed: " + t);
         }
-        // Fallback: the app's own external files dir (same filesystem family,
-        // still beside nothing — but keeps the server runnable on locked-down
-        // storage). The user-visible placement rule prefers the SandBoxOL path
-        // above and only lands here on permission failures.
+        // Fallback: the app's OWN external files dirs (real package, via
+        // the platform API — the old hardcoded com.sandboxol.blockmango
+        // path belonged to a different package and never matched the
+        // patched app id). Same filesystem family; keeps the server
+        // runnable on locked-down storage. The user-visible placement rule
+        // prefers the SandBoxOL path above and only lands here on
+        // permission failures.
         try {
-            File[] outs = ContextCompatExternalFiles();
-            if (outs != null) {
-                for (File o : outs) {
-                    if (o == null) continue;
-                    File dir = new File(new File(o, "SandBoxOL"), "config");
-                    if (dir.mkdirs() || dir.isDirectory()) return dir;
-                }
+            // getExternalFilesDir (singular) keeps the compile-time android
+            // stubs happy AND is available on every API the patched app runs.
+            File o = context.getExternalFilesDir(null);
+            if (o != null) {
+                File dir = new File(new File(o, "SandBoxOL"), "config");
+                if (dir.mkdirs() || dir.isDirectory()) return dir;
             }
         } catch (Throwable ignored) {}
         return new File(String.valueOf(sBundleDir), "logs");
-    }
-
-    private static File[] ContextCompatExternalFiles() {
-        // no androidx dependency here: query through the environment
-        File ext = Environment.getExternalStorageDirectory();
-        if (ext != null) {
-            File alt = new File(ext, "Android/data/com.sandboxol.blockmango/files");
-            File dir = new File(new File(alt, "SandBoxOL"), "config");
-            if (dir.mkdirs() || dir.isDirectory()) return new File[]{alt};
-        }
-        return null;
     }
 
     /**

@@ -44,6 +44,11 @@ final class GameCatalog {
             {"g1058", "Lucky Block Hall", "g1054"},
     };
 
+    /** The hall the UI join must land on (see ensureHalls pin comment). */
+    static final String PINNED_HALL_SCRIPT = "g1046";
+    /** Feed-metric value that pins the hall first in every sort. */
+    static final long PIN_METRIC = 900_000_000L;
+
     private GameCatalog() {}
 
     // ------------------------------------------------------------ bootstrap
@@ -230,6 +235,23 @@ final class GameCatalog {
             JSONObject g = games.optJSONObject(i);
             if (g == null) continue;
             String script = g.optString("scriptType", "");
+            // Pin the BEDWAR hall to the top of EVERY feed (recommend/more/
+            // online/new): the first hall card on Home must be the game the
+            // on-device GameServer actually hosts. Run 38073051447
+            // evidence: the first card was the SANDBOX game whose
+            // "Quick in" is a CLIENT-LOCAL solo world — the engine booted
+            // with empty ip/port and no dispatch ever fired, so the join
+            // could never reach the GameServer. Idempotent via topPinned.
+            if (PINNED_HALL_SCRIPT.equals(script) && !g.optBoolean("topPinned")) {
+                g.put("onlineNumber", PIN_METRIC);
+                g.put("complexNum", PIN_METRIC);
+                g.put("praiseNumber", PIN_METRIC);
+                g.put("createTime", System.currentTimeMillis());
+                g.put("topPinned", true);
+                dirty = true;
+                L.i("catalog: pinned " + PINNED_HALL_SCRIPT + " (Bedwars "
+                        + "hall) to the top of every game feed");
+            }
             boolean isHall = false;
             for (String[] hall : HALLS) {
                 if (hall[0].equals(script)) isHall = true;

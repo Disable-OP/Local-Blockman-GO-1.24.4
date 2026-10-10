@@ -1004,6 +1004,20 @@ final class Handlers {
      * address is this server's loopback endpoint (the API shape is final).
      */
     private static String dispatch(Ctx ctx, StateStore store, boolean follow) {
+        // Lazy engine boot on the join moment: the FIRST boot's one-shot
+        // startIfPossible can give up while the 64MB bundle is still
+        // staging, and nothing retried in that process (run 38073049374:
+        // the first boot never started the engine at all). Idempotent +
+        // background (GameServerManager.kick). When a boot is actually in
+        // flight, hold the response briefly so THIS dispatch (the client
+        // only dispatches once per join) serves the real RakNet gaddr
+        // instead of the legacy loopback the engine cannot join.
+        boolean gsKicked = GameServerManager.kick();
+        String gameAddrEarly = GameServerManager.gameAddr();
+        for (int i = 0; gsKicked && gameAddrEarly == null && i < 20; i++) {
+            try { Thread.sleep(500); } catch (InterruptedException ie) { break; }
+            gameAddrEarly = GameServerManager.gameAddr();
+        }
         String token = ctx.header("x-shahe-token");
         String uidHdr = ctx.header("x-shahe-uid");
         JSONObject mt = store.findMiniToken(token);
@@ -1028,6 +1042,27 @@ final class Handlers {
         String engineType = game == null ? gameType
                 : game.optString("scriptType", gameType);
         String defaultMap = game == null ? "" : game.optString("mapName", "");
+        // PIN-TO-SERVER: while the on-device GameServer is alive, EVERY
+        // join dispatches into the room it actually hosts (BedWar g1008 on
+        // map m1008_2 — serverConfig.json). The engine is
+        // server-authoritative: the room's S2C game-info packet tells the
+        // client what it joined. Serving the tapped card's own script id
+        // instead would send the client to download THAT game's map and
+        // then mismatch the g1008 room (run 38073051447: the Sandbox card
+        // never even reached dispatch — its Quick-in is client-local; with
+        // the Bedwars hall pinned first AND this pin, any online join
+        // lands on the BedWar room).
+        String gameAddr0 = GameServerManager.gameAddr();
+        if (gameAddr0 != null) {
+            engineType = GameServerManager.ENGINE_GAME_ID;
+            defaultMap = GameServerManager.ENGINE_MAP_ID;
+            mapName = GameServerManager.ENGINE_MAP_ID;
+            JSONObject serverGame = GameCatalog.byId(store, engineType);
+            name = serverGame == null
+                    ? GameServerManager.ENGINE_GAME_NAME
+                    : serverGame.optString("gameTitle",
+                            GameServerManager.ENGINE_GAME_NAME);
+        }
         String croomId = game == null
                 ? GameCatalog.chatRoom(store, "game-" + (gameType.isEmpty() ? "lobby" : gameType))
                 : GameCatalog.chatRoom(store, "game-" + gameType);

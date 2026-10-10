@@ -144,20 +144,43 @@ jobs:
           echo "== localapi boot logs (gs tags) =="
           adb -s localhost:5555 logcat -d -s LocalAPI:* GS:* | grep -iE "gs:|gameserver|monitor|g2r|dispatch" | tail -40 || true
           LOGDIR=$(adb -s localhost:5555 shell 'ls -d /storage/emulated/*/SandBoxOL/BlockMan/config 2>/dev/null' | tr -d '\r' | head -1)
+          if [ -z "$LOGDIR" ]; then
+            LOGDIR=$(adb -s localhost:5555 shell "run-as $PACKAGE sh -c 'ls -d /storage/emulated/*/SandBoxOL/BlockMan/config 2>/dev/null'" | tr -d '\r' | head -1)
+          fi
+          if [ -z "$LOGDIR" ]; then
+            LOGDIR=$(adb -s localhost:5555 shell "ls -d /storage/emulated/*/Android/data/$PACKAGE/files/SandBoxOL/config 2>/dev/null" | tr -d '\r' | head -1)
+          fi
           echo "resolved config dir: ${LOGDIR:-<none>}"
+          echo "== storage visibility diag (shell view) =="
+          adb -s localhost:5555 shell "ls /storage/emulated/ 2>&1 | head -4" || true
+          adb -s localhost:5555 shell "ls /storage/emulated/0/ 2>&1 | head -12" || true
           if [ -n "$LOGDIR" ]; then
             adb -s localhost:5555 shell "ls -la $LOGDIR" || true
-            if adb -s localhost:5555 shell "test -f $LOGDIR/client.log"; then
+            CLOG=$(adb -s localhost:5555 shell "tail -c 8192 $LOGDIR/client.log 2>/dev/null" | tr -d '\r')
+            if [ -n "$CLOG" ]; then
               echo "== client.log tail (CLIENT ENGINE words) =="
-              adb -s localhost:5555 shell "tail -c 8192 $LOGDIR/client.log" || true
+              echo "$CLOG"
             else
-              echo "client.log not yet present"
+              CLOG=$(adb -s localhost:5555 shell "run-as $PACKAGE tail -c 8192 $LOGDIR/client.log 2>/dev/null" | tr -d '\r')
+              if [ -n "$CLOG" ]; then
+                echo "== client.log tail (via run-as; shell view is storage-blind) =="
+                echo "$CLOG"
+              else
+                echo "client.log not yet present"
+              fi
             fi
-            if adb -s localhost:5555 shell "test -f $LOGDIR/server.log"; then
+            SLOG=$(adb -s localhost:5555 shell "tail -c 8192 $LOGDIR/server.log 2>/dev/null" | tr -d '\r')
+            if [ -n "$SLOG" ]; then
               echo "== server.log tail (GAMESERVER words) =="
-              adb -s localhost:5555 shell "tail -c 8192 $LOGDIR/server.log" || true
+              echo "$SLOG"
             else
-              echo "server.log not yet present (gameplay server may not have started)"
+              SLOG=$(adb -s localhost:5555 shell "run-as $PACKAGE tail -c 8192 $LOGDIR/server.log 2>/dev/null" | tr -d '\r')
+              if [ -n "$SLOG" ]; then
+                echo "== server.log tail (via run-as) =="
+                echo "$SLOG"
+              else
+                echo "server.log not yet present (gameplay server may not have started)"
+              fi
             fi
           else
             echo "SandBoxOL/BlockMan/config not found on this device"
@@ -182,8 +205,8 @@ jobs:
           # profile is /storage/emulated/0/...; redroid may differ)
           for LOGDIR in $(adb -s localhost:5555 shell 'ls -d /storage/emulated/*/SandBoxOL/BlockMan/config 2>/dev/null' | tr -d '\r'); do
             echo "pulling engine logs from $LOGDIR"
-            adb -s localhost:5555 pull "$LOGDIR/client.log" diags/client.log 2>/dev/null || true
-            adb -s localhost:5555 pull "$LOGDIR/server.log" diags/server.log 2>/dev/null || true
+            adb -s localhost:5555 pull "$LOGDIR/client.log" diags/client.log 2>/dev/null               || adb -s localhost:5555 shell "run-as $PACKAGE cat $LOGDIR/client.log 2>/dev/null" > diags/client.log || true
+            adb -s localhost:5555 pull "$LOGDIR/server.log" diags/server.log 2>/dev/null               || adb -s localhost:5555 shell "run-as $PACKAGE cat $LOGDIR/server.log 2>/dev/null" > diags/server.log || true
             adb -s localhost:5555 shell "ls -la $LOGDIR" > diags/config-dir-listing.txt 2>&1 || true
           done
           # SCREENSHOTS from every phase boundary + checkpoint (2026-10-09
