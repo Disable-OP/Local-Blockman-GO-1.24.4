@@ -230,6 +230,32 @@ if os.path.isfile(_bpp):
     else:
         print('ok (already) BedwarPathPlanner.cpp')
 
+# 3i. BinnedMalloc untracked-pointer hardening (the first on-device SIGSEGV).
+#     Tombstone evidence (test-redroid #212/#213): MallocBinned::FreeInternal
+#     -> FindPoolInfo returns NULL (freed pointer never registered) ->
+#     `Pool->TableIndex` on a NULL Pool (the two asserts above it are compiled
+#     out under APP_OPTIM=release) -> SIGSEGV SEGV_MAPERR fault-addr 0x2 at
+#     ~100ms after exec, inside a static initializer (vector realloc during
+#     RuntimeClass registration). The allocator internals were audited 1:1
+#     against this source (hash insert/lookup constants, vtable slots, struct
+#     layout all verified in the shipped .so) -- the miss is a runtime state
+#     issue, so the correct era-faithful move is: never dereference a NULL
+#     Pool. Log the pointer through logcat (GSALLOC tag) and LEAK it (leaking
+#     is always safer than freeing a pointer whose ownership is unknown), so
+#     the boot proceeds and the real mismatched-allocation path shows up in
+#     the next smoke run's evidence.
+_bm = os.path.join(ENGINE, 'Src/Core/Memory/BinnedMalloc.cpp')
+patch(_bm, [
+    ("#include \"Resource/Threading.h\"\n#include \"Memory/BinnedMalloc.h\"\n#include \"Memory/MemTracker.h\"",
+     "#include \"Resource/Threading.h\"\n#include \"Memory/BinnedMalloc.h\"\n#include \"Memory/MemTracker.h\"\n\n/* GS-ONDEVICE (patch 3i): untracked-pointer diagnostics. The gameserver\n * executable links -llog, so __android_log_print resolves at final link. */\n#if defined(__ANDROID__)\n#include <android/log.h>\n#define GSALOG(...) do { __android_log_print(ANDROID_LOG_ERROR, \"GSALLOC\", __VA_ARGS__); } while (0)\n#else\n#define GSALOG(...) ((void)0)\n#endif"),
+    ("            size_t BasePtr;\n            SPoolInfo* Pool = FindPoolInfo((size_t)Ptr, BasePtr);\n            assert(Pool);\n            assert(Pool->GetBytes() != 0);",
+     "            size_t BasePtr;\n            SPoolInfo* Pool = FindPoolInfo((size_t)Ptr, BasePtr);\n            if (!Pool)\n            {\n                /* GS-ONDEVICE (patch 3i): pointer not tracked by this\n                 * allocator. The era release build fell through to\n                 * Pool->TableIndex on NULL here (SIGSEGV 0x2). Leak instead\n                 * of freeing (ownership unknown) and log for diagnosis. */\n                GSALOG(\"untracked-free ptr=%p (leak instead of crash)\", Ptr);\n                return;\n            }\n            assert(Pool);\n            assert(Pool->GetBytes() != 0);"),
+    ("                SPoolInfo* Pool = FindPoolInfo((size_t)Ptr, BasePtr);\n\n                if( Pool->TableIndex < BinnedOSTableIndex )",
+     "                SPoolInfo* Pool = FindPoolInfo((size_t)Ptr, BasePtr);\n\n                if (!Pool)\n                {\n                    /* GS-ONDEVICE (patch 3i): untracked pointer through\n                     * Realloc -- grow fresh, leak the old block (its size is\n                     * unknowable without the pool record). */\n                    GSALOG(\"untracked-realloc ptr=%p newSize=%llu\", Ptr, (unsigned long long)NewSize);\n                    return Malloc( NewSize, Alignment );\n                }\n                if( Pool->TableIndex < BinnedOSTableIndex )"),
+    ("            size_t BasePtr;\n            SPoolInfo* Pool = FindPoolInfo((size_t)Original, BasePtr);\n            SizeOut = Pool->TableIndex < BinnedSizeLimit ? MemSizeToPoolTable[Pool->TableIndex]->BlockSize : Pool->GetBytes();",
+     "            size_t BasePtr;\n            SPoolInfo* Pool = FindPoolInfo((size_t)Original, BasePtr);\n            if (!Pool)\n            {\n                GSALOG(\"untracked-allocsize ptr=%p\", Original);\n                SizeOut = 0;\n                return false;\n            }\n            SizeOut = Pool->TableIndex < BinnedSizeLimit ? MemSizeToPoolTable[Pool->TableIndex]->BlockSize : Pool->GetBytes();"),
+])
+
 # 3h. Windows-style backslash separators inside quoted includes
 #     (Log.cpp: #include "Util\UThread.h", FileResourceManager.cpp:
 #     #include "Util\ChecksumUtil.h") are fatal on Linux ("No such file
