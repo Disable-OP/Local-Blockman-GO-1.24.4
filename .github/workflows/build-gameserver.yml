@@ -1,38 +1,79 @@
 name: build-gameserver
 # Cross-compiles the C++ GameServer (engine LordCore -> Logic -> gameserver)
 # for Android arm64 and attaches the binary to the localapi-assets release.
+#
+# SPEED: the tree has ~550 TUs, several of which peak ~3.5GB RAM each, so the
+# build is capped at -j2 (16GB runner) and a cold build takes ~90 min. Every
+# compile is wrapped in ccache (NDK_CCACHE), so after one cold run each
+# "fix one TU + relink" iteration only recompiles what changed (~15-20 min).
+# The NDK toolchain install is cached too (~3 min saved per run).
 
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: ain]
     paths:
       - "scripts/gameserver/**"
 
 permissions:
   contents: write
 
+concurrency:
+  group: build-gameserver
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
 
+      - name: Restore NDK r17c cache
+        id: ndk-cache
+        uses: actions/cache@v4
+        with:
+          path: /opt/android-ndk-r17c
+          key: ndk-r17c-linux-x86_64
+
       - name: Install NDK r17c (gcc 4.9 + gnustl — era-matched toolchain)
         run: |
-          cd /opt
-          wget -q https://dl.google.com/android/repository/android-ndk-r17c-linux-x86_64.zip
-          unzip -q android-ndk-r17c-linux-x86_64.zip
-          rm android-ndk-r17c-linux-x86_64.zip
+          if [ -d /opt/android-ndk-r17c ]; then
+            echo "NDK cache hit — skipping download"
+          else
+            cd /opt
+            wget -q https://dl.google.com/android/repository/android-ndk-r17c-linux-x86_64.zip
+            unzip -q android-ndk-r17c-linux-x86_64.zip
+            rm android-ndk-r17c-linux-x86_64.zip
+          fi
           echo "NDK=/opt/android-ndk-r17c" >> "$GITHUB_ENV"
           # engine code carries printf-style log warnings; the NDK default
           # -Werror=format-security turns them fatal — downgrade (matches the
-          # sandbox build config)
+          # sandbox build config). Idempotent.
           sed -i 's/-Werror=format-security/-Wno-error=format-security/g' \
             /opt/android-ndk-r17c/build/core/default-build-commands.mk
+
+      - name: Install ccache
+        run: |
+          sudo apt-get install -y ccache >/dev/null 2>&1 || true
+          ccache --version | head -1
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-gs-${{ github.run_id }}
+          restore-keys: |
+            ccache-gs-
+
+      - name: Configure ccache
+        run: |
+          ccache -M 6G
+          ccache -o compression=true
+          ccache -o compiler_check=mtime
+          ccache -s | head -5
 
       - name: Assemble sources from archives
         run: |
@@ -46,9 +87,12 @@ jobs:
         working-directory: ${{ github.workspace }}/scripts/gameserver
         env:
           GS_WORK: ${{ github.workspace }}/gswork
+          NDK_CCACHE: ccache
+          CCACHE_MAXSIZE: 6G
         run: |
           set -o pipefail
-          # -j2: giant template TUs peak ~3.5GB each; -j4 OOM-kills even 16GB runners
+          # -j2: giant template TUs peak ~3.5GB each; -j4 OOM-kills even 16GB
+          # runners. ccache makes warm iterations fast at any -j.
           "$NDK/ndk-build" -j2 NDK_PROJECT_PATH=. \
             APP_BUILD_SCRIPT=jni/Android.mk \
             NDK_APPLICATION_MK=jni/Application.mk \
@@ -57,6 +101,10 @@ jobs:
           test -f libs/arm64-v8a/libgameserver.so || { dmesg 2>/dev/null | tail -5 || true; exit 1; }
           file libs/arm64-v8a/libgameserver.so
           ls -la libs/arm64-v8a/libgameserver.so
+
+      - name: ccache stats
+        if: always()
+        run: ccache -s
 
       - name: Upload build log
         if: always()
