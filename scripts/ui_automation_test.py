@@ -675,6 +675,31 @@ class DeepBudgetSkip(Exception):
     """Raised by budget_gate() when the deep-phase budget is exhausted."""
 
 
+def pick_game_card(nodes):
+    """Pick the hall card to join. PREFERRED: the BEDWARS card — the game
+    the on-device GameServer actually hosts. Run 38075424746 lesson: the
+    old first-container heuristic tapped the RecyclerView's own center,
+    which lands on the SECOND card (Sky Block — a client-local Sandbox
+    game whose Quick-in never dispatches; initGame ip[] port[0]). The
+    grid renders the Bedwars hall first (GameCatalog.ensureHalls pin), so
+    find its TEXT node and tap it: the tappable item root receives the
+    touch from its non-clickable label. Fallback: first card-sized
+    container. Returns (node, how)."""
+    bed = re.compile(r"bed\s*war", re.I)
+    for n in nodes:
+        if n.center and (bed.search(n.text or "") or bed.search(n.desc or "")):
+            return n, "bedwars-text:" + ((n.text or n.desc)[:24])
+    for n in nodes:
+        if not n.center:
+            continue
+        y = n.center[1]
+        if y < 200 or y > 980:
+            continue
+        if n.cls.endswith("RecyclerView") or n.cls.endswith("LinearLayout"):
+            return n, "first-container"
+    return None, "none"
+
+
 _DEEP_STATE = {"budget": 0.0, "deadline": None}
 
 
@@ -2824,17 +2849,8 @@ def main():
             if rb1mj and screen.tap_node(rb1mj):
                 time.sleep(5)
             screen.snap("MJ_home")
-            _card = None
-            for n in screen.dump():
-                if not n.center:
-                    continue
-                y = n.center[1]
-                if y < 200 or y > 980:
-                    continue
-                if n.cls.endswith("RecyclerView") or n.cls.endswith(
-                        "LinearLayout"):
-                    _card = n
-                    break
+            _card, _how = pick_game_card(screen.dump())
+            print("  [mj] card pick: %s" % _how)
             if _card and screen.tap_node(_card):
                 time.sleep(8)      # game detail renders its full surface
                 screen.snap("MJ_detail")
@@ -3089,23 +3105,23 @@ def main():
                 print("  [probe] GJ: no libgameserver.so process after 60s "
                       "— pressing start anyway (probe mode: the join will "
                       "land on the legacy loopback 18080)")
-            gj_card = None
-            for n in screen.dump():
-                if not n.center:
-                    continue
-                y = n.center[1]
-                if y < 200 or y > 980:
-                    continue
-                if n.cls.endswith("RecyclerView") or n.cls.endswith(
-                        "LinearLayout"):
-                    gj_card = n
-                    break
+            gj_card, gj_how = pick_game_card(screen.dump())
+            print("  [gj] card pick: %s" % gj_how)
             if gj_card and screen.tap_node(gj_card):
                 screen.snap("GJ_card")
                 time.sleep(8)      # game detail renders its full surface
                 alive_or_recover_at(adb, screen, args.package, args.activity,
                                     "GJ-gamedetail")
                 screen.snap("GJ_detail")
+                # confirm the detail is the Bedwars hall (the join target
+                # the GameServer actually hosts) — evidence, not a gate
+                _det_txt = " ".join((n.text or "") for n in
+                                    screen.dump()[:150]).lower()
+                if re.search(r"bed\s*war", _det_txt):
+                    ok("GJ: Bedwars detail confirmed (hall tag visible)")
+                else:
+                    print("  [probe] GJ: detail does not mention bed "
+                          "(wrong card tapped?)")
                 adb.sh("input swipe 540 800 540 400 300", timeout=20)
                 time.sleep(2)
                 _idre = re.compile(r"(enter|play|start|go|join)", re.I)
