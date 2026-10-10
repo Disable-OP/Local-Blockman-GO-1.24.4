@@ -210,6 +210,26 @@ if os.path.isfile(_c2s):
     else:
         print('ok (already) C2SPlayerActionPacketHandles.cpp')
 
+# 3g. `open = {};` on a std::priority_queue member (BedwarPathPlanner::reset)
+#     is copy-list-initialization; gnustl's priority_queue(const Compare&,
+#     Sequence&&) ctor is explicit, so gcc 4.9 rejects it ("converting to
+#     ... from initializer list would use explicit constructor"). Assign a
+#     default-constructed value instead — same semantics, era-correct.
+_bpp = os.path.join(SERVER, 'Blockman/AI/BedwarPathPlanner.cpp')
+if os.path.isfile(_bpp):
+    _t = open(_bpp, encoding='latin-1').read()
+    _o = _t
+    if 'open = decltype(open)();' not in _t:
+        if _t.count('open = {};') != 1:
+            raise SystemExit('BedwarPathPlanner anchor drifted: %d sites for %r'
+                             % (_t.count('open = {};'), 'open = {};'))
+        _t = _t.replace('open = {};', 'open = decltype(open)();')
+    if _t != _o:
+        open(_bpp, 'w', encoding='latin-1').write(_t)
+        print('patched BedwarPathPlanner::reset (explicit priority_queue ctor)')
+    else:
+        print('ok (already) BedwarPathPlanner.cpp')
+
 # 4. ClientPeer varargs UB (LORD::String -> const char*)
 peer = os.path.join(SERVER, 'Network/ClientPeer.cpp')
 with open(peer, encoding='latin-1') as f:

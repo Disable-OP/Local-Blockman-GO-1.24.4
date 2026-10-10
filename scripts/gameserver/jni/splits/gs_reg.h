@@ -2,21 +2,25 @@
 #pragma once
 #include "Network/protocol/AutoRegisterPacketS2C.h"
 
+// AutoRegisterS2C is a GLOBAL class (dev/logic/Src/Network/protocol/
+// AutoRegisterPacketS2C.h; ServerNetwork.h forward-declares it at global
+// scope) — the declarations below must match the definitions in preg*.cpp
+// (reg1a..reg4d) and the calls in ServerNetwork_PacketRegister1..4.cpp.
 namespace GSReg {
-void reg100a(BLOCKMAN::AutoRegisterS2C& r);
-void reg100b(BLOCKMAN::AutoRegisterS2C& r);
-void reg100c(BLOCKMAN::AutoRegisterS2C& r);
-void reg100d(BLOCKMAN::AutoRegisterS2C& r);
-void reg200a(BLOCKMAN::AutoRegisterS2C& r);
-void reg200b(BLOCKMAN::AutoRegisterS2C& r);
-void reg200c(BLOCKMAN::AutoRegisterS2C& r);
-void reg200d(BLOCKMAN::AutoRegisterS2C& r);
-void reg300a(BLOCKMAN::AutoRegisterS2C& r);
-void reg300b(BLOCKMAN::AutoRegisterS2C& r);
-void reg300c(BLOCKMAN::AutoRegisterS2C& r);
-void reg300d(BLOCKMAN::AutoRegisterS2C& r);
-void reg400a(BLOCKMAN::AutoRegisterS2C& r);
-void reg400b(BLOCKMAN::AutoRegisterS2C& r);
-void reg400c(BLOCKMAN::AutoRegisterS2C& r);
-void reg400d(BLOCKMAN::AutoRegisterS2C& r);
+void reg1a(AutoRegisterS2C& r);
+void reg1b(AutoRegisterS2C& r);
+void reg1c(AutoRegisterS2C& r);
+void reg1d(AutoRegisterS2C& r);
+void reg2a(AutoRegisterS2C& r);
+void reg2b(AutoRegisterS2C& r);
+void reg2c(AutoRegisterS2C& r);
+void reg2d(AutoRegisterS2C& r);
+void reg3a(AutoRegisterS2C& r);
+void reg3b(AutoRegisterS2C& r);
+void reg3c(AutoRegisterS2C& r);
+void reg3d(AutoRegisterS2C& r);
+void reg4a(AutoRegisterS2C& r);
+void reg4b(AutoRegisterS2C& r);
+void reg4c(AutoRegisterS2C& r);
+void reg4d(AutoRegisterS2C& r);
 }
