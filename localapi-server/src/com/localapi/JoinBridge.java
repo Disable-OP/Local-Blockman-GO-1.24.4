@@ -33,7 +33,12 @@ import org.json.JSONObject;
  *   prefs surgery, no am-start serializable problem (the enum extra can
  *   never be passed from adb).
  *
- * Called from the patched va$b smali (scripts/patch_join.py):
+ * Called from the patched va$b smali (scripts/patch_join.py) - the smali
+ * invoke descriptor is (Landroid/content/Context;Ljava/lang/Object;)Z
+ * (this class compiles against android-stubs alone, so the tapped Game
+ * entity rides in as Object; the smali wrapper try/catches the call and
+ * falls back to a_local on any Throwable, so a bridge failure can never
+ * crash the join):
  *   takeOverJoin(context, tappedGame) == false  -> original local start
  *   true                                        -> online join in flight
  *

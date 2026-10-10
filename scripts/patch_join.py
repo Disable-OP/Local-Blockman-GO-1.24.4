@@ -23,9 +23,12 @@ THE DECODE (session 58, androguard on the shipped APK, all dexes):
 
 THE PATCH: rename the original method to a_local (body untouched) and add a
 new private a(MiniGameToken) that first offers the takeover to
-com.localapi.JoinBridge.takeOverJoin(context, tappedGame) (classes6.dex):
-  true  -> return (online join in flight into g1008/m1008_2)
-  false -> a_local(...) (original local behavior, honest fallback)
+com.localapi.JoinBridge.takeOverJoin(context, tappedGame) (classes6.dex;
+the 2nd param is Object because the server dex compiles against
+android-stubs alone — the smali passes the Game ref into an Object slot).
+The whole bridge call sits in a try/catch whose handler logs
+"JoinBridge: smali bridge threw -> local fallback: ..." (tag LocalAPI) and
+falls back to a_local — a bridge failure can NEVER crash the join.
 
 Idempotent, pure ASCII, latin-1-safe (repo lesson: scripts write latin-1).
 """
@@ -45,16 +48,31 @@ M_TOKEN = "Lcom/sandboxol/greendao/entity/MiniGameToken;"
 NEW_METHOD = """.method private a(LOKCOMPAT_TOKEN;)V
     .locals 3
 
+    :try_start_bridge
     iget-object v0, p0, LOKVAB;->d:LOKVA;
     invoke-static {v0}, LOKVA;->e(LOKVA;)Landroid/content/Context;
     move-result-object v0
     iget-object v1, p0, LOKVAB;->d:LOKVA;
     invoke-static {v1}, LOKVA;->a(LOKVA;)Lcom/sandboxol/greendao/entity/Game;
     move-result-object v1
-    invoke-static {v0, v1}, Lcom/localapi/JoinBridge;->takeOverJoin(Landroid/content/Context;Lcom/sandboxol/greendao/entity/Game;)Z
+    invoke-static {v0, v1}, Lcom/localapi/JoinBridge;->takeOverJoin(Landroid/content/Context;Ljava/lang/Object;)Z
     move-result v2
     if-eqz v2, :cond_join_local
     return-void
+    :try_end_bridge
+    .catch Ljava/lang/Throwable; {:try_start_bridge .. :try_end_bridge} :catch_bridge
+
+    :catch_bridge
+    move-exception v2
+    invoke-virtual {v2}, Ljava/lang/Throwable;->toString()Ljava/lang/String;
+    move-result-object v1
+    const-string v2, "JoinBridge: smali bridge threw -> local fallback: "
+    invoke-virtual {v2, v1}, Ljava/lang/String;->concat(Ljava/lang/String;)Ljava/lang/String;
+    move-result-object v1
+    const-string v2, "LocalAPI"
+    invoke-static {v2, v1}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
+    goto :cond_join_local
+
     :cond_join_local
     invoke-direct {p0, p1}, LOKVAB;->a_local(LOKCOMPAT_TOKEN;)V
     return-void
@@ -67,7 +85,7 @@ def main():
     if not APKTOOL_DIR.exists():
         sys.exit(f"error: {APKTOOL_DIR} not found - run apktool d first")
     targets = [p for p in APKTOOL_DIR.rglob(TARGET_NAME)
-               if TARGET_DIR_PART in str(p).replace("\\\\", "/")]
+               if TARGET_DIR_PART in str(p).replace("\\", "/")]
     if not targets:
         sys.exit(f"error: no {TARGET_NAME} under {TARGET_DIR_PART} in {APKTOOL_DIR}")
 
