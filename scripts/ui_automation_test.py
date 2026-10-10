@@ -4199,9 +4199,12 @@ def main():
                 "appVer": "1.24.4", "country": "us", "lang": "en", "rid": 0},
                headers={"x-shahe-uid": str(qa_uid_num), "x-shahe-token": mg.get("token", "")})
     check("C: dispatch returns engine gaddr", p2.get("code") == 1
-          and p2.get("data", {}).get("gaddr") == "127.0.0.1:18080"
+          and p2.get("data", {}).get("gaddr") in ("127.0.0.1:18080", "127.0.0.1:31108")
           and ":" in (p2.get("data", {}).get("gaddr") or "")
           and p2.get("data", {}).get("croomid"), str(p2)[:200])
+    if (p2.get("data") or {}).get("gaddr") == "127.0.0.1:31108":
+        print("  [info] C: dispatch served the ON-DEVICE GameServer RakNet addr "
+              "(gameserver process alive — session 56 milestone)")
     # Mission surface (maps + dress resources + halls): the asset threads
     # download the packs on first boot, so these serve REAL data on-device.
     m1 = fcall("GET", "/v1/game-res?gameType=%s&engineVersion=90900&resVersion=1"
@@ -4915,7 +4918,8 @@ def main():
                             "x-shahe-token": mg.get("token", "")})
     check("C: follow dispatch returns the loopback engine",
           fol29d.get("code") == 1
-          and (fol29d.get("data") or {}).get("gaddr") == "127.0.0.1:18080",
+          and (fol29d.get("data") or {}).get("gaddr") in
+          ("127.0.0.1:18080", "127.0.0.1:31108"),
           str(fol29d)[:150])
     dr129d = fcall("POST", "/datareport/api/v1/app/ping/report/batch",
                    {"events": [{"ping": 30}]}, headers=auth_hdr)

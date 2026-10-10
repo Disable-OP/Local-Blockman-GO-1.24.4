@@ -256,6 +256,23 @@ patch(_bm, [
      "            size_t BasePtr;\n            SPoolInfo* Pool = FindPoolInfo((size_t)Original, BasePtr);\n            if (!Pool)\n            {\n                GSALOG(\"untracked-allocsize ptr=%p\", Original);\n                SizeOut = 0;\n                return false;\n            }\n            SizeOut = Pool->TableIndex < BinnedSizeLimit ? MemSizeToPoolTable[Pool->TableIndex]->BlockSize : Pool->GetBytes();"),
 ])
 
+# 3j. THE root cause of the first on-device SIGSEGV + the 15k untracked-free
+#     flood (v0.6.4-gameserver redroid evidence): FindPoolInfoInternal computes
+#     the page-hash key as `unsigned int` (32-bit truncation) while GetPoolInfo
+#     inserts with `size_t` (64-bit). On the era's 32-bit builds size_t IS
+#     32-bit so the two agree; on 64-bit Android every heap address >> 19
+#     exceeds 2^32, so EVERY lookup misses (binary proof: the compiled lookup
+#     ends with `and x4, x4, #0xffffffff` before the bucket-key compare).
+#     Consequence chain: 100% of MallocBinned::Free calls took the NULL-Pool
+#     path -> run #212/#213 SIGSEGV (pre-3i) -> now (post-3i) a total
+#     leak-every-free regime (15,292 GSALLOC lines in one smoke run, ~250/sec
+#     steady-state). Making the lookup key size_t restores the 1:1 insert/
+#     lookup pairing. Keep Hash/PoolIndex as unsigned int (both masked < 2^13).
+patch(_bm, [
+    ("            unsigned int Key=Ptr>>HashKeyShift;\n            unsigned int Hash=Key&(MaxHashBuckets-1);",
+     "            size_t Key=Ptr>>HashKeyShift; /* GS-ONDEVICE (patch 3j): was\n            unsigned int -- 32-bit truncation made every lookup miss on\n            64-bit address spaces (GetPoolInfo inserts a size_t key). */\n            unsigned int Hash=Key&(MaxHashBuckets-1);"),
+])
+
 # 3h. Windows-style backslash separators inside quoted includes
 #     (Log.cpp: #include "Util\UThread.h", FileResourceManager.cpp:
 #     #include "Util\ChecksumUtil.h") are fatal on Linux ("No such file
