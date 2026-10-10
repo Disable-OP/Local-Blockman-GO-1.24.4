@@ -3,6 +3,10 @@ name: test-redroid
 # UI automation suite: fresh account registration through the UI, login,
 # every bottom tab, deep navigation — asserting the embedded local API
 # server serves all traffic and the app never crashes.
+# 2026-10-09 mandate: the suite now also SCREENSHOTS every phase boundary
+# and runs PHASE GJ — the gameplay-join verification (client engine ->
+# RakNet 127.0.0.1:31108 -> client.log login markers -> server.log/
+# monitor G2R_USER_IN), in BOTH fast and deep modes.
 # APK source: latest GitHub Release asset "BlockyNexus-localapi.apk".
 
 on:
@@ -26,10 +30,10 @@ permissions:
 jobs:
   redroid-test:
     runs-on: ubuntu-24.04-arm
-    # Fast-only (user mandate 2026-10-07): expected wall ~5 min
-    # (~75s infra + ~4 min UI suite); cap is 12 min so a hang can never
-    # hold the runner for half an hour again.
-    timeout-minutes: 12
+    # Fast-only + GJ join verification (2026-10-09): expected wall ~8 min
+    # (~75s infra + ~4.5 min UI suite + ~2.5 min GJ join poll); cap 16 min
+    # so a hang can never hold the runner for half an hour again.
+    timeout-minutes: 16
     env:
       PACKAGE: com.disabngo.blockynexus
       ACTIVITY: com.disabngo.blockynexus.view.activity.start.StartActivity
@@ -95,14 +99,16 @@ jobs:
           fi
 
       - name: Run UI automation suite (register, login, navigate all tabs)
-        # FAST mode, hard-coded (user mandate 2026-10-07: "5 minutes only"):
-        # the suite itself must finish in ~4 minutes - Phase A core
-        # (visitor + tabs + boot surfaces), Phase P (sign banner), Phase C
-        # (fresh account via the local API), Phase D core (upgrade +
-        # restart) + assertions/crash scan. The deep-drive phases (B,
-        # E-O) are NOT reachable from CI - pass --mode full by hand on a
-        # local device if deep evidence is ever needed again.
-        timeout-minutes: 8
+        # FAST mode + PHASE GJ (2026-10-09: gameplay-join verification
+        # runs in BOTH modes): the suite itself must finish in ~7 min -
+        # Phase A core (visitor + tabs + boot surfaces), PHASE GJ (real
+        # UI join + client.log/RakNet/monitor verification, ~2.5 min),
+        # Phase P (sign banner), Phase C (fresh account via the local
+        # API), Phase D core (upgrade + restart) + assertions/crash scan.
+        # The deep-drive phases (B, E-O) are NOT reachable from CI - pass
+        # --mode full by hand / dispatch test-redroid-deep when deep
+        # evidence is needed.
+        timeout-minutes: 12
         run: |
           python3 scripts/ui_automation_test.py \
             --serial localhost:5555 \
@@ -110,21 +116,29 @@ jobs:
             --activity "$ACTIVITY" \
             --mode fast
 
-      - name: GameServer smoke (process + dynamic server.log)
+      - name: GameServer smoke (process + RakNet listen + engine logs)
         if: always()
         run: |
           echo "== gameserver process =="
           adb -s localhost:5555 shell "ps -A | grep -i gameserver" || true
+          echo "== RakNet 31108 listen probe (/proc/net/udp, 31108=0x7994) =="
+          adb -s localhost:5555 shell "cat /proc/net/udp" 2>/dev/null | grep -i '7994' || echo "no :7994 UDP socket visible to shell"
           echo "== localapi boot logs (gs tags) =="
-          adb -s localhost:5555 logcat -d -s LocalAPI:* GS:* | grep -iE "gs:|gameserver|monitor" | tail -30 || true
+          adb -s localhost:5555 logcat -d -s LocalAPI:* GS:* | grep -iE "gs:|gameserver|monitor|g2r|dispatch" | tail -40 || true
           # resolve the runtime storage id dynamically (never hardcode /emulated/NN)
           LOGDIR=$(adb -s localhost:5555 shell 'ls -d /storage/emulated/*/SandBoxOL/BlockMan/config 2>/dev/null' | tr -d '\r' | head -1)
           echo "resolved config dir: ${LOGDIR:-<none>}"
           if [ -n "$LOGDIR" ]; then
             adb -s localhost:5555 shell "ls -la $LOGDIR" || true
+            if adb -s localhost:5555 shell "test -f $LOGDIR/client.log"; then
+              echo "== client.log tail (CLIENT ENGINE words) =="
+              adb -s localhost:5555 shell "tail -c 8192 $LOGDIR/client.log" || true
+            else
+              echo "client.log not yet present"
+            fi
             if adb -s localhost:5555 shell "test -f $LOGDIR/server.log"; then
-              echo "server.log EXISTS next to client.log"
-              adb -s localhost:5555 shell "head -40 $LOGDIR/server.log" || true
+              echo "== server.log tail (GAMESERVER words) =="
+              adb -s localhost:5555 shell "tail -c 8192 $LOGDIR/server.log" || true
             else
               echo "server.log not yet present (gameplay server may not have started)"
             fi
@@ -146,7 +160,17 @@ jobs:
           adb -s localhost:5555 shell uiautomator dump /sdcard/final_ui.xml >/dev/null 2>&1 || true
           adb -s localhost:5555 pull /sdcard/final_ui.xml diags/final_ui.xml || true
           adb -s localhost:5555 shell dumpsys activity processes > diags/processes.txt || true
-          # assertion-miss screenshots (Screen.snap, e.g. snap_H_reward_dialog_missing)
+          # engine logs: client.log (the client's own log) + server.log —
+          # resolved across ALL storage profiles (2026-10-09: the user's
+          # profile is /storage/emulated/0/...; redroid may differ)
+          for LOGDIR in $(adb -s localhost:5555 shell 'ls -d /storage/emulated/*/SandBoxOL/BlockMan/config 2>/dev/null' | tr -d '\r'); do
+            echo "pulling engine logs from $LOGDIR"
+            adb -s localhost:5555 pull "$LOGDIR/client.log" diags/client.log 2>/dev/null || true
+            adb -s localhost:5555 pull "$LOGDIR/server.log" diags/server.log 2>/dev/null || true
+            adb -s localhost:5555 shell "ls -la $LOGDIR" > diags/config-dir-listing.txt 2>&1 || true
+          done
+          # SCREENSHOTS from every phase boundary + checkpoint (2026-10-09
+          # mandate) and assertion-miss snaps (e.g. snap_H_reward_dialog_missing)
           for f in $(adb -s localhost:5555 shell ls /sdcard/snap_*.png 2>/dev/null | tr -d '\r'); do
             adb -s localhost:5555 pull "$f" diags/ || true
           done

@@ -37,10 +37,22 @@ Three deterministic phases, driven purely over adb + uiautomator dumps:
       (am-start of LoginActivity/RegisterActivity is DENIED for these
       non-exported activities — evidence v0.5.18c/d.)
 
+  Phase GJ — GAMEPLAY JOIN VERIFICATION (BOTH modes, 2026-10-09 mandate):
+      drives the REAL UI join (Home -> game card -> start control) when the
+      engine is not already up, then polls every evidence channel with a
+      SCREENSHOT each round: engine activity (Echoes), RakNet 31108 socket
+      pair (/proc/net/udp), LocalAPI dispatch + monitor pushUserAttr /
+      g2r-151 frames, client.log markers ("begin to connect to game
+      server", emConnectSuc, "login succ", S2CPacketDBDataReady) and
+      server.log C2SPacketLogin. Screenshots land in /sdcard/snap_*.png
+      and ride the diagnostics artifact.
+
   Final — crash scan (FATAL EXCEPTION / ANR) + process alive everywhere.
 
 Every UI step is derived from live uiautomator dumps, never coordinates.
-Exit 0 = pass, 1 = fail.
+2026-10-09 mandate: SCREENSHOTTING in ALL parts of the tests (fast +
+deep) — every phase boundary snaps /sdcard/snap_<tag>.png for pixel
+evidence alongside the XML dumps. Exit 0 = pass, 1 = fail.
 """
 import argparse
 import json
@@ -432,6 +444,7 @@ def ui_create_clan(adb, screen, package, tag):
     Returns (posted, uname): posted is True when POST
     /clan/api/v2/clan/tribe was observed, uname is the created clan name
     (Phase F reuses it to find the OWN clan on the clan screens)."""
+    screen.snap("clanui_start")  # 2026-10-09 screenshot mandate
     def alive(stage):
         pid = adb.pid(package)
         if pid:
@@ -724,6 +737,7 @@ def deep_drive(adb, screen, package, activity, tag, paths_before):
     which endpoints the newly visited screens added. Best-effort taps; the
     hard requirement is only that the app stays alive (a crash here is a
     real finding)."""
+    screen.snap("deepdrive_%s_start" % tag)  # 2026-10-09 screenshot mandate
     def visit(label, wait_s, back=True, contains=None):
         n = screen.find(texts=[label], contains=contains)
         if not (n and n.center):
@@ -1880,6 +1894,7 @@ def login_module_drive(adb, screen, package, activity, tag, old_password):
     email is unbound) and the password rotate LAST.
     The hard requirement stays: the app never crashes; every gate below
     is verdict-backed evidence for the coverage report."""
+    screen.snap("loginmodule_%s_start" % tag)  # 2026-10-09 screenshot mandate
     def alive_or_recover(stage):
         if adb.pid(package):
             return True
@@ -2759,6 +2774,7 @@ def main():
         fail("A: main screen not reached on fresh data (auto tourist login failed?)")
         finish()
     ok("A: main screen reached without manual login (visitor account)")
+    screen.snap("A_main")  # 2026-10-09 mandate: screenshot every checkpoint
     # Wave 5v/5w: the hall may open the campaign sign dialog (server now
     # serves the real signInList) - claim or dismiss before driving on.
     sign_probe = handle_campaign_dialogs(adb, screen, "A")
@@ -2776,11 +2792,13 @@ def main():
     # register-endpoint gate failed on a rotated-out buffer)
     paths_mid = []
     navigate_all_tabs(adb, screen, args.package, "A")
+    screen.snap("A_tabs")
     if deep and deep_go("deep-drive A (Me-tab rows)", 4):
         deep_drive(adb, screen, args.package, args.activity, "A",
                    set(paths_early))
     else:
         print("  [skip] deep_drive (fast mode or deep budget)")
+    screen.snap("A_deepdrive")
     # PHASE MJ (maps mission): from the Home hall, open a game card and
     # press its start control — the REAL join chain on-device: game/auth
     # token -> POST /v1/dispatch (Dispatch with the official map bundle
@@ -2805,6 +2823,7 @@ def main():
             rb1mj = screen.find(ids=["rb_1"])
             if rb1mj and screen.tap_node(rb1mj):
                 time.sleep(5)
+            screen.snap("MJ_home")
             _card = None
             for n in screen.dump():
                 if not n.center:
@@ -2818,6 +2837,7 @@ def main():
                     break
             if _card and screen.tap_node(_card):
                 time.sleep(8)      # game detail renders its full surface
+                screen.snap("MJ_detail")
                 alive_or_recover_at(adb, screen, args.package, args.activity,
                                     "MJ-gamedetail")
                 pressed = None
@@ -2866,6 +2886,7 @@ def main():
                             break
                 if pressed:
                     print("  [mj] pressed game start control %r" % pressed)
+                    screen.snap("MJ_pressed")
                     # the REAL chain: game/auth token -> /v1/game-map
                     # (MiniGameToken) -> engine activity -> engine init ->
                     # POST /v1/dispatch (Dispatch w/ downurl) -> map zip.
@@ -2874,6 +2895,7 @@ def main():
                     mj_disp = mj_map = mj_echo = False
                     for _ in range(5):
                         time.sleep(8)
+                        screen.snap("MJ_r%d" % _)
                         if not adb.pid(args.package):
                             break
                         mjlog2 = adb.raw("logcat", "-d", "-s", "LocalAPI",
@@ -2915,6 +2937,274 @@ def main():
                 print("  [mj] no game card tappable on Home this run")
         else:
             print("  [mj] Home (rb_1) unreachable after BACK-walk")
+
+    # ------------------------------------------------- PHASE GJ: gameplay
+    # join verification (2026-10-09 user mandate, BOTH modes): prove the
+    # client engine actually CONNECTS to the on-device GameServer (RakNet
+    # 127.0.0.1:31108) and JOINS the room. Evidence stack, polled with a
+    # SCREENSHOT every round (pixel proof of the engine surface):
+    #   - engine activity up (EchoesActivity in dumpsys activity)
+    #   - RakNet sockets: /proc/net/udp{,6} local :7994 (=31108) = listen,
+    #     remote :7994 = the client's connected socket
+    #   - LocalAPI: REQ POST /v1/dispatch delta, "monitor: pushed user
+    #     attr" (dispatch -> live server), "monitor: g2r type=151"
+    #     (G2R_USER_IN — the room server's own join testimony)
+    #   - client.log (SandBoxOL/BlockMan/config/client.log, path resolved
+    #     on-device, never hardcoded): "begin to connect to game server",
+    #     emConnectSuc, "recv S2CPacketLoginResult, login succ",
+    #     ---------S2CPacketDBDataReady--------- (markers from
+    #     ClientNetworkCore.cpp / S2CInitPacketHandles.cpp)
+    #   - server.log (same dir): C2SPacketLogin "token correct"
+    # The join checks are HARD once a start control was pressed (or the
+    # engine was already up from the deep MJ drive); when no join could be
+    # pressed they stay probes so a home-layout change can never silently
+    # green a skipped join.
+    print("== PHASE GJ: gameplay join verification (client -> GameServer) ==")
+    # resolve the runtime storage id dynamically (never hardcode /emulated/NN;
+    # the user-visible path is /storage/emulated/0/SandBoxOL/BlockMan/config)
+    gj_cfgdir = ""
+    for _cand in [l.strip() for l in adb.sh(
+            "ls -d /storage/emulated/*/SandBoxOL/BlockMan/config 2>/dev/null"
+    ).splitlines() if l.strip()]:
+        gj_cfgdir = _cand
+        if _cand.endswith("/emulated/0/SandBoxOL/BlockMan/config"):
+            break
+    gj_clog = (gj_cfgdir + "/client.log") if gj_cfgdir else ""
+    gj_slog = (gj_cfgdir + "/server.log") if gj_cfgdir else ""
+    if gj_cfgdir:
+        ok("GJ: config dir %s (client.log present=%s, server.log present=%s)"
+           % (gj_cfgdir,
+              "yes" if adb.sh("test -f %s && echo y" % gj_clog) else "no",
+              "yes" if adb.sh("test -f %s && echo y" % gj_slog) else "no"))
+    else:
+        print("  [probe] GJ: SandBoxOL/BlockMan/config not found on this "
+              "device (client.log evidence unavailable)")
+
+    def gj_tail(path, nbytes=16384):
+        """Tail a device log file (empty when absent) — engine-side words,
+        not script guesses."""
+        if not path:
+            return ""
+        try:
+            return adb.sh("tail -c %d %s 2>/dev/null" % (nbytes, path),
+                          timeout=30) or ""
+        except Exception:
+            return ""
+
+    def gj_engine_up():
+        return "EchoesActivity" in adb.sh(
+            "dumpsys activity activities 2>/dev/null", timeout=30)
+
+    def gj_udp_state():
+        """(server_listening, client_connected) for RakNet 31108 (0x7994)."""
+        rows = (adb.sh("cat /proc/net/udp 2>/dev/null", timeout=20) + "\n"
+                + adb.sh("cat /proc/net/udp6 2>/dev/null", timeout=20) + "\n")
+        listen = client = False
+        for ln in rows.splitlines():
+            f = ln.split()
+            if len(f) < 3:
+                continue
+            if f[1].endswith(":7994"):
+                listen = True
+            if f[2].endswith(":7994") and not f[1].endswith(":7994"):
+                client = True
+        return listen, client
+
+    gj0_local = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+    gj0_disp = gj0_local.count("REQ POST /v1/dispatch")
+    gj_echo0 = gj_engine_up()
+    gj_pressed = None
+    if gj_echo0:
+        ok("GJ: engine already up (EchoesActivity running) — verifying the "
+           "live join instead of re-driving the UI")
+        screen.snap("GJ_engine_up")
+    else:
+        gj_home = False
+        for _ in range(4):
+            if screen.find(ids=["rb_1"]):
+                gj_home = True
+                break
+            adb.key(4)
+            time.sleep(2)
+        screen.snap("GJ_home")
+        if gj_home:
+            gj_card = None
+            for n in screen.dump():
+                if not n.center:
+                    continue
+                y = n.center[1]
+                if y < 200 or y > 980:
+                    continue
+                if n.cls.endswith("RecyclerView") or n.cls.endswith(
+                        "LinearLayout"):
+                    gj_card = n
+                    break
+            if gj_card and screen.tap_node(gj_card):
+                screen.snap("GJ_card")
+                time.sleep(8)      # game detail renders its full surface
+                alive_or_recover_at(adb, screen, args.package, args.activity,
+                                    "GJ-gamedetail")
+                screen.snap("GJ_detail")
+                adb.sh("input swipe 540 800 540 400 300", timeout=20)
+                time.sleep(2)
+                _idre = re.compile(r"(enter|play|start|go|join)", re.I)
+                for n in screen.dump():
+                    if not n.center:
+                        continue
+                    tail = n.res.rsplit("/", 1)[-1] if n.res else ""
+                    if n.res and _idre.search(tail):
+                        screen.tap_node(n)
+                        gj_pressed = "id:" + tail
+                        break
+                    if n.desc and _idre.search(n.desc):
+                        screen.tap_node(n)
+                        gj_pressed = "desc:" + n.desc
+                        break
+                if not gj_pressed:
+                    for n in screen.dump():
+                        if not (n.center and n.res
+                                and n.res.endswith("/llBottom")):
+                            continue
+                        if n.center[1] > 700:
+                            bar_x, bar_y = n.center
+                            adb.sh("input tap %d %d" % (bar_x + 140, bar_y),
+                                   timeout=20)
+                            gj_pressed = "llBottom-center"
+                            break
+                if not gj_pressed:
+                    for _lbl in ("Start", "PLAY", "Play", "GO", "Enter"):
+                        _pn = screen.find(texts=[_lbl])
+                        if _pn and _pn.center and _pn.center[1] > 200:
+                            screen.tap_node(_pn)
+                            gj_pressed = _lbl
+                            break
+                if gj_pressed:
+                    screen.snap("GJ_pressed")
+                    ok("GJ: pressed game start control %r" % gj_pressed)
+                else:
+                    screen.snap("GJ_nostart")
+                    debug_dump(screen, "GJ-nostart")
+            else:
+                screen.snap("GJ_nocard")
+                print("  [probe] GJ: no game card tappable on Home this run")
+        else:
+            screen.snap("GJ_nohome")
+            print("  [probe] GJ: Home (rb_1) unreachable after BACK-walk")
+
+    # ---- verification poll: every evidence channel + a screenshot per round
+    gj_join_attempted = bool(gj_pressed) or gj_echo0
+    gj_deadline = time.time() + (180.0 if deep else 120.0)
+    gj_round = 0
+    gj_echo = gj_echo0
+    gj_disp = gj_attr = gj_userin151 = False
+    gj_listen = gj_udpcli = False
+    gj_conn = gj_login = gj_dbready = False
+    gj_serverlogin = False
+    gj_bad = []
+    while time.time() < gj_deadline:
+        gj_round += 1
+        time.sleep(12)
+        if not adb.pid(args.package):
+            print("  [evidence] GJ: app process died mid-join (round %d)"
+                  % gj_round)
+            screen.snap("GJ_dead_r%d" % gj_round)
+            if not relaunch_and_wait(adb, screen, args.package, args.activity,
+                                     "GJ-r%d" % gj_round):
+                break
+        screen.snap("GJ_r%d" % gj_round)
+        gj_echo = gj_echo or gj_engine_up()
+        _listen, _cli = gj_udp_state()
+        gj_listen = gj_listen or _listen
+        gj_udpcli = gj_udpcli or _cli
+        gj_local = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+        gj_disp = gj_disp or (
+            gj_local.count("REQ POST /v1/dispatch") > gj0_disp)
+        gj_attr = gj_attr or ("monitor: pushed user attr" in gj_local)
+        gj_userin151 = gj_userin151 or ("monitor: g2r type=151" in gj_local
+                                        or "monitor: G2R_USER_IN" in gj_local)
+        _clog = gj_tail(gj_clog)
+        if _clog:
+            gj_conn = gj_conn or "emConnectSuc" in _clog
+            gj_login = gj_login or "login succ" in _clog
+            gj_dbready = gj_dbready or "S2CPacketDBDataReady" in _clog
+            for _bad in ("emConnectFailed", "emConnectTimeout",
+                         "login fail", "emConnectKickOut"):
+                if _bad in _clog and _bad not in gj_bad:
+                    gj_bad.append(_bad)
+        _slog = gj_tail(gj_slog, 8192)
+        gj_serverlogin = gj_serverlogin or (
+            "C2SPacketLogin token correct" in _slog)
+        print("  [gj r%d] echoes=%s raknet(listen=%s cli=%s) disp=%s attr=%s "
+              "g2r151=%s conn=%s login=%s dbready=%s srvlogin=%s bad=%s"
+              % (gj_round, gj_echo, _listen, _cli, gj_disp, gj_attr,
+                 gj_userin151, gj_conn, gj_login, gj_dbready, gj_serverlogin,
+                 gj_bad or "-"))
+        if gj_conn and gj_login and (gj_userin151 or gj_serverlogin):
+            ok("GJ: full join chain observed after round %d" % gj_round)
+            break
+
+    # ---- verdict + evidence tails printed into the CI log
+    print("== GJ verdict ==")
+    if gj_join_attempted:
+        check("GJ: engine activity launched (Echoes)", gj_echo,
+              "the engine activity never appeared after the join press")
+        check("GJ: dispatch served (LocalAPI /v1/dispatch)", gj_disp,
+              "the engine never requested a dispatch from the local server")
+        check("GJ: client connected to GameServer (client.log emConnectSuc)",
+              gj_conn,
+              "client.log never showed the RakNet connect success marker")
+        check("GJ: client login accepted (client.log 'login succ')",
+              gj_login,
+              "client.log never showed recv S2CPacketLoginResult login succ")
+        check("GJ: GameServer confirmed the join (monitor g2r 151 / "
+              "server.log C2SPacketLogin)", gj_userin151 or gj_serverlogin,
+              "neither the monitor G2R_USER_IN frame nor the server-side "
+              "login was observed")
+        if gj_attr:
+            ok("GJ: monitor pushed user attr (dispatch -> live GameServer)")
+        else:
+            print("  [probe] GJ: no monitor user-attr push (timing or the "
+                  "monitor link was down - soft evidence)")
+        if gj_listen:
+            ok("GJ: RakNet 31108 listener present in /proc/net/udp")
+        if gj_udpcli:
+            ok("GJ: client UDP socket connected to 31108 (proc/net/udp)")
+        if gj_dbready:
+            ok("GJ: S2CPacketDBDataReady seen (world data delivered - "
+               "in-game loading)")
+        if gj_bad:
+            print("  [evidence] GJ: client.log failure markers seen: %s"
+                  % ", ".join(gj_bad))
+    else:
+        print("  [probe] GJ: no join press possible this run — all join "
+              "checks stay probes (evidence recorded, run not failed)")
+        for _nm, _v in (("echoes", gj_echo), ("dispatch", gj_disp),
+                        ("raknet-listen", gj_listen),
+                        ("raknet-client", gj_udpcli),
+                        ("conn", gj_conn), ("login", gj_login),
+                        ("g2r151", gj_userin151), ("srvlogin", gj_serverlogin)):
+            print("  [probe] GJ: %s=%s" % (_nm, _v))
+    _clog_all = gj_tail(gj_clog)
+    if _clog_all:
+        print("  --- client.log tail (engine words) ---")
+        for _ln in _clog_all.splitlines()[-28:]:
+            print("  " + _ln)
+    _slog_all = gj_tail(gj_slog, 8192)
+    if _slog_all:
+        print("  --- server.log tail (GameServer words) ---")
+        for _ln in _slog_all.splitlines()[-18:]:
+            print("  " + _ln)
+    ok("GJ: %d verification screenshots captured (snap_GJ_*)" % (gj_round + 3))
+    # leave the engine cleanly: BACK-walk back to the hall so the later
+    # phases (P/C/D...) find the app in a sane state (MJ precedent: the
+    # deep suite survived a live engine; this makes it deterministic).
+    if gj_join_attempted:
+        for _ in range(3):
+            if screen.find(ids=["rb_1"]):
+                break
+            adb.key(4)
+            time.sleep(2)
+        screen.snap("GJ_exit")
 
     paths_a = sorted(set(paths_early) | set(localapi_paths(adb)))
     visitor_hits = [p for p in paths_a if any(
@@ -3003,6 +3293,7 @@ def main():
     # the claim dialog POSTs /activity/api/v1/signIn). The server serves
     # the sign banner as the THIRD array entry.
     print("== Phase P: hall sign banner -> campaign sign-in surface ==")
+    screen.snap("P_start")
     # Wave 14 verdict (session 29, code-level): the activity strip's ONLY
     # home is ActivityFragment (e/b/c/b) — ORPHANED in 1.24.4 (D.b(Context)
     # has zero live callers; every call site binds D.b(Activity) ->
@@ -3119,6 +3410,7 @@ def main():
     # GUEST; a pid change inside the save window is recorded as native-kick
     # evidence (the roaming killer — Session 11) but is not expected.
     print("== PHASE B: profile edit through the Personal Info editor ==")
+    screen.snap("B_start")
     nickname = "qa%05d" % (int(time.time()) % 100000)
     guest_edited = False
     # Wave 23b budget fix: the editor helpers below are defined INSIDE the
@@ -3324,6 +3616,7 @@ def main():
     # account creation THROUGH the embedded server (adb port forward to the
     # device's loopback). This is the same local API the app itself uses.
     print("== PHASE C: account creation via the embedded local API (adb forward) ==")
+    screen.snap("C_start")
     fwd = subprocess.run(["adb", "-s", args.serial, "forward", "tcp:0", "tcp:18080"],
                          capture_output=True, text=True, encoding="utf-8",
                          errors="replace", timeout=30)
@@ -5318,6 +5611,7 @@ def main():
     # issues that user's token. No hardcoded ids: the current user id is
     # read from the live Me-tab dump (ID row).
     print("== PHASE D: registered-session upgrade + restart ==")
+    screen.snap("D_start")
     qa_uid_d = "uiqa%05d" % (int(time.time()) % 100000)
     password_d = "LocalQA%05d" % (int(time.time()) % 100000)
     nick_edit = "qaD%05d" % (int(time.time()) % 100000)
@@ -5531,6 +5825,7 @@ def main():
       try:
         budget_gate("PHASE E (registered clan create)", 2.5)
         print("== PHASE E: registered-session UI clan creation ==")
+        screen.snap("E_start")
         posted_e, clan_name_e = ui_create_clan(adb, screen, args.package,
                                                "E-clanui")
         if posted_e:
@@ -5558,6 +5853,7 @@ def main():
         # that the app stays alive.
         budget_gate("PHASE F (own-clan surfaces + G walks)", 4)
         print("== PHASE F: registered-session OWN-CLAN surfaces ==")
+        screen.snap("F_start")
         # Session 17: the UI create is ICON-GATED (jadx, PATCH_PLAN Phase 7a -
         # TribeCreateModel requires the gallery+crop icon; the submit never
         # POSTs for ANY session state). So the own clan now comes from the API
@@ -7212,6 +7508,7 @@ def main():
         # run, so the budget has already accrued. NO GameServer work.
         budget_gate("Phase H (activity-task claim)", 1.5)
         print("== Phase H: activity-task claim (weekend task dialog) ==")
+        screen.snap("H_start")
         # the quoted literal keeps docs/COVERAGE.json's client_asserted
         # detection honest (the assertion really is in this script)
         h_rr_path = "/activity/api/v1/receive/reward"
@@ -7416,6 +7713,7 @@ def main():
         # client actually fires (error-driven evidence for the next wave).
         budget_gate("Phase I (scrap screen)", 1.5)
         print("== Phase I: scrap screen (collect & exchange) ==")
+        screen.snap("I_start")
         i_rv_path = "/activity/api/v1/collect/exchange/reward/value"
         i_cl_marker = "/collect/exchange/card/list"
         # gen_coverage mapping: the ROUTE is the {version} template — quote
@@ -7528,6 +7826,7 @@ def main():
                 # Phase 3; the bag DIALOG has never been client-exercised.
                 budget_gate("Phase J (scrap bag dialog)", 1)
                 print("== Phase J: scrap bag dialog ==")
+                screen.snap("J_start")
                 # bare path literals keep gen_coverage's client_asserted
                 # detection exact (prefix matching against the RoutingTable)
                 j_value_lit = "/activity/api/v1/collect/exchange/user/scrap/value"
@@ -7650,6 +7949,7 @@ def main():
                 # dialog_scrap_rule layouts).
                 budget_gate("Phase K (scrap record + rule)", 1.5)
                 print("== Phase K: scrap record + rule dialogs ==")
+                screen.snap("K_start")
                 # The three menu buttons (ll_library/ll_record/ll_rule) are
                 # 50dp ConstraintLayouts ALL constrained to parent-end — they
                 # STACK, ll_library last (= topmost). bg_menu (the 22dp pill)
@@ -7810,6 +8110,7 @@ def main():
         # (period, area) + (period, global) both fetch on open).
         budget_gate("Phase L (rank podium + gDiamond)", 1.5)
         print("== Phase L: rank home podium + gDiamond template ==")
+        screen.snap("L_start")
         l_home_lit = "/ranking/api/v1/ranking/region/home/page/info"
         l_user_lit = "/ranking/api/v1/ranking/user/info"
         l_gd_region_lit = "/ranking/api/v1/gold/diamond/region/weekly/rank"
@@ -7976,6 +8277,7 @@ def main():
         # whole vip package, so a phase-local 0->N is sound).
         budget_gate("Phase M (VIP privilege center)", 1.5)
         print("== Phase M: VIP privilege center (item2) ==")
+        screen.snap("M_start")
         m_vip_lit = "/pay/api/v1/sub/info/get"
         # run 37499606354 evidence: the privilege-center flow ALSO fetches
         # the vip products list (BillingManager.vipSubsProductsList <-
@@ -8081,6 +8383,7 @@ def main():
         # templates' overall variants.
         budget_gate("Phase N (rank rows 2+3)", 1.5)
         print("== Phase N: rank podium rows 2+3 (active, clan) ==")
+        screen.snap("N_start")
         n_lits = [
             "/ranking/api/v1/active/region/weekly/rank",
             "/ranking/api/v1/active/global/weekly/rank",
@@ -8288,6 +8591,7 @@ def main():
         # (qa_uid_d / password_d) are reused so the session stays valid.
         budget_gate("Phase O (client-UI login)", 2)
         print("== Phase O: account switch + client-UI login ==")
+        screen.snap("O_start")
         o_login_lit = "/user/api/v1/login"
 
         def o_count(marker):
@@ -8462,6 +8766,7 @@ def main():
         # assertions + crash scan below need no valid session.
         budget_gate("PHASE LM (login-module flows)", 4)
         print("== PHASE LM: login-module flows (Setting -> Security) ==")
+        screen.snap("LM_start")
         login_module_drive(adb, screen, args.package, args.activity, "LM",
                            password_d)
       except DeepBudgetSkip as _bs:
@@ -8470,6 +8775,7 @@ def main():
         print("  [skip] Phases E-O deep drives (fast mode)")
 
     # ------------------------------------------------- assertions
+    screen.snap("final_state")  # 2026-10-09 mandate: end-of-run pixel state
     print("== assertions ==")
     # Union with the early + mid snapshots: GL-heavy screens rotate the
     # logcat main buffer, so end-of-run scans alone miss early (Phase A)

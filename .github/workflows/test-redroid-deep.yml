@@ -3,8 +3,11 @@ name: test-redroid-deep
 # User mandate 2026-10-08 ("lower the DEEP test redroid time ... I am sick
 # of always waiting 30-35 minutes ... TIME IS PRECIOUS"): the deep suite
 # runs under a deep-phase budget (--deep-budget-min, default 5). Expected
-# wall with the default budget: ~12-14 min total
-#   (infra ~4 min + fast core ~4 min + deep phases <=5 min + diagnostics ~1 min).
+# wall with the default budget: ~15-17 min total
+#   (infra ~4 min + fast core ~4 min + deep phases <=5 min
+#    + PHASE GJ ~2.5 min + diagnostics ~1 min).
+# 2026-10-09: PHASE GJ (gameplay-join verification + screenshots at every
+# phase boundary) runs in BOTH modes — see ui_automation_test.py.
 # The deep-phase budget is enforced INSIDE scripts/ui_automation_test.py:
 #   - deep-drive A / Phase B  -> non-raising gates before the core chain
 #   - Phase E .. LM           -> DeepBudgetSkip, caught gracefully
@@ -12,8 +15,8 @@ name: test-redroid-deep
 # run stays green, the final assertions + crash scan + coverage report still
 # execute, and diagnostics are always uploaded.
 #
-# The fast workflow (test-redroid.yml) stays FAST-ONLY (~5 min wall) per the
-# user mandate 2026-10-07 and is untouched.
+# The fast workflow (test-redroid.yml) stays FAST + GJ (~8 min wall) per
+# the user mandate 2026-10-07 and the 2026-10-09 join-verification mandate.
 #
 # Need the LEGACY full audit (~25-35 min, every deep phase)? Dispatch with
 # deep_budget_min = 0 (unlimited). The suite's own budget is the wall; the
@@ -22,11 +25,11 @@ name: test-redroid-deep
 # Fleet run 37746581644 lesson (budget 15): a flat 12-min STEP timeout
 # killed the run mid-Phase-F before G..N could execute. Budgets > 5 are
 # deliberate verdict-harvest dispatches, so their backstops scale:
-#   budget 0  -> job 45 / step 40 (legacy unlimited)
-#   budget >5 -> job 45 / step 38 (fleet harvest; run 37751313202 passed
+#   budget 0  -> job 45 / step 44 (legacy unlimited)
+#   budget >5 -> job 45 / step 42 (fleet harvest; run 37751313202 passed
 #                at 19 min with budget 15 — the bigger 25-min harvests
 #                need the extra headroom to reach H..N/O/LM)
-#   else      -> job 18 / step 12 (the ~10-min default fleet-mandated run)
+#   else      -> job 22 / step 16 (the ~15-min default fleet-mandated run)
 
 on:
   workflow_dispatch:
@@ -42,7 +45,10 @@ permissions:
 jobs:
   redroid-deep-test:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: ${{ fromJSON(inputs.deep_budget_min || '5') == 0 && 45 || (fromJSON(inputs.deep_budget_min || '5') > 5 && 45 || 18) }}
+    # 2026-10-09: the default budgeted run grew by ~4 min (PHASE GJ, the
+    # gameplay-join verification, now runs in BOTH modes) -> 18 -> 22.
+    # Legacy unlimited (0) and fleet harvest (>5) keep 45.
+    timeout-minutes: ${{ fromJSON(inputs.deep_budget_min || '5') == 0 && 45 || (fromJSON(inputs.deep_budget_min || '5') > 5 && 45 || 22) }}
     env:
       PACKAGE: com.disabngo.blockynexus
       ACTIVITY: com.disabngo.blockynexus.view.activity.start.StartActivity
@@ -109,12 +115,13 @@ jobs:
         # timeout is the backstop. run 37739443414 lesson: the CORE Phase A
         # (visitor + tabs + deep-drive A) alone needs ~7 min on the
         # guest-GPU emulator, so a 9-min backstop killed a healthy run.
-        # Budgeted runs get 12 min; fleet harvest (input > 5) gets 38 —
-        # run 37746581644 died at the flat 12 min mid-Phase-F with budget
-        # 15 (before G..N ever started), and run 37751313202 passed at
-        # 19 min with budget 15; the bigger harvests need the headroom.
-        # Legacy unlimited (0) keeps 40.
-        timeout-minutes: ${{ fromJSON(inputs.deep_budget_min || '5') == 0 && 40 || (fromJSON(inputs.deep_budget_min || '5') > 5 && 38 || 12) }}
+        # Budgeted runs get 16 min (2026-10-09: +4 min for PHASE GJ, the
+        # gameplay-join verification now running in BOTH modes); fleet
+        # harvest (input > 5) gets 42 — run 37746581644 died at a flat
+        # 12 min mid-Phase-F with budget 15 (before G..N ever started),
+        # and run 37751313202 passed at 19 min with budget 15; the bigger
+        # harvests need the headroom. Legacy unlimited (0) keeps 44.
+        timeout-minutes: ${{ fromJSON(inputs.deep_budget_min || '5') == 0 && 44 || (fromJSON(inputs.deep_budget_min || '5') > 5 && 42 || 16) }}
         run: |
           python3 scripts/ui_automation_test.py \
             --serial localhost:5555 \
@@ -122,6 +129,39 @@ jobs:
             --activity "$ACTIVITY" \
             --mode full \
             --deep-budget-min "${{ inputs.deep_budget_min || '5' }}"
+
+      - name: GameServer smoke (process + RakNet listen + engine logs)
+        # 2026-10-09: the deep workflow previously had NO gameserver smoke
+        # step at all — the fast workflow owned it. With PHASE GJ now
+        # joining a real room in deep mode too, the smoke verdict (RakNet
+        # listener, client.log + server.log tails) belongs here as well.
+        if: always()
+        run: |
+          echo "== gameserver process =="
+          adb -s localhost:5555 shell "ps -A | grep -i gameserver" || true
+          echo "== RakNet 31108 listen probe (/proc/net/udp, 31108=0x7994) =="
+          adb -s localhost:5555 shell "cat /proc/net/udp" 2>/dev/null | grep -i '7994' || echo "no :7994 UDP socket visible to shell"
+          echo "== localapi boot logs (gs tags) =="
+          adb -s localhost:5555 logcat -d -s LocalAPI:* GS:* | grep -iE "gs:|gameserver|monitor|g2r|dispatch" | tail -40 || true
+          LOGDIR=$(adb -s localhost:5555 shell 'ls -d /storage/emulated/*/SandBoxOL/BlockMan/config 2>/dev/null' | tr -d '\r' | head -1)
+          echo "resolved config dir: ${LOGDIR:-<none>}"
+          if [ -n "$LOGDIR" ]; then
+            adb -s localhost:5555 shell "ls -la $LOGDIR" || true
+            if adb -s localhost:5555 shell "test -f $LOGDIR/client.log"; then
+              echo "== client.log tail (CLIENT ENGINE words) =="
+              adb -s localhost:5555 shell "tail -c 8192 $LOGDIR/client.log" || true
+            else
+              echo "client.log not yet present"
+            fi
+            if adb -s localhost:5555 shell "test -f $LOGDIR/server.log"; then
+              echo "== server.log tail (GAMESERVER words) =="
+              adb -s localhost:5555 shell "tail -c 8192 $LOGDIR/server.log" || true
+            else
+              echo "server.log not yet present (gameplay server may not have started)"
+            fi
+          else
+            echo "SandBoxOL/BlockMan/config not found on this device"
+          fi
 
       - name: Collect diagnostics
         if: always()
@@ -137,6 +177,17 @@ jobs:
           adb -s localhost:5555 shell uiautomator dump /sdcard/final_ui.xml >/dev/null 2>&1 || true
           adb -s localhost:5555 pull /sdcard/final_ui.xml diags/final_ui.xml || true
           adb -s localhost:5555 shell dumpsys activity processes > diags/processes.txt || true
+          # engine logs: client.log (the client's own log) + server.log —
+          # resolved across ALL storage profiles (2026-10-09: the user's
+          # profile is /storage/emulated/0/...; redroid may differ)
+          for LOGDIR in $(adb -s localhost:5555 shell 'ls -d /storage/emulated/*/SandBoxOL/BlockMan/config 2>/dev/null' | tr -d '\r'); do
+            echo "pulling engine logs from $LOGDIR"
+            adb -s localhost:5555 pull "$LOGDIR/client.log" diags/client.log 2>/dev/null || true
+            adb -s localhost:5555 pull "$LOGDIR/server.log" diags/server.log 2>/dev/null || true
+            adb -s localhost:5555 shell "ls -la $LOGDIR" > diags/config-dir-listing.txt 2>&1 || true
+          done
+          # SCREENSHOTS from every phase boundary + checkpoint (2026-10-09
+          # mandate) and assertion-miss snaps (e.g. snap_H_reward_dialog_missing)
           for f in $(adb -s localhost:5555 shell ls /sdcard/snap_*.png 2>/dev/null | tr -d '\r'); do
             adb -s localhost:5555 pull "$f" diags/ || true
           done
