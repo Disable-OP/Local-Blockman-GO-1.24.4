@@ -1038,7 +1038,10 @@ final class Handlers {
         } catch (Throwable ignored) {}
         boolean pushed = false;
         if (uid > 0 && requestId != null && !requestId.isEmpty()) {
-            for (int i = 0; i < 6 && !pushed; i++) {
+            // CAP the in-handler poll at ~3s: the caller (JoinBridge) loops
+            // and MUST not have its startGame blocked for minutes behind a
+            // slow endpoint (run 38094561036).
+            for (int i = 0; i < 3 && !pushed; i++) {
                 if (ensure || i == 0) {
                     // rebind the monitor / sweep+respawn a stale engine
                     // (idempotent; no-ops on a healthy state)

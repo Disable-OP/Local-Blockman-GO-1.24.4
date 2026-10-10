@@ -3302,6 +3302,7 @@ def main():
     # ---- verification poll: every evidence channel + a screenshot per round
     gj_join_attempted = bool(gj_pressed) or gj_echo0
     gj_round = 0
+    gj_jb_dumped = False
     gj_echo = gj_echo0
     gj_disp = gj_attr = gj_userin151 = False
     gj_takeover = False
@@ -3331,6 +3332,17 @@ def main():
         gj_takeover = gj_takeover or (
             "JoinBridge: takeover ONLINE join" in gj_local)
         gj_attr = gj_attr or ("monitor: pushed user attr" in gj_local)
+        # OBSERVABILITY: once the takeover fired, dump the JoinBridge /
+        # joinbridge evidence lines seen so far (run 38094561036: the push
+        # loop delayed startGame for minutes and the buffer rotated before
+        # the diag collection - live printing is the only reliable witness).
+        if gj_takeover and not gj_jb_dumped:
+            _jb = [ln.strip() for ln in gj_local.splitlines()
+                   if ("JoinBridge:" in ln or "joinbridge:" in ln)]
+            if _jb:
+                gj_jb_dumped = True
+                for _l in _jb[-8:]:
+                    print("  [evidence] GJ: %s" % _l)
         gj_userin151 = gj_userin151 or ("monitor: g2r type=151" in gj_local
                                         or "monitor: G2R_USER_IN" in gj_local)
         # NEW config dirs appear whenever a fresh holder spawns its engine

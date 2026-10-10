@@ -144,21 +144,19 @@ public final class JoinBridge {
                     // own ensure/push are no-ops when it is not the holder
                     // (run 38092797697: the attrs never landed, the C2S
                     // login timed out).
-                    final String body = joinBridgeBody(fUid, fReqId, 1,
+                    final String preBody = joinBridgeBody(fUid, fReqId, 1,
                             fNick, 0, fCountry, true);
                     boolean pushed = false;
-                    for (int i = 0; i < ATTR_PUSH_TRIES && !pushed; i++) {
-                        String res = httpPost("/v1/joinbridge", body);
-                        if (res != null && res.contains("\"pushed\":true")) {
-                            pushed = true; break;
-                        }
-                        // Direct fallback (covers the UI-process-IS-holder
-                        // case and a dead 18080 endpoint window):
-                        GameServerManager.notifyDispatch(fUid, fReqId, 1,
-                                fNick, 0, fCountry);
-                        if (MonitorServer.gameConnected()) { pushed = true; break; }
-                        try { Thread.sleep(1000L); } catch (InterruptedException ie) { return; }
-                    }
+                    // ONE fast attempt (the handler caps its internal poll
+                    // at ~3s): guarantee the monitor-linked engine + first
+                    // push. startGame posts RIGHT AFTER so the dialog
+                    // context stays fresh (run 38094561036: a slow push
+                    // loop delayed startGame for minutes and the engine
+                    // activity never came up).
+                    String res = httpPost("/v1/joinbridge", preBody);
+                    L.i(TAG + ": joinbridge#1 " + (res == null ? "null"
+                            : res) + " req=" + fReqId);
+                    pushed = res != null && res.contains("\"pushed\":true");
                     L.i(TAG + ": attrs " + (pushed ? "pushed" : "PUSH-UNVERIFIED")
                             + " uid=" + fUid + " requestId=" + requestId
                             + " gaddr=" + GameServerManager.gameAddr());
@@ -173,15 +171,38 @@ public final class JoinBridge {
                             }
                         }
                     });
+                    // CONTINUATION: keep guaranteeing + pushing while the
+                    // client engine boots (map pre-placed: boot ~8-15s).
+                    // ensure=true stays safe until the client's RakNet
+                    // connect (+10-20s); after that the RePush phase is
+                    // push-only (never sweep).
+                    new Thread(new Runnable() {
+                        @Override public void run() {
+                            long deadline = System.currentTimeMillis() + 30000L;
+                            while (System.currentTimeMillis() < deadline) {
+                                String r = httpPost("/v1/joinbridge", preBody);
+                                if (r != null && r.contains("\"pushed\":true")) {
+                                    L.i(TAG + ": joinbridge cont pushed req="
+                                            + fReqId);
+                                    return;
+                                }
+                                GameServerManager.notifyDispatch(fUid, fReqId,
+                                        1, fNick, 0, fCountry);
+                                if (MonitorServer.gameConnected()) return;
+                                try { Thread.sleep(1000L); }
+                                catch (InterruptedException ie) { return; }
+                            }
+                        }
+                    }, "JoinBridgeCont").start();
                     // Keep the attrs fresh through the login window: re-push
                     // (push-only, ensure=false - NEVER sweep once the client
-                    // may be connecting) for ~44s. Whichever holder is alive
-                    // when the client's C2S login lands gets the attrs onto
-                    // ITS engine via the monitor link.
+                    // may be connected) for ~44s after that.
                     final String postBody = joinBridgeBody(fUid, fReqId, 1,
                             fNick, 0, fCountry, false);
                     new Thread(new Runnable() {
                         @Override public void run() {
+                            try { Thread.sleep(30000L); }
+                            catch (InterruptedException ie) { return; }
                             for (int i = 0; i < 22; i++) {
                                 httpPost("/v1/joinbridge", postBody);
                                 GameServerManager.notifyDispatch(fUid, fReqId,
