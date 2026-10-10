@@ -26,14 +26,18 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    env:
+      # shared by the restore/save pair; actions/cache's implicit post-step
+      # save is SKIPPED when the job fails (run 27 lesson), so the save is
+      # an explicit actions/cache/save step with if: always() below.
+      CCACHE_CACHE_KEY: ccache-gs-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
 
       - name: Restore NDK r17c cache
-        id: ndk-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: /opt/android-ndk-r17c
           key: ndk-r17c-linux-x86_64
@@ -61,10 +65,10 @@ jobs:
           ccache --version | head -1
 
       - name: Restore ccache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/ccache
-          key: ccache-gs-${{ github.run_id }}
+          key: ${{ env.CCACHE_CACHE_KEY }}
           restore-keys: |
             ccache-gs-
 
@@ -112,6 +116,20 @@ jobs:
       - name: ccache stats
         if: always()
         run: ccache -s
+
+      - name: Save ccache (always — even on failure)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/ccache
+          key: ${{ env.CCACHE_CACHE_KEY }}
+
+      - name: Save NDK cache (always — even on failure)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: /opt/android-ndk-r17c
+          key: ndk-r17c-linux-x86_64
 
       - name: Upload build log
         if: always()
