@@ -4141,3 +4141,14 @@ resource is unavailable.
   verdict). Red at link -> read the artifact; remaining failure domain:
   symbol resolution from the two new C objects (low risk, verified) or
   duplicate-symbol conflicts (verified none).
+
+## Session 55 cont. — CI speed rework (user mandate: 1h/compile unacceptable)
+
+- fce9d2e: build-gameserver.yml now wraps compiles in ccache (NDK_CCACHE,
+  6G compressed cache, rolling key + restore-keys), caches the NDK install,
+  and cancels superseded runs via a concurrency group. Cold ~90-95 min once;
+  warm fix-iterations ~15-20 min.
+- Run 26 (bf66dcd) = link verdict for the two-undefined-symbols fix (old
+  workflow, still useful). Run 27 (fce9d2e, dispatched) = cache warming.
+  RULE: never push a scripts/gameserver/** change while the warming run is
+  mid-flight — the concurrency group would cancel it before the cache saves.

@@ -2561,3 +2561,27 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   memory only. Push requires GH_PAT exported in the SAME shell call.
   Concurrency: parallel cron loops may push — `git fetch` right before
   commit, rebase if origin moved.
+
+## Session 55 delta 2 (read FIRST — CI iteration speed: ~95min -> ~15-20min warm)
+
+- USER MANDATE: ~1h per compile is unacceptable. fce9d2e reworked
+  build-gameserver.yml: (1) ccache wraps every compile via NDK_CCACHE
+  (max 6G, compressed, rolling actions/cache key ccache-gs-<run_id> with
+  restore-keys prefix); (2) NDK r17c install cached (ndk-r17c-linux-x86_64
+  key); (3) concurrency group build-gameserver with cancel-in-progress;
+  (4) ccache stats printed every run.
+- SPEED PROFILE: cold run ~90-95 min (pays the cache once, identical to
+  before). WARM run = fix 1-2 TUs + relink = ~15-20 min (setup ~2 + ccache
+  restore ~2 + assemble ~3 + patch ~1 + TU recompiles ~2 + link ~5 + attach).
+- OPERATING PROCEDURE FROM NOW ON:
+  * run 27 (fce9d2e, workflow_dispatch) = the cache WARMING run (cold, ~90
+    min from 11:46Z). It saves the cache in its post-step EVEN IF link
+    fails (only cancellation loses it).
+  * run 26 (bf66dcd, old workflow, no ccache) = the link verdict for the
+    two-undefined-symbols fix. In flight since 10:54Z.
+  * DO NOT push a fix while run 27 is mid-flight: the concurrency group
+    would CANCEL it before the cache saves -> your fix run goes cold.
+    Wait for run 27 to finish first, then push fixes -> warm runs.
+  * If a fix is needed after run 26's verdict: prepare it, wait for run
+    27 completion (~13:20Z), then push. Verdict ~20 min later.
+- Everything else (assemble/patch/build/sanity/attach steps) unchanged.
