@@ -98,9 +98,16 @@ jobs:
             NDK_APPLICATION_MK=jni/Application.mk \
             GS_WORK="$GS_WORK" > build.log 2>&1 || true
           tail -40 build.log
-          test -f libs/arm64-v8a/libgameserver.so || { dmesg 2>/dev/null | tail -5 || true; exit 1; }
-          file libs/arm64-v8a/libgameserver.so
-          ls -la libs/arm64-v8a/libgameserver.so
+          # ndk-build installs BUILD_EXECUTABLE modules WITHOUT the .so
+          # suffix (LOCAL_MODULE_FILENAME is used verbatim -> "libgameserver").
+          # Normalize to the canonical libgameserver.so name that the sanity
+          # step, the release asset, and the APK jniLib injection all expect.
+          B=libs/arm64-v8a/libgameserver
+          [ -f "$B" ] || B=libs/arm64-v8a/libgameserver.so
+          test -f "$B" || { dmesg 2>/dev/null | tail -5 || true; exit 1; }
+          file "$B"
+          ls -la "$B"
+          cp -f "$B" libs/arm64-v8a/libgameserver.so
 
       - name: ccache stats
         if: always()
