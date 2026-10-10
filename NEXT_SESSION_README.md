@@ -2490,3 +2490,33 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   API calls from this sandbox; the engine archives at repo root are the
   only source of truth for the engine tree (never re-extract CI-side
   beyond what assemble_sources.sh does).
+
+## Session 54 delta (read FIRST — full TU sweep zeroed; CI run 23 pending)
+
+- STATE: builds 15-22 all failed one-error-at-a-time. This session ran a
+  LOCAL -fsyntax-only sweep over ALL 86 gameserver-module TUs (extract
+  commands via ndk-build -nB; NDK r17c; sequential for the sandbox) and
+  fixed EVERYTHING found in one commit: 8c037cc (on top of the parallel
+  loop's 1aff35f). 86/86 clean locally. Run 23 (8c037cc) = the CI verdict.
+- FIXES in 8c037cc: patch 3g (BedwarPathPlanner `open = {};` ->
+  `decltype(open)();` — explicit gnustl priority_queue ctor), gs_reg.h
+  reg100a..->reg1a.. + global AutoRegisterS2C, split shims define
+  registerPacket100..400 (the real entry points ServerNetwork.cpp calls),
+  20x include path fixes in jni/splits.
+- IF RUN 23 GREEN: libgameserver-arm64.so auto-attaches to release
+  localapi-assets ("Attach to release" step). Next: build the missing
+  gameserver-runtime-g1008.tar.gz (layout fully specified in WORKLOG
+  session 54 BUNDLE RECON) + point GameServerManager at the engine-faithful
+  server/ CWD layout (resource.cfg uses ../client/), then tag a build so
+  the APK carries the binary as jniLib (fbe7c56 already wired) and test
+  on-device via test-redroid (game server smoke step f7ab13f exists).
+- IF RUN 23 RED at LINK stage: read the ndk-build-log artifact, fix, and
+  remember local -fsyntax-only canNOT catch link errors — undefined
+  symbols mean missing TUs (check the filter-out list / splits coverage);
+  duplicate symbols mean a filtered TU leaked back in.
+- CONCURRENCY: a parallel cron loop pushed 1aff35f during this session.
+  Always `git fetch` right before commit+push; rebase if origin moved.
+- REMINDERS: push -> build-gameserver auto-triggers; artifact download
+  needs the two-step auth dance (scripts/fetch_artifact.py in /home/z/
+  my-project/scripts does it correctly); token = last base64 line of the
+  pasted content file (decode in memory only).

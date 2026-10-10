@@ -3982,3 +3982,51 @@ resource is unavailable.
   binary lands on release localapi-assets and the client GameServer phase
   (session metadata -> ip/port/mapId -> map download) becomes testable
   end-to-end (P1 -> P2 -> P3 of the priority system).
+
+## Session 54 — full gameserver-TU sweep zeroed (P0 error inventory complete) (2026-10-10)
+
+- CONCURRENCY NOTE: a parallel cron loop committed 1aff35f mid-session
+  (the C2SPlayerActionPacketHandles Listenable<int> varargs fix, patch 3f
+  was already in the repo tree). This session rebased its work ON TOP of
+  that: no overlap conflicts; both arcs are in the history.
+- RUN 21 (0573b7d) VERDICT: FAILED at C2SPlayerActionPacketHandles.cpp
+  with ONE gcc 4.9 hard error (Listenable<int> = shared_ptr member,
+  non-trivially-copyable, through printf '...'; -fpermissive does NOT
+  downgrade it in 4.9). Fixed by the parallel loop's 1aff35f.
+- RUN 22 (1aff35f) VERDICT: FAILED at BedwarPathPlanner.cpp:740 —
+  `open = {};` on a std::priority_queue member: gnustl's
+  priority_queue(const Compare&, Sequence&&) ctor is EXPLICIT;
+  copy-list-init is a hard error in gcc 4.9.
+- LOCAL SWEEP (the session's core contribution): extracted ALL 86
+  gameserver-module TU compile commands via `ndk-build -nB` (server src
+  + jni/splits; LordCore/Logic/libs already compile clean in CI) and ran
+  every TU with -fsyntax-only under NDK r17c, sequential (sandbox-safe).
+  COMPLETE error inventory, everything else clean:
+  1. C2SPlayerActionPacketHandles.cpp (fixed upstream by 1aff35f)
+  2. BedwarPathPlanner.cpp `open = {};` (patch 3g: `open = decltype(open)();`,
+     anchor-checked, idempotent)
+  3. ALL 20 jni/splits TUs — three latent shim bugs CI never reached:
+     a. bare `#include "ServerNetwork.h"` (only dev/server/src is on the
+        include path; quoted include can't resolve from jni/splits/) ->
+        `Network/ServerNetwork.h` in all 20 files;
+     b. gs_reg.h declared reg100a..reg400d(BLOCKMAN::AutoRegisterS2C&)
+        but the definitions are reg1a..reg4d(AutoRegisterS2C&) — wrong
+        names AND wrong namespace (AutoRegisterS2C is a GLOBAL class,
+        ServerNetwork.h:22 forward-declares it at global scope);
+     c. ServerNetwork_PacketRegister1..4.cpp defined registerPacket1..4,
+        which the class never declares and ServerNetwork.cpp never calls
+        (init calls registerPacket100..400). Shims now define the real
+        entry points registerPacket100..400, delegating to GSReg::
+        reg1a..reg4d (packet ranges 0-400 contiguous, verified).
+- VERIFIED: 86/86 TUs pass -fsyntax-only after fixes. Pushed 8c037cc;
+  run 23 in flight. CI remains build/link authority — link errors (if
+  any) are the next possible failure domain, not compile errors.
+- BUNDLE RECON (P2 prep, no code yet): res archives mapped — part4 holds
+  ServerGame scripts (BedWar main/ 166 files) + GameSetting
+  (g1001_g1030/BedWar incl. id_mappings.ini) + Media/Setting; part6 holds
+  res/server/resource.cfg (FileSystem=../client/ -> engine-faithful
+  layout is bundle/{server,client}), engineVersion.json, bt/, csv/,
+  recipe/. ScriptManager::loadScript contract decoded: scriptdir must
+  contain base/BaseMain.lua (from ServerGame/Common) + ScriptMain.lua
+  (from BedWar/main) = the "merged plugin tree" GameServerManager
+  expects. isDebug must be false for Linux script loading (Server.cpp:357).
