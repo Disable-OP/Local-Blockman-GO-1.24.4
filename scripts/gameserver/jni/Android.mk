@@ -387,6 +387,12 @@ LOCAL_C_INCLUDES += $(LIBS)/include/android/lua
 LOCAL_C_INCLUDES += $(LIBS)/src/android/lua
 LOCAL_C_INCLUDES += $(LIBS)/include/android/zlib
 LOCAL_SRC_FILES := $(shell find $(LOGIC) -name '*.cpp')
+# Two C TUs under dev/logic that the *.cpp find skips; both are linked
+# requirements (run 25: undefined luaopen_bitop / ini_parse at link):
+#  - LuaRegister/3rd/lbitop.c = LuaBitOp, called by LuaEngine.h:60
+#  - Util/ini.c               = inih,        called by IdMapping.cpp:16
+LOCAL_SRC_FILES += $(LOGIC)/LuaRegister/3rd/lbitop.c
+LOCAL_SRC_FILES += $(LOGIC)/Util/ini.c
 LOCAL_STATIC_LIBRARIES := raknet cpr curl zlib lua g3log
 include $(BUILD_STATIC_LIBRARY)
 
