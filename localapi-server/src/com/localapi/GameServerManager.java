@@ -42,7 +42,14 @@ public final class GameServerManager {
 
     private static final String BUNDLE_DIR = "gameserver-bundle";
     private static final String STAGE_VERSION_FILE = "stage-version";
-    private static final String STAGE_VERSION = "g1008-b1"; // bump to restage
+    private static final String STAGE_VERSION = "g1008-b2"; // bump to restage
+
+    /** Engine-faithful runtime layout: the server CWD is <bundle>/server
+     *  (resource.cfg reads ../client/), while GameServerManager's staging
+     *  dir stays the bundle root. */
+    private static File serverDir() {
+        return new File(sBundleDir, "server");
+    }
 
     private static final Object LOCK = new Object();
     private static Process sProcess;
@@ -123,17 +130,20 @@ public final class GameServerManager {
             try {
                 if (isAlive()) return;
                 File bin = findBinary(context);
-                File cfg = new File(sBundleDir, "serverConfig.json");
-                if (bin == null || !cfg.exists()) {
+                File cwd = serverDir();
+                File cfg = new File(cwd, "serverConfig.json");
+                if (bin == null || !cfg.exists()
+                        || !new File(cwd, "resource.cfg").exists()) {
                     L.i("gs: not started (binary=" + (bin != null)
-                            + " cfg=" + cfg.exists() + ")");
+                            + " cfg=" + cfg.exists() + " resource.cfg="
+                            + new File(cwd, "resource.cfg").exists() + ")");
                     return;
                 }
                 MonitorServer.start();
                 sLogDir = resolveLogDir();
                 writeServerConfig(cfg);
                 ProcessBuilder pb = new ProcessBuilder(bin.getAbsolutePath());
-                pb.directory(sBundleDir);          // CWD: resource.cfg lives here
+                pb.directory(cwd);          // CWD: resource.cfg lives here
                 pb.redirectErrorStream(true);
                 sProcess = pb.start();
                 final Process p = sProcess;
@@ -231,9 +241,9 @@ public final class GameServerManager {
         o.put("ip", "127.0.0.1");
         o.put("port", GAME_PORT);
         o.put("logdir", sLogDir.getAbsolutePath() + "/");
-        o.put("scriptdir", new File(new File(sBundleDir, "scripts"), "BedWar")
+        o.put("scriptdir", new File(new File(serverDir(), "scripts"), "BedWar")
                 .getAbsolutePath());
-        o.put("mapdir", new File(new File(new File(sBundleDir, "maps"), "g1008"),
+        o.put("mapdir", new File(new File(new File(serverDir(), "maps"), "g1008"),
                 "m1008_2").getAbsolutePath() + "/");
         o.put("id", "g1008");
         o.put("mapid", "m1008_2");
