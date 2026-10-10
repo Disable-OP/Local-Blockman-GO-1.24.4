@@ -11,7 +11,7 @@ name: build-gameserver
 on:
   workflow_dispatch:
   push:
-    branches: ain]
+    branches: [main]
     paths:
       - "scripts/gameserver/**"
 
