@@ -2632,3 +2632,14 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 - SHIPPED (488fa27): patch 3i = null-Pool guards in FreeInternal/Realloc/GetAllocationSize; untracked pointers are LOGGED (logcat tag GSALLOC) and LEAKED, never dereferenced. Verified idempotent on a fresh tree.
 - NEXT (in order): (1) watch the build-gameserver run for 488fa27 (WARM, ~15-20 min — ccache from run 28); (2) when green, tag v0.6.4-gameserver -> build-release (injects the .so) -> test-redroid smoke: EXPECT "gs: launched" + either engine boot progress in server.log or GSALLOC "untracked-free ptr=..." lines naming the culprit pointer; (3) if GSALLOC fires, decode the pointer's region (scudo libc vs allocator page) and fix the allocation-side mismatch; (4) if boot passes config/scripts/map, the next gate is RakNet listen on 31108 + monitor connect (127.0.0.1:18081), then the CLIENT dispatch -> in-game, then bots.
 - METHOD NOTE for future sessions: the stripped .so IS symbolizable — 28,959 exported dynsyms bracket unexported code well; capstone (pip, python3.13) disassembles; PLT stubs resolve via .rela.plt (plt@0x6a0e00, header 32B, entry 16B); the engine source for EVERY TU is in the repo-root archives (assemble_sources.sh layout).
+
+## Session 56 cont. 2 delta (read FIRST - ENGINE ALIVE AND STABLE ON DEVICE)
+
+- v0.6.5-gameserver (tag) verdict: test-redroid PASS - 0 SIGSEGV, 0 GSALLOC (3j fixed the allocator completely), two STABLE libgameserver.so processes in ps, dispatch serves gaddr=127.0.0.1:31108 ("dispatch served the ON-DEVICE GameServer RakNet addr"), UI AUTOMATION PASS. Patch arc: 3i = null-Pool hardening (log GSALLOC + leak), 3j = THE root cause (FindPoolInfoInternal `unsigned int Key` -> `size_t Key`; 32-bit truncation made 100% of lookups miss on 64-bit address spaces).
+- IN-GAME GATES REMAINING (in order):
+  1. PROVE the RakNet listener on 31108 (add a netstat/proc-net-tcp or connect probe to the smoke step).
+  2. server.log still absent - drive a JOIN (room creation) and watch monitor G2R_CONNECT + engine logs; engine stdout was empty pre-room.
+  3. Client engine -> 31108 connect -> in-game. Map delivery already proven on-device again this run (m1008_2 bundle served 17:12:55).
+  4. Bots: World:addEntityPlayerAI (Blockman_Register.cpp:253) / World:addRobot (:251) are Lua-registered; BedWar ships EngineWorld:addRobot + MonsterManager + GMBedWar GM hooks - drive bots from a Lua hook once a room runs.
+- QUEUED: Handlers.deleteChatRoom NoSuchMethodError (JSONObject.getNames is not on Android 12) - replace with a manual key walk.
+- OPS: build-gameserver push trigger FIXED (was `branches: ain]` since fce9d2e - pushes never auto-built); warm CI cadence ~13-15 min; release tags: v0.6.4-gameserver (3i), v0.6.5-gameserver (3j, CURRENT GOOD).
