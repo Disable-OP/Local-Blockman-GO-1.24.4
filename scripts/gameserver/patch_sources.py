@@ -230,6 +230,39 @@ if os.path.isfile(_bpp):
     else:
         print('ok (already) BedwarPathPlanner.cpp')
 
+# 3h. Windows-style backslash separators inside quoted includes
+#     (Log.cpp: #include "Util\UThread.h", FileResourceManager.cpp:
+#     #include "Util\ChecksumUtil.h") are fatal on Linux ("No such file
+#     or directory" — gcc keeps the backslash as a literal filename char).
+#     These LordCore TUs were never reached by CI before (every earlier
+#     run died in the gameserver module first). Normalize the separators
+#     across the WHOLE assembled tree — forward slashes work everywhere.
+import re as _re
+_fixed_bs = 0
+for _base in (os.path.join(ROOT, 'extract'),):
+    for _dirpath, _dirnames, _filenames in os.walk(_base):
+        for _fn in _filenames:
+            if not _fn.endswith(('.cpp', '.h', '.hpp', '.c', '.cc')):
+                continue
+            _p = os.path.join(_dirpath, _fn)
+            try:
+                with open(_p, encoding='latin-1') as f:
+                    _t = f.read()
+            except OSError:
+                continue
+            if '\\' not in _t or '#include' not in _t:
+                continue
+            _t2 = _re.sub(r'(#\s*include\s*")([^"\n]*\\[^"\n]*)(")',
+                          lambda m: m.group(1) + m.group(2).replace('\\', '/')
+                          + m.group(3), _t)
+            if _t2 != _t:
+                with open(_p, 'w', encoding='latin-1') as f:
+                    f.write(_t2)
+                _fixed_bs += 1
+                print('patched backslash include:',
+                      os.path.relpath(_p, ROOT))
+print('backslash-include pass: %d files fixed' % _fixed_bs)
+
 # 4. ClientPeer varargs UB (LORD::String -> const char*)
 peer = os.path.join(SERVER, 'Network/ClientPeer.cpp')
 with open(peer, encoding='latin-1') as f:
