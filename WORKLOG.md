@@ -4210,3 +4210,29 @@ resource is unavailable.
   step (gs process + logcat gs tags + dynamic server.log check).
 - The Engine 10068 GameServer arc is now: BUILT (CI-proven), PACKAGED
   (release asset), IN FLIGHT to on-device (APK + smoke).
+
+## Session 55 cont. 5 — first ON-DEVICE evidence (test-redroid 210) + 3 wiring fixes
+
+- build-release #71 GREEN but the APK grew only 4096 B — the .so was NOT
+  injected. test-redroid #210 ran it anyway and produced the FIRST
+  on-device GameServer evidence:
+  * gs: downloaded gameserver-runtime.tar.gz (38426834 B) + staged OK
+  * gs: fallback-downloaded libgameserver.so (50413216 B) from the
+    release into filesDir (nativeLibraryDir was empty — injection bug)
+  * gs: not started (binary=true cfg=false resource.cfg=false) x4
+- THREE ROOT CAUSES, ALL FIXED (cd19b23):
+  1. build-release.yml "Build patched + signed APK" step had NO GH_TOKEN
+     -> fetch_release_asset.py exited "GH_TOKEN not set" -> the jniLib
+     injection silently degraded (log proves: "error: GH_TOKEN not set").
+  2. GameServerManager startIfPossible() required serverConfig.json to
+     PRE-EXIST but only writeServerConfig() (after the check) creates it
+     — chicken-and-egg; the server could never start. Config is now
+     (re)written unconditionally on every start; real preconditions are
+     binary + resource.cfg only.
+  3. The staged tarball is rooted at bundle/ while serverDir() pointed at
+     gameserver-bundle/server (one level short). bundleRoot() now detects
+     the nested layout (gameserver-bundle/bundle/server).
+- Host suite 639/639; classes6.dex 289620 B. build-release #72 dispatched
+  (cd19b23) -> wip-72 APK WITH the injected .so -> test-redroid auto-runs.
+  Expected next verdict: "gs: launched pid=..." + server.log diagnostics
+  (engine boot, script load, RakNet listen, monitor connect).
