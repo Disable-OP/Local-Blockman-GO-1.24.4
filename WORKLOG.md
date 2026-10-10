@@ -4192,3 +4192,21 @@ resource is unavailable.
 - The warming detour cost one cycle but bought two durable workflow
   behaviors: caches survive failures, and the concurrency group stops
   wasted superseded runs.
+
+## Session 55 cont. 4 — RUN 28 GREEN: libgameserver-arm64.so RELEASED (P0 CLOSED)
+
+- Run 28 (bb2b715): ALL STEPS GREEN — ndk-build, ccache stats, both
+  explicit cache saves, static sanity (aarch64 ELF + NEEDED libs + embedded
+  secret), and "Attach to release". libgameserver-arm64.so (50,413,216 B)
+  is on release localapi-assets as of 14:13:11Z.
+- Caches confirmed: ndk-r17c-linux-x86_64 (648MB) + ccache-gs-38053488004
+  (385MB compressed). Every future scripts/gameserver/** iteration is now
+  a WARM run (~15-20 min: recompile only changed TUs + relink).
+- TAG v0.6.3-gameserver pushed (14b675a) -> build-release #71 in flight:
+  fetches libgameserver-arm64.so from the release, injects it as
+  lib/arm64-v8a/libgameserver.so (jniLib -> nativeLibraryDir, the
+  sanctioned exec path), signs, attaches BlockyNexus-localapi.apk.
+  test-redroid then auto-runs (workflow_run) with the GameServer smoke
+  step (gs process + logcat gs tags + dynamic server.log check).
+- The Engine 10068 GameServer arc is now: BUILT (CI-proven), PACKAGED
+  (release asset), IN FLIGHT to on-device (APK + smoke).
