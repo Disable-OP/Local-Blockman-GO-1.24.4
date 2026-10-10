@@ -1,5 +1,14 @@
 // gcc 4.9 / gnustl compatibility shims for the GameServer build
+//
+// This header is FORCE-INCLUDED (-include) into every C++ TU via
+// COMMON_FLAGS. g3log also compiles C sources (execinfo_android.c) with the
+// same flags — in C mode the C++ standard headers below are fatal (gcc 4.9
+// headers #error without -std=c++11), so everything here is guarded by
+// __cplusplus and the C TUs get a no-op include.
 #pragma once
+
+#ifdef __cplusplus
+
 #include <type_traits>
 #include <memory>
 #include <cstddef>
@@ -80,3 +89,5 @@ inline double stod(const string& s, size_t* pos = nullptr) {
     const char* c = s.c_str(); char* e = nullptr; double r = strtod(c, &e); if (e == c) throw invalid_argument("stod"); if (pos) *pos = (size_t)(e - c); return r;
 }
 }
+
+#endif /* __cplusplus */
