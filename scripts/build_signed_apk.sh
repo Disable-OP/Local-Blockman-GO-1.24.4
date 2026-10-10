@@ -103,8 +103,12 @@ unzip -l "$BUILD/patched-unsigned.apk" | grep -q classes6.dex || { echo "FATAL: 
 echo "== inject libgameserver.so (arm64) =="
 GSSO="$BUILD/libgameserver.so"
 if python3 "$REPO/scripts/fetch_release_asset.py" libgameserver-arm64.so "$GSSO"; then
-  mkdir -p "$BUILD/libtmp/arm64-v8a"
-  cp -f "$GSSO" "$BUILD/libtmp/arm64-v8a/libgameserver.so"
+  # stage under lib/arm64-v8a (the jniLib dir) — fbe7c56 staged under
+  # arm64-v8a/ WITHOUT the lib/ prefix, so the zip below never matched the
+  # file ("Nothing to do!", exit 12 — first exercised in build-release 72;
+  # every earlier run had taken the no-asset else branch)
+  mkdir -p "$BUILD/libtmp/lib/arm64-v8a"
+  cp -f "$GSSO" "$BUILD/libtmp/lib/arm64-v8a/libgameserver.so"
   ( cd "$BUILD/libtmp" && zip -q "$BUILD/patched-unsigned.apk" lib/arm64-v8a/libgameserver.so )
   unzip -l "$BUILD/patched-unsigned.apk" | grep -q 'libgameserver.so' \
     || { echo "FATAL: libgameserver.so missing from APK"; exit 1; }
