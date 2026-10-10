@@ -4236,3 +4236,31 @@ resource is unavailable.
   (cd19b23) -> wip-72 APK WITH the injected .so -> test-redroid auto-runs.
   Expected next verdict: "gs: launched pid=..." + server.log diagnostics
   (engine boot, script load, RakNet listen, monitor connect).
+
+## Session 55 cont. 6 — first ENGINE BOOT on device; config-path bug found+fixed
+
+- build-release #73 GREEN with "libgameserver.so injected (50413216
+  bytes)" (fbe7c56's lib/ path-mismatch fixed in 97189e8 — the block had
+  NEVER run before: run 72 was its first successful fetch).
+- test-redroid #212 (wip-73 APK): the wiring fixes all worked on-device —
+  bundle staged, bundle/server detected, serverConfig.json written,
+  monitor listening on 127.0.0.1:18081, PROCESS SPAWNED from
+  nativeLibraryDir (exec allowed).
+- BUT: 3 identical SIGSEGVs, fault addr 0x2, ~100ms after exec (full
+  tombstones in the redroid-diagnostics artifact). Decoded by code
+  reading: with argc==1 main() uses getTestRGConfig('serverConfig.json')
+  which reads a COMPLETELY DIFFERENT, UNGUARDED key set
+  (gameId/serverPort/monitorAddr/...) — our config is in the
+  getRGConfigFromCmdline shape, so doc[key] on missing keys is UB in
+  release (RAPIDJSON_ASSERT no-op) -> near-NULL deref. getTestRGConfig
+  also carries NO logdir/scriptdir/mapdir.
+- FIX (8ec01b2): ProcessBuilder now passes the config JSON as argv[1]
+  (main.cpp argc>1 -> getRGConfigFromCmdline — reads exactly the keys
+  writeServerConfig emits, all HasMember-guarded). Host suite 639/639.
+- build-release #74 dispatched (8ec01b2) -> test-redroid will auto-run.
+  Expected: the engine boots past config parse (resource.cfg -> scripts ->
+  map load) and server.log appears in the resolved config dir.
+- NOTE: the smoke step's logcat grep filter (gs:|gameserver|monitor) HIDES
+  engine stderr lines that don't contain those substrings — the
+  redroid-diagnostics artifact (full logcat + crash.txt) is the real
+  evidence source for server-side crashes.
