@@ -2453,3 +2453,40 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   (device re-download of the bigger pack proves the 35MB flow on-device);
   (2) error-driven from NEW traffic only; (3) RongCloud shim decision;
   (4) GameServer phase gate unchanged — API first.
+
+## Session 53 delta (read FIRST — GameServer build unblocked: const-qualification fix; CI is the build authority)
+
+- STATE: build-gameserver runs 15-20 (49fd2ff..603ca70 arc) ALL RED at
+  Server.o with 6 "no matches converting function" errors: the 3c
+  _Override rewriter in scripts/gameserver/patch_sources.py emitted
+  NON-const member-pointer static_casts for SIX const-qualified engine
+  methods (Entity::isInRangeToRenderDist(float|const Vector3&) const,
+  StructureBB::intersectsWith(const StructureBB&|int,int,int,int) const,
+  StructureBB::isVecInside(int,int,int|const BlockPos&) const).
+  ClassRegister<T> only binds const pointers via its (Ret(T::*)(Args...)
+  const) overload (Template/ClassRegister.h:42).
+- FIXED this session: patch 3e (const-override fixup pass) added to
+  patch_sources.py — idempotent, anchor-checked, zero gameplay semantics.
+- LOCAL VERIFICATION: NDK r17c in sandbox at /home/z/tools/android-ndk-r17c;
+  patched extract at /home/z/blockman-workspace/gswork; the exact CI
+  compile commands for Server.cpp + Blockman_Register.cpp re-run with
+  -fsyntax-only -> 0 errors both. Full ndk-build does NOT fit the sandbox
+  (giant TUs vs ~3GB cgroup — detached cc1plus got killed twice); do not
+  retry it here, CI is the build authority.
+- NEXT (highest value first): (1) read the build-gameserver run for THIS
+  commit — if Server.o passes, the next hidden error (if any) will be in
+  a never-attempted TU: fix iteratively (same pattern: get the artifact
+  ndk-build-log, fix patch_sources.py, re-push); (2) once
+  libgameserver.so builds + attaches to release localapi-assets, wire the
+  GameServer phase: build-release injects it as jniLib (fbe7c56), the
+  client session metadata (ip/port/mapId/mapUrl) must point at the
+  on-device server — that is P2/P3 of the priority system; (3) ServerGame
+  Lua scripts (res/Media/Scripts/ServerGame) inventory/integration per
+  the standing engine mandate — the res archives ARE in the repo root and
+  assemble_sources.sh already extracts them (ServerGame lua count is
+  sanity-checked > 2000).
+- REMINDERS: single branch main; push -> build-gameserver auto-triggers
+  (paths: scripts/gameserver/**); token header REQUIRED for all GitHub
+  API calls from this sandbox; the engine archives at repo root are the
+  only source of truth for the engine tree (never re-extract CI-side
+  beyond what assemble_sources.sh does).

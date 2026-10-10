@@ -149,6 +149,49 @@ if os.path.isfile(_regcpp):
         open(_regcpp, 'w', encoding='latin-1').write(_t2)
         print('patched record signatures')
 
+# 3e. const-qualified override targets (dev tree snapshot drift): the line
+#     rewriter above emits NON-const member-pointer casts, but these six
+#     engine methods are declared const (Entity.h:424/426, StructureBB.h
+#     inline bodies). ClassRegister<T> only binds const member pointers
+#     through its (Ret(T::*)(Args...) const) overload (Template/
+#     ClassRegister.h:42), so the generated casts must carry the trailing
+#     const. Listed explicitly — the rewriter cannot see class headers.
+_CONST_OVERRIDE_FIXUPS = {
+    os.path.join(ROOT, 'extract/dev/logic/Src/LuaRegister/Content/Logic/Entity_Register.h'): [
+        ('static_cast<bool (Entity::*)(float)>(&Entity::isInRangeToRenderDist)',
+         'static_cast<bool (Entity::*)(float) const>(&Entity::isInRangeToRenderDist)'),
+        ('static_cast<bool (Entity::*)(const Vector3 &)>(&Entity::isInRangeToRenderDist)',
+         'static_cast<bool (Entity::*)(const Vector3 &) const>(&Entity::isInRangeToRenderDist)'),
+    ],
+    os.path.join(ROOT, 'extract/dev/logic/Src/LuaRegister/Content/Logic/Util_Register.h'): [
+        ('static_cast<bool (StructureBB::*)(const StructureBB &)>(&StructureBB::intersectsWith)',
+         'static_cast<bool (StructureBB::*)(const StructureBB &) const>(&StructureBB::intersectsWith)'),
+        ('static_cast<bool (StructureBB::*)(int, int, int, int)>(&StructureBB::intersectsWith)',
+         'static_cast<bool (StructureBB::*)(int, int, int, int) const>(&StructureBB::intersectsWith)'),
+        ('static_cast<bool (StructureBB::*)(int, int, int)>(&StructureBB::isVecInside)',
+         'static_cast<bool (StructureBB::*)(int, int, int) const>(&StructureBB::isVecInside)'),
+        ('static_cast<bool (StructureBB::*)(const BlockPos &)>(&StructureBB::isVecInside)',
+         'static_cast<bool (StructureBB::*)(const BlockPos &) const>(&StructureBB::isVecInside)'),
+    ],
+}
+for _cf in _CONST_OVERRIDE_FIXUPS:
+    if not os.path.isfile(_cf):
+        continue
+    _t = open(_cf, encoding='latin-1').read()
+    _o = _t
+    for _a, _b in _CONST_OVERRIDE_FIXUPS[_cf]:
+        if _b in _t:
+            continue  # already applied
+        if _a not in _t:
+            raise SystemExit('const-override anchor missing in %s: %r'
+                             % (os.path.relpath(_cf, ROOT), _a))
+        _t = _t.replace(_a, _b)
+    if _t != _o:
+        open(_cf, 'w', encoding='latin-1').write(_t)
+        print('patched const override casts:', os.path.relpath(_cf, ROOT))
+    else:
+        print('ok (already) const override casts:', os.path.relpath(_cf, ROOT))
+
 # 4. ClientPeer varargs UB (LORD::String -> const char*)
 peer = os.path.join(SERVER, 'Network/ClientPeer.cpp')
 with open(peer, encoding='latin-1') as f:

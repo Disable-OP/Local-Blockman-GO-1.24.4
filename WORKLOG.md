@@ -3949,3 +3949,36 @@ resource is unavailable.
   server, stored version 31, and is current (download-once holds);
   pack persists across process restarts. Follow-up: 5-min read window
   for slow links (42dc3ad, in source; rides the next tag).
+
+## Session 53 — GameServer CI build: LuaRegister const-qualification fix (2026-10-10)
+
+- RECOVERED STATE: the GameServer arm64 CI pipeline built in the post-52
+  arc (49fd2ff..603ca70, no WORKLOG entries — git log is the record)
+  was RED: build-gameserver runs 15-20 all failed at Server.o with SIX
+  "no matches converting function" errors in the Lua register headers
+  (Entity_Register.h isInRangeToRenderDist ×2; Util_Register.h
+  intersectsWith ×2, isVecInside ×2).
+- ROOT CAUSE: the 3c line-based _Override rewriter emits NON-const
+  member-pointer static_casts, but all six engine methods are
+  const-qualified (Entity.h:424/426; StructureBB.h inline bodies) and
+  ClassRegister<T> binds const member pointers ONLY through its
+  (Ret(T::*)(Args...) const) overload (Template/ClassRegister.h:42).
+  Pure build-environment drift, zero gameplay semantics changed.
+- FIX (3e in scripts/gameserver/patch_sources.py): targeted const-override
+  fixup pass — the six generated casts gain the trailing const; idempotent
+  and anchor-checked (fails loudly if rewriter output drifts).
+- LOCAL VERIFICATION (sandbox): NDK r17c installed; assemble-equivalent
+  extract + patch script run clean (43 override sites rewritten, 6 const
+  fixups applied, re-run = ok(already)); the exact CI compile command for
+  Server.cpp and Blockman_Register.cpp re-executed with -fsyntax-only:
+  0 errors both (the same TU chain that hard-errored in CI). Full codegen
+  remains CI's authority.
+- PIPELINE NOTE: full local ndk-build is not sandbox-viable (giant TUs vs
+  ~3GB cgroup; detached cc1plus was killed by the sandbox twice). CI runs
+  the real -j2 build; a syntax pass is the strongest local signal.
+- NEXT: watch the build-gameserver run on this commit. If a LATER error
+  surfaces (the run died at the register-header stage; other TUs were
+  never attempted), fix and iterate. Once libgameserver.so builds, the
+  binary lands on release localapi-assets and the client GameServer phase
+  (session metadata -> ip/port/mapId -> map download) becomes testable
+  end-to-end (P1 -> P2 -> P3 of the priority system).
