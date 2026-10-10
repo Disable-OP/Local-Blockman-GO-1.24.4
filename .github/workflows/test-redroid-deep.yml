@@ -29,7 +29,7 @@ name: test-redroid-deep
 #   budget >5 -> job 45 / step 42 (fleet harvest; run 37751313202 passed
 #                at 19 min with budget 15 — the bigger 25-min harvests
 #                need the extra headroom to reach H..N/O/LM)
-#   else      -> job 26 / step 20 (the ~18-min default run; GJ polls 300s)
+#   else      -> job 30 / step 24 (the ~20-min default run; GJ polls 450s)
 
 on:
   workflow_dispatch:
@@ -48,7 +48,7 @@ jobs:
     # 2026-10-09: the default budgeted run grew by ~4 min (PHASE GJ, the
     # gameplay-join verification, now runs in BOTH modes) -> 18 -> 22.
     # Legacy unlimited (0) and fleet harvest (>5) keep 45.
-    timeout-minutes: ${{ fromJSON(inputs.deep_budget_min || '5') == 0 && 45 || (fromJSON(inputs.deep_budget_min || '5') > 5 && 45 || 26) }}
+    timeout-minutes: ${{ fromJSON(inputs.deep_budget_min || '5') == 0 && 45 || (fromJSON(inputs.deep_budget_min || '5') > 5 && 45 || 30) }}
     env:
       PACKAGE: com.disabngo.blockynexus
       ACTIVITY: com.disabngo.blockynexus.view.activity.start.StartActivity
@@ -121,7 +121,7 @@ jobs:
         # 12 min mid-Phase-F with budget 15 (before G..N ever started),
         # and run 37751313202 passed at 19 min with budget 15; the bigger
         # harvests need the headroom. Legacy unlimited (0) keeps 44.
-        timeout-minutes: ${{ fromJSON(inputs.deep_budget_min || '5') == 0 && 44 || (fromJSON(inputs.deep_budget_min || '5') > 5 && 45 || 20) }}
+        timeout-minutes: ${{ fromJSON(inputs.deep_budget_min || '5') == 0 && 44 || (fromJSON(inputs.deep_budget_min || '5') > 5 && 45 || 24) }}
         run: |
           python3 scripts/ui_automation_test.py \
             --serial localhost:5555 \

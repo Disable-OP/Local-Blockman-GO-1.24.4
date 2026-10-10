@@ -3176,12 +3176,12 @@ def main():
 
     # ---- verification poll: every evidence channel + a screenshot per round
     gj_join_attempted = bool(gj_pressed) or gj_echo0
-    # 300s in BOTH modes: run 38076646322 measured the hall load at
-    # ~2min20s on the guest GPU BEFORE the client's once-per-join
-    # dispatch chain fired (18:42:38 press -> 18:44:58 game-auth +
-    # dispatch) — the old 120s window closed 16s before the verdict
-    # moment and missed the whole chain.
-    gj_deadline = time.time() + 300.0
+    # 450s in BOTH modes: the hall world load on the guest GPU measured
+    # ~2min20s (run 38076646322) and ~5min24s (run 38078240269) BEFORE the
+    # client's once-per-join dispatch chain fires — both prior windows
+    # (120s, 300s) closed before the verdict moment. The chain itself
+    # (auth -> dispatch -> map -> RakNet -> login) needs ~1 more minute.
+    gj_deadline = time.time() + 450.0
     gj_round = 0
     gj_echo = gj_echo0
     gj_disp = gj_attr = gj_userin151 = False
@@ -3211,12 +3211,15 @@ def main():
         gj_attr = gj_attr or ("monitor: pushed user attr" in gj_local)
         gj_userin151 = gj_userin151 or ("monitor: g2r type=151" in gj_local
                                         or "monitor: G2R_USER_IN" in gj_local)
-        if not gj_dirs:
-            gj_dirs = gj_find_cfgdirs()   # dirs appear on first engine start
-            if gj_dirs:
-                gj_cfgdir = gj_dirs[0]
-                ok("GJ: config dirs appeared at round %d: %s"
-                   % (gj_round, ", ".join(gj_dirs)))
+        # NEW config dirs appear whenever a fresh holder spawns its engine
+        # with the OTHER logdir (the dir set grows during the run) — re-scan
+        # every round and merge (run 38078240269: the primary dir with the
+        # LIVE engine's server.log appeared at round ~20 but was never
+        # added because gj_dirs was already non-empty).
+        _newdirs = [d for d in gj_find_cfgdirs() if d not in gj_dirs]
+        if _newdirs:
+            gj_dirs.extend(_newdirs)
+            ok("GJ: config dirs now: %s" % ", ".join(gj_dirs))
         _clog, _clog_path = gj_read("client.log")
         if _clog:
             gj_conn = gj_conn or "emConnectSuc" in _clog

@@ -30,11 +30,11 @@ permissions:
 jobs:
   redroid-test:
     runs-on: ubuntu-24.04-arm
-    # Fast-only + GJ join verification (2026-10-09/10): expected wall ~11 min
-    # (~75s infra + ~4.5 min UI suite + ~5.5 min GJ join poll — the hall
-    # alone loads ~2.5 min on the guest GPU before the join chain fires,
-    # run 38076646322); cap 18 min so a hang can never hold the runner.
-    timeout-minutes: 18
+    # Fast-only + GJ join verification (2026-10-09/10): expected wall ~13 min
+    # (~75s infra + ~4.5 min UI suite + ~8 min GJ join poll — the hall
+    # alone loads 2.5-5.5 min on the guest GPU before the join chain fires,
+    # runs 38076646322 + 38078240269); cap 20 min.
+    timeout-minutes: 20
     env:
       PACKAGE: com.disabngo.blockynexus
       ACTIVITY: com.disabngo.blockynexus.view.activity.start.StartActivity
@@ -109,7 +109,7 @@ jobs:
         # The deep-drive phases (B, E-O) are NOT reachable from CI - pass
         # --mode full by hand / dispatch test-redroid-deep when deep
         # evidence is needed.
-        timeout-minutes: 14
+        timeout-minutes: 16
         run: |
           python3 scripts/ui_automation_test.py \
             --serial localhost:5555 \
