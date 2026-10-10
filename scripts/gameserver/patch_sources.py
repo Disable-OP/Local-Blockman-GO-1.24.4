@@ -192,6 +192,24 @@ for _cf in _CONST_OVERRIDE_FIXUPS:
     else:
         print('ok (already) const override casts:', os.path.relpath(_cf, ROOT))
 
+# 3f. Listenable<int> through printf varargs is a gcc 4.9 hard error
+#     ("cannot pass objects of non-trivially-copyable type"): ItemStack::
+#     stackSize is a Listenable<int> (shared_ptr member -> non-trivial
+#     copy). Exactly one log site in the tree passes it through '...';
+#     route it through the existing int accessor getItemStackSize().
+_c2s = os.path.join(SERVER, 'Network/C2SPacketHandles/C2SPlayerActionPacketHandles.cpp')
+if os.path.isfile(_c2s):
+    _t = open(_c2s, encoding='latin-1').read()
+    _o = _t
+    _t = _t.replace(
+        'stack->itemID, stack->stackSize);',
+        'stack->itemID, stack->getItemStackSize());')
+    if _t != _o:
+        open(_c2s, 'w', encoding='latin-1').write(_t)
+        print('patched C2SPacketDropItemPosition dead-player log (Listenable varargs)')
+    else:
+        print('ok (already) C2SPlayerActionPacketHandles.cpp')
+
 # 4. ClientPeer varargs UB (LORD::String -> const char*)
 peer = os.path.join(SERVER, 'Network/ClientPeer.cpp')
 with open(peer, encoding='latin-1') as f:
