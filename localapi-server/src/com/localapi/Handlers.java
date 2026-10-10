@@ -1003,6 +1003,67 @@ final class Handlers {
      * The Engine 10068 GameServer itself is a later project phase; today the
      * address is this server's loopback endpoint (the API shape is final).
      */
+    /**
+     * POST /v1/joinbridge - INTERNAL cross-process join bridge. The UI
+     * process's com.localapi.JoinBridge (the hall Quick-in takeover) calls
+     * THIS endpoint so the work happens in the 18080 HOLDER process: the
+     * monitor (18081) + engine ownership live here, never in the churned
+     * UI process (run 38092797697: the UI-side ensure/push were no-ops - the
+     * serving-loopback gate returned early - and the client's C2S login
+     * timed out with no attrs on the engine). Body:
+     * {id, reqId, sex, name, vip, country, ensure:true|false}.
+     * ensure=true (pre-startGame): guarantee a monitor-linked live engine
+     * (sweep + respawn a stale one - SAFE, the client engine boots only
+     * after startGame). ensure=false (post-startGame): push-only, never
+     * sweep (the client may already be connected to the engine).
+     * Response: {"code":1,"pushed":bool,"gameConnected":bool}.
+     */
+    public static String joinBridge(Ctx ctx, StateStore store) {
+        long uid = 0;
+        String requestId = "";
+        int sex = 1;
+        String name = "";
+        int vip = 0;
+        String country = "Oversea";
+        boolean ensure = true;
+        try {
+            JSONObject b = new JSONObject(ctx.body());
+            uid = b.optLong("id", 0);
+            requestId = b.optString("reqId", "");
+            sex = b.optInt("sex", 1);
+            name = b.optString("name", "");
+            vip = b.optInt("vip", 0);
+            country = b.optString("country", "Oversea");
+            ensure = b.optBoolean("ensure", true);
+        } catch (Throwable ignored) {}
+        boolean pushed = false;
+        if (uid > 0 && requestId != null && !requestId.isEmpty()) {
+            for (int i = 0; i < 6 && !pushed; i++) {
+                if (ensure || i == 0) {
+                    // rebind the monitor / sweep+respawn a stale engine
+                    // (idempotent; no-ops on a healthy state)
+                    GameServerManager.ensureLiveEngine();
+                }
+                if (MonitorServer.gameConnected()) {
+                    GameServerManager.notifyDispatch(uid, requestId, sex,
+                            name, vip, country);
+                    pushed = MonitorServer.gameConnected();
+                    if (pushed) break;
+                }
+                try { Thread.sleep(1000L); }
+                catch (InterruptedException ie) { break; }
+            }
+        }
+        JSONObject out = new JSONObject();
+        out.put("code", 1);
+        out.put("pushed", pushed);
+        out.put("gameConnected", MonitorServer.gameConnected());
+        L.i("joinbridge: uid=" + uid + " req=" + requestId
+                + " ensure=" + ensure + " -> pushed=" + pushed
+                + " connected=" + MonitorServer.gameConnected());
+        return out.toString();
+    }
+
     private static String dispatch(Ctx ctx, StateStore store, boolean follow) {
         // Lazy engine boot on the join moment: the FIRST boot's one-shot
         // startIfPossible can give up while the 64MB bundle is still

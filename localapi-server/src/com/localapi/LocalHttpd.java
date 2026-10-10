@@ -336,6 +336,18 @@ public class LocalHttpd extends NanoHTTPD {
     private String route(String verb, String uri, Handlers.Ctx ctx,
                          java.util.Map<String, String> pathParams) {
         String cleanUri = uri == null ? "/" : (uri.length() > 1 ? uri.replaceAll("/+$", "") : uri);
+        if (cleanUri.equals("/v1/joinbridge")) {
+            // INTERNAL: the UI process's JoinBridge asks THIS holder to
+            // guarantee a monitor-linked engine and push the join attrs.
+            // Cross-process by design: the monitor/engine ownership lives
+            // in the holder, never in the (churned) UI process.
+            try {
+                return Handlers.joinBridge(ctx, store);
+            } catch (Throwable t) {
+                L.e("joinbridge handler threw: " + t);
+                return "{\"code\":1,\"pushed\":false,\"gameConnected\":false,\"error\":\"thrown\"}";
+            }
+        }
         String kind;
         try {
             RoutingTable.Match m = RoutingTable.match(verb, cleanUri);

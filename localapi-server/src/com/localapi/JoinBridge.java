@@ -129,6 +129,8 @@ public final class JoinBridge {
             // the map pre-placement + attr pushes run off it.
             final long fUid = uid;
             final String fNick = nick;
+            final String fReqId = requestId;
+            final String fCountry = "Oversea";
             new Thread(new Runnable() {
                 @Override public void run() {
                     // Pre-place the map bundle where MapManager::n expects
@@ -136,19 +138,24 @@ public final class JoinBridge {
                     // emulated-storage dir chain (run 38089237461: CreateDir
                     // error 17 -> onDownloadMapFailure x2 -> no connect).
                     GameServerManager.ensureEngineMap();
+                    // Push the join attrs THROUGH THE HOLDER (the /v1/
+                    // joinbridge endpoint): the monitor + engine ownership
+                    // live in the 18080 holder process - the UI process's
+                    // own ensure/push are no-ops when it is not the holder
+                    // (run 38092797697: the attrs never landed, the C2S
+                    // login timed out).
+                    final String body = joinBridgeBody(fUid, fReqId, 1,
+                            fNick, 0, fCountry, true);
                     boolean pushed = false;
-                    for (int i = 0; i < ATTR_PUSH_TRIES; i++) {
-                        if (i == 4 || i == 14 || i == 24) {
-                            // The engine the press would reach may be a
-                            // STALE one (spawned by a dead holder: RakNet
-                            // alive, monitor link dead) - the login gate
-                            // can never pass on it. Sweep + respawn so the
-                            // client (booting after startGame) reaches a
-                            // monitor-linked engine.
-                            GameServerManager.ensureLiveEngine();
+                    for (int i = 0; i < ATTR_PUSH_TRIES && !pushed; i++) {
+                        String res = httpPost("/v1/joinbridge", body);
+                        if (res != null && res.contains("\"pushed\":true")) {
+                            pushed = true; break;
                         }
-                        GameServerManager.notifyDispatch(fUid, requestId, 1,
-                                fNick, 0, "Oversea");
+                        // Direct fallback (covers the UI-process-IS-holder
+                        // case and a dead 18080 endpoint window):
+                        GameServerManager.notifyDispatch(fUid, fReqId, 1,
+                                fNick, 0, fCountry);
                         if (MonitorServer.gameConnected()) { pushed = true; break; }
                         try { Thread.sleep(1000L); } catch (InterruptedException ie) { return; }
                     }
@@ -159,13 +166,31 @@ public final class JoinBridge {
                         @Override public void run() {
                             try {
                                 startOnlineGame(ctx, gameEntity, gaddr, mapId,
-                                        mapUrl, resVersion, requestId, signature,
+                                        mapUrl, resVersion, fReqId, signature,
                                         timestamp, fNick, fUid);
                             } catch (Throwable t) {
                                 L.e(TAG + ": startOnlineGame failed: " + t);
                             }
                         }
                     });
+                    // Keep the attrs fresh through the login window: re-push
+                    // (push-only, ensure=false - NEVER sweep once the client
+                    // may be connecting) for ~44s. Whichever holder is alive
+                    // when the client's C2S login lands gets the attrs onto
+                    // ITS engine via the monitor link.
+                    final String postBody = joinBridgeBody(fUid, fReqId, 1,
+                            fNick, 0, fCountry, false);
+                    new Thread(new Runnable() {
+                        @Override public void run() {
+                            for (int i = 0; i < 22; i++) {
+                                httpPost("/v1/joinbridge", postBody);
+                                GameServerManager.notifyDispatch(fUid, fReqId,
+                                        1, fNick, 0, fCountry);
+                                try { Thread.sleep(2000L); }
+                                catch (InterruptedException ie) { return; }
+                            }
+                        }
+                    }, "JoinBridgeRePush").start();
                 }
             }, "JoinBridge").start();
 
@@ -176,6 +201,55 @@ public final class JoinBridge {
         } catch (Throwable t) {
             L.e(TAG + ": takeover failed: " + t);
             return false;
+        }
+    }
+
+    /** Build the /v1/joinbridge request body. */
+    private static String joinBridgeBody(long uid, String reqId, int sex,
+            String name, int vip, String country, boolean ensure) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("id", uid);
+            o.put("reqId", reqId);
+            o.put("sex", sex);
+            o.put("name", name);
+            o.put("vip", vip);
+            o.put("country", country);
+            o.put("ensure", ensure);
+            return o.toString();
+        } catch (Throwable t) {
+            return "{\"id\":" + uid + ",\"reqId\":\"" + reqId
+                    + "\",\"ensure\":" + ensure + "}";
+        }
+    }
+
+    /** POST a body to the holder's LocalAPI. Short timeouts so the caller's
+     *  loop stays responsive. Returns the response body or null. */
+    private static String httpPost(String path, String body) {
+        java.net.HttpURLConnection c = null;
+        try {
+            java.net.URL u = new java.net.URL(Handlers.LOCAL_BASE_URL + path);
+            c = (java.net.HttpURLConnection) u.openConnection();
+            c.setRequestMethod("POST");
+            c.setConnectTimeout(3000);
+            c.setReadTimeout(9000); // the holder polls up to ~6s inside
+            c.setDoOutput(true);
+            java.io.OutputStream os = c.getOutputStream();
+            os.write(body.getBytes("UTF-8"));
+            os.close();
+            int code = c.getResponseCode();
+            if (code != 200) return null;
+            java.io.InputStream in = c.getInputStream();
+            java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+            in.close();
+            return bo.toString("UTF-8");
+        } catch (Throwable t) {
+            return null;
+        } finally {
+            if (c != null) try { c.disconnect(); } catch (Throwable ignored) {}
         }
     }
 
