@@ -46,9 +46,17 @@ public final class GameServerManager {
 
     /** Engine-faithful runtime layout: the server CWD is <bundle>/server
      *  (resource.cfg reads ../client/), while GameServerManager's staging
-     *  dir stays the bundle root. */
+     *  dir stays the bundle root. The staged tarball is itself rooted at
+     *  bundle/ (build_runtime_bundle.py layout), so the real root may be
+     *  <staging>/bundle — detect instead of assuming (run 210 lesson: the
+     *  server never found resource.cfg one level short). */
+    private static File bundleRoot() {
+        File nested = new File(sBundleDir, "bundle");
+        return new File(nested, "server").isDirectory() ? nested : sBundleDir;
+    }
+
     private static File serverDir() {
-        return new File(sBundleDir, "server");
+        return new File(bundleRoot(), "server");
     }
 
     private static final Object LOCK = new Object();
@@ -131,12 +139,19 @@ public final class GameServerManager {
                 if (isAlive()) return;
                 File bin = findBinary(context);
                 File cwd = serverDir();
+                // NOTE: serverConfig.json is OWNED by this manager and is
+                // (re)written below on every start — it must NOT be a
+                // precondition (run 210: the old check required the file to
+                // already exist, but only this method creates it -> the
+                // server could never start). Only the binary and the
+                // engine-faithful resource.cfg are real preconditions.
                 File cfg = new File(cwd, "serverConfig.json");
-                if (bin == null || !cfg.exists()
+                if (bin == null
                         || !new File(cwd, "resource.cfg").exists()) {
                     L.i("gs: not started (binary=" + (bin != null)
-                            + " cfg=" + cfg.exists() + " resource.cfg="
-                            + new File(cwd, "resource.cfg").exists() + ")");
+                            + " resource.cfg="
+                            + new File(cwd, "resource.cfg").exists() + " cwd="
+                            + cwd + ")");
                     return;
                 }
                 MonitorServer.start();

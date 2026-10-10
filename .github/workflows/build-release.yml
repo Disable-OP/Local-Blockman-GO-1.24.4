@@ -35,6 +35,10 @@ jobs:
         env:
           BASE_APK: ${{ github.workspace }}/base.apk
           KEYSTORE: ${{ secrets.RELEASE_KEYSTORE_B64 && '/tmp/ks.jks' || '' }}
+          # build_signed_apk.sh fetches libgameserver-arm64.so through
+          # fetch_release_asset.py, which needs a token (run 71 lesson:
+          # without it the injection silently degraded to "ships without").
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ -n "${{ secrets.RELEASE_KEYSTORE_B64 }}" ]; then
             echo "${{ secrets.RELEASE_KEYSTORE_B64 }}" | base64 -d > /tmp/ks.jks
