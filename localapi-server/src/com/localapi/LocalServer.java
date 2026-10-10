@@ -36,8 +36,15 @@ public final class LocalServer {
 
     private LocalServer() {}
 
+    /** The app context for the engine boot (host rig: null — no engine). */
+    private static volatile Context sApp;
+    /** One engine boot per process, no matter how many holders happen. */
+    private static final Object GS_BOOT_LOCK = new Object();
+    private static boolean gsBootedHere;
+
     public static void startIfNeeded(Context context) {
         Context app = context.getApplicationContext();
+        sApp = app;
         File filesDir = app.getFilesDir();
         // Seed assets ship inside the APK (tiny data, NOT the streamed icon
         // bytes): the real skin catalog capture + the client's own game
@@ -48,25 +55,49 @@ public final class LocalServer {
         copySeedAsset(app, "localapi/ScriptSetting.csv",
                 new File(new File(filesDir, "localapi"), "games_seed.csv"));
         start(filesDir, PORT);
-        // Gameplay server (engine 10068) — stage the runtime bundle, bring up
-        // the room-monitor stand-in, then launch the binary. All best-effort:
-        // failures only mean "no real match this boot", the API phase is
-        // independent. Device-only: the host test rig never reaches this.
-        Thread gs = new Thread(() -> {
-            try {
-                GameServerManager.ensure(app);
-                // Retry the start: the FIRST boot can still be staging the
-                // 64MB bundle when the one-shot attempt finds resource.cfg
-                // missing (run 38073049374: the first boot never started
-                // the engine at all). The serving gate inside
-                // startIfPossible makes standby iterations instant no-ops.
-                for (int i = 0; i < 12 && !GameServerManager.isAlive(); i++) {
-                    GameServerManager.startIfPossible(app);
-                    if (GameServerManager.isAlive()) break;
-                    Thread.sleep(5000);
+        bootGameServerOnce();
+    }
+
+    /**
+     * Gameplay server (engine 10068) — stage the runtime bundle, bring up
+     * the room-monitor stand-in, then launch the binary. All best-effort:
+     * failures only mean "no real match this boot", the API phase is
+     * independent. Device-only: the host test rig never reaches this
+     * (sApp null).
+     *
+     * Runs (a) from startIfNeeded (the common cold-start holder) AND
+     * (b) from the watchdog the moment THIS process becomes the 18080
+     * holder — run 38076646322 lesson: a process that takes over via the
+     * watchdog (its boot-time bind lost the race) never ran the engine
+     * boot, so when it later became the holder it served dispatch with the
+     * legacy 18080 gaddr and no engine — the client's once-per-join
+     * dispatch was poisoned exactly at the join moment.
+     */
+    static void bootGameServerOnce() {
+        final Context app = sApp;
+        if (app == null) return;   // host rig
+        synchronized (GS_BOOT_LOCK) {
+            if (gsBootedHere) return;
+            gsBootedHere = true;
+        }
+        Thread gs = new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    GameServerManager.ensure(app);
+                    // Retry the start: the FIRST boot can still be staging
+                    // the 64MB bundle when the one-shot attempt finds
+                    // resource.cfg missing (run 38073049374: the first boot
+                    // never started the engine at all). The serving gate
+                    // inside startIfPossible makes standby iterations
+                    // instant no-ops.
+                    for (int i = 0; i < 12 && !GameServerManager.isAlive(); i++) {
+                        GameServerManager.startIfPossible(app);
+                        if (GameServerManager.isAlive()) break;
+                        Thread.sleep(5000);
+                    }
+                } catch (Throwable t) {
+                    L.e("gameserver boot failed: " + t);
                 }
-            } catch (Throwable t) {
-                L.e("gameserver boot failed: " + t);
             }
         }, "LocalApiGsBoot");
         gs.setDaemon(true);
@@ -188,6 +219,14 @@ public final class LocalServer {
                     }
                     if (s == NOSERVER) {
                         bootOnce(filesDir, port, " (watchdog)");
+                    }
+                    if (s == UP && !gsBootedHere) {
+                        // THIS process just became the 18080 holder via the
+                        // watchdog — it must own the engine too (the holder
+                        // serves the join dispatch; see bootGameServerOnce).
+                        L.i("watchdog: this process now serves the local API"
+                                + " — booting the gameplay engine");
+                        bootGameServerOnce();
                     }
                     try {
                         Thread.sleep(WATCHDOG_INTERVAL_MS);

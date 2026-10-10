@@ -2976,67 +2976,75 @@ def main():
     # pressed they stay probes so a home-layout change can never silently
     # green a skipped join.
     print("== PHASE GJ: gameplay join verification (client -> GameServer) ==")
-    _GJ_CFG_GLOB = ("ls -d /storage/emulated/*/SandBoxOL/BlockMan/config"
-                    " 2>/dev/null")
 
-    def gj_find_cfgdir():
-        """Resolve the SandBoxOL config dir across read channels (the
-        user-visible path is /storage/emulated/0/SandBoxOL/BlockMan/config;
-        on redroid the dir only EXISTS once the engine first starts, so
-        callers re-probe until it shows up)."""
-        out = adb.sh(_GJ_CFG_GLOB, timeout=20)
-        cands = [l.strip() for l in out.splitlines() if l.strip()]
+    def gj_find_cfgdirs():
+        """ALL SandBoxOL config-dir candidates across read channels. The
+        engine's logdir FLIPS between the primary SandBoxOL/BlockMan/config
+        and the app's external-files fallback across app processes (run
+        38076646322: server.log lived in BOTH), and the client engine
+        writes client.log to its own SandboxOL spelling — so collect every
+        candidate and try them all when reading."""
+        cands = []
+        seen = set()
+
+        def add_all(out):
+            for l in (out or "").splitlines():
+                l = l.strip()
+                if l and l not in seen:
+                    seen.add(l)
+                    cands.append(l)
+
+        add_all(adb.sh(
+            "ls -d /storage/emulated/*/SandBoxOL/BlockMan/config"
+            " /storage/emulated/*/SandboxOL/BlockMan/config 2>/dev/null",
+            timeout=20))
         # app-context view (run-as) — the shell view can be storage-scoped
-        runas = adb.sh("run-as %s sh -c '%s'"
-                       % (args.package, _GJ_CFG_GLOB), timeout=30)
-        for l in runas.splitlines():
-            l = l.strip()
-            if l and l not in cands:
-                cands.append(l)
+        add_all(adb.sh(
+            "run-as %s sh -c 'ls -d /storage/emulated/*/Sa*BoxOL/BlockMan/"
+            "config /storage/emulated/*/Android/data/%s/files/SandBoxOL/"
+            "config 2>/dev/null'" % (args.package, args.package),
+            timeout=30))
         # the app's own external files dir (package-resolved fallback)
-        ext = adb.sh("ls -d /storage/emulated/*/Android/data/%s/files/"
-                     "SandBoxOL/config 2>/dev/null" % args.package,
-                     timeout=20)
-        for l in ext.splitlines():
-            l = l.strip()
-            if l and l not in cands:
-                cands.append(l)
-        for c in cands:
-            if c.endswith("/emulated/0/SandBoxOL/BlockMan/config"):
-                return c
-        return cands[0] if cands else ""
+        add_all(adb.sh(
+            "ls -d /storage/emulated/*/Android/data/%s/files/SandBoxOL/"
+            "config 2>/dev/null" % args.package, timeout=20))
+        ordered = [c for c in cands
+                   if c.endswith("/emulated/0/SandBoxOL/BlockMan/config")]
+        ordered += [c for c in cands if c not in ordered]
+        return ordered
 
-    gj_cfgdir = gj_find_cfgdir()
-    gj_clog = (gj_cfgdir + "/client.log") if gj_cfgdir else ""
-    gj_slog = (gj_cfgdir + "/server.log") if gj_cfgdir else ""
-    if gj_cfgdir:
-        ok("GJ: config dir %s (client.log present=%s, server.log present=%s)"
-           % (gj_cfgdir,
-              "yes" if adb.sh("test -f %s && echo y" % gj_clog) else "no",
-              "yes" if adb.sh("test -f %s && echo y" % gj_slog) else "no"))
+    gj_dirs = gj_find_cfgdirs()
+    gj_cfgdir = gj_dirs[0] if gj_dirs else ""
+    if gj_dirs:
+        ok("GJ: config dirs %s" % ", ".join(gj_dirs))
     else:
-        print("  [probe] GJ: SandBoxOL config dir not found YET (it appears "
-              "when the engine first starts; will re-probe each round)")
+        print("  [probe] GJ: SandBoxOL config dirs not found YET (they "
+              "appear when the engine first starts; re-probed each round)")
         print("  [gj-diag] shell /storage/emulated/: %s"
               % adb.sh("ls /storage/emulated/ 2>&1 | head -4"))
         print("  [gj-diag] shell /storage/emulated/0/: %s"
               % adb.sh("ls /storage/emulated/0/ 2>&1 | head -10"))
 
-    def gj_read(path, nbytes=16384):
-        """Tail a device log file across channels: direct shell first, then
-        the app context (run-as). Empty string when absent everywhere."""
-        if not path:
-            return ""
-        try:
-            out = adb.sh("tail -c %d %s 2>/dev/null" % (nbytes, path),
-                         timeout=30)
-            if out:
-                return out
-            return adb.sh(
-                "run-as %s tail -c %d %s 2>/dev/null"
-                % (args.package, nbytes, path), timeout=30) or ""
-        except Exception:
-            return ""
+    def gj_read(fname, nbytes=16384):
+        """Read <fname> (client.log / server.log) from ANY candidate dir,
+        across channels: direct shell first, then the app context
+        (run-as). Returns (text, path) — empty text when nowhere."""
+        dirs = gj_dirs or []
+        for d in dirs:
+            p = d + "/" + fname
+            try:
+                out = adb.sh("tail -c %d %s 2>/dev/null" % (nbytes, p),
+                             timeout=30)
+                if out:
+                    return out, p
+                out = adb.sh(
+                    "run-as %s tail -c %d %s 2>/dev/null"
+                    % (args.package, nbytes, p), timeout=30)
+                if out:
+                    return out, p
+            except Exception:
+                pass
+        return "", ""
 
     def gj_engine_up():
         return "EchoesActivity" in adb.sh(
@@ -3098,9 +3106,7 @@ def main():
             if _gs_pid:
                 ok("GJ: GameServer engine alive (pid %s) — driving the join"
                    % _gs_pid)
-                gj_cfgdir = gj_cfgdir or gj_find_cfgdir()
-                gj_clog = (gj_cfgdir + "/client.log") if gj_cfgdir else ""
-                gj_slog = (gj_cfgdir + "/server.log") if gj_cfgdir else ""
+                gj_dirs = gj_dirs or gj_find_cfgdirs()
             else:
                 print("  [probe] GJ: no libgameserver.so process after 60s "
                       "— pressing start anyway (probe mode: the join will "
@@ -3170,7 +3176,12 @@ def main():
 
     # ---- verification poll: every evidence channel + a screenshot per round
     gj_join_attempted = bool(gj_pressed) or gj_echo0
-    gj_deadline = time.time() + (180.0 if deep else 120.0)
+    # 300s in BOTH modes: run 38076646322 measured the hall load at
+    # ~2min20s on the guest GPU BEFORE the client's once-per-join
+    # dispatch chain fired (18:42:38 press -> 18:44:58 game-auth +
+    # dispatch) — the old 120s window closed 16s before the verdict
+    # moment and missed the whole chain.
+    gj_deadline = time.time() + 300.0
     gj_round = 0
     gj_echo = gj_echo0
     gj_disp = gj_attr = gj_userin151 = False
@@ -3200,14 +3211,13 @@ def main():
         gj_attr = gj_attr or ("monitor: pushed user attr" in gj_local)
         gj_userin151 = gj_userin151 or ("monitor: g2r type=151" in gj_local
                                         or "monitor: G2R_USER_IN" in gj_local)
-        if not gj_cfgdir:
-            gj_cfgdir = gj_find_cfgdir()   # dir appears on first engine start
-            if gj_cfgdir:
-                gj_clog = gj_cfgdir + "/client.log"
-                gj_slog = gj_cfgdir + "/server.log"
-                ok("GJ: config dir appeared at round %d: %s"
-                   % (gj_round, gj_cfgdir))
-        _clog = gj_read(gj_clog)
+        if not gj_dirs:
+            gj_dirs = gj_find_cfgdirs()   # dirs appear on first engine start
+            if gj_dirs:
+                gj_cfgdir = gj_dirs[0]
+                ok("GJ: config dirs appeared at round %d: %s"
+                   % (gj_round, ", ".join(gj_dirs)))
+        _clog, _clog_path = gj_read("client.log")
         if _clog:
             gj_conn = gj_conn or "emConnectSuc" in _clog
             gj_login = gj_login or "login succ" in _clog
@@ -3216,7 +3226,7 @@ def main():
                          "login fail", "emConnectKickOut"):
                 if _bad in _clog and _bad not in gj_bad:
                     gj_bad.append(_bad)
-        _slog = gj_read(gj_slog, 8192)
+        _slog, _slog_path = gj_read("server.log", 8192)
         gj_serverlogin = gj_serverlogin or (
             "C2SPacketLogin token correct" in _slog)
         if _slog and "m_isRaknetAlive == false" in _slog \
@@ -3276,14 +3286,14 @@ def main():
                         ("conn", gj_conn), ("login", gj_login),
                         ("g2r151", gj_userin151), ("srvlogin", gj_serverlogin)):
             print("  [probe] GJ: %s=%s" % (_nm, _v))
-    _clog_all = gj_read(gj_clog)
+    _clog_all, _cpath = gj_read("client.log")
     if _clog_all:
-        print("  --- client.log tail (engine words) ---")
+        print("  --- client.log tail (engine words; %s) ---" % _cpath)
         for _ln in _clog_all.splitlines()[-28:]:
             print("  " + _ln)
-    _slog_all = gj_read(gj_slog, 8192)
+    _slog_all, _spath = gj_read("server.log", 8192)
     if _slog_all:
-        print("  --- server.log tail (GameServer words) ---")
+        print("  --- server.log tail (GameServer words; %s) ---" % _spath)
         for _ln in _slog_all.splitlines()[-18:]:
             print("  " + _ln)
     ok("GJ: %d verification screenshots captured (snap_GJ_*)" % (gj_round + 3))
