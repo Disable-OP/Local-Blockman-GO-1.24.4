@@ -64,6 +64,9 @@ python3 "$REPO/scripts/patch_tribeguide.py"
 echo "== patch_rsa_key.py (local RSA login keypair — Wave 11) =="
 python3 "$REPO/scripts/patch_rsa_key.py" "$BUILD/apktool_out"
 
+echo "== patch_join.py (hall Quick-in -> ONLINE join via JoinBridge) =="
+python3 "$REPO/scripts/patch_join.py"
+
 # --- embedded server dex ---
 echo "== build_server_dex.sh =="
 bash "$REPO/scripts/build_server_dex.sh"

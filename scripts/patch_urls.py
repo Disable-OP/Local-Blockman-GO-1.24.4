@@ -32,6 +32,44 @@ def rewrite(value: str) -> str:
     return new
 
 
+def sweep_all():
+    """Rewrite the tunnel/cloudfront hosts in EVERY smali const-string.
+
+    The base APK (custom client) hardcodes the author's dead ngrok tunnel in
+    the join view models too (join/s, va$b, TeamModel$5 pass it as the
+    baseUrl extra into the engine) - the loopback rewrite of App.smali /
+    BaseApplication.smali alone leaves those dead. With this sweep ANY
+    client-side platform call (including the engine's own join chain:
+    game-map -> flow/game/auth -> v2/game/auth -> POST /v1/dispatch) lands
+    on the embedded LocalAPI.
+    """
+    total = 0
+    files = 0
+    for path in APKTOOL_DIR.rglob("*.smali"):
+        raw = path.read_bytes()
+        if (b".dev" not in raw) and (b"cloudfront" not in raw):
+            continue
+        text = raw.decode("latin-1")
+        count = 0
+
+        def sub(m):
+            nonlocal count
+            new_val = rewrite(m.group(2))
+            if new_val != m.group(2):
+                count += 1
+            return m.group(1) + new_val + m.group(3)
+
+        text = CONST_STRING.sub(sub, text)
+        if count:
+            path.write_bytes(text.encode("latin-1"))
+            total += count
+            files += 1
+    if total:
+        print(f"sweep: {total} tunnel URL(s) -> {LOOPBACK} across {files} file(s)")
+    else:
+        print("sweep: no tunnel URLs found (already patched or none shipped)")
+
+
 def main():
     if not APKTOOL_DIR.exists():
         sys.exit(f"error: {APKTOOL_DIR} not found — run apktool d first")
@@ -59,6 +97,7 @@ def main():
         print("warning: nothing patched (already patched or pattern drift)")
     else:
         print(f"OK — {total} URL(s) now point at {LOOPBACK}")
+    sweep_all()
 
 
 if __name__ == "__main__":

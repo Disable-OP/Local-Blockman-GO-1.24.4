@@ -3118,54 +3118,58 @@ def main():
                 print("  [probe] GJ: no libgameserver.so process after 60s "
                       "— pressing start anyway (probe mode: the join will "
                       "land on the legacy loopback 18080)")
-            # ---- join drive: try up to 3 hall cards until the CLIENT's
-            # own dispatch chain fires. DECODED (runs 38076646322 +
-            # 38079472538 + 38081120192): (a) HALL games (Bedwars hall,
-            # PvP Arena category) and Sandbox games boot a LOCAL engine
-            # world whose room entry is GL-rendered — ZERO dispatch
-            # traffic, no auto-match (the "chain" seen in past runs was
-            # PHASE C's fcall sequence, not the client); (b) the engine
-            # hall session traps the BACK-walk (GL menus), so later card
-            # tries never reached a detail page. NON-hall ONLINE games'
-            # "Quick in" fires game-auth -> MiniGameToken -> dispatch
-            # within seconds (old MJ evidence) — and the dispatch PIN
-            # redirects ANY of them to the on-device BedWar room
-            # (g1008/m1008_2, gaddr 31108, server-authoritative), so any
-            # online join lands in Bedwars. Candidate filter: pair each
-            # name node with the category text under it and EXCLUDE
-            # Sandbox + PvP Arena (halls) cards entirely.
+            # ---- join drive: try up to 3 hall cards until the JOIN
+            # fires. TWO eras: (a) pre-v0.6.9 — hall/Sandbox games boot a
+            # LOCAL engine world (va$b.a(MiniGameToken) hard-sets
+            # gameAddr=""; the room entry is GL-rendered, no auto-match)
+            # and only NON-hall online games' Quick-in fired dispatch;
+            # (b) v0.6.9-joinbridge — va$b.a(MiniGameToken) itself takes
+            # over ONLINE via com.localapi.JoinBridge (the takeover calls
+            # StartMc.startGame with the live room's gaddr/requestId/map
+            # and NEVER rides the dispatch HTTP), so the BEDWARS HALL
+            # card — pinned first in the feed — is now the PRIMARY
+            # target: its press joins the hosted BedWar room within
+            # seconds of the dialog callback (no hall-world load).
+            # Evidence of a fired join: dispatch REQ delta (era a) OR a
+            # "JoinBridge: takeover" logcat line (era b). Candidate
+            # order: any bed*wars-text card first, then online cards,
+            # then remaining halls (all land on the same pinned room).
             _cat_re = re.compile(r"^(sandbox|pvp arena|role playing|"
                                  r"parkour|casual|adventure|shooting|"
                                  r"pixel|tower defense|obby|horror)$", re.I)
 
             def _collect_cards():
-                """Named cards on the CURRENT screen whose paired category
-                is neither Sandbox nor PvP Arena (halls) — those never
-                dispatch (local worlds + GL-trapped halls)."""
+                """Join-drive candidates on the CURRENT screen, BEDWARS
+                first: the bed*wars-text card (hall — era-b takeover),
+                then named non-Sandbox cards (online era-a joins + other
+                halls). Sandbox-only games stay excluded (pure client-
+                local, no va dialog path in the takeover era either)."""
                 nodes = [n for n in screen.dump()
                          if n.center and 200 < n.center[1] < 980]
                 cats = [n for n in nodes if n.text
                         and _cat_re.match(n.text.strip())]
-                out, seen = [], set()
+
+                def _cat_of(n):
+                    for c in cats:
+                        if c is n or not c.center:
+                            continue
+                        if abs(c.center[0] - n.center[0]) < 130 and \
+                                0 < c.center[1] - n.center[1] < 90:
+                            return c.text.strip()
+                    return ""
+
+                bed, other, seen = [], [], set()
                 for n in nodes:
                     t = (n.text or "").strip()
                     if len(t) < 4 or t in seen or _cat_re.match(t):
                         continue
                     if re.match(r"^\d+$", t) or t in ("Guess You Like",):
                         continue
-                    cat = ""
-                    for c in cats:
-                        if c is n or not c.center:
-                            continue
-                        if abs(c.center[0] - n.center[0]) < 130 and \
-                                0 < c.center[1] - n.center[1] < 90:
-                            cat = c.text.strip()
-                            break
-                    if cat.lower() in ("sandbox", "pvp arena"):
+                    if _cat_of(n).lower() == "sandbox":
                         continue
                     seen.add(t)
-                    out.append(n)
-                return out
+                    (bed if re.search(r"bed\s*war", t, re.I) else other).append(n)
+                return bed + other
 
             _cards = _collect_cards()
             _scrolled = 0
@@ -3255,8 +3259,11 @@ def main():
                 screen.snap("GJ_pressed%d" % _ci)
                 ok("GJ: pressed game start control %r (card %d: %s)"
                    % (gj_pressed, _ci, (_card.text or "")[:14]))
-                # watch 60s for the CLIENT's OWN dispatch chain (the
-                # decisive signal that this game's Quick-in goes online)
+                # watch 60s for the JOIN to fire: era-a = the CLIENT's
+                # own dispatch chain (dispatch REQ delta); era-b (the
+                # takeover) = "JoinBridge: takeover ONLINE join" +
+                # "StartMc.startGame dispatched (online)" logcat lines —
+                # the takeover never rides the dispatch HTTP.
                 for _ in range(6):
                     time.sleep(10)
                     if not adb.pid(args.package):
@@ -3265,10 +3272,14 @@ def main():
                                             "GJ-watch-%d" % _ci)
                         break
                     _now = adb.raw("logcat", "-d", "-s", "LocalAPI",
-                                   timeout=60).count("REQ POST /v1/dispatch")
-                    if _now > _disp_before:
+                                   timeout=60)
+                    if _now.count("REQ POST /v1/dispatch") > _disp_before:
                         ok("GJ: the CLIENT fired its dispatch chain "
                            "(card %d: %s)" % (_ci, (_card.text or "")[:14]))
+                        break
+                    if "JoinBridge: takeover ONLINE join" in _now:
+                        ok("GJ: JoinBridge TOOK OVER the join (online, "
+                           "card %d: %s)" % (_ci, (_card.text or "")[:14]))
                         break
                 else:
                     print("  [gj] card %d (%s): no client dispatch in 60s "
@@ -3293,6 +3304,7 @@ def main():
     gj_round = 0
     gj_echo = gj_echo0
     gj_disp = gj_attr = gj_userin151 = False
+    gj_takeover = False
     gj_listen = gj_udpcli = False
     gj_conn = gj_login = gj_dbready = False
     gj_serverlogin = False
@@ -3316,6 +3328,8 @@ def main():
         gj_local = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
         gj_disp = gj_disp or (
             gj_local.count("REQ POST /v1/dispatch") > gj0_disp)
+        gj_takeover = gj_takeover or (
+            "JoinBridge: takeover ONLINE join" in gj_local)
         gj_attr = gj_attr or ("monitor: pushed user attr" in gj_local)
         gj_userin151 = gj_userin151 or ("monitor: g2r type=151" in gj_local
                                         or "monitor: G2R_USER_IN" in gj_local)
@@ -3347,11 +3361,12 @@ def main():
                   "false' — the engine's RakNet bind failed (stale-engine "
                   "port conflict pre-fix, or the monitor link died); the "
                   "join CANNOT succeed in this state")
-        print("  [gj r%d] echoes=%s raknet(listen=%s cli=%s) disp=%s attr=%s "
-              "g2r151=%s conn=%s login=%s dbready=%s srvlogin=%s bad=%s"
-              % (gj_round, gj_echo, _listen, _cli, gj_disp, gj_attr,
-                 gj_userin151, gj_conn, gj_login, gj_dbready, gj_serverlogin,
-                 gj_bad or "-"))
+        print("  [gj r%d] echoes=%s raknet(listen=%s cli=%s) disp=%s "
+              "takeover=%s attr=%s g2r151=%s conn=%s login=%s dbready=%s "
+              "srvlogin=%s bad=%s"
+              % (gj_round, gj_echo, _listen, _cli, gj_disp, gj_takeover,
+                 gj_attr, gj_userin151, gj_conn, gj_login, gj_dbready,
+                 gj_serverlogin, gj_bad or "-"))
         if gj_conn and gj_login and (gj_userin151 or gj_serverlogin):
             ok("GJ: full join chain observed after round %d" % gj_round)
             break
@@ -3361,8 +3376,13 @@ def main():
     if gj_join_attempted:
         check("GJ: engine activity launched (Echoes)", gj_echo,
               "the engine activity never appeared after the join press")
-        check("GJ: dispatch served (LocalAPI /v1/dispatch)", gj_disp,
-              "the engine never requested a dispatch from the local server")
+        check("GJ: join routed online (dispatch served OR JoinBridge "
+              "takeover)", gj_disp or gj_takeover,
+              "neither a dispatch request nor a JoinBridge takeover was "
+              "observed — the join never went online")
+        if gj_takeover:
+            ok("GJ: JoinBridge takeover confirmed (era-b online join "
+               "into the hosted room)")
         check("GJ: client connected to GameServer (client.log emConnectSuc)",
               gj_conn,
               "client.log never showed the RakNet connect success marker")
@@ -3385,6 +3405,10 @@ def main():
         if gj_dbready:
             ok("GJ: S2CPacketDBDataReady seen (world data delivered - "
                "in-game loading)")
+        _clog_v, _ = gj_read("client.log", 65536)
+        if "initGame" in _clog_v and "31108" in _clog_v:
+            ok("GJ: client.log initGame carries the room params "
+               "(ip/port 31108) — the engine received the join hand-off")
         if gj_bad:
             print("  [evidence] GJ: client.log failure markers seen: %s"
                   % ", ".join(gj_bad))
