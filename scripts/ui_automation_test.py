@@ -3074,6 +3074,12 @@ def main():
     gj0_disp = gj0_local.count("REQ POST /v1/dispatch")
     gj_echo0 = gj_engine_up()
     gj_pressed = None
+    # 480s overall in BOTH modes: the join DRIVE (up to 3 cards x ~85s)
+    # runs first, and the verification poll gets the remaining >=300s.
+    # History: the client's dispatch for an ONLINE game fires within
+    # seconds of the press (old MJ evidence); hall games never dispatch
+    # (no auto-match) — hence the multi-card drive.
+    gj_deadline = time.time() + 480.0
     if gj_echo0:
         ok("GJ: engine already up (EchoesActivity running) — verifying the "
            "live join instead of re-driving the UI")
@@ -3111,23 +3117,60 @@ def main():
                 print("  [probe] GJ: no libgameserver.so process after 60s "
                       "— pressing start anyway (probe mode: the join will "
                       "land on the legacy loopback 18080)")
-            gj_card, gj_how = pick_game_card(screen.dump())
-            print("  [gj] card pick: %s" % gj_how)
-            if gj_card and screen.tap_node(gj_card):
-                screen.snap("GJ_card")
+            # ---- join drive: try up to 3 hall cards until the CLIENT's
+            # own dispatch chain fires. DECODED (runs 38076646322 +
+            # 38079472538): HALL games (the Bedwars hall, pinned first)
+            # boot a LOCAL hall world whose room entry is GL-rendered —
+            # the client sits in the hall for the whole window with ZERO
+            # dispatch traffic (no auto-match); the "chain" seen after GJ
+            # in past runs was PHASE C's fcall sequence, not the client.
+            # NON-hall online games' "Quick in" fires game-auth ->
+            # MiniGameToken -> dispatch within seconds (the old MJ
+            # evidence) — and the dispatch PIN redirects ANY of them to
+            # the on-device BedWar room (g1008/m1008_2, gaddr 31108,
+            # server-authoritative), so any online join lands in Bedwars.
+            _cards = []
+            _seen_t = set()
+            for n in screen.dump():
+                if not (n.center and n.text):
+                    continue
+                if n.center[1] < 200 or n.center[1] > 980:
+                    continue
+                if len(n.text.strip()) < 3 or n.text in _seen_t:
+                    continue
+                _seen_t.add(n.text)
+                _cards.append(n)
+            _cards.sort(key=lambda n: 0 if re.search(
+                r"bed\s*war", n.text or "", re.I) else 1)
+            print("  [gj] card candidates: %s"
+                  % [n.text[:14] for n in _cards[:6]])
+            _disp_before = adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                   timeout=60).count("REQ POST /v1/dispatch")
+            for _ci, _card in enumerate(_cards[:3]):
+                gj_pressed = None
+                if time.time() > (gj_deadline - 240):
+                    print("  [gj] join-drive deadline guard hit (card %d)"
+                          % _ci)
+                    break
+                if _ci > 0:
+                    # ground at Home between tries (BACK out of the hall
+                    # engine / detail first)
+                    for _ in range(4):
+                        if screen.find(ids=["rb_1"]):
+                            break
+                        adb.key(4)
+                        time.sleep(2)
+                    _rb1 = screen.find(ids=["rb_1"])
+                    if _rb1:
+                        screen.tap_node(_rb1)
+                        time.sleep(3)
+                if not screen.tap_node(_card):
+                    continue
+                screen.snap("GJ_card%d" % _ci)
                 time.sleep(8)      # game detail renders its full surface
                 alive_or_recover_at(adb, screen, args.package, args.activity,
-                                    "GJ-gamedetail")
-                screen.snap("GJ_detail")
-                # confirm the detail is the Bedwars hall (the join target
-                # the GameServer actually hosts) — evidence, not a gate
-                _det_txt = " ".join((n.text or "") for n in
-                                    screen.dump()[:150]).lower()
-                if re.search(r"bed\s*war", _det_txt):
-                    ok("GJ: Bedwars detail confirmed (hall tag visible)")
-                else:
-                    print("  [probe] GJ: detail does not mention bed "
-                          "(wrong card tapped?)")
+                                    "GJ-gamedetail-%d" % _ci)
+                screen.snap("GJ_detail%d" % _ci)
                 adb.sh("input swipe 540 800 540 400 300", timeout=20)
                 time.sleep(2)
                 _idre = re.compile(r"(enter|play|start|go|join)", re.I)
@@ -3155,33 +3198,57 @@ def main():
                             gj_pressed = "llBottom-center"
                             break
                 if not gj_pressed:
-                    for _lbl in ("Start", "PLAY", "Play", "GO", "Enter"):
+                    for _lbl in ("Start", "PLAY", "Play", "GO", "Enter",
+                                 "Quick in"):
                         _pn = screen.find(texts=[_lbl])
                         if _pn and _pn.center and _pn.center[1] > 200:
                             screen.tap_node(_pn)
-                            gj_pressed = _lbl
+                            gj_pressed = "text:" + _lbl
                             break
-                if gj_pressed:
-                    screen.snap("GJ_pressed")
-                    ok("GJ: pressed game start control %r" % gj_pressed)
+                if not gj_pressed:
+                    screen.snap("GJ_nostart%d" % _ci)
+                    debug_dump(screen, "GJ-nostart-%d" % _ci)
+                    adb.key(4)
+                    time.sleep(2)
+                    continue
+                screen.snap("GJ_pressed%d" % _ci)
+                ok("GJ: pressed game start control %r (card %d: %s)"
+                   % (gj_pressed, _ci, (_card.text or "")[:14]))
+                # watch 60s for the CLIENT's OWN dispatch chain (the
+                # decisive signal that this game's Quick-in goes online)
+                for _ in range(6):
+                    time.sleep(10)
+                    if not adb.pid(args.package):
+                        alive_or_recover_at(adb, screen, args.package,
+                                            args.activity,
+                                            "GJ-watch-%d" % _ci)
+                        break
+                    _now = adb.raw("logcat", "-d", "-s", "LocalAPI",
+                                   timeout=60).count("REQ POST /v1/dispatch")
+                    if _now > _disp_before:
+                        ok("GJ: the CLIENT fired its dispatch chain "
+                           "(card %d: %s)" % (_ci, (_card.text or "")[:14]))
+                        break
                 else:
-                    screen.snap("GJ_nostart")
-                    debug_dump(screen, "GJ-nostart")
+                    print("  [gj] card %d (%s): no client dispatch in 60s "
+                          "(hall/local game?) — trying the next card"
+                          % (_ci, (_card.text or "")[:14]))
+                    adb.key(4)
+                    time.sleep(2)
+                    adb.key(4)
+                    time.sleep(2)
+                    continue
+                break
             else:
                 screen.snap("GJ_nocard")
-                print("  [probe] GJ: no game card tappable on Home this run")
+                print("  [probe] GJ: no card produced a client dispatch "
+                      "this run (all tried cards recorded above)")
         else:
             screen.snap("GJ_nohome")
             print("  [probe] GJ: Home (rb_1) unreachable after BACK-walk")
 
     # ---- verification poll: every evidence channel + a screenshot per round
     gj_join_attempted = bool(gj_pressed) or gj_echo0
-    # 450s in BOTH modes: the hall world load on the guest GPU measured
-    # ~2min20s (run 38076646322) and ~5min24s (run 38078240269) BEFORE the
-    # client's once-per-join dispatch chain fires — both prior windows
-    # (120s, 300s) closed before the verdict moment. The chain itself
-    # (auth -> dispatch -> map -> RakNet -> login) needs ~1 more minute.
-    gj_deadline = time.time() + 450.0
     gj_round = 0
     gj_echo = gj_echo0
     gj_disp = gj_attr = gj_userin151 = False
