@@ -157,7 +157,23 @@ public final class GameServerManager {
                 MonitorServer.start();
                 sLogDir = resolveLogDir();
                 writeServerConfig(cfg);
-                ProcessBuilder pb = new ProcessBuilder(bin.getAbsolutePath());
+                // Pass the config as argv[1] (the engine's
+                // getRGConfigFromCmdline path, main.cpp argc>1). The argc==1
+                // getTestRGConfig path reads a COMPLETELY DIFFERENT key set
+                // (gameId/serverPort/monitorAddr/...) UNGUARDED — a config
+                // in our key shape is UB there (run 212: SIGSEGV fault addr
+                // 0x2 ~100ms after exec, every launch). The cmdline path
+                // reads exactly the keys writeServerConfig emits, all
+                // HasMember-guarded, including logdir/scriptdir/mapdir.
+                String cfgJson;
+                {
+                    byte[] b = new byte[(int) Math.min(cfg.length(), 65536)];
+                    java.io.FileInputStream in = new java.io.FileInputStream(cfg);
+                    int n = in.read(b);
+                    in.close();
+                    cfgJson = new String(b, 0, Math.max(0, n), "UTF-8");
+                }
+                ProcessBuilder pb = new ProcessBuilder(bin.getAbsolutePath(), cfgJson);
                 pb.directory(cwd);          // CWD: resource.cfg lives here
                 pb.redirectErrorStream(true);
                 sProcess = pb.start();
