@@ -4030,3 +4030,41 @@ resource is unavailable.
   contain base/BaseMain.lua (from ServerGame/Common) + ScriptMain.lua
   (from BedWar/main) = the "merged plugin tree" GameServerManager
   expects. isDebug must be false for Linux script loading (Server.cpp:357).
+
+## Session 54 cont. — core sweep complete: ALL 550 TUs verified clean (2026-10-10)
+
+- RUN 23 (8c037cc) VERDICT: 65 min into -j2 (farthest any run got — every
+  gameserver-module fix held), died in LordCore Log.cpp — the FIRST
+  LordCore TU CI ever scheduled: (a) Windows backslash includes
+  (#include "Util\UThread.h" — literal-backslash filename on Linux), fixed
+  by generic patch 3h (normalizes backslash separators in quoted includes
+  across the whole assembled tree; 9 files); (b) LordCore had no lua
+  include path (Log.cpp embeds a lua_State) — headers live under
+  libraries/src/android/lua; added to the module in Android.mk (316ae10).
+- LOCAL CORE SWEEP: all 464 LordCore+Logic TUs -fsyntax-only clean (plus
+  the earlier 86/86 gameserver-module sweep) => EVERY TU of the build
+  compiles. Remaining failure domain: LINK only (undefined/duplicate
+  symbols), plus the small C static libs (curl/cpr/raknet/... low risk,
+  they compile in every run's early phase).
+- GAME SERVER PHASE PROGRESS (P1/P2 while CI cycles):
+  * runtime bundle BUILT + UPLOADED to release localapi-assets:
+    gameserver-runtime-g1008.tar.gz (38,426,834 B, sha256 f9bbf1227eac3dad,
+    3,102 files). Engine-faithful layout: bundle/{server,client} siblings —
+    server/ is the process CWD (resource.cfg reads ../client/); contains
+    ScriptSetting.csv, engineVersion.json, recipe/, bt/, GameTip/, the 9
+    flat server csvs, Media/Scripts/ServerGame tree, GameSetting at
+    g1001_g1030/BedWar/, merged scripts/BedWar (base/BaseMain.lua +
+    ScriptMain.lua contract), maps/g1008/m1008_2 extracted from the
+    official m1008_2.1625226508247.zip (config.yml + 90 map-local settings).
+  * GameServerManager updated to the nested layout (e081d78): CWD=
+    bundle/server, serverConfig.json written there, scriptdir/mapdir point
+    into the server dir; STAGE_VERSION g1008-b2. Host suite 639/639 after
+    the change. HostTest never calls GameServerManager (device-only path).
+  * sandbox toolchain rebuilt: .javatools (ecj/r8/stubs/jars via
+    build_server_dex.sh) + Temurin JDK 17 at /home/z/tools/jdk-17.0.20.1+1
+    (no javac in this sandbox's apt; JRE 21 only).
+- MONITOR PROTOCOL re-verified from RoomClient.cpp: G2R_CONNECT carries
+  the full config incl. scriptdir/mapdir; MonitorServer.java already
+  implements the framed-JSON protocol + requestId-gated user-attr push.
+- RUN 24 (316ae10) in flight — first run where every compile TU is locally
+  verified; link verdict expected ~90 min after 08:32:30Z.
