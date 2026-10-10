@@ -138,6 +138,15 @@ public final class JoinBridge {
                     GameServerManager.ensureEngineMap();
                     boolean pushed = false;
                     for (int i = 0; i < ATTR_PUSH_TRIES; i++) {
+                        if (i == 4 || i == 14 || i == 24) {
+                            // The engine the press would reach may be a
+                            // STALE one (spawned by a dead holder: RakNet
+                            // alive, monitor link dead) - the login gate
+                            // can never pass on it. Sweep + respawn so the
+                            // client (booting after startGame) reaches a
+                            // monitor-linked engine.
+                            GameServerManager.ensureLiveEngine();
+                        }
                         GameServerManager.notifyDispatch(fUid, requestId, 1,
                                 fNick, 0, "Oversea");
                         if (MonitorServer.gameConnected()) { pushed = true; break; }

@@ -189,20 +189,55 @@ public final class GameServerManager {
     /** Launch the GameServer if the bundle + binary are ready. */
     public static void startIfPossible(Context context) {
         synchronized (LOCK) {
+            if (isAlive()) return;
+            spawnLocked(context);
+        }
+    }
+
+    /**
+     * Join-time guarantee (called from JoinBridge's thread, BEFORE startGame
+     * posts): the monitor link must be up and owned by THIS holder, and the
+     * engine behind it must be a process this holder spawned. A STALE engine
+     * (spawned by a now-dead holder) keeps RakNet 31108 alive - the client
+     * CAN connect to it - but its monitor link died with the old holder, so
+     * the attrs have nowhere to land and the engine can never validate the
+     * C2S login (no S2CPacketLoginResult -> emConnectTimeout, run
+     * 38091124122). Sweeping + respawning is SAFE here: the client engine
+     * boots only after startGame is posted, so it will connect to the FRESH
+     * engine whose monitor is linked to THIS holder.
+     */
+    public static void ensureLiveEngine() {
+        synchronized (LOCK) {
             try {
-                if (isAlive()) return;
-                // ONLY the process that actually serves the local API may
-                // own the engine: standby/watchdog sibling processes used
-                // to spawn their own engine seconds after the holder's
-                // (run 38073049374: engines at 17:51:16 + 17:51:22 from two
-                // live processes — the second lost the RakNet 31108 bind
-                // for good). The engine's monitor + dispatch state are
-                // in-process, so engine ownership MUST follow the holder.
-                if (!LocalServer.isServingLoopback()) {
-                    L.i("gs: not started (this process does not serve the "
-                            + "local API — standby sibling)");
-                    return;
-                }
+                if (!LocalServer.isServingLoopback()) return;
+                if (isAlive() && MonitorServer.gameConnected()) return;
+                MonitorServer.start(); // rebind if this holder lost it
+                if (isAlive() && MonitorServer.gameConnected()) return;
+                L.i("gs: ensureLiveEngine: monitor-linked engine missing"
+                        + " (alive=" + isAlive() + " connected="
+                        + MonitorServer.gameConnected() + ") - respawning");
+                spawnLocked(sAppContext);
+            } catch (Throwable t) {
+                L.e("gs: ensureLiveEngine failed: " + t);
+            }
+        }
+    }
+
+    /** Preconditions + config + stale sweep + launch. Callers hold LOCK. */
+    private static void spawnLocked(Context context) {
+        try {
+            // ONLY the process that actually serves the local API may
+            // own the engine: standby/watchdog sibling processes used
+            // to spawn their own engine seconds after the holder's
+            // (run 38073049374: engines at 17:51:16 + 17:51:22 from two
+            // live processes - the second lost the RakNet 31108 bind
+            // for good). The engine's monitor + dispatch state are
+            // in-process, so engine ownership MUST follow the holder.
+            if (!LocalServer.isServingLoopback()) {
+                L.i("gs: not started (this process does not serve the "
+                        + "local API - standby sibling)");
+                return;
+            }
                 File bin = findBinary(context);
                 File cwd = serverDir();
                 // NOTE: serverConfig.json is OWNED by this manager and is
@@ -281,9 +316,8 @@ public final class GameServerManager {
                 pump.start();
                 L.i("gs: launched pid=" + pid() + " logdir=" + sLogDir
                         + " port=" + GAME_PORT);
-            } catch (Throwable t) {
-                L.e("gs: start failed: " + t);
-            }
+        } catch (Throwable t) {
+            L.e("gs: start failed: " + t);
         }
     }
 
