@@ -3548,7 +3548,7 @@ def main():
             # try/except-guarded (soft) — a failed or mis-targeted gesture
             # can never fail the suite.
             try:
-                if gj_watch_round in (2, 4):
+                if True:  # v0.6.35: pairs EVERY watch round
                     _wm = adb.sh("wm size", timeout=15)
                     _m = (re.search(r"Override size:\s*(\d+)x(\d+)", _wm)
                           or re.search(r"Physical size:\s*(\d+)x(\d+)", _wm))
@@ -3568,41 +3568,38 @@ def main():
                         # mirrored — only the look-drags are depended on)
                         return (int((1.0 - yf) * _wn), int(xf * _hn))
 
-                    if gj_watch_round == 2:
-                        # PAIRED CAPTURE (v0.6.34-drivepair): the decisive
-                        # experiment for the whole drive feature — snap A,
-                        # drag, snap B, ~2s apart, NOTHING else in between
-                        # (the round-to-round r1/r2 comparisons were always
-                        # confounded by deaths/respawns moving the camera).
-                        # If the drag WORKS, B's world render is yawed vs A
-                        # (structural view change >> ambient bot motion).
-                        screen.snap("GJ_driveA_r2")
-                        _sx, _sy = _r90(0.72, 0.45)
-                        _ex, _ey = _r90(0.40, 0.45)
-                        adb.sh("input swipe %d %d %d %d 700"
-                               % (_sx, _sy, _ex, _ey), timeout=20)
-                        time.sleep(1.2)
-                        screen.snap("GJ_driveB_r2")
-                        gj_actions.append("r2 paired camera drag A/B "
-                                          "(natural %dx%d)" % (_wn, _hn))
-                        print("  [gj drive] r2 PAIRED camera drag injected "
-                              "(%d,%d -> %d,%d)" % (_sx, _sy, _ex, _ey))
+                    # v0.6.35-driveall: PAIRED capture EVERY watch round
+                    # (5 chances — the r2/r4-only pairs kept getting
+                    # confounded: the human dies within seconds on the
+                    # island, and SPECTATOR mode ignores look-drags
+                    # entirely, so at least one alive->alive pair is
+                    # needed to prove the gesture). The drag band is the
+                    # RIGHT-half look region (x 78->58% at y 40%) — under
+                    # the ROT270 mirror it lands at x 22->42% / y 60%,
+                    # empty scenery clear of every control.
+                    screen.snap("GJ_driveA_r%d" % gj_watch_round)
+                    if gj_watch_round % 2:
+                        _sx, _sy = _r90(0.78, 0.40)
+                        _ex, _ey = _r90(0.58, 0.40)
                     else:
-                        screen.snap("GJ_driveA_r4")
-                        _sx, _sy = _r90(0.40, 0.45)
-                        _ex, _ey = _r90(0.72, 0.45)
-                        adb.sh("input swipe %d %d %d %d 700"
-                               % (_sx, _sy, _ex, _ey), timeout=20)
-                        time.sleep(0.5)
+                        _sx, _sy = _r90(0.58, 0.40)
+                        _ex, _ey = _r90(0.78, 0.40)
+                    adb.sh("input swipe %d %d %d %d 700"
+                           % (_sx, _sy, _ex, _ey), timeout=20)
+                    _extra = ""
+                    if gj_watch_round == 4:
+                        time.sleep(0.4)
                         _wx, _wy = _r90(0.130, 0.757)  # walk button
                         adb.sh("input swipe %d %d %d %d 260"
                                % (_wx, _wy, _wx, _wy), timeout=20)
-                        time.sleep(1.0)
-                        screen.snap("GJ_driveB_r4")
-                        gj_actions.append("r4 paired reverse drag + walk "
-                                          "tap A/B (%d,%d)" % (_wx, _wy))
-                        print("  [gj drive] r4 PAIRED reverse drag + walk "
-                              "tap injected (walk at %d,%d)" % (_wx, _wy))
+                        _extra = " + walk tap (%d,%d)" % (_wx, _wy)
+                    time.sleep(1.0)
+                    screen.snap("GJ_driveB_r%d" % gj_watch_round)
+                    gj_actions.append("r%d paired look-drag A/B%s"
+                                      % (gj_watch_round, _extra))
+                    print("  [gj drive] r%d PAIRED look-drag injected "
+                          "(%d,%d -> %d,%d)%s"
+                          % (gj_watch_round, _sx, _sy, _ex, _ey, _extra))
             except Exception as _drive_err:
                 print("  [gj drive] injection failed (soft): %s"
                       % _drive_err)
@@ -3683,12 +3680,14 @@ def main():
                    "death/spectate/respawn cycle - the friendlier AI "
                    "makes them rare by design)" % gj_match_tp)
             # v0.6.32-drivenhuman: report the injected in-match gestures
-            # (soft evidence — the paired GJ_driveA/B screenshots carry
-            # the pixels; the GJ_match_r1..r5 series continues as-is).
+            # (soft evidence — the paired GJ_driveA/B screenshots on EVERY
+            # round carry the pixels; at least one alive->alive pair is
+            # expected per run).
             if gj_actions:
-                ok("GJ: drove the human inside the running match (%s - "
-                   "interaction injected, pre/post pairs GJ_driveA/B "
-                   "isolate each gesture's effect)" % "; ".join(gj_actions))
+                ok("GJ: drove the human inside the running match (%d paired "
+                   "look-drag captures: %s - pre/post pairs GJ_driveA/B "
+                   "isolate each gesture's effect)"
+                   % (len(gj_actions), "; ".join(gj_actions)))
             if gj_match_lines:
                 _mm = "\n".join(gj_match_lines)
                 if "prepareMatch" in _mm or "startMatch" in _mm:
