@@ -1004,6 +1004,57 @@ final class Handlers {
      * address is this server's loopback endpoint (the API shape is final).
      */
     /**
+     * The on-device GameServer's Lua WebService (serverConfig
+     * blockymodsRewardAddr / gameDataServiceAddr point at THIS holder since
+     * v0.6.25-innerhttp). The LOGIN-CRITICAL endpoint is
+     * GET /user/api/v1/inner/user/details: base/data/BasePlayer.lua
+     * initStaticAttr REFUSES the whole login (clientPeer:sendLoginResult(false)
+     * -> S2CPacketLoginResult code=3, emErrGetUserAttrFail) when it returns
+     * no data - the exact verdict of test-redroid 38115464141
+     * (v0.6.24-mapcsv: "recv S2CPacketLoginResult, login fail, result
+     * code=3" right after UserAttr + DBDataReady).
+     *
+     * Every OTHER inner endpoint gets a code=0/null-data envelope: each Lua
+     * caller already treats nil data as a graceful fallback (ExpRule:disable,
+     * identity-cache skip, analytics off - all proven harmless in the same
+     * run where the URLs were malformed).
+     *
+     * Auth: none by design - the caller is the local engine process (the
+     * same loopback holder chain), not the app.
+     */
+    public static String gameServerInner(Ctx ctx, StateStore store) {
+        String path = ctx.path();
+        String clean = path == null ? "/"
+                : (path.length() > 1 ? path.replaceAll("/+$", "") : path);
+        try {
+            if (clean.equals("/user/api/v1/inner/user/details")) {
+                long uid = 0;
+                try { uid = Long.parseLong(String.valueOf(ctx.query("userId"))); }
+                catch (Throwable ignored) {}
+                JSONObject u = uid > 0 ? store.findByUserId(uid) : null;
+                JSONObject data = new JSONObject();
+                data.put("userId", uid);
+                data.put("nickName", u != null && u.optString("nickName").length() > 0
+                        ? u.optString("nickName") : ("Guest" + uid));
+                data.put("clanName", "");
+                data.put("role", 0);
+                data.put("propsId", new JSONArray());
+                JSONObject resp = new JSONObject();
+                resp.put("code", 0);
+                resp.put("data", data);
+                L.i("gs-inner: user/details uid=" + uid + " -> "
+                        + (u != null ? "state-store" : "guest-shape"));
+                return resp.toString();
+            }
+        } catch (Throwable t) {
+            L.e("gs-inner user/details failed: " + t);
+        }
+        // Graceful envelope for everything else (exp rule, settlement,
+        // identity config, treasurebox, ranks, mails, props, game data...).
+        return "{\"code\":0,\"message\":\"ok\",\"data\":null}";
+    }
+
+    /**
      * POST /v1/joinbridge - INTERNAL cross-process join bridge. The UI
      * process's com.localapi.JoinBridge (the hall Quick-in takeover) calls
      * THIS endpoint so the work happens in the 18080 HOLDER process: the

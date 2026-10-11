@@ -336,6 +336,27 @@ public class LocalHttpd extends NanoHTTPD {
     private String route(String verb, String uri, Handlers.Ctx ctx,
                          java.util.Map<String, String> pathParams) {
         String cleanUri = uri == null ? "/" : (uri.length() > 1 ? uri.replaceAll("/+$", "") : uri);
+        // INTERNAL: the on-device GameServer's Lua WebService calls these
+        // inner endpoints (serverConfig blockymodsRewardAddr /
+        // gameDataServiceAddr point HERE since v0.6.25-innerhttp). The
+        // login-critical one is /user/api/v1/inner/user/details - without
+        // data the Lua refuses the whole login (S2CPacketLoginResult
+        // code=3, emErrGetUserAttrFail; run 38115464141).
+        if (cleanUri.startsWith("/user/api/v1/inner/")
+                || cleanUri.startsWith("/activity/api/v1/inner/")
+                || cleanUri.startsWith("/gameaide/api/v1/inner/")
+                || cleanUri.startsWith("/game/api/v1/inner/")
+                || cleanUri.startsWith("/game/api/v1/users/games/settlement")
+                || cleanUri.startsWith("/pay/api/v1/pay/inner/")
+                || cleanUri.startsWith("/pay/api/v2/inner/")
+                || cleanUri.startsWith("/api/v2/game/data")) {
+            try {
+                return Handlers.gameServerInner(ctx, store);
+            } catch (Throwable t) {
+                L.e("gs-inner handler threw: " + t);
+                return "{\"code\":0,\"message\":\"ok\",\"data\":null}";
+            }
+        }
         if (cleanUri.equals("/v1/joinbridge")) {
             // INTERNAL: the UI process's JoinBridge asks THIS holder to
             // guarantee a monitor-linked engine and push the join attrs.

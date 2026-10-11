@@ -739,13 +739,24 @@ public final class GameServerManager {
         o.put("isChina", false);
         o.put("heartbeatInterval", 5);
         o.put("userConf", "");
-        o.put("propAddr", "");
-        o.put("rankAddr", "");
-        o.put("rewardAddr", "");
+        // The engine's Lua WebService hosts: blockymodsRewardAddr becomes
+        // WebService.ServerHttpHost (user/details = the LOGIN gate - Lua
+        // BasePlayer:initStaticAttr refuses the login with code=3
+        // emErrGetUserAttrFail when it returns no data; run 38115464141)
+        // and gameDataServiceAddr becomes WebService.DBHttpHost. Both point
+        // at THIS holder's LocalHttpd, whose gameServerInner() answers
+        // them (v0.6.25-innerhttp).
+        o.put("propAddr", "http://127.0.0.1:18080");
+        o.put("rankAddr", "http://127.0.0.1:18080");
+        o.put("rewardAddr", "http://127.0.0.1:18080");
         o.put("blockymodsUrl", "");
-        o.put("blockymodsRewardAddr", "");
+        o.put("blockymodsRewardAddr", "http://127.0.0.1:18080");
         o.put("blockmanUrl", "");
         o.put("gameRankParams", "");
+        // JSON "gameDataServiceAddr" -> RoomGameConfig.dbHttpServiceUrl ->
+        // WebService.DBHttpHost (main.cpp:125).
+        o.put("gameDataServiceAddr", "http://127.0.0.1:18080");
+        o.put("gameDataServiceSecondAddr", "http://127.0.0.1:18080");
         o.put("isGameParty", false);
         o.put("private", false);
         o.put("maxWatch", 0);
@@ -756,8 +767,6 @@ public final class GameServerManager {
         JSONObject redis = new JSONObject();
         redis.put("ip", ""); redis.put("password", ""); redis.put("port", 0);
         o.put("redisConfig", redis);
-        o.put("gameDataServiceAddr", "");
-        o.put("gameDataServiceSecondAddr", "");
         FileOutputStream out = new FileOutputStream(cfg);
         out.write(o.toString().getBytes("UTF-8"));
         out.close();

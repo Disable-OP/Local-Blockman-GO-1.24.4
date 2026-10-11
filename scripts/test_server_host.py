@@ -3764,6 +3764,59 @@ def main():
             proc_fx.kill()
         log_fx.close()
 
+    # --- GameServer inner endpoints (v0.6.25-innerhttp) ---
+    # The on-device engine's Lua WebService hits these (serverConfig
+    # blockymodsRewardAddr/gameDataServiceAddr -> 127.0.0.1:18080). The
+    # login-critical one is /user/api/v1/inner/user/details: without data
+    # the Lua refuses the whole join (S2CPacketLoginResult code=3,
+    # emErrGetUserAttrFail - run 38115464141). Envelope contract (Lua
+    # WebService.formatData): body must carry "code": + data; data != nil
+    # or code==1 returns data to the caller.
+    dir_gi = tempfile.mkdtemp(prefix="localapi-gsinner-")
+    port_gi = random.randint(20000, 32000)
+    while port_gi in (PORT, port2, port3, port4, port5, port6, port7, port8):
+        port_gi = random.randint(20000, 32000)
+    proc_gi, log_gi = boot_hosttest(dir_gi, port_gi)
+    try:
+        base_gi = "http://127.0.0.1:%d" % port_gi
+        up_gi = wait_serving(base_gi)
+        check("gs-inner: fixture instance boots", up_gi, "boot=%s" % up_gi)
+        d_inner = call("GET", "/user/api/v1/inner/user/details?userId=1&gameId=g1008",
+                       base=base_gi)
+        check("gs-inner: user/details envelope + shape",
+              d_inner.get("code") == 0
+              and isinstance(d_inner.get("data"), dict)
+              and d_inner["data"].get("userId") == 1
+              and isinstance(d_inner["data"].get("nickName"), str)
+              and d_inner["data"].get("nickName") != "",
+              str(d_inner)[:200])
+        u_inner = call("GET", "/user/api/v1/inner/user/details?userId=424242&gameId=g1008",
+                       headers={"userid": "1", "access-token": "x"}, base=base_gi)
+        check("gs-inner: unknown uid still answered (guest shape)",
+              u_inner.get("code") == 0
+              and (u_inner.get("data") or {}).get("userId") == 424242
+              and (u_inner.get("data") or {}).get("nickName") == "Guest424242",
+              str(u_inner)[:200])
+        x_inner = call("GET",
+                       "/activity/api/v1/inner/activity/games/settlement/rule"
+                       "?gameId=g1008&timestamp=1&nonce=1&signature=x",
+                       base=base_gi)
+        check("gs-inner: exp rule graceful null-data envelope",
+              x_inner.get("code") == 0 and "data" in x_inner,
+              str(x_inner)[:200])
+        r_inner = call("GET", "/config/files/player-identity-config?reload=true",
+                       base=base_gi)
+        check("gs-inner: app /config/files routes NOT intercepted",
+              r_inner.get("code") in (0, 1),
+              str(r_inner)[:200])
+    finally:
+        proc_gi.terminate()
+        try:
+            proc_gi.wait(timeout=5)
+        except Exception:
+            proc_gi.kill()
+        log_gi.close()
+
     # --- OPTIONAL end-to-end icon-pack test (opt-in: LOCALAPI_REAL_PACK=1) ---
     # Boots a seeded instance with the REAL release pack URL: the asset
     # thread must download the 16MB skins.tar.gz, extract all entries with
