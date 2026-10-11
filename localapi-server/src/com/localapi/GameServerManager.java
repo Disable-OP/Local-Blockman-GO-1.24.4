@@ -62,6 +62,11 @@ public final class GameServerManager {
     private static final String STAGE_VERSION_FILE = "stage-version";
     private static final String STAGE_VERSION = "g1008-b2"; // bump to restage
 
+    /** Script-tree overlay marker: completes the merged BedWar plugin tree
+     *  with the BaseGame mirror files the engine's Lua loader needs. */
+    private static final String OVERLAY_VERSION_FILE = "overlay-version";
+    private static final String OVERLAY_VERSION = "bedwar-full-1"; // bump to re-apply
+
     /** Engine-faithful runtime layout: the server CWD is <bundle>/server
      *  (resource.cfg reads ../client/), while GameServerManager's staging
      *  dir stays the bundle root. The staged tarball is itself rooted at
@@ -102,6 +107,10 @@ public final class GameServerManager {
         return releaseBase() + "/gameserver-runtime-g1008.tar.gz";
     }
 
+    private static String overlayUrl() {
+        return releaseBase() + "/servergame-bedwar-full.tar.gz";
+    }
+
     private static String serverUrl() {
         return releaseBase() + "/libgameserver-arm64.so";
     }
@@ -130,6 +139,10 @@ public final class GameServerManager {
                     writeText(marker, STAGE_VERSION);
                     L.i("gs: bundle staged at " + sBundleDir);
                 }
+                // Complete the BedWar plugin tree (BaseGame mirror files).
+                // Also re-applies after a re-stage so overlay and bundle stay
+                // in lockstep.
+                ensureScriptOverlay();
                 // The binary rides the APK as jniLibs (nativeLibraryDir). When
                 // the APK does not carry it yet (older build), fall back to a
                 // release download into the bundle dir.
@@ -154,6 +167,49 @@ public final class GameServerManager {
                 // download must not be permanent for this process)
                 sAttempted = false;
             }
+        }
+    }
+
+    /**
+     * Complete the staged bundle's merged BedWar plugin tree
+     * (<bundleRoot>/server/scripts/BedWar) with the BaseGame mirror files:
+     * base/Base.lua, base/util/class.lua + the other base.util helpers,
+     * base/define/*, base/task/LuaTimer.lua, common/config/ItemConfig.lua,
+     * game/config/*, hall/config/*, common/info|manager/* and Loader.lua.
+     *
+     * WITHOUT these the engine's Lua load dies at BaseMain.lua:19
+     * ("module 'base.Base' not found") and then at ScriptMain.lua:3
+     * ("attempt to index global 'BaseListener' (a nil value)") — both seen
+     * verbatim in server.log (run 38109076258) — so the world runs with NO
+     * game logic and every join lands in the engine's watch-mode fallback
+     * (spectator), which is exactly the S2CPacketSetWatchMode(true) verdict
+     * of session 58 cont. 6.
+     *
+     * The overlay is additive (304-file tree = the previous 230 + 74
+     * BaseGame files; zero path collisions, verified) and idempotent via
+     * its own version marker. serverConfig scriptdir is UNCHANGED — the
+     * engine contract (scriptdir/base/BaseMain.lua + scriptdir/
+     * ScriptMain.lua + optional scriptdir/Loader.lua) holds as-is.
+     */
+    private static void ensureScriptOverlay() {
+        try {
+            File marker = new File(sBundleDir, OVERLAY_VERSION_FILE);
+            if (marker.exists() && OVERLAY_VERSION.equals(readText(marker))) {
+                return;
+            }
+            L.i("gs: applying script overlay " + OVERLAY_VERSION + " ...");
+            File tar = download(overlayUrl(), "servergame-bedwar-full.tar.gz",
+                    8 * 1024 * 1024);
+            untarGz(tar, serverDir());
+            writeText(marker, OVERLAY_VERSION);
+            File tree = new File(new File(serverDir(), "scripts"), "BedWar");
+            int n = 0;
+            File[] kids = tree.listFiles();
+            if (kids != null) n = kids.length;
+            L.i("gs: script overlay applied -> " + tree + " (" + n
+                    + " top-level entries)");
+        } catch (Throwable t) {
+            L.e("gs: script overlay failed: " + t);
         }
     }
 
