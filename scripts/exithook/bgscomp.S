@@ -26,7 +26,11 @@
 
     .global bgscomp_ctor
 bgscomp_ctor:
-    push    {r4, r5, lr}
+    @ EABI callee-saved: r4-r11 — r7 IS callee-saved even though it is the
+    @ syscall register. v10.1: the first build trashed r7 and the linker's
+    @ soinfo::call_constructors faulted right after the ctor returned
+    @ (SIGSEGV in do_dlopen, a ~3s restart loop — run 38181791036).
+    push    {r4, r5, r7, lr}
     sub     sp, sp, #16
     @ struct sock_fprog { u16 len; pad; const struct sock_filter *filter; }
     @ arm32 layout: len at [sp], filter at [sp, #4]
@@ -55,7 +59,7 @@ bgscomp_ctor:
     svc     #0                      @ 0 = installed, -errno = not (harmless)
 done:
     add     sp, sp, #16
-    pop     {r4, r5, pc}
+    pop     {r4, r5, r7, pc}
 
 @ ---------------------------------------------------------------------------
 @ THE BPF FILTER — 11 sock_filter instructions, 8 bytes each:
