@@ -214,7 +214,16 @@ public final class GameServerManager {
      * 38091124122). Sweeping + respawning is SAFE here: the client engine
      * boots only after startGame is posted, so it will connect to the FRESH
      * engine whose monitor is linked to THIS holder.
+     *
+     * RATE LIMIT (run 38097963853): the callers poll every ~1s and each
+     * call used to sweep+respawn immediately - the fresh engine (boot ~2-4s
+     * to the RoomClient monitor connect) was killed by the NEXT call's
+     * sweep before it could ever link, so gameConnected() stayed false
+     * forever. After a respawn, give the engine a 9s window before the
+     * next sweep+respawn is allowed.
      */
+    private static long sLastRespawnMs;
+
     public static void ensureLiveEngine() {
         synchronized (LOCK) {
             try {
@@ -222,6 +231,11 @@ public final class GameServerManager {
                 if (isAlive() && MonitorServer.gameConnected()) return;
                 MonitorServer.start(); // rebind if this holder lost it
                 if (isAlive() && MonitorServer.gameConnected()) return;
+                long now = System.currentTimeMillis();
+                if (now - sLastRespawnMs < 9000L) {
+                    return; // a fresh engine is booting - let it connect
+                }
+                sLastRespawnMs = now;
                 L.i("gs: ensureLiveEngine: monitor-linked engine missing"
                         + " (alive=" + isAlive() + " connected="
                         + MonitorServer.gameConnected() + ") - respawning");
