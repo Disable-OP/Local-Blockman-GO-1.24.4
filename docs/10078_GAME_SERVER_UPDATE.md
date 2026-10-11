@@ -220,3 +220,24 @@ All 403 Lua files in the bundle pass a Lua 5.1 parse (luaparse gate).
   (1) its appres `Scripts/Game/<gid>/` (bytecode → unluac) or its plugins zip
   (source), (2) its latest map zip(s) from `sandbox/games/maps/`, (3) a
   ScriptSetting.csv row + hall/map wiring in the bundle — exactly the g10078 recipe.
+
+## 8. Addendum 2: the launch-path contract + the overlay clobber risk (Java)
+
+- The on-device launch passes `scriptdir = <serverDir>/scripts/BedWar` EXPLICITLY in the
+  argv[1] config JSON (`GameServerManager.writeServerConfig`, "scriptdir" key) — the
+  `Media/Scripts/ServerGame/...` tree in the bundle is legacy/unused on device. The
+  engine contract (documented in the Java comments) is exactly:
+  `<scriptdir>/base/BaseMain.lua` + `<scriptdir>/ScriptMain.lua` (+ optional
+  `<scriptdir>/Loader.lua`), with `addScriptDir(<scriptdir>)` = `package.path` append.
+  The g10078 bundle layout satisfies it unchanged.
+- **RISK for the 2.8.2 build**: `GameServerManager.ensureScriptOverlay()` (~line 226)
+  unconditionally untars `servergame-bedwar-full.tar.gz` (the 10068-scripts overlay v5)
+  over `serverDir()` — it would CLOBBER the g10078 bundle's 10078 scripts
+  (same paths `scripts/BedWar/{base,common,game,hall,ScriptMain.lua}`).
+  FIX for the 2.8.2 line: the overlay must be engine-version aware — either skip it
+  (the g10078 bundle already carries the tuned csvs + 10078 id_mappings + mca inline)
+  or ship a `servergame-bedwar-full-10078.tar.gz` map-only overlay. The marker file is
+  `<staging>/overlay-version` (per-install), so a differing OVERLAY_VERSION constant in
+  the 2.8.2 build is also required to avoid marker collisions on shared storage.
+- STAGE_VERSION ("g1008-b2") must also be bumped per line so a device that stages both
+  builds (not expected — one APK per device) restages cleanly.
