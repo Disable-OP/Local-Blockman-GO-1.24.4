@@ -119,18 +119,17 @@ fail25:
 .balign 4
 .balign 4
 fail21:
-    lsr     x0, x0, #32
-    mov     x1, #96
-    add     x0, x1, x0
+    and     x0, x0, #0xff
+    add     x0, x0, #96
     b       fail
 .balign 4
 .balign 4
 fail22:
-    /* exit(64 + errno) — name the seccomp error in the Zygote log:
-       65=EPERM 77=EACCES 86=EINVAL 78=EFAULT 76=ENOMEM 80=EBUSY */
-    lsr     x0, x0, #32
-    mov     x1, #64
-    add     x0, x1, x0
+    /* exit(64 + errno&0xFF) — name the seccomp error in the Zygote log:
+       65=EPERM 77=EACCES 86=EINVAL 102=ENOSYS (raw aarch64 syscalls
+       return -errno in x0; the low byte IS the errno) */
+    and     x0, x0, #0xff
+    add     x0, x0, #64
     b       fail
 
 app_process64:
