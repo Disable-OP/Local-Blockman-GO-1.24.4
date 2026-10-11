@@ -74,8 +74,15 @@ public final class MonitorServer {
             for (int port = PORT; port <= PORT + 39; port++) {
                 try {
                     ServerSocket ss = new ServerSocket();
-                    ss.bind(new InetSocketAddress(
-                            InetAddress.getLoopbackAddress(), port), 2);
+                    // EXPLICIT IPv4 loopback (run 38104976182: the self-test
+                    // showed EVERY port 'bound but NOT connectable' -
+                    // getLoopbackAddress() resolves to ::1 in this Android
+                    // env, so the listener was IPv6-only while the engine
+                    // (and the probe) dial IPv4 127.0.0.1 -> ECONNREFUSED).
+                    // The engine's monitorAddr is always the literal
+                    // "127.0.0.1" - bind exactly that.
+                    ss.bind(new java.net.InetSocketAddress(
+                            java.net.InetAddress.getByName("127.0.0.1"), port), 2);
                     // SELF-TEST: bind success is not enough (run 38102569171:
                     // the engine's connect was refused 1s after a successful
                     // bind). Verify a real loopback connect completes and is
