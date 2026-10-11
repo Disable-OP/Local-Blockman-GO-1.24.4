@@ -377,6 +377,10 @@ public final class GameServerManager {
                     return;
                 }
                 MonitorServer.start();
+                if (MonitorServer.boundPort() == 0) {
+                    L.e("gs: not started (no bindable monitor port)");
+                    return;
+                }
                 sLogDir = resolveLogDir(context);
                 writeServerConfig(cfg);
                 ensureEngineVersionFile();
@@ -657,7 +661,7 @@ public final class GameServerManager {
         o.put("mapid", "m1008_2");
         o.put("name", "BedWar");
         o.put("gtype", "g1008");
-        o.put("monitoraddr", "127.0.0.1:" + MonitorServer.PORT);
+        o.put("monitoraddr", "127.0.0.1:" + MonitorServer.boundPort());
         o.put("maxplayer", 8);
         o.put("isDebug", false);
         o.put("secret", "pq0194mxoqfh48L362G6R09T737E273X");

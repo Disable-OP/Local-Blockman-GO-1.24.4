@@ -50,27 +50,54 @@ public final class MonitorServer {
     private static volatile DataOutputStream sOut;
     private static Thread sAcceptThread;
     private static Thread sReadThread;
+    private static int sBoundPort;
 
     private MonitorServer() {}
 
-    /** Bind + accept loop. Idempotent; failures are logged, never fatal. */
+    /**
+     * Bind + accept loop. Idempotent; failures are logged, never fatal.
+     *
+     * PORT SCAN (run 38101060514): a fixed 18081 can be held FOREVER by an
+     * fd an orphaned engine inherited from a dead holder (fork/exec does
+     * not close-on-exec the listener) - the kernel keeps that socket bound
+     * with a dead backlog behind it, every rebind fails with EADDRINUSE and
+     * the fresh engines' connects end refused. So: scan 18081..18120 and
+     * bind the FIRST port that actually accepts a bind. serverConfig.json
+     * is (re)written by the CURRENT holder with ITS bound port, so the
+     * engine it spawns connects to a LIVE listener by construction. The
+     * legacy PORT stays first in the scan.
+     */
     public static void start() {
         synchronized (LOCK) {
             if (sListener != null && !sListener.isClosed()) return;
-            try {
-                sListener = new ServerSocket();
-                sListener.bind(new InetSocketAddress(
-                        InetAddress.getLoopbackAddress(), PORT), 2);
-                L.i("monitor: listening on 127.0.0.1:" + PORT);
-            } catch (Throwable t) {
-                L.e("monitor bind failed: " + t);
-                sListener = null;
-                return;
+            Throwable last = null;
+            for (int port = PORT; port <= PORT + 39; port++) {
+                try {
+                    ServerSocket ss = new ServerSocket();
+                    ss.bind(new InetSocketAddress(
+                            InetAddress.getLoopbackAddress(), port), 2);
+                    sListener = ss;
+                    sBoundPort = port;
+                    L.i("monitor: listening on 127.0.0.1:" + port);
+                    Thread t = new Thread(() -> acceptLoop(), "LocalApiMonitor");
+                    t.setDaemon(true);
+                    t.start();
+                    sAcceptThread = t;
+                    return;
+                } catch (Throwable t) {
+                    last = t;
+                }
             }
-            Thread t = new Thread(() -> acceptLoop(), "LocalApiMonitor");
-            t.setDaemon(true);
-            t.start();
-            sAcceptThread = t;
+            L.e("monitor bind failed on all ports "
+                    + PORT + ".." + (PORT + 39) + ": " + last);
+            sListener = null;
+        }
+    }
+
+    /** The port this holder's monitor actually bound (0 = none). */
+    public static int boundPort() {
+        synchronized (LOCK) {
+            return sListener != null && !sListener.isClosed() ? sBoundPort : 0;
         }
     }
 
