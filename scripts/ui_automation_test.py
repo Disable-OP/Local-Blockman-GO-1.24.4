@@ -3003,6 +3003,14 @@ def main_282(args):
     screen.snap("GJ282_hall")
     g282_dismiss_overlays(adb, screen, "hall")
 
+    # ---- wait for the home FEED itself (the nav renders even when the
+    # columns request comes back empty — run 38156920974: 41 nodes, zero
+    # tv_game_name cards, the |list template starved the HomeColumn feed)
+    feed = screen.wait_for(ids=["tv_game_name"], timeout=60, poll=4)
+    if not feed:
+        print("  [probe] 282: no tv_game_name cards yet (feed may still "
+              "be loading; the card drive re-dumps below)")
+
     # ---- wait for the engine room BEFORE pressing join
     g282_wait_room(adb, "282-room")
 

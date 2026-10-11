@@ -371,7 +371,7 @@ public final class RoutingTable {
         "GET /editorproxy/meditor-api/v1/editor/beta_test_games|list",
         "GET /editorproxy/meditor-api/v1/editor/latest_and_released_game|obj",
         "GET /game/api/v1/game/info/search|H:gameSearch",
-        "GET /game/api/v1/game/revision/all/list/by/condition|list",
+        "GET /game/api/v1/game/revision/all/list/by/condition|H:homeData",
         "GET /game/api/v1/games/mode/config/app/{gameId}|obj",
         "GET /game/api/v1/keyword/associational/word|H:keywordWords",
         "GET /game/api/v2/party/auth/test|H:partyAuthTest",

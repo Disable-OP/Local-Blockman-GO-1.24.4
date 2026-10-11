@@ -68,6 +68,7 @@ final class Handlers {
         if ("gameSearch".equals(name)) return Mods282.gameSearch(ctx, store);
         if ("keywordWords".equals(name)) return Mods282.keywordWords(ctx, store);
         if ("gamesLike".equals(name)) return Mods282.gamesLike(ctx, store);
+        if ("homeData".equals(name)) return Mods282.homeData(ctx, store);
         if ("chatRoomCreate282".equals(name)) return Mods282.chatRoomCreate(ctx, store);
         if ("chatRoomDelete282".equals(name)) return Mods282.chatRoomDelete(ctx, store);
         // ---- Phase 2: game catalog / detail / shop / daily economy ----

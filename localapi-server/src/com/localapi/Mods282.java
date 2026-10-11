@@ -306,4 +306,51 @@ final class Mods282 {
         }
         return Handlers.envelope("none", null);
     }
+
+    /**
+     * GET /game/api/v1/game/revision/all/list/by/condition — the 2.8.2 HOME
+     * FEED: List<HomeColumn> (src_classes5 .../homedata/HomeColumn.java).
+     * The previous |list template served data:[] — Gson produced no
+     * columns and the home rendered EMPTY (run 38156920974: 41 dump
+     * nodes, zero tv_game_name cards, the UI join had no Bedwars card to
+     * press). Shape per column: {areaName, code, insideShow/Sort,
+     * outsideShow/Sort, response:{typeId, pageInfo:{data:[Game], pageNo,
+     * pageSize, totalPage, totalSize}}}. The client switch is on code:
+     * "latest" -> single list adapter (app_item_game), "recommend" ->
+     * DoubleGame grid (two stacked app_item_game_basic), "banner" ->
+     * the banner widget, ANY other code -> a generic list adapter keyed
+     * by that code (HomeViewModel.b/c, src_classes3 blockymods pages/
+     * home/t.java). Two columns carry the SAME pinned-first catalog
+     * pages so both card styles render and the Bedwars hall card is
+     * first either way.
+     */
+    static String homeData(Handlers.Ctx ctx, StateStore store) {
+        JSONArray games = GameCatalog.page(store, "complex", 0, false, 1, 40);
+        JSONArray cols = new JSONArray();
+        int total = games.length();
+        String[] codes = {"recommend", "latest"};
+        for (int c = 0; c < codes.length; c++) {
+            JSONObject col = new JSONObject();
+            col.put("code", codes[c]);
+            col.put("areaName", "recommend".equals(codes[c])
+                    ? "Recommend" : "Latest");
+            col.put("type", codes[c]);
+            col.put("insideShow", 1);
+            col.put("outsideShow", 1);
+            col.put("insideSort", c + 1);
+            col.put("outsideSort", c + 1);
+            JSONObject resp = new JSONObject();
+            resp.put("typeId", 0);
+            JSONObject page = new JSONObject();
+            page.put("data", games);
+            page.put("pageNo", 1);
+            page.put("pageSize", total);
+            page.put("totalPage", 1);
+            page.put("totalSize", total);
+            resp.put("pageInfo", page);
+            col.put("response", resp);
+            cols.put(col);
+        }
+        return Handlers.envelope("list", cols.toString());
+    }
 }
