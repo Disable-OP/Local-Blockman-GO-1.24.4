@@ -76,6 +76,27 @@ public final class MonitorServer {
                     ServerSocket ss = new ServerSocket();
                     ss.bind(new InetSocketAddress(
                             InetAddress.getLoopbackAddress(), port), 2);
+                    // SELF-TEST: bind success is not enough (run 38102569171:
+                    // the engine's connect was refused 1s after a successful
+                    // bind). Verify a real loopback connect completes and is
+                    // accepted; on failure close and try the next port.
+                    boolean ok = false;
+                    try {
+                        java.net.Socket probe = new java.net.Socket();
+                        probe.connect(new java.net.InetSocketAddress(
+                                java.net.InetAddress.getByName("127.0.0.1"),
+                                port), 800);
+                        ok = probe.isConnected();
+                        probe.close(); // the accept loop sees EOF, cleans up
+                    } catch (Throwable t) {
+                        ok = false;
+                    }
+                    if (!ok) {
+                        L.e("monitor: port " + port
+                                + " bound but NOT connectable - skipping");
+                        try { ss.close(); } catch (Throwable ignored) {}
+                        continue;
+                    }
                     sListener = ss;
                     sBoundPort = port;
                     L.i("monitor: listening on 127.0.0.1:" + port);

@@ -3338,10 +3338,13 @@ def main():
         # the diag collection - live printing is the only reliable witness).
         if gj_takeover and not gj_jb_dumped:
             _jb = [ln.strip() for ln in gj_local.splitlines()
-                   if ("JoinBridge:" in ln or "joinbridge:" in ln)]
+                   if ("JoinBridge:" in ln or "joinbridge:" in ln
+                       or "monitor:" in ln or "gs: ensure" in ln
+                       or "gs: launched" in ln or "gs: stale" in ln
+                       or "gs: not started" in ln or "bind failed" in ln)]
             if _jb:
                 gj_jb_dumped = True
-                for _l in _jb[-8:]:
+                for _l in _jb[-14:]:
                     print("  [evidence] GJ: %s" % _l)
         gj_userin151 = gj_userin151 or ("monitor: g2r type=151" in gj_local
                                         or "monitor: G2R_USER_IN" in gj_local)
