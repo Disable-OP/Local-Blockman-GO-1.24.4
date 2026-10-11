@@ -715,6 +715,23 @@ public final class GameServerManager {
                     if (placeMap(mapIdDir, zip, mapNameReal)) placed++;
                 }
             }
+            // SCOPED-STORAGE roots (2.8.2 line): targetSdk 29 on Android 11+
+            // cannot mkdir in the emulated-storage root (the smoke evidence:
+            // "placeMap: mkdirs failed: /storage/emulated/0/SandBoxOL/...").
+            // The app-OWN external dirs stay writable — cover both spellings
+            // there too; a misplaced tree is harmless (placeMap is
+            // idempotent and the engine reads only the root it resolves).
+            try {
+                Context c = sAppContext;
+                File own = c != null ? c.getExternalFilesDir(null) : null;
+                if (own != null) {
+                    for (String spelling : new String[]{"SandboxOL", "SandBoxOL"}) {
+                        File mapIdDir = new File(own,
+                                spelling + "/BlockMan/map/" + ENGINE_MAP_ID);
+                        if (placeMap(mapIdDir, zip, mapNameReal)) placed++;
+                    }
+                }
+            } catch (Throwable ignored) {}
             L.i("gs: ensureEngineMap placed " + placed + " map tree(s) ("
                     + zipName + ", " + zip.length() + " B)");
         } catch (Throwable t) {

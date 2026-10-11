@@ -64,7 +64,16 @@ jobs:
 
       - name: Install 2.8.2 APK
         run: |
-          adb -s localhost:5555 install -r -t app282.apk
+          adb -s localhost:5555 install -r -t -g app282.apk
+          # scoped-storage fix: targetSdk 29 on Android 11+ gets scoped
+          # storage — /storage/emulated/0/SandBoxOL mkdirs fail (first smoke:
+          # "placeMap: mkdirs failed"). LEGACY_STORAGE via appops restores
+          # the legacy view the engine's PathUtil expects; the -g grant plus
+          # this are both belt and braces.
+          adb -s localhost:5555 shell appops set "$PACKAGE" LEGACY_STORAGE allow || true
+          adb -s localhost:5555 shell appops set "$PACKAGE" MANAGE_EXTERNAL_STORAGE allow || true
+          adb -s localhost:5555 shell pm grant "$PACKAGE" android.permission.WRITE_EXTERNAL_STORAGE 2>/dev/null || true
+          adb -s localhost:5555 shell appops get "$PACKAGE" | grep -iE "LEGACY|MANAGE" || true
 
       - name: Launch + 15s keep-alive
         run: |
@@ -104,13 +113,17 @@ jobs:
       - name: GameServer staging smoke (g10078 line)
         if: always()
         run: |
+          # give the 42MB bundle download + engine boot a real window
+          sleep 75
           echo "== gameserver process =="
           adb -s localhost:5555 shell "ps -A | grep -i gameserver" || true
-          echo "== gs staging + engine line logs =="
-          adb -s localhost:5555 logcat -d -s LocalAPI:* | grep -iE "gs:|gameserver|engine line" | tail -40 || true
-          echo "== engine line must be g10078 =="
-          adb -s localhost:5555 logcat -d -s LocalAPI:* | grep "gs: engine line g10078" | tail -2 || \
-            echo "NOTE: engine-line log not yet present (staging may still be downloading the 42MB bundle)"
+          echo "== RakNet 31108 listen probe (/proc/net/udp, 31108=0x7994) =="
+          adb -s localhost:5555 shell "cat /proc/net/udp" 2>/dev/null | grep -i '7994' || echo "no :7994 UDP socket visible to shell"
+          echo "== FULL LocalAPI log (holder + gs pump) =="
+          adb -s localhost:5555 logcat -d -s LocalAPI:* | tail -120 || true
+          echo "== map placement =="
+          adb -s localhost:5555 shell "ls -d /storage/emulated/*/SandBoxOL/BlockMan/map/* /storage/emulated/*/SandboxOL/BlockMan/map/* 2>/dev/null" || true
+          adb -s localhost:5555 shell "find /storage/emulated/0/Android/data/$PACKAGE/files -maxdepth 4 -name map -type d 2>/dev/null" || true
 
       - name: Crash scan
         if: always()
