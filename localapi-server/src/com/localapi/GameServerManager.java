@@ -229,7 +229,18 @@ public final class GameServerManager {
             try {
                 if (!LocalServer.isServingLoopback()) return;
                 if (isAlive() && MonitorServer.gameConnected()) return;
-                MonitorServer.start(); // rebind if this holder lost it
+                // SWEEP FIRST, then rebind: an ORPHANED engine (spawned by a
+                // dead holder) INHERITED the old holder's listening fd, so
+                // 18081 stays bound with NO accept loop behind it - new
+                // MonitorServer.start() calls fail with EADDRINUSE and the
+                // fresh engines' connects pile into the dead backlog and
+                // then get refused (runs 38096189424/38097963853/
+                // 38099558911). killall/pkill do not exist in redroid - the
+                // /proc walk is the reliable kill.
+                killStaleEngines();
+                try { Thread.sleep(400L); }
+                catch (InterruptedException ie) { return; }
+                MonitorServer.start(); // now bindable
                 if (isAlive() && MonitorServer.gameConnected()) return;
                 long now = System.currentTimeMillis();
                 if (now - sLastRespawnMs < 9000L) {
@@ -243,6 +254,64 @@ public final class GameServerManager {
             } catch (Throwable t) {
                 L.e("gs: ensureLiveEngine failed: " + t);
             }
+        }
+    }
+
+    /**
+     * Kill every live libgameserver process this uid can see. killall and
+     * pkill are NOT present in the redroid system image (toybox lacks them)
+     * - the /proc walk + kill is what actually works. Orphaned engines from
+     * dead holders hold the monitor listener fd (inherited at spawn), so
+     * this sweep is ALSO what frees 18081 for the next bind.
+     */
+    private static void killStaleEngines() {
+        // best-effort shells first (harmless if missing)
+        try {
+            java.lang.Process k = Runtime.getRuntime().exec(
+                    new String[]{"killall", "libgameserver.so"});
+            k.waitFor();
+        } catch (Throwable ignored) {}
+        try {
+            java.lang.Process k = Runtime.getRuntime().exec(
+                    new String[]{"/system/bin/sh", "-c",
+                            "pkill -f libgameserver.so 2>/dev/null"});
+            k.waitFor();
+        } catch (Throwable ignored) {}
+        // /proc walk: the reliable kill (same-uid processes only)
+        File proc = new File("/proc");
+        File[] entries = proc.listFiles();
+        if (entries == null) return;
+        StringBuilder pids = new StringBuilder();
+        for (File e : entries) {
+            String name = e.getName();
+            boolean numeric = name.length() > 0;
+            for (int i = 0; i < name.length() && numeric; i++) {
+                char c = name.charAt(i);
+                if (c < '0' || c > '9') numeric = false;
+            }
+            if (!numeric || !e.isDirectory()) continue;
+            java.io.FileInputStream in = null;
+            try {
+                in = new java.io.FileInputStream(new File(e, "cmdline"));
+                byte[] buf = new byte[512];
+                int n = in.read(buf);
+                if (n <= 0) continue;
+                String cmd = new String(buf, 0, n, "UTF-8");
+                if (cmd.contains("libgameserver")) {
+                    pids.append(name).append(' ');
+                }
+            } catch (Throwable ignored) {
+            } finally {
+                if (in != null) try { in.close(); } catch (Throwable ignored) {}
+            }
+        }
+        if (pids.length() > 0) {
+            L.i("gs: stale-engine /proc sweep kill: " + pids.toString().trim());
+            try {
+                java.lang.Process k = Runtime.getRuntime().exec(new String[]{
+                        "/system/bin/sh", "-c", "kill -9 " + pids});
+                k.waitFor();
+            } catch (Throwable ignored) {}
         }
     }
 
