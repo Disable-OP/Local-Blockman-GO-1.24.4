@@ -341,6 +341,78 @@ public final class RoutingTable {
         "PUT /user/api/v1/users/tasks/{type}|H:claimTask",
         "PUT /user/api/v1/users/{userId}/daily/tasks/ads|H:getAdsReward",
         "PUT /user/api/v2/users/{userId}/daily/sign/in|H:clickSignIn",
+
+        // ---- 2.8.2 (blockymods, engine 10078) supplement: 63 routes the
+        // 2.8.2 Retrofit surface adds over the 1.24.4 table. State-backed
+        // handlers live in Mods282.java; the activity/event family rides
+        // schema-true shape defaults (flag-gated dormant, same policy as
+        // the 1.24.4 event routes). The relative-path interface entries
+        // (user/api/{version}/...) resolve under the same base URL; the
+        // DELETE /clan/api/v1/clan/tribe v3-variant dup is already routed.
+        "DELETE /clan/api/v1/clan/tribe/mute/member|H:ackPost",
+        "DELETE /editorproxy/meditor-api/v1/editor/beta_game/{game_id}/data/remove|H:ackPost",
+        "DELETE /msg/api/v1/game/chat/room|H:chatRoomDelete282",
+        "GET /activity/api/{version}/collect/exchange/status|obj",
+        "GET /activity/api/v1/box/info|obj",
+        "GET /activity/api/v1/box/task/info|obj",
+        "GET /activity/api/v1/collect/exchange/box/scrap|num",
+        "GET /activity/api/v1/common/act/info|obj",
+        "GET /activity/api/v1/common/act/task/info|obj",
+        "GET /activity/api/v1/limit/suit|obj",
+        "GET /activity/api/v1/new/year/limit/return/info|obj",
+        "GET /activity/api/v1/new/year/suit/info|obj",
+        "GET /activity/api/v1/one/purchase/info|obj",
+        "GET /activity/api/v1/recharge/count/info|obj",
+        "GET /activity/api/v1/short/activity|list",
+        "GET /activity/api/v1/wish|obj",
+        "GET /clan/api/v1/clan/tribe/mute/member|obj",
+        "GET /config/files/blockymods-bannerv2|H:bannerConfig",
+        "GET /decoration/api/v1/decoration/home/page|obj",
+        "GET /editorproxy/meditor-api/v1/editor/beta_test_games|list",
+        "GET /editorproxy/meditor-api/v1/editor/latest_and_released_game|obj",
+        "GET /game/api/v1/game/info/search|H:gameSearch",
+        "GET /game/api/v1/game/revision/all/list/by/condition|list",
+        "GET /game/api/v1/games/mode/config/app/{gameId}|obj",
+        "GET /game/api/v1/keyword/associational/word|H:keywordWords",
+        "GET /game/api/v2/party/auth/test|H:partyAuthTest",
+        "GET /pay/api/v1/product/info/get|obj",
+        "GET /pay/api/v1/third/payment|obj",
+        "GET /pay/pay/api/v1/pay/gdiamond/gold/exchange/rate|H:goldExchangeRate",
+        "GET /user/api/v1/simple/info|H:payUserInfo",
+        "GET /user/api/v2/user/details/info|H:userDetailsV2",
+        "GET /user/api/{version}/user/avatar/frame|H:avatarFrameGet",
+        "GET /user/api/{version}/user/colorful/nickName|H:colorfulNickNameGet",
+        "POST /activity/api/v1/box/reward/exchange|obj",
+        "POST /activity/api/v1/box/task/reward/receive|obj",
+        "POST /activity/api/v1/collect/exchange/openBox|obj",
+        "POST /activity/api/v1/common/act/coin/exchange|obj",
+        "POST /activity/api/v1/common/act/reward/exchange|obj",
+        "POST /activity/api/v1/common/act/task/reward/receive|obj",
+        "POST /activity/api/v1/limit/suit|obj",
+        "POST /activity/api/v1/new/year/limit/return/buy|obj",
+        "POST /activity/api/v1/new/year/suit/buy|obj",
+        "POST /activity/api/v1/one/purchase/qualification|obj",
+        "POST /activity/api/v1/one/purchase/reward|obj",
+        "POST /activity/api/v1/recharge/count/receive|obj",
+        "POST /activity/api/v1/wish|obj",
+        "POST /clan/api/v1/clan/tribe/mute/member|H:ackPost",
+        "POST /clan/api/v3/clan/tribe|obj",
+        "POST /game/api/v1/comment|obj",
+        "POST /game/api/v1/games/like|H:gamesLike",
+        "POST /msg/api/v1/firebase/token/report|H:ackPost",
+        "POST /msg/api/v1/game/chat/room|H:chatRoomCreate282",
+        "POST /pay/api/v1/third/payment|obj",
+        "PUT /activity/api/v1/one/purchase/guide/status|H:ackPut",
+        "PUT /clan/api/v1/clan/tribe/members|H:ackPut",
+        "PUT /clan/api/v1/clan/tribe/mute|H:ackPut",
+        "PUT /editorproxy/meditor-api/v1/editor/add_game_by_beta_game|H:ackPut",
+        "PUT /editorproxy/meditor-api/v1/editor/game_entrance_manage|H:ackPut",
+        "PUT /game/api/v2/games/{gameId}/appreciation|obj",
+        "PUT /pay/api/v1/pay/disposable/advance/order|obj",
+        "PUT /pay/api/v1/pay/sub/advance/order|obj",
+        "PUT /pay/pay/api/v1/pay/gdiamond/gold/exchange|H:goldExchange",
+        "PUT /user/api/{version}/user/avatar/frame|H:avatarFramePut",
+        "PUT /user/api/{version}/user/colorful/nickName|H:colorfulNickNamePut",
     };
 
     private RoutingTable() {}
@@ -386,6 +458,14 @@ public final class RoutingTable {
 
     private static boolean matches(String tmpl, String path) {
         String rx = tmpl.replaceAll("\\{[^}]+\\}", "([^/]+)");
-        return path.matches(rx);
+        try {
+            return path.matches(rx);
+        } catch (java.util.regex.PatternSyntaxException badTemplate) {
+            // a malformed template must never kill matching for the routes
+            // after it (the {} lesson: an empty placeholder compiles to an
+            // illegal repetition and used to abort the whole scan)
+            L.e("RoutingTable: bad template " + tmpl);
+            return false;
+        }
     }
 }

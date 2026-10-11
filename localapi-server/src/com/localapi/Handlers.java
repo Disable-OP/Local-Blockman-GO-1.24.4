@@ -54,6 +54,22 @@ final class Handlers {
         if ("joinSwitch".equals(name)) return bool(true);
         if ("ackPost".equals(name)) return envelope("none", null);
         if ("ackPut".equals(name)) return envelope("none", null);
+        // ---- 2.8.2 (blockymods, engine 10078) client extension (Mods282) ----
+        if ("bannerConfig".equals(name)) return Mods282.bannerConfig(ctx, store);
+        if ("payUserInfo".equals(name)) return Mods282.payUserInfo(ctx, store);
+        if ("userDetailsV2".equals(name)) return Mods282.userDetailsV2(ctx, store);
+        if ("avatarFrameGet".equals(name)) return Mods282.avatarFrameGet(ctx, store);
+        if ("avatarFramePut".equals(name)) return Mods282.avatarFramePut(ctx, store);
+        if ("colorfulNickNameGet".equals(name)) return Mods282.colorfulNickNameGet(ctx, store);
+        if ("colorfulNickNamePut".equals(name)) return Mods282.colorfulNickNamePut(ctx, store);
+        if ("goldExchangeRate".equals(name)) return Mods282.goldExchangeRate(ctx, store);
+        if ("goldExchange".equals(name)) return Mods282.goldExchange(ctx, store);
+        if ("partyAuthTest".equals(name)) return Mods282.partyAuthTest(ctx, store);
+        if ("gameSearch".equals(name)) return Mods282.gameSearch(ctx, store);
+        if ("keywordWords".equals(name)) return Mods282.keywordWords(ctx, store);
+        if ("gamesLike".equals(name)) return Mods282.gamesLike(ctx, store);
+        if ("chatRoomCreate282".equals(name)) return Mods282.chatRoomCreate(ctx, store);
+        if ("chatRoomDelete282".equals(name)) return Mods282.chatRoomDelete(ctx, store);
         // ---- Phase 2: game catalog / detail / shop / daily economy ----
         if ("category".equals(name)) return category(ctx, store);
         if ("gameListByCondition".equals(name)) return gameListByCondition(ctx, store);
@@ -5256,7 +5272,7 @@ final class Handlers {
     }
 
     /** Failure with an explicit numeric code (the client maps code→onError(code)). */
-    private static String failCode(int code, String message) {
+    static String failCode(int code, String message) {
         return "{\"code\":" + code + ",\"message\":\"" + message + "\"}";
     }
 
@@ -5961,7 +5977,7 @@ final class Handlers {
         return userJsonLocal(u);
     }
 
-    private static String userJsonLocal(JSONObject u) {
+    static String userJsonLocal(JSONObject u) {
         JSONObject out = new JSONObject();
         out.put("userId", u.optLong("userId"));
         out.put("account", u.optString("account"));
@@ -5994,7 +6010,7 @@ final class Handlers {
         return "{\"code\":0,\"message\":\"" + message + "\"}";
     }
 
-    private static JSONObject body(Ctx ctx) {
+    static JSONObject body(Ctx ctx) {
         String raw = ctx.body();
         if (raw == null) raw = "";
         raw = raw.trim();

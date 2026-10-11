@@ -158,6 +158,103 @@ def wait_ready(timeout=30):
     return False
 
 
+
+def run_wave_282(BASE):
+    """Wave 282 body: pins the Mods282 (2.8.2 client) state-backed handlers."""
+    def call(method, path, body=None, headers=None):
+        return _call282(method, path, body, headers, BASE)
+
+    v282 = call("POST", "/user/api/v1/visitor", None, {"bmg-device-id": "wave282-device"})
+    check("282: visitor ok", v282.get("code") == 1, str(v282)[:120])
+    tok282 = v282.get("data", {}).get("accessToken", "")
+    uid282 = v282.get("data", {}).get("userId",
+             v282.get("data", {}).get("id", 0))
+    h282 = {"Access-Token": tok282, "userId": str(uid282), "language": "en"}
+    check("282: token+uid", bool(tok282) and uid282 > 0, str(v282)[:120])
+
+    si = call("GET", "/user/api/v1/simple/info?userId=%d" % uid282, None, h282)
+    dsi = si.get("data", {}) if isinstance(si.get("data"), dict) else {}
+    check("282: simple/info PayUserInfo shape",
+          si.get("code") == 1 and dsi.get("userId") == uid282
+          and "name" in dsi and "picUrl" in dsi and "vip" in dsi
+          and "avatarFrame" in dsi and "colorfulNickName" in dsi
+          and "language" in dsi, str(si)[:160])
+    si_auth = call("GET", "/user/api/v1/simple/info?userId=0")
+    # read endpoints ride the documented lenient-resolve convention (session 5
+    # delta 3): anonymous reads answer the ghost shape, writes require auth.
+    check("282: simple/info anonymous = ghost shape (lenient read)",
+          si_auth.get("code") == 1
+          and isinstance(si_auth.get("data"), dict)
+          and "name" in si_auth.get("data", {}), str(si_auth)[:140])
+
+    fr = call("PUT", "/user/api/v1/user/avatar/frame?avatarFrame=frame_gold_1", None, h282)
+    check("282: avatar frame put", fr.get("code") == 1, str(fr)[:120])
+    frg = call("GET", "/user/api/v1/user/avatar/frame", None, h282)
+    check("282: avatar frame get echoes state",
+          frg.get("code") == 1 and frg.get("data") == "frame_gold_1", str(frg)[:120])
+
+    cn = call("PUT", "/user/api/v1/user/colorful/nickName?colorfulNickName=rainbow", None, h282)
+    check("282: colorful nickname put", cn.get("code") == 1, str(cn)[:120])
+    si2 = call("GET", "/user/api/v1/simple/info?userId=%d" % uid282, None, h282)
+    dsi2 = si2.get("data", {}) if isinstance(si2.get("data"), dict) else {}
+    check("282: simple/info mirrors frame+nickname state",
+          dsi2.get("avatarFrame") == "frame_gold_1"
+          and dsi2.get("colorfulNickName") == "rainbow", str(si2)[:160])
+
+    dv2 = call("GET", "/user/api/v2/user/details/info", None, h282)
+    ddv2 = dv2.get("data", {}) if isinstance(dv2.get("data"), dict) else {}
+    check("282: v2 details User shape",
+          dv2.get("code") == 1 and ddv2.get("userId") == uid282
+          and "nickName" in ddv2 and "golds" in ddv2 and "gDiamonds" in ddv2
+          and ddv2.get("avatarFrame") == "frame_gold_1", str(dv2)[:160])
+
+    rate = call("GET", "/pay/pay/api/v1/pay/gdiamond/gold/exchange/rate", None, h282)
+    drate = rate.get("data", {}) if isinstance(rate.get("data"), dict) else {}
+    check("282: exchange rate shape {rate}",
+          rate.get("code") == 1 and str(drate.get("rate", "")).isdigit(), str(rate)[:120])
+    ex_bad = call("PUT", "/pay/pay/api/v1/pay/gdiamond/gold/exchange?gdiamond=999999", None, h282)
+    check("282: exchange insufficient fails honestly", ex_bad.get("code") != 1,
+          str(ex_bad)[:120])
+
+    ban = call("GET", "/config/files/blockymods-bannerv2")
+    dban = ban.get("data", {}) if isinstance(ban.get("data"), dict) else {}
+    check("282: banner config envelope+shape",
+          ban.get("code") == 1 and "bannerList" in dban and "version" in dban,
+          str(ban)[:140])
+
+    pa = call("GET", "/game/api/v2/party/auth/test?loginTypeId=1&psid=x&isNewEngine=true",
+              None, h282)
+    dpa = pa.get("data", {}) if isinstance(pa.get("data"), dict) else {}
+    check("282: party auth test PartyAuthInfo shape",
+          pa.get("code") == 1 and "dispUrl" in dpa and "token" in dpa
+          and "timestamp" in dpa, str(pa)[:140])
+
+    srch = call("GET", "/game/api/v1/game/info/search?keyword=bed", None, h282)
+    check("282: game search list envelope", srch.get("code") == 1
+          and isinstance(srch.get("data"), list), str(srch)[:140])
+    kw = call("GET", "/game/api/v1/keyword/associational/word?keyword=bed", None, h282)
+    check("282: keyword words list envelope", kw.get("code") == 1
+          and isinstance(kw.get("data"), list), str(kw)[:120])
+
+    like = call("POST", "/game/api/v1/games/like", {"gameId": "g1008"}, h282)
+    dlike = like.get("data", {}) if isinstance(like.get("data"), dict) else {}
+    check("282: games like persists counter", like.get("code") == 1
+          and dlike.get("gameId") == "g1008" and dlike.get("likes", 0) >= 1, str(like)[:140])
+
+    cr = call("POST", "/msg/api/v1/game/chat/room", {"name": "wave282", "gameId": "g1008"}, h282)
+    dcr = cr.get("data", {}) if isinstance(cr.get("data"), dict) else {}
+    check("282: chat room create real state", cr.get("code") == 1
+          and str(dcr.get("roomId", "")).startswith("room-")
+          and dcr.get("ownerId") == uid282, str(cr)[:140])
+    crd = call("DELETE", "/msg/api/v1/game/chat/room",
+               {"roomId": dcr.get("roomId", "")}, h282)
+    check("282: chat room delete", crd.get("code") == 1, str(crd)[:120])
+
+
+
+def _call282(method, path, body=None, headers=None, base=""):
+    return call(method, path, body, headers, base=base)
+
 def main():
     state_dir = tempfile.mkdtemp(prefix="localapi-test-")
     # Server logs sink to a FILE, not a pipe: an undrained pipe fills its 64KB
@@ -3899,7 +3996,32 @@ def main():
             proc_gi.kill()
         log_gi.close()
 
-    # --- OPTIONAL end-to-end icon-pack test (opt-in: LOCALAPI_REAL_PACK=1) ---
+
+    # --- Wave 282: the 2.8.2 (blockymods, engine 10078) client surface ---
+    # Pins the Mods282 state-backed handlers: PayUserInfo shape (decompiled
+    # from src_classes4/.../PayUserInfo.java), the avatar-frame/colorful-
+    # nickname state roundtrip (mirrored back through simple/info), the v2
+    # details User read, the REAL gdiamond/gold exchange (rate + honest
+    # insufficient), and the banner config file envelope.
+    print("== Wave 282: 2.8.2 client surface (Mods282) ==")
+    # own instance (the main server is torn down by the time the tail runs)
+    dir_282 = tempfile.mkdtemp(prefix="localapi-w282-")
+    port282 = random.randint(20000, 32000)
+    while port282 in (PORT, port2, port3, port4, port5, port6, port7, port8):
+        port282 = random.randint(20000, 32000)
+    proc_282, log_282 = boot_hosttest(dir_282, port282)
+    BASE_282 = "http://127.0.0.1:%d" % port282
+    try:
+        wait_serving(BASE_282, 40)
+        run_wave_282(BASE_282)
+    finally:
+        try:
+            proc_282.terminate()
+            proc_282.wait(timeout=10)
+        except Exception:
+            pass
+
+    # --- OPTIONAL end-to-end icon-pack test (opt-in: LOCALAPI_REAL_PACK=1) ---    # --- OPTIONAL end-to-end icon-pack test (opt-in: LOCALAPI_REAL_PACK=1) ---
     # Boots a seeded instance with the REAL release pack URL: the asset
     # thread must download the 16MB skins.tar.gz, extract all entries with
     # the tar reader, and the streaming endpoint must then serve the REAL

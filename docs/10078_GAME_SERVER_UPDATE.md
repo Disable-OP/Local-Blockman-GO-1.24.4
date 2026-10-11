@@ -241,3 +241,40 @@ All 403 Lua files in the bundle pass a Lua 5.1 parse (luaparse gate).
   the 2.8.2 build is also required to avoid marker collisions on shared storage.
 - STAGE_VERSION ("g1008-b2") must also be bumped per line so a device that stages both
   builds (not expected — one APK per device) restages cleanly.
+
+## 9. Addendum 3 (cron session): the 2.8.2 API surface — ROUTED + TESTED
+
+- The 2.8.2 Retrofit surface was extracted from the per-dex jadx output
+  (23,479 files, 42 interfaces): **409 unique method+path endpoints**. Diff vs the
+  1.24.4 RoutingTable: **322 already routed** (79%), 65 new game-relevant (plus 22
+  third-party SDK routes — Twitter/Facebook — intentionally NOT routed).
+- **Shipped: the localapi 2.8.2 supplement** — RoutingTable +63 routes (397 total),
+  new domain file `Mods282.java`, dispatcher wiring in `Handlers.java`:
+  - REAL state: `/user/api/v1/simple/info` (PayUserInfo shape: avatarFrame,
+    colorfulNickName, language, name, picUrl, userId, vip), `/user/api/v2/user/details/info`
+    (User + v2 extras), `user/api/{version}/user/avatar/frame` GET/PUT,
+    `user/api/{version}/user/colorful/nickName` GET/PUT,
+    `/pay/pay/api/v1/pay/gdiamond/gold/exchange` + `/rate` (GoldExchangeRate{rate:String},
+    REAL wallet conversion, default rate 10000 golds/gDiamond, persisted),
+    `/game/api/v2/party/auth/test` (PartyAuthInfo shape, dispUrl→holder),
+    `/game/api/v1/game/info/search` + `keyword/associational/word` (REAL catalog search),
+    `/game/api/v1/games/like` (persisted counter), `/msg/api/v1/game/chat/room`
+    POST/DELETE (persisted rooms), `/config/files/blockymods-bannerv2` (config envelope).
+  - Schema-true defaults: the 26 activity/event routes (box/wish/newYear/onePurchase/
+    rechargeCount/commonAct/limitSuit/shortActivity), clan mute/members/v3 (5),
+    pay advance-order/third-payment/product (5), editorproxy (5), decoration home,
+    game comment/revision/mode-config/appreciation.
+- **HOST SUITE: 673/673 PASS** (was 655) — new "Wave 282" pins the PayUserInfo shape,
+  the frame/nickname state roundtrip mirrored through simple/info, the v2 details
+  shape, the exchange rate + honest insufficient failure, the banner envelope, the
+  PartyAuthInfo shape, catalog search, likes and chat-room state. Route sweep covers
+  all 397 routes. classes6.dex 323,272 B.
+- BUG LESSON (encoded): an EMPTY `{}` placeholder in a RoutingTable template
+  compiles to an illegal regex repetition and used to ABORT the whole route scan
+  for every request that reached it (all later routes silently fell back to the
+  default envelope). `RoutingTable.matches()` now catches PatternSyntaxException
+  per-template and Logs the bad template instead.
+- Wave-282 also encodes: the visitor response carries `data.id` (not `userId`);
+  the seeded wallet grants 5000 gDiamonds (the exchange test asserts the honest
+  insufficient path with an over-balance amount); anonymous reads answer the ghost
+  shape per the documented lenient-resolve convention.
