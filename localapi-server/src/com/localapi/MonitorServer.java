@@ -44,6 +44,10 @@ public final class MonitorServer {
     private static final int R2G_CONNECT_REPLY = 2;
     private static final int R2G_USER_ATTR = 154;
 
+    /** Synthetic robot platform uids start here; real users (10001+) live
+     *  far below. Doubles as the real-human filter for G2R_USER_IN. */
+    private static final long ROBOT_UID_BASE = 900000000L;
+
     private static final Object LOCK = new Object();
     private static ServerSocket sListener;
     private static volatile Socket sGame;
@@ -189,24 +193,24 @@ public final class MonitorServer {
             case G2R_CONNECT:
                 L.i("monitor: G2R_CONNECT " + abbreviate(json));
                 send(R2G_CONNECT_REPLY, "{}");
-                // The engine announced itself AFTER the Lua loaded (RoomManager
-                // is created post-ScriptManager load, and server.log proves the
-                // connect packet follows "script loadded on linux"). Fire the
-                // robot wave here: 15 AI attrs (isRobot=true) complete the
-                // Bedwars room to startPlayers=16 (4 teams x 4). The engine
-                // turns each attr into a real AI player via
-                // PlayerAIListener.onDynamicAttrInit -> AITeamManager:newAi ->
-                // GamePlayerControl:ctor -> World:addEntityPlayerAI +
-                // entity:sendLogin(platformId) - the AIs enter PlayerManager
-                // and WaitingPlayerTask starts its countdown once 16 players
-                // are in. Once per engine link (the flag resets on every new
-                // engine socket in acceptLoop).
-                pushRobotWave();
+                // v0.6.29-joinwave: NO robot wave here anymore. The wave
+                // used to fire on every engine connect — a RESPAWNED engine
+                // with nobody joining then got 15 bots pinned at waitPos
+                // forever (the empty-room force-teleport loop, 233 events
+                // in the v0.6.28 evidence) and re-pushed its wave into an
+                // already-lost world. Bots are only worth pushing when a
+                // REAL player is actually entering the room: the wave now
+                // fires from G2R_USER_IN below (once per engine link).
                 break;
             case G2R_HEARTBEAT:
                 break; // steady state, too noisy to log
             case G2R_GAME_STATUS:
+                L.i("monitor: g2r type=" + type + " " + abbreviate(json));
+                break;
             case G2R_USER_IN:
+                L.i("monitor: g2r type=" + type + " " + abbreviate(json));
+                onUserIn(json);
+                break;
             case G2R_USER_OUT:
                 L.i("monitor: g2r type=" + type + " " + abbreviate(json));
                 break;
@@ -216,13 +220,34 @@ public final class MonitorServer {
         }
     }
 
+    /** G2R_USER_IN: a user entered the room. v0.6.29-joinwave: the robot
+     *  wave fires the FIRST time a REAL human (id < ROBOT_UID_BASE) is seen
+     *  on this engine link. Ordering is safe by construction: the human's
+     *  attr was already pushed by the dispatch (the login gate demands it),
+     *  the login completed, and WaitingPlayerTask only starts its countdown
+     *  once isPlayerEnough(startPlayers) passes — which needs the bots — so
+     *  the ~2.6s the wave takes to land cannot outrun the match start.
+     *  Robots (ids ROBOT_UID_BASE+) never re-trigger the wave. */
+    private static void onUserIn(String json) {
+        try {
+            long id = new JSONObject(json).optLong("id", 0);
+            if (id > 0 && id < ROBOT_UID_BASE) {
+                L.i("monitor: human " + id + " entered the room — pushing "
+                        + "the robot wave");
+                pushRobotWave();
+            }
+        } catch (Throwable t) {
+            L.e("monitor: user-in parse failed: " + t);
+        }
+    }
+
     /** One wave of AI player attrs for the Bedwars room. robotId=1 selects
      *  AI group 1 in the map's AiPlayerConfig.csv (per-team behavior rows
      *  101+); teams cycle 1..4 (teamPlayers=4). Synthetic platform uids
-     *  900000001+ never collide with real users (10001+) and never log in
-     *  via RakNet, so the login requestId gate never sees them. reqId is
-     *  a placeholder - RoomClient::_parseUserAttr only requires the FIELD
-     *  to exist for robots. */
+     *  ROBOT_UID_BASE+1.. never collide with real users (10001+) and never
+     *  log in via RakNet, so the login requestId gate never sees them.
+     *  reqId is a placeholder - RoomClient::_parseUserAttr only requires
+     *  the FIELD to exist for robots. */
     private static void pushRobotWave() {
         synchronized (LOCK) {
             if (sRobotsPushed) return;
@@ -236,7 +261,7 @@ public final class MonitorServer {
                 try {
                     JSONObject o = new JSONObject();
                     o.put("reqId", "bots");
-                    o.put("id", 900000000L + i);
+                    o.put("id", ROBOT_UID_BASE + i);
                     o.put("clz", 1);
                     o.put("team", ((i - 1) % 4) + 1);
                     o.put("rid", 1);

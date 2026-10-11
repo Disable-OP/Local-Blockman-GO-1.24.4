@@ -3057,6 +3057,71 @@ def main():
             return "", ""
         return "\n".join(texts), ", ".join(paths)
 
+    def gj_read_since(fname, nbytes=65536, first_only=True):
+        """Byte-offset DELTA read of <fname> across the candidate dirs
+        (v0.6.29). Returns (new_text, paths, seeded) where new_text holds
+        ONLY the bytes that appeared since the previous call for each
+        path. First sighting of a path — or a TRUNCATED log (the engine
+        truncates server.log on every respawn) — seeds the offset with
+        the last <nbytes> bytes and flags seeded=True.
+
+        WHY: v0.6.28's match-watch diffed LINE COUNTS inside sliding 64KB
+        tail windows — when the window slid, every line index shifted and
+        the diff re-reported old lines (duplicate 'atch]' evidence). The
+        offsets here live SHELL-side (wc -c), so adb text decoding can
+        never corrupt them; the delta is byte-exact.
+
+        first_only=True (default) reads only the FIRST dir that yields
+        bytes — the dir list puts the primary SandBoxOL config dir first,
+        and the Android/data fallback is a stale copy of the same log
+        (merging both double-counted teleports and log lines)."""
+        chunks = []
+        paths = []
+        seeded = False
+        for d in (gj_dirs or []):
+            if first_only and chunks:
+                break
+            p = d + "/" + fname
+            try:
+                _sz = adb.sh("wc -c < %s 2>/dev/null" % p,
+                             timeout=20).strip()
+                _parts = _sz.split()
+                size = int(_parts[-1]) if _parts else None
+            except Exception:
+                size = None
+            if size is None:
+                continue
+            off = gj_offsets.get(p)
+            if off is None or size < off:
+                # first sighting, or the log was truncated/rotated (the
+                # engine respawns) — seed from the tail so the evidence
+                # stream never goes backwards to empty
+                off = max(0, size - nbytes)
+                seeded = True
+            if size > off:
+                txt = ""
+                for _cmd in ("tail -c +%d %s 2>/dev/null" % (off + 1, p),
+                             "run-as %s tail -c +%d %s 2>/dev/null"
+                             % (args.package, off + 1, p),
+                             # last resort: window read (toybox without
+                             # -c +N support would land here every round;
+                             # cosmetic duplicates beat lost evidence)
+                             "tail -c %d %s 2>/dev/null" % (nbytes, p)):
+                    try:
+                        txt = adb.sh(_cmd, timeout=30)
+                    except Exception:
+                        txt = ""
+                    if txt:
+                        break
+                if txt:
+                    chunks.append(txt)
+                    paths.append(p)
+            # advance the offset even on a failed read: a lost delta is
+            # better than an endless retry storm (and the window fallback
+            # above already recovers the bytes in the common cases)
+            gj_offsets[p] = size
+        return "\n".join(chunks), ", ".join(paths), seeded
+
     def gj_engine_up():
         return "EchoesActivity" in adb.sh(
             "dumpsys activity activities 2>/dev/null", timeout=30)
@@ -3337,7 +3402,7 @@ def main():
     # the watchPoint bounces reveal).
     gj_watch = False
     gj_watch_round = 0
-    gj_slog_seen = 0
+    gj_offsets = {}      # log path -> bytes consumed (byte-offset reads)
     gj_match_lines = []
     gj_match_status1 = False
     gj_match_tp = 0
@@ -3433,20 +3498,18 @@ def main():
         if gj_watch:
             gj_watch_round += 1
             screen.snap("GJ_match_r%d" % gj_watch_round)
-            _clog_w, _cp_w = gj_read("client.log", 65536)
+            # v0.6.29: byte-offset delta reads — every round sees ONLY the
+            # log bytes that appeared since the previous round (no sliding
+            # window, no duplicate evidence lines).
+            _clog_w, _cp_w, _ = gj_read_since("client.log", 65536)
             if _clog_w:
+                gj_match_tp += _clog_w.count("Blockman teleport")
                 gj_match_status1 = gj_match_status1 or (
                     "S2CPacketGameStatus m_status 1" in _clog_w)
-                gj_match_tp = max(gj_match_tp,
-                                  _clog_w.count("Blockman teleport"))
-            _slog_w, _sp_w = gj_read("server.log", 65536)
+            _slog_w, _sp_w, _sseed = gj_read_since("server.log", 65536)
             if _slog_w:
                 _wl = _slog_w.splitlines()
-                if len(_wl) < gj_slog_seen:
-                    # the engine respawned mid-watch: its log is fresh
-                    gj_slog_seen = 0
-                _fresh = _wl[gj_slog_seen:]
-                for _ln in _fresh:
+                for _ln in _wl:
                     _low = _ln.lower()
                     if ("startmatch" in _low or "preparematch" in _low
                             or "gamestart" in _low or "resetpos" in _low
@@ -3454,12 +3517,11 @@ def main():
                             or "bot" in _low or "match" in _low
                             or "teleport" in _low):
                         gj_match_lines.append(_ln)
-                if gj_slog_seen == 0 and _wl:
-                    print("  [match] GJ: server.log session: %d lines (%s)"
-                          % (len(_wl), _sp_w))
-                for _ln in _fresh[-14:]:
+                if _sseed:
+                    print("  [match] GJ: server.log session chunk (%s): "
+                          "%d lines" % (_sp_w, len(_wl)))
+                for _ln in _wl[-14:]:
                     print("  [match] GJ: %s" % _ln)
-                gj_slog_seen = len(_wl)
             if gj_watch_round >= GJ_MATCH_WATCH_ROUNDS:
                 ok("GJ: match watch complete (%d live rounds, %d match "
                    "screenshots, %d fresh server.log lines scanned)"
