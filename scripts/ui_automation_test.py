@@ -3149,17 +3149,26 @@ def main_282(args):
         # 'Check db' / 'Enter Game' / 'no wifi' / 'upgradeResponse = null')
         # + the focused window, so a silent dead-end (NotWifiDialog on a
         # no-wifi redroid, permission/uid gates) names itself in CI
-        if rnd <= 3 or rnd % 5 == 0:
-            _lc = adb.raw("logcat", "-d", "-t", "1500", timeout=90)
+        if rnd <= 4 or rnd % 5 == 0:
+            _lc = adb.raw("logcat", "-d", "-t", "2500", timeout=90)
             _keys = ("DressDownload", "click enter game", "Check Permission",
                      "Check db", "Enter Game", "no wifi", "upgradeResponse",
                      "JoinBridge", "start game", "startGame",
-                     "StartMcActivity", "NotWifi", "REQ ", "VerifyError")
+                     "StartMcActivity", "NotWifi", "REQ ", "VerifyError",
+                     "START u0", "ActivityTaskManager", "Echoes",
+                     "initGame", "gs: ", "gs:", "downloadDirectly",
+                     "onMapDownload", "blockmango", "BlockmanGo")
             _keep = [l for l in _lc.splitlines() if any(k in l for k in _keys)]
-            for l in _keep[-12:]:
-                print("  [diag r%d] %s" % (rnd, l[-450:]))
-            _focus = adb.sh("dumpsys window | grep mCurrentFocus", timeout=30)
-            print("  [focus r%d] %s" % (rnd, _focus[-140:]))
+            for l in _keep[-16:]:
+                print("  [diag r%d] %s" % (rnd, l[-380:]))
+            _acts = adb.sh(
+                "dumpsys activity activities | grep -iE "
+                "'echoes|startmc|blockmango' | head -6", timeout=30)
+            for l in _acts.splitlines():
+                if l.strip():
+                    print("  [acts r%d] %s" % (rnd, l.strip()[-200:]))
+            _gs = adb.sh("ps -A | grep -i gameserver", timeout=20)
+            print("  [gsproc r%d] %s" % (rnd, _gs[-120:] or "none"))
         # the press flow can park on a modal (NotWifiDialog on the no-wifi
         # redroid network, TwoButtonDialog res-load prompts): press the
         # positive button family generically
