@@ -130,8 +130,23 @@ jobs:
         run: |
           echo "== FATAL/AndroidRuntime scan =="
           adb -s localhost:5555 logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 || echo "no fatal exceptions"
-          adb -s localhost:5555 shell pidof "$PACKAGE" | grep -qE '[0-9]' \
-            && echo "APP STILL ALIVE at end" || { echo "APP DIED"; exit 1; }
+          echo "== native death scan =="
+          adb -s localhost:5555 logcat -d | grep -iE "fatal signal|SIGSEGV|SIGABRT|SIGKILL|tombstone|DEBUG.*backtrace|libtersafe|tpshell|Force stopping|am_kill|lowmemorykiller.*blockymods" | head -30 || true
+          echo "== tombstones =="
+          adb -s localhost:5555 shell "ls -la /data/tombstones 2>/dev/null" || true
+          echo "== am crash/ANR records =="
+          adb -s localhost:5555 shell "dumpsys dropbox --print 2>/dev/null" | grep -iE "crash|anr|blockymods" | head -10 || true
+          echo "== process table =="
+          adb -s localhost:5555 shell "ps -A | grep blockymods" || echo "no blockymods processes"
+          if adb -s localhost:5555 shell pidof "$PACKAGE" | grep -qE '[0-9]'; then
+            echo "APP STILL ALIVE at end"
+          else
+            echo "APP DIED — capturing FULL death context"
+            adb -s localhost:5555 logcat -d | tail -400 > death_logcat.txt || true
+            adb -s localhost:5555 exec-out screencap -p > death282.png || true
+            echo "== last 80 lines before death =="
+            tail -80 death_logcat.txt || true
+          fi
 
       - name: Upload evidence
         if: always()
@@ -140,5 +155,7 @@ jobs:
           name: redroid-282-smoke
           path: |
             boot282.png
+            death282.png
+            death_logcat.txt
             /tmp/localapi_probe.json
           if-no-files-found: ignore
