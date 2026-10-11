@@ -3154,10 +3154,10 @@ def main_282(args):
             _keys = ("DressDownload", "click enter game", "Check Permission",
                      "Check db", "Enter Game", "no wifi", "upgradeResponse",
                      "JoinBridge", "start game", "startGame",
-                     "StartMcActivity", "NotWifi", "REQ ")
+                     "StartMcActivity", "NotWifi", "REQ ", "VerifyError")
             _keep = [l for l in _lc.splitlines() if any(k in l for k in _keys)]
             for l in _keep[-12:]:
-                print("  [diag r%d] %s" % (rnd, l[-170:]))
+                print("  [diag r%d] %s" % (rnd, l[-450:]))
             _focus = adb.sh("dumpsys window | grep mCurrentFocus", timeout=30)
             print("  [focus r%d] %s" % (rnd, _focus[-140:]))
         # the press flow can park on a modal (NotWifiDialog on the no-wifi
@@ -3201,6 +3201,10 @@ def main_282(args):
 
     # ---- verdict (hard once btn_enter was pressed)
     print("== 282-GJ verdict ==")
+    _jb = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+    _jblines = [l for l in _jb.splitlines() if "JoinBridge" in l]
+    for l in _jblines[-12:]:
+        print("  [jb-full] %s" % l[-500:])
     check("282: join fired from the dialog (auth-token REQ or "
           "JoinBridge takeover)", fired,
           "the client never requested GET /game/api/v2/game/auth after "
