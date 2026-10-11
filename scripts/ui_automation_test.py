@@ -3144,6 +3144,34 @@ def main_282(args):
             pushed = True
         if "StartMc.startGame dispatched (online)" in log:
             started = True
+        # diagnostics: the client's own press-flow logs (DressDownload&
+        # Unzip debug tags: 'click enter game' / 'Check Permission' /
+        # 'Check db' / 'Enter Game' / 'no wifi' / 'upgradeResponse = null')
+        # + the focused window, so a silent dead-end (NotWifiDialog on a
+        # no-wifi redroid, permission/uid gates) names itself in CI
+        if rnd <= 3 or rnd % 5 == 0:
+            _lc = adb.raw("logcat", "-d", "-t", "1500", timeout=90)
+            _keys = ("DressDownload", "click enter game", "Check Permission",
+                     "Check db", "Enter Game", "no wifi", "upgradeResponse",
+                     "JoinBridge", "start game", "startGame",
+                     "StartMcActivity", "NotWifi", "REQ ")
+            _keep = [l for l in _lc.splitlines() if any(k in l for k in _keys)]
+            for l in _keep[-12:]:
+                print("  [diag r%d] %s" % (rnd, l[-170:]))
+            _focus = adb.sh("dumpsys window | grep mCurrentFocus", timeout=30)
+            print("  [focus r%d] %s" % (rnd, _focus[-140:]))
+        # the press flow can park on a modal (NotWifiDialog on the no-wifi
+        # redroid network, TwoButtonDialog res-load prompts): press the
+        # positive button family generically
+        _btn = screen.find(texts=["OK", "Ok", "Continue", "CONTINUE",
+                                  "Load now", "Load", "Enter", "Yes",
+                                  "Confirm", "Download", "Start"])
+        if _btn and _btn.center and _btn.center[1] > 200 \
+                and _btn.clickable:
+            print("  [282] dialog positive button %r tapped"
+                  % (_btn.text,))
+            screen.tap_node(_btn)
+            time.sleep(3)
         echoes = "BlockManEchoesActivity" in adb.sh(
             "dumpsys activity activities | grep -i BlockManEchoes",
             timeout=30)
