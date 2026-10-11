@@ -54,12 +54,17 @@ public final class GameServerManager {
      *  or C2SPacketLogin is refused (C2SInitPacketHandles: version mismatch
      *  -> S2CPacketCheckCSVersionResult{success=false} -> the client logs
      *  "check version fail, server version = 10000" and drops the link
-     *  BEFORE ever sending the login - run 38096189424). */
+     *  BEFORE ever sending the login - run 38096189424).
+     *  KEPT for the host rig + callers: the RUNTIME value is the line's
+     *  clientEngineVersion (GsLine, seed asset gs-line.json) — 10068 for
+     *  the 1.24.4 line, 10078 for the 2.8.2 line. */
     public static final int CLIENT_ENGINE_VERSION = 10068;
     public static final String ENGINE_GAME_NAME = "BedWar";
 
     private static final String BUNDLE_DIR = "gameserver-bundle";
     private static final String STAGE_VERSION_FILE = "stage-version";
+    /** @deprecated the RUNTIME stage marker is the line's stageVersion
+     *  (DEFAULT_LINE.stageVersion keeps this value for the 1.24.4 line). */
     private static final String STAGE_VERSION = "g1008-b2"; // bump to restage
 
     /** Script-tree overlay marker: completes the merged BedWar plugin tree
@@ -81,6 +86,92 @@ public final class GameServerManager {
      *  phone tester's "buy works but no item"). v4's friendly-AI csvs carry
      *  forward unchanged. */
     private static final String OVERLAY_VERSION = "bedwar-full-5"; // bump to re-apply
+
+    /**
+     * Engine line — DATA-DRIVEN so ONE server dex serves both client lines.
+     *
+     * The 2.8.2 client (engine 10078) APK ships a seed asset
+     * assets/localapi/gs-line.json (LocalServer copies it to
+     * filesDir/localapi/gs_line.json); the 1.24.4 client ships NONE and
+     * gets exactly the proven defaults below — byte-identical behavior to
+     * every green run before this change (zero regression by construction).
+     *
+     * The g10078 line (verified against the g10078 runtime bundle, session
+     * 66/cron):
+     *   - clientEngineVersion 10078 — the 2.8.2 client's engineVersion.json
+     *     says 10078; the server must report the same (C2S version gate).
+     *   - bundle gameserver-runtime-g10078.tar.gz — hosts the SAME room
+     *     (ScriptSetting g1008 BedWar, maps/g1008/m1008_2, scriptdir
+     *     scripts/BedWar) with 10078-era Lua + 10078 id_mappings + the 20
+     *     fresh CDN mca; its own engineVersion.json already says 10078.
+     *   - applyOverlay=false — the 10078-era WebService.lua is already
+     *     config-driven (self.ServerHttpHost = blockymodsRewardAddr) and
+     *     the bundle carries the tuned csvs inline; the 10068 overlay
+     *     would only CLOBBER the 10078 scripts (docs §8 risk).
+     *   - a distinct stageVersion so a device that stages both lines
+     *     restages cleanly (per-line markers, never shared).
+     */
+    static final class GsLine {
+        final String id;
+        final int clientEngineVersion;
+        final String stageVersion;
+        final boolean applyOverlay;
+        GsLine(String id, int clientEngineVersion, String stageVersion,
+               boolean applyOverlay) {
+            this.id = id;
+            this.clientEngineVersion = clientEngineVersion;
+            this.stageVersion = stageVersion;
+            this.applyOverlay = applyOverlay;
+        }
+    }
+
+    /** The proven 1.24.4 line — the defaults when no seed asset ships. */
+    private static final GsLine DEFAULT_LINE =
+            new GsLine("g1008", 10068, "g1008-b2", true);
+
+    private static volatile GsLine sLine;
+
+    /** Resolve the engine line (seed file wins, defaults otherwise). */
+    private static GsLine line(Context ctx) {
+        GsLine l = sLine;
+        if (l != null) return l;
+        synchronized (GameServerManager.class) {
+            if (sLine == null) sLine = readLine(ctx);
+            return sLine;
+        }
+    }
+
+    /** Parse filesDir/localapi/gs_line.json (LocalServer seeds it from the
+     *  APK asset). Any absence/corruption falls back to DEFAULT_LINE. */
+    private static GsLine readLine(Context ctx) {
+        try {
+            Context c = ctx != null ? ctx : sAppContext;
+            if (c == null) return DEFAULT_LINE;
+            File f = new File(new File(c.getFilesDir(), "localapi"),
+                    "gs_line.json");
+            if (!f.isFile()) return DEFAULT_LINE;
+            byte[] b = new byte[(int) Math.min(f.length(), 4096)];
+            FileInputStream in = new FileInputStream(f);
+            int n = in.read(b);
+            in.close();
+            JSONObject o = new JSONObject(new String(b, 0, Math.max(0, n),
+                    "UTF-8"));
+            String id = o.optString("line", DEFAULT_LINE.id);
+            if (!id.matches("g[0-9]+")) id = DEFAULT_LINE.id; // paranoia
+            int ver = o.optInt("clientEngineVersion",
+                    DEFAULT_LINE.clientEngineVersion);
+            String stage = o.optString("stageVersion", id + "-b1");
+            boolean overlay = o.optBoolean("applyOverlay",
+                    DEFAULT_LINE.applyOverlay);
+            GsLine l = new GsLine(id, ver, stage, overlay);
+            L.i("gs: engine line " + l.id + " engine=" + l.clientEngineVersion
+                    + " stage=" + l.stageVersion + " overlay=" + l.applyOverlay);
+            return l;
+        } catch (Throwable t) {
+            L.e("gs: gs-line parse failed -> defaults: " + t);
+            return DEFAULT_LINE;
+        }
+    }
 
     /** Engine-faithful runtime layout: the server CWD is <bundle>/server
      *  (resource.cfg reads ../client/), while GameServerManager's staging
@@ -119,7 +210,10 @@ public final class GameServerManager {
     }
 
     private static String bundleUrl() {
-        return releaseBase() + "/gameserver-runtime-g1008.tar.gz";
+        // engine-line aware: g1008 (1.24.4) | g10078 (2.8.2) — both assets
+        // ride the same localapi-assets release.
+        return releaseBase() + "/gameserver-runtime-"
+                + line(sAppContext).id + ".tar.gz";
     }
 
     private static String overlayUrl() {
@@ -143,21 +237,29 @@ public final class GameServerManager {
             try {
                 File files = context.getFilesDir();
                 sBundleDir = new File(files, BUNDLE_DIR);
+                final GsLine ln = line(context);
                 File marker = new File(sBundleDir, STAGE_VERSION_FILE);
                 boolean needStage = !marker.exists()
-                        || !STAGE_VERSION.equals(readText(marker));
+                        || !ln.stageVersion.equals(readText(marker));
                 if (needStage) {
-                    L.i("gs: staging runtime bundle ...");
+                    L.i("gs: staging runtime bundle (line " + ln.id + ") ...");
                     File tar = download(bundleUrl(), "gameserver-runtime.tar.gz",
-                            64 * 1024 * 1024);
+                            128 * 1024 * 1024);
                     untarGz(tar, sBundleDir);
-                    writeText(marker, STAGE_VERSION);
+                    writeText(marker, ln.stageVersion);
                     L.i("gs: bundle staged at " + sBundleDir);
                 }
                 // Complete the BedWar plugin tree (BaseGame mirror files).
                 // Also re-applies after a re-stage so overlay and bundle stay
-                // in lockstep.
-                ensureScriptOverlay();
+                // in lockstep. The g10078 line SKIPS this (its bundle already
+                // carries the full 10078-era tree inline; the 10068 overlay
+                // would clobber it — docs/10078_GAME_SERVER_UPDATE.md §8).
+                if (ln.applyOverlay) {
+                    ensureScriptOverlay();
+                } else {
+                    L.i("gs: script overlay skipped (line " + ln.id
+                            + " ships the scripts inline)");
+                }
                 // The binary rides the APK as jniLibs (nativeLibraryDir). When
                 // the APK does not carry it yet (older build), fall back to a
                 // release download into the bundle dir.
@@ -420,11 +522,17 @@ public final class GameServerManager {
                 return;
             }
             File f = new File(clientDir, "engineVersion.json");
-            if (f.isFile() && f.length() > 0) return;
-            writeText(f, "{\n  \"engineVersion\": " + CLIENT_ENGINE_VERSION
+            final int ver = line(sAppContext).clientEngineVersion;
+            // Overwrite when the staged file disagrees with the line (a
+            // re-stage swaps bundles; the g10078 bundle's own file already
+            // says 10078 and is then kept byte-identical).
+            if (f.isFile() && f.length() > 0
+                    && readText(f).contains("\"engineVersion\": " + ver)) {
+                return;
+            }
+            writeText(f, "{\n  \"engineVersion\": " + ver
                     + ",\n  \"useCmd\": \"true\",\n  \"logLevel\": \"debug\"\n}\n");
-            L.i("gs: engineVersion.json written -> " + f + " ("
-                    + CLIENT_ENGINE_VERSION + ")");
+            L.i("gs: engineVersion.json written -> " + f + " (" + ver + ")");
         } catch (Throwable t) {
             L.e("gs: engineVersion.json write failed: " + t);
         }

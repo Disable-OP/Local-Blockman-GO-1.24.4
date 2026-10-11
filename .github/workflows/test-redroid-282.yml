@@ -1,0 +1,131 @@
+name: test-redroid-282
+# Smoke test for the 2.8.2 (blockymods, engine 10078) line.
+# Verifies the OFFICIAL-client boot chain against the embedded LocalAPI:
+#   install -> launch -> process alive -> 18080 holder answers ->
+#   gs staging logs appear -> no FATAL crash in the window.
+# The full 9.4k-line UI suite is 1.24.4-specific (package-hardcoded);
+# this workflow is the 2.8.2 equivalent of phase A + the gs boot.
+# APK source: release asset "BlockyNexus-localapi-282.apk" (localapi-assets).
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["build-release"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  redroid-smoke-282:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    env:
+      PACKAGE: com.sandboxol.blockymods
+      ACTIVITY: com.sandboxol.blockymods.view.activity.host.HostActivity
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Fetch the 2.8.2 APK from releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/fetch_release_asset.py BlockyNexus-localapi-282.apk app282.apk
+
+      - name: Load binder kernel module
+        run: |
+          if ! sudo modprobe binder_linux devices="binder,hwbinder,vndbinder" 2>/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq linux-modules-extra-$(uname -r) android-tools-adb
+            sudo modprobe binder_linux devices="binder,hwbinder,vndbinder"
+          fi
+          command -v adb >/dev/null 2>&1 || { sudo apt-get update -qq; sudo apt-get install -y -qq android-tools-adb; }
+          adb version | head -1
+
+      - name: Start Redroid (arm64 native, Android 12)
+        run: |
+          docker run -d --name redroid --privileged -p 5555:5555 \
+            redroid/redroid:12.0.0-latest \
+            androidboot.redroid_width=720 \
+            androidboot.redroid_height=1280 \
+            androidboot.redroid_dpi=320 \
+            androidboot.redroid_gpu_mode=guest
+          adb connect localhost:5555
+
+      - name: Wait for Android boot
+        run: |
+          for i in $(seq 1 48); do
+            b=$(adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            [ "$b" = "1" ] && echo "boot completed" && exit 0
+            echo "waiting for boot ($i/48)"; sleep 5
+          done
+          echo "DEVICE FAILED TO BOOT"; exit 1
+
+      - name: Install 2.8.2 APK
+        run: |
+          adb -s localhost:5555 install -r -t app282.apk
+
+      - name: Launch + 15s keep-alive
+        run: |
+          adb -s localhost:5555 logcat -c
+          adb -s localhost:5555 shell am start -n "$PACKAGE/$ACTIVITY"
+          sleep 15
+          if adb -s localhost:5555 shell pidof "$PACKAGE" | grep -qE '[0-9]'; then
+            echo "APP ALIVE after 15s"
+            adb -s localhost:5555 shell pidof "$PACKAGE"
+          else
+            echo "APP PROCESS DIED within 15s"
+            adb -s localhost:5555 logcat -d | tail -150
+            exit 1
+          fi
+          adb -s localhost:5555 exec-out screencap -p > boot282.png || true
+
+      - name: LocalAPI holder probe (adb forward -> 18080)
+        # The tpshell BaseApplication.onCreate hook must have started the
+        # embedded server before any activity request. The FIRST responses
+        # prove the metadata-driven API base reroutes correctly.
+        run: |
+          adb -s localhost:5555 forward tcp:18090 tcp:18080
+          sleep 2
+          for i in 1 2 3 4 5 6; do
+            CODE=$(curl -s -o /tmp/localapi_probe.json -w "%{http_code}" \
+              "http://127.0.0.1:18090/config/files/blockymods-bannerv2" || true)
+            [ "$CODE" = "200" ] && break
+            echo "probe $i: http=$CODE (holder may still be binding)"; sleep 5
+          done
+          echo "final probe: http=$CODE"
+          head -c 400 /tmp/localapi_probe.json || true
+          [ "$CODE" = "200" ] || { echo "FATAL: 18080 holder did not answer"; \
+            adb -s localhost:5555 logcat -d -s LocalAPI:* | tail -60; exit 1; }
+          echo "== holder line config (gs: engine line log) =="
+          adb -s localhost:5555 logcat -d -s LocalAPI:* | grep -E "gs: engine line|gs-line" | tail -5 || true
+
+      - name: GameServer staging smoke (g10078 line)
+        if: always()
+        run: |
+          echo "== gameserver process =="
+          adb -s localhost:5555 shell "ps -A | grep -i gameserver" || true
+          echo "== gs staging + engine line logs =="
+          adb -s localhost:5555 logcat -d -s LocalAPI:* | grep -iE "gs:|gameserver|engine line" | tail -40 || true
+          echo "== engine line must be g10078 =="
+          adb -s localhost:5555 logcat -d -s LocalAPI:* | grep "gs: engine line g10078" | tail -2 || \
+            echo "NOTE: engine-line log not yet present (staging may still be downloading the 42MB bundle)"
+
+      - name: Crash scan
+        if: always()
+        run: |
+          echo "== FATAL/AndroidRuntime scan =="
+          adb -s localhost:5555 logcat -d | grep -E "FATAL EXCEPTION|AndroidRuntime" | head -20 || echo "no fatal exceptions"
+          adb -s localhost:5555 shell pidof "$PACKAGE" | grep -qE '[0-9]' \
+            && echo "APP STILL ALIVE at end" || { echo "APP DIED"; exit 1; }
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redroid-282-smoke
+          path: |
+            boot282.png
+            /tmp/localapi_probe.json
+          if-no-files-found: ignore

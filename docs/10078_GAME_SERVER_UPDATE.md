@@ -278,3 +278,71 @@ All 403 Lua files in the bundle pass a Lua 5.1 parse (luaparse gate).
   the seeded wallet grants 5000 gDiamonds (the exchange test asserts the honest
   insufficient path with an over-balance amount); anonymous reads answer the ghost
   shape per the documented lenient-resolve convention.
+
+## 10. Addendum 4 (cron session): the 2.8.2 CLIENT BUILD — SHIPPED (APK on the release)
+
+- **The 2.8.2 local-holding client EXISTS**: `BlockyNexus-localapi-282.apk`
+  (166.5 MB, v1+v2+v3 signed) on the localapi-assets release. It is the OFFICIAL
+  blockymods 2.8.2 (armeabi-v7a, 7 dexes, tpshell runtime base, bundled 154 MB
+  v1 appres at `assets/resources/`) with:
+  - **patch_urls_282.py** — 17 API hosts -> 127.0.0.1:18080. THE API BASE IS THE
+    METADATA BASE: every Retrofit interface builds via
+    `RetrofitFactory.httpsCreate(getMetaDataBaseUrl(), ...)`, `setBaseUrl` is
+    called exactly once (InitMetaDataTask.baseMetaData, cloudfront
+    d32gv25kv9q34j — DEAD as of this session), and BaseUrlInterceptor's
+    failover is `getMetaDataBackupBaseUrl()`. No separate metadata JSON
+    endpoint is needed. The sweep also caught 10 API classes hardcoding
+    `http://mods.sandboxol.com` directly (RankingApi/VideoApi/FriendApi/
+    VIPApi/TribeApi/CampaignApi/MailBoxApi/GeoApi/GroupChatApi/BaseModuleApp).
+    Left alone: static.sandboxol.com + staticgs.sandboxol.com (CDNs alive),
+    team.game.sandboxol.com:9921 (unused), blockmango.net recharge (pay).
+  - **patch_bootstrap_282.py** — `LocalServer.startIfNeeded` hook inserted
+    after `TPShellApplication.onCreate` in BaseApplication.onCreate (the
+    earliest shared hook; `.locals 0` is safe, p0 IS a Context).
+  - **patch_join_282.py** — `com/sandboxol/blockymods/view/activity/join/v.smali`
+    private `a(MiniGameToken)V` is THE 2.8.2 local join gate (the va$b
+    equivalent; gameAddr="" boot). Renamed to `a_local` + a new private
+    `a(MiniGameToken)V` bridge -> `JoinBridge.takeOverJoin(ctx, gameEntity)`
+    with try/catch -> a_local fallback. Exactly ONE in-class caller (v's
+    b(MiniGameToken,I,J) at invoke-direct) so the rename reroutes it through
+    the bridge automatically.
+  - **patch_rsa_key.py** — the 1.24.4 login RSA key IS present in 2.8.2
+    (com/sandboxol/login/e/d.smali) and is swapped the same way.
+  - **classes8.dex** — the SAME server dex as the 1.24.4 line (325,100 B);
+    ART loads every classesN.dex natively, no manifest change.
+  - **libgameserver.so in lib/armeabi-v7a/** — CRITICAL: the 2.8.2 APK is
+    armeabi-v7a-only; adding an arm64-v8a jniLib dir would make arm64
+    devices select arm64-v8a as primary ABI and SKIP the v7a engine libs.
+    The arm64 ELF inside the v7a dir is extracted-but-never-JNI-loaded and
+    exec()s fine on arm64 kernels.
+- **ENGINE LINE = DATA**: `GameServerManager` now reads
+  `filesDir/localapi/gs_line.json` (seeded by LocalServer from
+  `assets/localapi/gs-line.json` — only the 2.8.2 APK ships it):
+  `{"line":"g10078","clientEngineVersion":10078,"stageVersion":"g10078-b1",
+  "applyOverlay":false}`. No seed = the proven g1008/10068 defaults, so the
+  1.24.4 line is byte-identical (HOST SUITE 673/673 re-run after the change).
+  The g10078 line: same room (g1008 BedWar / m1008_2 / scripts/BedWar), 42.5 MB
+  `gameserver-runtime-g10078.tar.gz` (on the release), NO script overlay (the
+  10078-era WebService.lua is already config-driven — no :8080 bug), engine
+  gate 10078 (ensureEngineVersionFile now overwrites on mismatch).
+- **JoinBridge line-awareness**: `StartMc.startGame` differs per line —
+  2.8.2 is a STATIC 2-arg method (putExtra("gameInfo") -> StartMcActivity),
+  1.24.4 is an INSTANCE 4-arg via newInstance(). JoinBridge resolves both.
+  All other reflection targets exist unchanged in 2.8.2 (EnterRealmsResult
+  setters, AccountCenter ObservableFields, greendao Game).
+- **2.8.2 engine selection confirmed**: `EngineEnv.getEngine(isNewEngine,
+  isUgc)` — isNewEngine=0 -> v1 = libBlockMan.so = engine 10078 =
+  `app_resources/Media`. The catalog's isNewEngine=0 pins are CORRECT for
+  both lines. The client bundles its v1 appres in the APK (6,891 files);
+  `getGameResource` (check-update) returning `[]` is CORRECT.
+- **Build tooling**: `scripts/build_signed_apk_282.sh` — per-folder smali
+  assembly (smali 2.5.2 from Maven Central, ~15 s/folder, resumable;
+  apktool b is a non-resumable 20+ min single step that the sandbox kills),
+  then repack the ORIGINAL APK (only dexes + seeds differ), uber-apk-signer.
+  2.8.2 smoke CI: `.github/workflows/test-redroid-282.yml` (install -> boot
+  -> 18080 holder probe -> gs engine-line log -> crash scan).
+- **Decoded facts for the record**: dead hosts d32gv25kv9q34j +
+  d401m01aifavw.cloudfront.net (redirecting them was also the honest choice);
+  the 2.8.2 hall flow is getMiniGameToken (`/game/api/v2/game/auth`, routed)
+  -> getResInfo (`/v1/game-res`, routed) -> local gate a(token) -> bridge;
+  the tpshell base loads libtprt.so but the dexes are NOT packed.

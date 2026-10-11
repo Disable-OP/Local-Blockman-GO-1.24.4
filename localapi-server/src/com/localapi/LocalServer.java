@@ -54,6 +54,12 @@ public final class LocalServer {
                 new File(new File(filesDir, "localapi"), "skins_seed.json"));
         copySeedAsset(app, "localapi/ScriptSetting.csv",
                 new File(new File(filesDir, "localapi"), "games_seed.csv"));
+        // Engine line for the on-device GameServer (GameServerManager):
+        // the 2.8.2 APK ships {"line":"g10078","clientEngineVersion":10078,
+        // "applyOverlay":false}; the 1.24.4 APK ships NO such asset and
+        // GameServerManager falls back to its proven g1008/10068 defaults.
+        copySeedAsset(app, "localapi/gs-line.json",
+                new File(new File(filesDir, "localapi"), "gs_line.json"));
         start(filesDir, PORT);
         bootGameServerOnce();
     }

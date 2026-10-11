@@ -406,11 +406,31 @@ public final class JoinBridge {
         // hall's entity already selects the working engine env).
 
         Class<?> smC = Class.forName("com.sandboxol.blocky.router.StartMc");
-        Object sm = smC.getMethod("newInstance").invoke(null);
-        smC.getMethod("startGame", Context.class,
-                Class.forName("com.sandboxol.center.router.moduleInfo.game.EnterRealmsResult"),
-                String.class, String.class)
-                .invoke(sm, ctx, r, "google", Handlers.LOCAL_BASE_URL);
+        // startGame differs per client line — resolve dynamically so ONE
+        // dex serves both:
+        //   1.24.4 (blockynexus): INSTANCE method
+        //         startGame(Context, EnterRealmsResult, String flavor,
+        //                   String baseUrl) via StartMc.newInstance()
+        //   2.8.2  (blockymods):  STATIC method
+        //         startGame(Context, EnterRealmsResult)
+        //         (putExtra("gameInfo", result) -> StartMcActivity; no
+        //         prefs roundtrip, no newInstance)
+        Object sm = null;
+        boolean smStatic = false;
+        java.lang.reflect.Method m;
+        try {
+            sm = smC.getMethod("newInstance").invoke(null);
+            m = smC.getMethod("startGame", Context.class, resC,
+                    String.class, String.class);
+        } catch (NoSuchMethodException e) {
+            smStatic = true;
+            m = smC.getMethod("startGame", Context.class, resC);
+        }
+        if (smStatic) {
+            m.invoke(null, ctx, r);
+        } else {
+            m.invoke(sm, ctx, r, "google", Handlers.LOCAL_BASE_URL);
+        }
         L.i(TAG + ": StartMc.startGame dispatched (online) — engine should "
                 + "initGame ip=127.0.0.1 port=31108 gameType=g1008 map=" + mapId);
     }
