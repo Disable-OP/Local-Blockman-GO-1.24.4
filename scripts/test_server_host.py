@@ -3809,6 +3809,88 @@ def main():
         check("gs-inner: app /config/files routes NOT intercepted",
               r_inner.get("code") in (0, 1),
               str(r_inner)[:200])
+        # ---- v0.6.37: real inner endpoints (props / purchase / settlement) ----
+        # register a REAL user (the fixture store starts empty; uid 1 only
+        # exists on-device as the guest)
+        rg_i = call("POST", "/user/api/v1/register",
+                    {"uid": "gs_inner_user", "password": "pw",
+                     "confirmPassword": "pw", "imei": "devgi",
+                     "appType": "android", "os": "12"}, base=base_gi)
+        uid_i = (rg_i.get("data") or {}).get("userId", 0)
+        check("gs-inner: fixture user registered", rg_i.get("code") == 1
+              and uid_i > 0, str(rg_i)[:150])
+        si = call("GET", "/user/api/v1/inner/simple-info?userIdList=%d,%d"
+                  % (uid_i, uid_i + 1), base=base_gi)
+        check("gs-inner: simple-info list shape (UserInfoCache)",
+              si.get("code") == 1 and isinstance(si.get("data"), list)
+              and len(si["data"]) >= 1
+              and si["data"][0].get("userId") == uid_i
+              and isinstance(si["data"][0].get("name"), str),
+              str(si)[:200])
+        p0 = call("GET", "/gameaide/api/v1/inner/user/game/props?userId=%d&gameId=g1008"
+                  % uid_i, base=base_gi)
+        check("gs-inner: props list starts empty",
+              p0.get("code") == 1 and p0.get("data") == [], str(p0)[:200])
+        buy = call("POST", "/pay/api/v2/inner/pay/users/purchase/game/props",
+                   body={"userId": uid_i, "propsId": 9001, "currency": 0,
+                         "quantity": 100, "gameId": "g1008"},
+                   base=base_gi)
+        check("gs-inner: purchase charges + echoes wallet (PayHelper shape)",
+              buy.get("code") == 1
+              and (buy.get("data") or {}).get("orderId", "").startswith("local-")
+              and isinstance((buy.get("data") or {}).get("gDiamonds"), int)
+              and isinstance((buy.get("data") or {}).get("golds"), int),
+              str(buy)[:200])
+        p1 = call("GET", "/gameaide/api/v1/inner/user/game/props?userId=%d&gameId=g1008"
+                  % uid_i, base=base_gi)
+        check("gs-inner: purchase recorded owned prop",
+              p1.get("code") == 1 and len(p1.get("data") or []) == 1
+              and p1["data"][0].get("propsId") == 9001
+              and p1["data"][0].get("times") == 1, str(p1)[:200])
+        buy2 = call("POST", "/pay/api/v2/inner/pay/users/purchase/game/props",
+                    body={"userId": uid_i, "propsId": 9001, "currency": 0,
+                          "quantity": 100, "gameId": "g1008"},
+                    base=base_gi)
+        p2 = call("GET", "/gameaide/api/v1/inner/user/game/props?userId=%d&gameId=g1008"
+                  % uid_i, base=base_gi)
+        check("gs-inner: repeat purchase bumps times",
+              buy2.get("code") == 1 and p2.get("data")
+              and p2["data"][0].get("times") == 2, str(p2)[:200])
+        ud = call("GET", "/user/api/v1/inner/user/details?userId=%d&gameId=g1008"
+                  % uid_i, base=base_gi)
+        check("gs-inner: user/details propsId mirrors ownership (AppProps)",
+              ud.get("code") == 0
+              and 9001 in (ud.get("data") or {}).get("propsId", []),
+              str(ud)[:200])
+        poor = call("POST", "/pay/api/v2/inner/pay/users/purchase/game/props",
+                    body={"userId": uid_i, "propsId": 9002, "currency": 0,
+                          "quantity": 99999999, "gameId": "g1008"},
+                    base=base_gi)
+        check("gs-inner: insufficient balance fails honestly (code 3)",
+              poor.get("code") == 3 and poor.get("data") is None,
+              str(poor)[:200])
+        st = call("POST", "/game/api/v1/users/games/settlement?userId=%d&gameId=g1008"
+                  % uid_i,
+                  body={"duration": 600, "rank": 1, "recordId": "r",
+                        "standardNum": 4, "totalNum": 16,
+                        "startTime": "2026-10-11 00:00:00"},
+                  base=base_gi)
+        check("gs-inner: settlement rank-1 grants 300 golds (Reward shape)",
+              st.get("code") == 1
+              and (st.get("data") or {}).get("golds") == 300
+              and (st.get("data") or {}).get("adSwitch") == 0,
+              str(st)[:200])
+        stg = call("POST",
+                   "/game/api/v1/users/games/settlement/golds?userId=%d&gameId=g1008&golds=77"
+                   % uid_i, body={}, base=base_gi)
+        check("gs-inner: settlement/golds echoes query golds",
+              stg.get("code") == 1
+              and (stg.get("data") or {}).get("golds") == 77,
+              str(stg)[:200])
+        ml = call("GET", "/gameaide/api/v1/inner/game/mails?userId=%d&gameType=g1008"
+                  % uid_i, base=base_gi)
+        check("gs-inner: mails empty list (CheckMails iterates data)",
+              ml.get("code") == 1 and ml.get("data") == [], str(ml)[:200])
     finally:
         proc_gi.terminate()
         try:

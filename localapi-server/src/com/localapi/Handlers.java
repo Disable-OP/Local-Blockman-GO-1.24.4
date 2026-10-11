@@ -1038,20 +1038,225 @@ final class Handlers {
                         ? u.optString("nickName") : ("Guest" + uid));
                 data.put("clanName", "");
                 data.put("role", 0);
-                data.put("propsId", new JSONArray());
+                // v0.6.37-innerprops: owned game props ride propsId so
+                // AppProps:hasProp (player.staticAttr.props) sees purchases
+                // from PREVIOUS matches too. RAW values (numeric ids stay
+                // numbers so the Lua `p_prop == propId` check matches;
+                // string ids like "bed.war.super.player" stay strings —
+                // GameActivity consumes those via the props endpoint).
+                JSONArray ownedRaw = u != null ? u.optJSONArray("gameProps")
+                        : null;
+                JSONArray flat = new JSONArray();
+                if (ownedRaw != null) {
+                    for (int i = 0; i < ownedRaw.length(); i++) {
+                        JSONObject p = ownedRaw.optJSONObject(i);
+                        if (p != null && p.has("propsId")) {
+                            flat.put(p.opt("propsId"));
+                        }
+                    }
+                }
+                data.put("propsId", flat);
                 JSONObject resp = new JSONObject();
                 resp.put("code", 0);
                 resp.put("data", data);
                 L.i("gs-inner: user/details uid=" + uid + " -> "
-                        + (u != null ? "state-store" : "guest-shape"));
+                        + (u != null ? "state-store" : "guest-shape")
+                        + " props=" + flat.length());
                 return resp.toString();
             }
+            // ---- v0.6.37: REAL inner endpoints for the engine's Lua ----
+            // GET /user/api/v1/inner/simple-info?userIdList=1,2 ->
+            //   [ {userId, vip, name, picUrl} ] (UserInfoCache shape).
+            if (clean.equals("/user/api/v1/inner/simple-info")) {
+                JSONArray arr = new JSONArray();
+                String list = String.valueOf(ctx.query("userIdList"));
+                if (list != null && !"null".equals(list)) {
+                    for (String part : list.split(",")) {
+                        long uid;
+                        try { uid = Long.parseLong(part.trim()); }
+                        catch (Throwable bad) { continue; }
+                        if (uid <= 0) continue;
+                        JSONObject u = store.findByUserId(uid);
+                        JSONObject item = new JSONObject();
+                        item.put("userId", uid);
+                        item.put("vip", u != null ? u.optInt("vip", 0) : 0);
+                        item.put("name", u != null
+                                && u.optString("nickName").length() > 0
+                                ? u.optString("nickName") : ("Guest" + uid));
+                        item.put("picUrl", "");
+                        arr.put(item);
+                    }
+                }
+                L.i("gs-inner: simple-info -> " + arr.length() + " users");
+                return "{\"code\":1,\"message\":\"ok\",\"data\":"
+                        + arr.toString() + "}";
+            }
+            // Per-user owned game props: [{propsId, times}] stored on the
+            // user record as "gameProps". Shared by props GET + purchase.
+            // GET /gameaide/api/v1/inner/user/game/props?userId&gameId
+            if (clean.equals("/gameaide/api/v1/inner/user/game/props")) {
+                long uid = parseLongSafe(ctx.query("userId"));
+                JSONObject u = uid > 0 ? store.findByUserId(uid) : null;
+                JSONArray owned = u != null ? u.optJSONArray("gameProps")
+                        : null;
+                L.i("gs-inner: user/game/props uid=" + uid + " -> "
+                        + (owned == null ? 0 : owned.length()) + " props");
+                return "{\"code\":1,\"message\":\"ok\",\"data\":"
+                        + (owned != null ? owned.toString() : "[]") + "}";
+            }
+            // POST /gameaide/api/v1/inner/user/game/props/times — consume
+            // one use of a repeatable prop (GameActivity activity props).
+            if (clean.equals("/gameaide/api/v1/inner/user/game/props/times")) {
+                long uid = parseLongSafe(ctx.query("userId"));
+                long propsId = parseLongSafe(ctx.query("propsId"));
+                JSONObject u = uid > 0 ? store.findByUserId(uid) : null;
+                if (u != null && propsId > 0) {
+                    JSONArray owned = u.optJSONArray("gameProps");
+                    if (owned == null) {
+                        owned = new JSONArray();
+                        u.put("gameProps", owned);
+                    }
+                    for (int i = 0; i < owned.length(); i++) {
+                        JSONObject p = owned.optJSONObject(i);
+                        if (p != null && p.optLong("propsId") == propsId) {
+                            p.put("times", Math.max(0,
+                                    p.optLong("times", 1) - 1));
+                            if (p.optLong("times") <= 0) owned.remove(i);
+                            break;
+                        }
+                    }
+                    store.save();
+                }
+                return "{\"code\":1,\"message\":\"ok\",\"data\":{}}";
+            }
+            // POST /pay/api/v2/inner/pay/users/purchase/game/props — THE
+            // in-game shop buy (WebService:Pay). Body:
+            // {userId, propsId, currency(0=diamonds/gcube, 2=golds),
+            //  quantity(=the price), gameId, ...}. Charges the wallet,
+            // records the owned prop, and returns the FULL wallet echo —
+            // PayHelper feeds data.orderId + data.diamonds/gDiamonds/golds
+            // straight into sendInitMoney (the in-game money HUD).
+            if (clean.equals("/pay/api/v2/inner/pay/users/purchase/game/props")) {
+                JSONObject b = new JSONObject(ctx.body() == null
+                        || ctx.body().length() == 0 ? "{}" : ctx.body());
+                long uid = b.optLong("userId",
+                        parseLongSafe(ctx.query("userId")));
+                // propsId may be numeric OR a string id ("bed.war.super.
+                // player") — preserve the raw JSON type end to end.
+                Object propsRaw = b.opt("propsId");
+                if (propsRaw == null) {
+                    String q = String.valueOf(ctx.query("propsId"));
+                    if (q != null && !"null".equals(q)) propsRaw = q;
+                }
+                int currency = b.optInt("currency", 0);
+                long price = b.optLong("quantity", 0);
+                JSONObject u = uid > 0 ? store.findByUserId(uid) : null;
+                if (u == null || propsRaw == null) {
+                    return "{\"code\":2,\"message\":\"bad user/propsId\","
+                            + "\"data\":null}";
+                }
+                String walletKey = currency == 2 ? "golds" : "gDiamonds";
+                if (u.optLong(walletKey, 0) < price) {
+                    L.i("gs-inner: purchase uid=" + uid + " props=" + propsRaw
+                            + " INSUFFICIENT " + walletKey + " (have "
+                            + u.optLong(walletKey, 0) + " need " + price + ")");
+                    return "{\"code\":3,\"message\":\"insufficient "
+                            + walletKey + "\",\"data\":null}";
+                }
+                if (price > 0) store.award(u, walletKey, -price);
+                JSONArray owned = u.optJSONArray("gameProps");
+                if (owned == null) {
+                    owned = new JSONArray();
+                    u.put("gameProps", owned);
+                }
+                boolean already = false;
+                for (int i = 0; i < owned.length(); i++) {
+                    JSONObject p = owned.optJSONObject(i);
+                    if (p != null && String.valueOf(p.opt("propsId"))
+                            .equals(String.valueOf(propsRaw))) {
+                        p.put("times", p.optLong("times", 1) + 1);
+                        already = true;
+                        break;
+                    }
+                }
+                if (!already) {
+                    JSONObject p = new JSONObject();
+                    p.put("propsId", propsRaw);
+                    p.put("times", 1);
+                    owned.put(p);
+                }
+                store.save();
+                JSONObject data = new JSONObject();
+                data.put("orderId", "local-" + Long.toHexString(
+                        System.nanoTime()));
+                data.put("diamonds", u.optLong("diamonds", 0));
+                data.put("gDiamonds", u.optLong("gDiamonds", 0));
+                data.put("golds", u.optLong("golds", 0));
+                L.i("gs-inner: purchase uid=" + uid + " props=" + propsRaw
+                        + " price=" + price + " " + walletKey + " ok");
+                return "{\"code\":1,\"message\":\"ok\",\"data\":"
+                        + data.toString() + "}";
+            }
+            // POST /game/api/v1/users/games/settlement (+"*/golds") — the
+            // match-end platform reward (WebService:GetReward/GetGoldReward).
+            // GetReward's body is {duration, rank, recordId, standardNum,
+            // totalNum, startTime} — the PLATFORM computes the golds from
+            // the rank (local policy: 1st=300, 2nd=200, 3rd=100, else 50).
+            // GetGoldReward carries the golds in the query. Echo shape the
+            // client reads: {userId, golds, available, hasGet, adSwitch}.
+            if (clean.equals("/game/api/v1/users/games/settlement")
+                    || clean.equals(
+                            "/game/api/v1/users/games/settlement/golds")) {
+                String raw = ctx.body();
+                JSONObject b = new JSONObject(raw == null || raw.length() == 0
+                        ? "{}" : raw);
+                long uid = parseLongSafe(ctx.query("userId"));
+                if (uid <= 0) uid = b.optLong("userId", 0);
+                long golds;
+                if (clean.endsWith("/golds")) {
+                    golds = parseLongSafe(ctx.query("golds"));
+                    if (golds <= 0) golds = b.optLong("golds", 0);
+                } else {
+                    long rank = b.optLong("rank", 10);
+                    golds = rank <= 1 ? 300 : rank == 2 ? 200
+                            : rank == 3 ? 100 : 50;
+                }
+                JSONObject u = uid > 0 ? store.findByUserId(uid) : null;
+                if (u != null && golds > 0) store.award(u, "golds", golds);
+                JSONObject data = new JSONObject();
+                data.put("userId", uid);
+                data.put("golds", golds);
+                data.put("available", golds);
+                data.put("hasGet", 0);
+                data.put("adSwitch", 0);
+                L.i("gs-inner: settlement uid=" + uid + " golds=" + golds
+                        + (u != null ? " granted" : " (guest, not stored)"));
+                return "{\"code\":1,\"message\":\"ok\",\"data\":"
+                        + data.toString() + "}";
+            }
+            // POST /game/api/v1/users/inner/games/settlement/list — batch
+            // settlement echo (GetRewardList iterates the array).
+            if (clean.equals(
+                    "/game/api/v1/users/inner/games/settlement/list")) {
+                return "{\"code\":1,\"message\":\"ok\",\"data\":[]}";
+            }
+            // Mail box: empty list, accept sends + status updates.
+            if (clean.equals("/gameaide/api/v1/inner/game/mails")) {
+                return "{\"code\":1,\"message\":\"ok\",\"data\":[]}";
+            }
         } catch (Throwable t) {
-            L.e("gs-inner user/details failed: " + t);
+            L.e("gs-inner " + clean + " failed: " + t);
         }
-        // Graceful envelope for everything else (exp rule, settlement,
-        // identity config, treasurebox, ranks, mails, props, game data...).
+        // Graceful envelope for everything else (exp rule, identity config,
+        // treasurebox, ranks, season info, game data — the Lua callers all
+        // treat nil data as a graceful fallback).
         return "{\"code\":0,\"message\":\"ok\",\"data\":null}";
+    }
+
+    /** Tolerant long parse for query params ("null"/""/garbage -> 0). */
+    private static long parseLongSafe(Object v) {
+        try { return Long.parseLong(String.valueOf(v).trim()); }
+        catch (Throwable bad) { return 0L; }
     }
 
     /**

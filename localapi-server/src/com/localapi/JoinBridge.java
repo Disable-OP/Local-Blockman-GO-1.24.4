@@ -75,6 +75,38 @@ public final class JoinBridge {
             if (ctx == null || gameEntity == null) {
                 return false;
             }
+            // v0.6.37-hostedonly: the takeover used to force EVERY tapped
+            // card onto the hosted Bedwars room (setGameId(g1008)) - the
+            // physical-phone tester rightly called that wrong. Only the
+            // HOSTED mapping (Bedwars hall g1046 -> gameplay g1008) takes
+            // the online join; every other card keeps its own identity and
+            // boots the original local world (with an honest toast).
+            String tapped = "";
+            try {
+                Object idObj = gameEntity.getClass().getMethod("getGameId")
+                        .invoke(gameEntity);
+                if (idObj != null) tapped = String.valueOf(idObj);
+            } catch (Throwable ignored) {
+                // cannot read the tapped id -> keep the proven takeover
+            }
+            String tappedDigits = tapped.replaceAll("[^0-9]", "");
+            boolean hosted = tappedDigits.isEmpty()
+                    || tappedDigits.equals("1046") || tappedDigits.equals("1008");
+            if (!hosted) {
+                L.i(TAG + ": game " + tapped
+                        + " is not hosted (only g1046 Bedwars -> g1008)"
+                        + " - local fallback");
+                try {
+                    Toast.makeText(ctx,
+                            "This build hosts Bedwars only - that game is"
+                                    + " not available yet.",
+                            Toast.LENGTH_LONG).show();
+                } catch (Throwable t2) {
+                    L.e(TAG + ": hosted-only toast failed: " + t2);
+                }
+                return false;
+            }
+
             final String gaddr = GameServerManager.gameAddr();
             if (gaddr == null) {
                 // v0.6.36-joinhint: the engine exists ONLY after

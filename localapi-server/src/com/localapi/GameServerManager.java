@@ -74,7 +74,13 @@ public final class GameServerManager {
      *  (maps/g1008/m1008_2) at apply time. The bot wave still fires and
      *  the match still starts — the AFK human now survives minutes
      *  instead of dying every ~4-8s to knockback void falls. */
-    private static final String OVERLAY_VERSION = "bedwar-full-4"; // bump to re-apply
+    /** v5 (2026-10-11): WebService:Pay's hardcoded http://127.0.0.1:8080
+     *  purchase URL -> self.ServerHttpHost (the 18080 holder) — the in-game
+     *  shop's /pay/api/v2/inner/pay/users/purchase/game/props never had a
+     *  listener on 8080, so every prop buy silently failed (the physical-
+     *  phone tester's "buy works but no item"). v4's friendly-AI csvs carry
+     *  forward unchanged. */
+    private static final String OVERLAY_VERSION = "bedwar-full-5"; // bump to re-apply
 
     /** Engine-faithful runtime layout: the server CWD is <bundle>/server
      *  (resource.cfg reads ../client/), while GameServerManager's staging
