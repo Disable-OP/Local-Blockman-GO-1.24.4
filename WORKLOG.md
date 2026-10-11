@@ -4497,3 +4497,8 @@ resource is unavailable.
 - FIX (v0.6.36-joinhint, d9ac10e): the no-gaddr branch is now HONEST - `L.i("JoinBridge: no live GameServer gaddr - local fallback (kick=<bool>)")` + a Toast ("Game world is still preparing (first run downloads game files). Please try again in a few minutes.") instead of the silent dead-end boot. GameServerManager.kick() in the same branch retries a failed staging (idempotent, single-flight; a no-op when the calling process is not the 18080 holder - the holder retries via its own dispatch kick at the MiniGameToken request). classes6.dex 309,680 B (+376 B). Host suite 644/644.
 - CI: d9ac10e + tag v0.6.36-joinhint -> build-release 38134818855 -> test-redroid follow. NOTE: the redroid suite CANNOT exercise the toast path (its assets are pre-staged; gaddr is always live at join) - fast-suite green = no regression on the ONLINE path; the hint path is phone-only by nature.
 - Phone-side guidance shipped with the answer: Wi-Fi that reaches github.com, let the app idle a few minutes after first install, tap Quick-in again; logcat `LocalAPI` shows `gs:` lines (staging/staged/launched/failed) and `JoinBridge:` shows the takeover decision.
+
+## Session 64 cont. - v0.6.36-joinhint FULLY GREEN: fast + deep + build all SUCCESS (2026-10-11)
+
+- **build-release 38134818855 SUCCESS; test-redroid (fast) 38134949398 SUCCESS; test-redroid-deep 38136002296 (budget 5, dispatched on 07f86b2) SUCCESS.** The deep run also closes the pending deep coverage for the v0.6.32-36 suite deltas (previous deep-green was on 9632561 = v0.6.31).
+- The online join path is regression-free; the new no-gaddr hint branch (kick + Toast) remains phone-only by nature (redroid gaddr is always live at join).
