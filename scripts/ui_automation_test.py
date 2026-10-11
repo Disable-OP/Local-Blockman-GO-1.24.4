@@ -3421,6 +3421,7 @@ def main():
     gj_match_lines = []
     gj_match_status1 = False
     gj_match_tp = 0
+    gj_actions = []      # v0.6.32: injected in-match gestures (drive evidence)
     GJ_MATCH_WATCH_ROUNDS = 5
     while time.time() < gj_deadline:
         gj_round += 1
@@ -3520,6 +3521,52 @@ def main():
             gj_watch = True
         if gj_watch:
             gj_watch_round += 1
+            # v0.6.32-drivenhuman: the suite DRIVES the client inside the
+            # running match (session-62 optional direction (a) — document
+            # SURVIVAL + INTERACTION, not AFK spectating). The in-game HUD
+            # is GL-rendered (no view nodes to find), so the gestures are
+            # raw display-fraction coordinates:
+            #   - r2: camera-look drag over empty scenery (right->center)
+            #     — rotates the viewpoint; provable by diffing the r2/r3
+            #     world renders.
+            #   - r4: short taps on the bottom-left joystick cluster
+            #     (strafe-left, walk, strafe-right) — moves the human a
+            #     few meters on the island.
+            # NEVER touched: the top-right stick figure (possible
+            # surrender/leave), the "..." tray, the hotbar, the top
+            # chevron. Everything is try/except-guarded — a failed or
+            # mis-targeted injection can never fail the suite.
+            try:
+                if gj_watch_round in (2, 4):
+                    _wm = adb.sh("wm size", timeout=15)
+                    _m = (re.search(r"Override size:\s*(\d+)x(\d+)", _wm)
+                          or re.search(r"Physical size:\s*(\d+)x(\d+)", _wm))
+                    _dw, _dh = ((int(_m.group(1)), int(_m.group(2)))
+                                if _m else (1280, 720))
+                    if gj_watch_round == 2:
+                        adb.sh("input swipe %d %d %d %d 700"
+                               % (int(_dw * 0.72), int(_dh * 0.42),
+                                  int(_dw * 0.40), int(_dh * 0.48)),
+                               timeout=20)
+                        time.sleep(0.8)
+                        gj_actions.append("r2 camera-look drag (%dx%d)"
+                                          % (_dw, _dh))
+                        print("  [gj drive] r2 camera-look drag injected")
+                    else:
+                        for _fx, _fy, _nm in ((0.048, 0.757, "strafe-L"),
+                                              (0.130, 0.757, "walk"),
+                                              (0.212, 0.757, "strafe-R")):
+                            _x, _y = int(_dw * _fx), int(_dh * _fy)
+                            adb.sh("input swipe %d %d %d %d 260"
+                                   % (_x, _y, _x, _y), timeout=20)
+                            time.sleep(0.35)
+                        time.sleep(0.8)
+                        gj_actions.append("r4 joystick probes "
+                                          "(strafe-L/walk/strafe-R)")
+                        print("  [gj drive] r4 joystick probes injected")
+            except Exception as _drive_err:
+                print("  [gj drive] injection failed (soft): %s"
+                      % _drive_err)
             screen.snap("GJ_match_r%d" % gj_watch_round)
             # v0.6.29: byte-offset delta reads — every round sees ONLY the
             # log bytes that appeared since the previous round (no sliding
@@ -3596,6 +3643,12 @@ def main():
                    "(login -> waitPos -> island; hops beyond 2 are the "
                    "death/spectate/respawn cycle - the friendlier AI "
                    "makes them rare by design)" % gj_match_tp)
+            # v0.6.32-drivenhuman: report the injected in-match gestures
+            # (soft evidence — the screenshots r1..r5 carry the pixels).
+            if gj_actions:
+                ok("GJ: drove the human inside the running match (%s - "
+                   "interaction injected, post-gesture views in the "
+                   "match screenshots)" % "; ".join(gj_actions))
             if gj_match_lines:
                 _mm = "\n".join(gj_match_lines)
                 if "prepareMatch" in _mm or "startMatch" in _mm:
