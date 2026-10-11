@@ -3161,6 +3161,16 @@ def main_282(args):
             _keep = [l for l in _lc.splitlines() if any(k in l for k in _keys)]
             for l in _keep[-16:]:
                 print("  [diag r%d] %s" % (rnd, l[-380:]))
+            # THE ACTIVITY-START RECORD: did ActivityTaskManager even see
+            # the Echoes intent (run 38164901582: dispatched but no
+            # Echoes record in dumpsys = the start never landed)?
+            _atm = adb.sh(
+                "logcat -d -s ActivityTaskManager:I ActivityManager:I"
+                " | grep -iE 'echoes|startmc|blockman|deny|permission"
+                " denial|background' | tail -12", timeout=40)
+            for l in _atm.splitlines():
+                if l.strip():
+                    print("  [atm r%d] %s" % (rnd, l.strip()[-300:]))
             _acts = adb.sh(
                 "dumpsys activity activities | grep -iE "
                 "'echoes|startmc|blockmango' | head -6", timeout=30)
