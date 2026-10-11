@@ -3179,6 +3179,23 @@ def main_282(args):
                     print("  [acts r%d] %s" % (rnd, l.strip()[-200:]))
             _gs = adb.sh("ps -A | grep -i gameserver", timeout=20)
             print("  [gsproc r%d] %s" % (rnd, _gs[-120:] or "none"))
+            # THE ENGINE-PROCESS DEATH PROBE: the join's Echoes activity
+            # starts in :BlockmanGo and that process died at +5.3s in run
+            # 38166105550 ('has died: fg TOP', activity force-removed, NO
+            # java fatal = native death). Name the killer.
+            _death = adb.sh(
+                "logcat -d | grep -iE 'fatal signal|SIGSEGV|SIGABRT|"
+                "SIGKILL|SIGTRAP|tombstone|tersafe|tprt|tss|TssSdk|"
+                "exit code|exited cleanly|libc.*Fatal|DEBUG *:' "
+                "| tail -16", timeout=40)
+            for l in _death.splitlines():
+                if l.strip():
+                    print("  [death r%d] %s" % (rnd, l.strip()[-300:]))
+            _tom = adb.sh("ls -la /data/tombstones 2>/dev/null | tail -3",
+                          timeout=20)
+            for l in _tom.splitlines():
+                if "tombstone" in l:
+                    print("  [tomb r%d] %s" % (rnd, l.strip()[-160:]))
         # the press flow can park on a modal (NotWifiDialog on the no-wifi
         # redroid network, TwoButtonDialog res-load prompts): press the
         # positive button family generically
