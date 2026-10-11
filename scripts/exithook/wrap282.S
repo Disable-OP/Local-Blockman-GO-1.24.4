@@ -125,7 +125,12 @@ try32:
 .balign 4
 .balign 4
 fail25:
-    mov     x0, #25
+    /* v8: was 25 — self-intercepting (the filter ALREADY installed in this
+       process would turn exit_group(25) into -ENOSYS and we'd fall into
+       the .asciz data = SIGILL) AND ambiguous with the TSS verdict code.
+       27 = "all three execve attempts failed"; a clean exit 25 now can
+       ONLY be the verdict, which the filter no-ops anyway. */
+    mov     x0, #27
     b       fail
 
 .balign 4

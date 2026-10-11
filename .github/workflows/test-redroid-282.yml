@@ -90,23 +90,28 @@ jobs:
           sleep 3
           adb -s localhost:5555 wait-for-device
           adb -s localhost:5555 push scripts/exithook/wrap282 /data/local/tmp/wrap282
-          adb -s localhost:5555 shell chmod 755 /data/local/tmp/wrap282
-          adb -s localhost:5555 shell setprop wrap.com.sandboxol.blockymods /data/local/tmp/wrap282
-          # v7: Zygote.getWrapProperty(appName) has NO fallback to the base
-          # package name (verified in AOSP 12 Zygote.java) — the ENGINE
-          # process nice name is com.sandboxol.blockymods:BlockmanGo, so it
-          # looks up wrap.<that exact string>. Run 38175583809 proved the
-          # filter works (selftest rc=0, join chain green to StartMc) but
-          # :BlockmanGo STILL exited cleanly (25) because it was never
-          # wrapped. Set the per-process properties explicitly (colons in
-          # property names: legal if setprop accepts them — the rc+getprop
-          # echo below is the empirical answer).
+          adb -s localhost:5555 push scripts/exithook/wraplog.sh /data/local/tmp/wraplog.sh
+          adb -s localhost:5555 shell chmod 755 /data/local/tmp/wrap282 /data/local/tmp/wraplog.sh
+          # v8: the property value is a LOGGING script — it appends every
+          # wrapped-process invocation (pid + argv) to /data/local/tmp/
+          # wraplog.txt then execs the seccomp wrapper. The wrapped process
+          # runs as the APP uid, so pre-create the log world-writable.
+          adb -s localhost:5555 shell "rm -f /data/local/tmp/wraplog.txt; touch /data/local/tmp/wraplog.txt; chmod 666 /data/local/tmp/wraplog.txt"
+          # v7 taught: Zygote.getWrapProperty(niceName) has NO pkg:proc->pkg
+          # fallback; set the exact per-process-name properties. v8 taught
+          # (run 38177186129): they ARE set+read back, yet :BlockmanGo still
+          # exits 25 — this run's wraplog.txt answers WHO actually gets
+          # wrapped. fail25 (all three execve attempts failed) now exits 27
+          # so a clean exit 25 can ONLY be the TSS verdict.
+          adb -s localhost:5555 shell setprop wrap.com.sandboxol.blockymods /data/local/tmp/wraplog.sh
           for PNAME in BlockmanGo ipc push; do
-            adb -s localhost:5555 shell "setprop 'wrap.com.sandboxol.blockymods:$PNAME' /data/local/tmp/wrap282"
+            adb -s localhost:5555 shell "setprop 'wrap.com.sandboxol.blockymods:$PNAME' /data/local/tmp/wraplog.sh"
             echo "wrap(.:$PNAME) => '$(adb -s localhost:5555 shell getprop wrap.com.sandboxol.blockymods:$PNAME)'"
           done
           echo "wrap property: $(adb -s localhost:5555 shell getprop wrap.com.sandboxol.blockymods)"
           echo "ro.debuggable:  $(adb -s localhost:5555 shell getprop ro.debuggable)"
+          echo "ro.zygote:      $(adb -s localhost:5555 shell getprop ro.zygote)"
+          echo "usap cfg:       $(adb -s localhost:5555 shell getprop persist.device_config.runtime_native.usap_pool_enabled)"
           # selftest: the wrapper alone (install filter -> exec /system/bin/true).
           # 0 = the filter installs and exec works; 42 = EINVAL (errno 22+64);
           # 65 = EPERM; 102 = ENOSYS. Run 38172868682: the in-app path hit 42.
@@ -115,9 +120,10 @@ jobs:
           # with -ENOSYS, so the wrapper's own execve died. Rebuilt+verified
           # by byte-dump + a kernel-semantics BPF simulation before this run.
           set +e
-          adb -s localhost:5555 shell /data/local/tmp/wrap282 /system/bin/true
+          adb -s localhost:5555 shell /data/local/tmp/wraplog.sh /system/bin/true
           rc=$?
-          echo "wrap selftest exit: $rc"
+          echo "wrap selftest (via wraplog.sh) exit: $rc"
+          echo "selftest wraplog: $(adb -s localhost:5555 shell cat /data/local/tmp/wraplog.txt | head -5)"
           adb -s localhost:5555 shell 'echo -n "device-side rc: "; /data/local/tmp/wrap282 /system/bin/true; echo $?'
 
       - name: Launch + 15s keep-alive
@@ -189,6 +195,9 @@ jobs:
         if: always()
         run: |
           mkdir -p gjevidence
+          echo "== wraplog.txt (which processes actually got wrapped) =="
+          adb -s localhost:5555 shell cat /data/local/tmp/wraplog.txt 2>/dev/null || echo "(no wraplog)"
+          cp <(adb -s localhost:5555 shell cat /data/local/tmp/wraplog.txt 2>/dev/null) wraplog.txt 2>/dev/null || adb -s localhost:5555 shell cat /data/local/tmp/wraplog.txt > wraplog.txt 2>/dev/null || true
           adb -s localhost:5555 shell "ls /sdcard/ 2>/dev/null" | tr -d '\r' | grep 'snap_GJ282_' | while read -r f; do
             adb -s localhost:5555 pull "/sdcard/$f" gjevidence/ 2>/dev/null || true
           done
@@ -226,6 +235,7 @@ jobs:
             boot282.png
             death282.png
             death_logcat.txt
+            wraplog.txt
             /tmp/localapi_probe.json
             gjevidence/
           if-no-files-found: ignore
