@@ -37,37 +37,19 @@ public final class LocalServer {
     private LocalServer() {}
 
     /**
-     * v10: the in-process seccomp engine guard. The Zygote wrap.<pkg>
-     * exithook proved unreliable on this image (the boot fleet gets wrapped,
-     * every join-time :BlockmanGo fleet does not — runs 38177186129 /
-     * 38178524142 / 38179978542), so the filter is now installed by the app
-     * ITSELF: libbgscomp.so's .init_array constructor runs
-     * prctl(PR_SET_NO_NEW_PRIVS) + prctl(PR_SET_SECCOMP, MODE_FILTER) with
-     * the same 11-insn BPF (exit/exit_group code 25|30 -> ERRNO(ENOSYS),
-     * everything else ALLOW) and no-ops on any failure. This hook runs in
-     * EVERY app process (the standby-sibling logs prove BaseApplication
-     * onCreate fires here), so the :BlockmanGo engine process gets the
-     * filter BEFORE libBlockMan.so's embedded TSS can deliver its verdict.
+     * v12: arms the seccomp engine guard at the EXACT right moment. Called
+     * from the patched AbstractEngineEnv immediately AFTER ReLinker loads
+     * libBlockMan.so: the embedded TSS constructor checks have already run
+     * (no filter yet => no SIGILL self-protect — runs 38183140775/38179978542
+     * proved the ctor detects an early filter, even with PR_GET_SECCOMP
+     * faked), and the TSS verdict's exit_group(25|30) fires ~2.8s later,
+     * where the filter no-ops it. Failures are swallowed: the game must
+     * boot even if the guard fails.
      */
-    private static void maybeSeccompEngineGuard(Context context) {
+    public static void armEngineGuardNow() {
         try {
-            String proc = "";
-            try {
-                java.io.FileInputStream fis =
-                        new java.io.FileInputStream("/proc/self/cmdline");
-                byte[] buf = new byte[64];
-                int n = fis.read(buf);
-                fis.close();
-                if (n > 0) {
-                    proc = new String(buf, 0, n, "UTF-8").trim();
-                }
-            } catch (Throwable ignored) {
-                // fall through: no cmdline -> no guard
-            }
-            if (proc.contains("BlockmanGo")) {
-                System.loadLibrary("bgscomp");
-                L.i("seccomp engine guard armed (libbgscomp) in " + proc);
-            }
+            System.loadLibrary("bgscomp");
+            L.i("seccomp engine guard armed (libbgscomp, post-load)");
         } catch (Throwable t) {
             L.e("seccomp engine guard failed: " + t);
         }
@@ -80,7 +62,6 @@ public final class LocalServer {
     private static boolean gsBootedHere;
 
     public static void startIfNeeded(Context context) {
-        maybeSeccompEngineGuard(context);
         Context app = context.getApplicationContext();
         sApp = app;
         File filesDir = app.getFilesDir();

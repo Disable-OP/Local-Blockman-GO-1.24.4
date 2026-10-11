@@ -51,6 +51,10 @@ done
 if grep -rq '"https://d32gv25kv9q34j.cloudfront.net' "$TREE/smali" "$TREE"/smali_classes*/ 2>/dev/null; then
   echo "FATAL: unpatched cloudfront host — run scripts/patch_urls_282.py"; exit 1
 fi
+# v12: the seccomp guard must arm at the engine-load site (NOT at
+# Application.onCreate — the TSS ctor detects an early filter and SIGILLs).
+grep -q "armEngineGuardNow" "$TREE/smali/com/sandboxol/center/router/moduleInfo/game/AbstractEngineEnv.smali" \
+  || { echo "FATAL: engine-load guard hook missing — run scripts/patch_seccomp_arm_282.py"; exit 1; }
 [ -f "$SERVER_DEX" ] || { echo "FATAL: run scripts/build_server_dex.sh first"; exit 1; }
 
 # --- seed assets (data-only) into the tree the packer reads from ---
