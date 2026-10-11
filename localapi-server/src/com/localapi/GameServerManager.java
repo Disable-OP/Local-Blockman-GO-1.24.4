@@ -65,7 +65,16 @@ public final class GameServerManager {
     /** Script-tree overlay marker: completes the merged BedWar plugin tree
      *  with the BaseGame mirror files the engine's Lua loader needs. */
     private static final String OVERLAY_VERSION_FILE = "overlay-version";
-    private static final String OVERLAY_VERSION = "bedwar-full-3"; // bump to re-apply
+    /** v4 = v3 + friendlier Bedwars AI: the overlay now carries patched
+     *  AIConfig.csv (archeryHitRate 0.3->0.12, archeryDamage 3#5->1#2,
+     *  attackCd 1#3->2#4, archeryCd 3#6->4#8, followRange 30->20,
+     *  archeryRange 25->18, followTime 8->4) + AiPlayerConfig.csv
+     *  (row 107: team 3's second attacker -> gatherer) + a recomputed
+     *  checksums.md5, all copied over the staged bundle's map dir
+     *  (maps/g1008/m1008_2) at apply time. The bot wave still fires and
+     *  the match still starts — the AFK human now survives minutes
+     *  instead of dying every ~4-8s to knockback void falls. */
+    private static final String OVERLAY_VERSION = "bedwar-full-4"; // bump to re-apply
 
     /** Engine-faithful runtime layout: the server CWD is <bundle>/server
      *  (resource.cfg reads ../client/), while GameServerManager's staging

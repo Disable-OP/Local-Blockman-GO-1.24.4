@@ -3564,11 +3564,15 @@ def main():
             if gj_match_status1:
                 ok("GJ: client.log S2CPacketGameStatus m_status=1 (the "
                    "CLIENT received the match-start status)")
-            if gj_match_tp >= 3:
+            # v0.6.30: the overlay-4 AI tuning (hit rate 0.12, damage 1#2,
+            # followTime 4) makes deaths RARE — the guaranteed hops are the
+            # login chain alone (login -> waitPos -> island = 2); any hop
+            # beyond 2 is a death/respawn cycle.
+            if gj_match_tp >= 2:
                 ok("GJ: client.log shows %d 'Blockman teleport' hops "
-                   "(login -> waitPos -> island; the later hops are the "
-                   "death/spectate/respawn cycle - bots are FIGHTING)"
-                   % gj_match_tp)
+                   "(login -> waitPos -> island; hops beyond 2 are the "
+                   "death/spectate/respawn cycle - the friendlier AI "
+                   "makes them rare by design)" % gj_match_tp)
             if gj_match_lines:
                 _mm = "\n".join(gj_match_lines)
                 if "prepareMatch" in _mm or "startMatch" in _mm:
