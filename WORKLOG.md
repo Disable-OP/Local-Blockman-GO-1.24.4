@@ -4446,3 +4446,15 @@ resource is unavailable.
 ## Session 61 cont. - DEEP GREEN too; v0.6.29-joinwave fully verified (2026-10-11)
 
 - Deep suite (test-redroid-deep 38125311760, budget 5, manual dispatch): **UI AUTOMATION: PASS** — the deep GJ inherits the join-wave + byte-offset match-watch automatically: "match watch complete (5 live rounds, 5 match screenshots, 600 fresh server.log lines scanned)", "THE BEDWARS MATCH IS RUNNING (stat=8)", 9 'Blockman teleport' hops, **3 force-teleport events (was 233)**, "pushed 15/15 robot attrs" once. BOTH suites green on 88f8b53.
+
+## Session 62 - v0.6.30-friendlyai: the AI tuning item — overlay v4 makes the match human-survivable (2026-10-11)
+
+- Polish queue item 1 taken (the LAST queued behavior item). GOAL DECIDED: FRIENDLIER match. The kill-fest is documented (sessions 60-61: rebirth records, knockback void falls every ~4-8s); a match where the human survives and BUILDS gives better gameplay evidence (HUD, resources, intact bed, players visible) while combat still exists.
+- Tuning channel: the AI csvs the SERVER reads live in the staged bundle's map dir (bundle/server/maps/g1008/m1008_2/ — AIConfig.csv, AiPlayerConfig.csv, ...). The overlay untars OVER serverDir() after staging, so overlay files overwrite them at boot. Overlay v4 = 235,642 B re-download; NO maps.tar.gz replacement (no 47MB pack re-fetch, no PACK_SHA256 re-pin), NO stage-version bump.
+- overlay v4 (md5 aa0dbd269a8a0baf47e99c95cdfb1924) = v3 + 3 files in maps/g1008/m1008_2/ (diff-verified; the other 365 files byte-identical):
+  * AIConfig.csv — 32 behavior rows uniformly patched (assert-guarded patcher): followRange 30->20, archeryRange 25->18, attackCd 1#3->2#4, archeryCd 3#6->4#8, archeryHitRate 0.3->0.12, archeryDamage 3#5->1#2, followTime 8->4. followSpeed, initIdleTime, bed-breaking params, strengths, tactics all UNTOUCHED (movement + match flow stay proven).
+  * AiPlayerConfig.csv — row 107 (team 3's SECOND attacker, itemGroup 101020) -> 301010 (gather): every team now fields <=1 dedicated attacker + 1 bed-breaker + 1-2 gatherers + 1 defender.
+  * checksums.md5 — md5s recomputed for the two patched csvs (self-consistency insurance).
+- Asset replaced on the localapi-assets release. Lesson recorded: the release-asset upload POST goes to uploads.github.com/repos/<repo>/releases/<id>/assets — api.github.com 404s; the first attempt DELETEd the old asset before the upload failed, re-upload was immediate (brief exposure window, no builds in flight).
+- OVERLAY_VERSION bedwar-full-3 -> bedwar-full-4 (rationale in the GameServerManager doc comment). Suite honesty: the teleport-hop ok threshold 3 -> 2 (the tuning makes deaths RARE; the guaranteed hops are the login chain login->waitPos->island = 2).
+- Host suite 644/644; pushed 0ee1b3c + tag v0.6.30-friendlyai; build-release 38127287706 -> test-redroid follow.
