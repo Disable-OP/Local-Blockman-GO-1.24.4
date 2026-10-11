@@ -75,6 +75,26 @@ jobs:
           adb -s localhost:5555 shell pm grant "$PACKAGE" android.permission.WRITE_EXTERNAL_STORAGE 2>/dev/null || true
           adb -s localhost:5555 shell appops get "$PACKAGE" | grep -iE "LEGACY|MANAGE" || true
 
+      - name: Engine exithook (seccomp wrap for the TSS exit(25) verdict)
+        # libBlockMan.so (engine 10078) embeds the Tencent TSS native
+        # (packed, zero imports). On the re-signed APK the verdict fires
+        # during engine init and :BlockmanGo exits CLEANLY with code 25
+        # ~5s after BlockManEchoesActivity starts (runs 38166105550 /
+        # 38167324535). The wrap282 binary installs a seccomp-BPF filter
+        # that makes exit(93)/exit_group(94) with code 25 or 30 return
+        # -ENOSYS instead of terminating — the verdict becomes a no-op;
+        # every other exit code and syscall passes through. AMS honors
+        # the wrap.<pkg> property on ro.debuggable builds (redroid).
+        run: |
+          adb -s localhost:5555 root || true
+          sleep 3
+          adb -s localhost:5555 wait-for-device
+          adb -s localhost:5555 push scripts/exithook/wrap282 /data/local/tmp/wrap282
+          adb -s localhost:5555 shell chmod 755 /data/local/tmp/wrap282
+          adb -s localhost:5555 shell setprop wrap.com.sandboxol.blockymods /data/local/tmp/wrap282
+          echo "wrap property: $(adb -s localhost:5555 shell getprop wrap.com.sandboxol.blockymods)"
+          echo "ro.debuggable:  $(adb -s localhost:5555 shell getprop ro.debuggable)"
+
       - name: Launch + 15s keep-alive
         run: |
           adb -s localhost:5555 logcat -c
