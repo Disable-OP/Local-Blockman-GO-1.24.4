@@ -146,17 +146,25 @@ public final class JoinBridge {
                     // login timed out).
                     final String preBody = joinBridgeBody(fUid, fReqId, 1,
                             fNick, 0, fCountry, true);
+                    // WAIT FOR THE PUSH before startGame (bounded 25s): the
+                    // client's C2S login is ONE-SHOT and fires ~10-15s after
+                    // startGame - the attrs MUST already be on the engine
+                    // (run 38106258661: pushed=true only at +19s, the login
+                    // had failed at +12s). The join dialog is a modal rx
+                    // callback and stays alive for the bounded wait; the
+                    // monitor bring-up (sweep+spawn+boot+link) is ~6-9s.
                     boolean pushed = false;
-                    // ONE fast attempt (the handler caps its internal poll
-                    // at ~3s): guarantee the monitor-linked engine + first
-                    // push. startGame posts RIGHT AFTER so the dialog
-                    // context stays fresh (run 38094561036: a slow push
-                    // loop delayed startGame for minutes and the engine
-                    // activity never came up).
-                    String res = httpPost("/v1/joinbridge", preBody);
-                    L.i(TAG + ": joinbridge#1 " + (res == null ? "null"
-                            : res) + " req=" + fReqId);
-                    pushed = res != null && res.contains("\"pushed\":true");
+                    long deadline = System.currentTimeMillis() + 25000L;
+                    while (System.currentTimeMillis() < deadline) {
+                        String res = httpPost("/v1/joinbridge", preBody);
+                        if (res != null && res.contains("\"pushed\":true")) {
+                            pushed = true; break;
+                        }
+                        try { Thread.sleep(1000L); }
+                        catch (InterruptedException ie) { return; }
+                    }
+                    L.i(TAG + ": joinbridge " + (pushed ? "PUSHED" : "deadline")
+                            + " req=" + fReqId);
                     L.i(TAG + ": attrs " + (pushed ? "pushed" : "PUSH-UNVERIFIED")
                             + " uid=" + fUid + " requestId=" + requestId
                             + " gaddr=" + GameServerManager.gameAddr());
