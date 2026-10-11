@@ -195,3 +195,28 @@ All 403 Lua files in the bundle pass a Lua 5.1 parse (luaparse gate).
       verified by the first match run; the Lua layer is version-agnostic, the C2S/C2S
       structs are the residual risk — `C2SPacketLogin` fields are the first thing to
       watch in the server log)
+
+## 7. Addendum (same session): map-dir rebuilt from the CDN + multi-game inventory
+
+- The bundle's `maps/g1008/m1008_2` was REBUILT from the LATEST CDN map zip
+  (`m1008_2.1625226508247.zip`, 2021-07-02 — full 21-csv set + dynamic schematics +
+  common/lang/GameTip/setting + map.yml) with re-applied: tuned `config.yml`
+  (short waits), tuned `AIConfig.csv`/`AiPlayerConfig.csv` (friendly v4 values —
+  csv formats are identical between the tuned May-2020 set and July-2021 set),
+  10078 `id_mappings.ini`, the 20 10078 mca, regenerated checksums (251 files).
+  Bundle repacked (42.5 MB) and re-uploaded to localapi-assets.
+- The `plugins/g1046.<ts>.zip` family (60 zips, June 2021) contains the FULL script
+  tree as SOURCE (`lua/{engine_base,engine_client,engine_server,plugins,base,client,server}`)
+  — a pre-restructure snapshot; useful as readable reference for the 10078-era logic
+  without decompiling.
+- Multi-game inventory (engine1 = our 100xx family): appres exists for
+  g1046 (10065–10078), g1048 (10056–10063), g1055 (10060), g1042 (10073).
+  plugins zips: g1008 ×93, g1061/g1062 ×60, g1046 ×60, g1001 ×16, g1047/g1048/g1050/… ×9-10.
+  maps zips: 432 unique map names (g1046 ×230, g1008 ×197, g1061/g1062, m1046_2 ×80,
+  m1008_2 ×76, named maps: BlockCity/TowerDefense/SkyRoyale/Bird/DUST/…).
+  Engine2 games (g2020–g2044 on 200xx engines) need libBlockManv2-family server
+  binaries we do not have — out of scope for the 10068 libgameserver.
+- Realistic next games for THIS server: g1048, g1055, g1042 — each needs
+  (1) its appres `Scripts/Game/<gid>/` (bytecode → unluac) or its plugins zip
+  (source), (2) its latest map zip(s) from `sandbox/games/maps/`, (3) a
+  ScriptSetting.csv row + hall/map wiring in the bundle — exactly the g10078 recipe.
