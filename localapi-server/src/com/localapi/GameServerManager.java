@@ -65,7 +65,7 @@ public final class GameServerManager {
     /** Script-tree overlay marker: completes the merged BedWar plugin tree
      *  with the BaseGame mirror files the engine's Lua loader needs. */
     private static final String OVERLAY_VERSION_FILE = "overlay-version";
-    private static final String OVERLAY_VERSION = "bedwar-full-1"; // bump to re-apply
+    private static final String OVERLAY_VERSION = "bedwar-full-2"; // bump to re-apply
 
     /** Engine-faithful runtime layout: the server CWD is <bundle>/server
      *  (resource.cfg reads ../client/), while GameServerManager's staging
@@ -177,7 +177,21 @@ public final class GameServerManager {
      * base/define/*, base/task/LuaTimer.lua, common/config/ItemConfig.lua,
      * game/config/*, hall/config/*, common/info|manager/* and Loader.lua.
      *
-     * WITHOUT these the engine's Lua load dies at BaseMain.lua:19
+     * v2 also drops the OFFICIAL m1008_2 server-side config sidecars into
+     * the map dir: SkillConfig.csv (the v0.6.23 verdict's gate —
+     * game/config/GameConfig.lua:137 SkillConfig:init(FileUtil
+     * .getConfigFromCsv("SkillConfig.csv")) asserts the file exists;
+     * without it onGameInit aborts after GameConfig:init and the room
+     * never initializes join/team logic) + id_mappings.ini (Server.cpp
+     * reads <mapdir>/id_mappings.ini for custom blocks). Both extracted
+     * from the official maps.tar.gz room-service sidecars
+     * (m1008_2.1619441309722.SkillConfig.csv /
+     * m1008_2.1597134108034.id_mappings.ini). The stale sidecar .mca
+     * region files are deliberately NOT shipped: the newer official map
+     * zip (already staged + mapExistsAndValid-verified) contains the
+     * merged terrain.
+     *
+     * WITHOUT the script half the engine's Lua load dies at BaseMain.lua:19
      * ("module 'base.Base' not found") and then at ScriptMain.lua:3
      * ("attempt to index global 'BaseListener' (a nil value)") — both seen
      * verbatim in server.log (run 38109076258) — so the world runs with NO
@@ -185,9 +199,10 @@ public final class GameServerManager {
      * (spectator), which is exactly the S2CPacketSetWatchMode(true) verdict
      * of session 58 cont. 6.
      *
-     * The overlay is additive (304-file tree = the previous 230 + 74
-     * BaseGame files; zero path collisions, verified) and idempotent via
-     * its own version marker. serverConfig scriptdir is UNCHANGED — the
+     * The overlay is additive (scripts/BedWar = 304-file tree = the
+     * previous 230 + 74 BaseGame files, zero path collisions, verified;
+     * maps/g1008/m1008_2 = 2 official sidecars) and idempotent via its
+     * own version marker. serverConfig scriptdir is UNCHANGED — the
      * engine contract (scriptdir/base/BaseMain.lua + scriptdir/
      * ScriptMain.lua + optional scriptdir/Loader.lua) holds as-is.
      */
