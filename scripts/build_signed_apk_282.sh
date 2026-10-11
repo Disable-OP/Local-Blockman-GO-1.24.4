@@ -144,10 +144,18 @@ if [ ! -f "$GSSO" ]; then
 fi
 mkdir -p "$BUILD/libtmp/lib/armeabi-v7a"
 cp -f "$GSSO" "$BUILD/libtmp/lib/armeabi-v7a/libgameserver.so"
-( cd "$BUILD/libtmp" && zip -q "$BUILD/patched-unsigned.apk" lib/armeabi-v7a/libgameserver.so )
+# v10: the in-process seccomp engine guard (armv7, .init_array ctor) —
+# loaded by LocalServer in the :BlockmanGo process; neutralizes the TSS
+# verdict (exit/exit_group 25|30 -> ERRNO(ENOSYS)) regardless of the
+# unreliable Zygote wrap property.
+cp -f "$REPO/scripts/exithook/libbgscomp.so" "$BUILD/libtmp/lib/armeabi-v7a/libbgscomp.so"
+( cd "$BUILD/libtmp" && zip -q "$BUILD/patched-unsigned.apk" lib/armeabi-v7a/libgameserver.so lib/armeabi-v7a/libbgscomp.so )
 unzip -l "$BUILD/patched-unsigned.apk" | grep -q 'lib/armeabi-v7a/libgameserver.so' \
   || { echo "FATAL: libgameserver.so missing from APK"; exit 1; }
+unzip -l "$BUILD/patched-unsigned.apk" | grep -q 'lib/armeabi-v7a/libbgscomp.so' \
+  || { echo "FATAL: libbgscomp.so missing from APK"; exit 1; }
 echo "libgameserver.so injected into armeabi-v7a ($(stat -c%s "$GSSO") bytes)"
+echo "libbgscomp.so injected into armeabi-v7a ($(stat -c%s "$REPO/scripts/exithook/libbgscomp.so") bytes)"
 
 # --- zipalign + sign ---
 echo "== sign =="

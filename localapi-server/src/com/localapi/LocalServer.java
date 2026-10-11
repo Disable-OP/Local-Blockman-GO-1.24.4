@@ -36,6 +36,43 @@ public final class LocalServer {
 
     private LocalServer() {}
 
+    /**
+     * v10: the in-process seccomp engine guard. The Zygote wrap.<pkg>
+     * exithook proved unreliable on this image (the boot fleet gets wrapped,
+     * every join-time :BlockmanGo fleet does not — runs 38177186129 /
+     * 38178524142 / 38179978542), so the filter is now installed by the app
+     * ITSELF: libbgscomp.so's .init_array constructor runs
+     * prctl(PR_SET_NO_NEW_PRIVS) + prctl(PR_SET_SECCOMP, MODE_FILTER) with
+     * the same 11-insn BPF (exit/exit_group code 25|30 -> ERRNO(ENOSYS),
+     * everything else ALLOW) and no-ops on any failure. This hook runs in
+     * EVERY app process (the standby-sibling logs prove BaseApplication
+     * onCreate fires here), so the :BlockmanGo engine process gets the
+     * filter BEFORE libBlockMan.so's embedded TSS can deliver its verdict.
+     */
+    private static void maybeSeccompEngineGuard(Context context) {
+        try {
+            String proc = "";
+            try {
+                java.io.FileInputStream fis =
+                        new java.io.FileInputStream("/proc/self/cmdline");
+                byte[] buf = new byte[64];
+                int n = fis.read(buf);
+                fis.close();
+                if (n > 0) {
+                    proc = new String(buf, 0, n, "UTF-8").trim();
+                }
+            } catch (Throwable ignored) {
+                // fall through: no cmdline -> no guard
+            }
+            if (proc.contains("BlockmanGo")) {
+                System.loadLibrary("bgscomp");
+                L.i("seccomp engine guard armed (libbgscomp) in " + proc);
+            }
+        } catch (Throwable t) {
+            L.e("seccomp engine guard failed: " + t);
+        }
+    }
+
     /** The app context for the engine boot (host rig: null — no engine). */
     private static volatile Context sApp;
     /** One engine boot per process, no matter how many holders happen. */
@@ -43,6 +80,7 @@ public final class LocalServer {
     private static boolean gsBootedHere;
 
     public static void startIfNeeded(Context context) {
+        maybeSeccompEngineGuard(context);
         Context app = context.getApplicationContext();
         sApp = app;
         File filesDir = app.getFilesDir();
