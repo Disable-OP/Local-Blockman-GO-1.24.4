@@ -215,7 +215,7 @@ def patch_gate(apktool_dir, rel, cls, sig, sig_re, ctx_expr, game_expr, tag):
     invoke-virtual {{v2}}, Ljava/lang/Throwable;->toString()Ljava/lang/String;
     move-result-object v1
     const-string v2, "JoinBridge: smali bridge({tag}) threw -> local fallback: "
-    invoke-virtual {{v1}}, Ljava/lang/String;->concat(Ljava/lang/String;)Ljava/lang/String;
+    invoke-virtual {{v2, v1}}, Ljava/lang/String;->concat(Ljava/lang/String;)Ljava/lang/String;
     move-result-object v1
     const-string v2, "LocalAPI"
     invoke-static {{v2, v1}}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
