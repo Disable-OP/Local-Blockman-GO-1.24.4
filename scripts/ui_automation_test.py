@@ -3078,17 +3078,32 @@ def main():
         chunks = []
         paths = []
         seeded = False
+        _primary = (gj_dirs or [""])[0]
         for d in (gj_dirs or []):
             if first_only and chunks:
                 break
             p = d + "/" + fname
-            try:
-                _sz = adb.sh("wc -c < %s 2>/dev/null" % p,
-                             timeout=20).strip()
-                _parts = _sz.split()
-                size = int(_parts[-1]) if _parts else None
-            except Exception:
-                size = None
+            size = None
+            # v0.6.31: prefer the PRIMARY dir across two probes — at r1
+            # the primary can transiently yield nothing (the engine is
+            # mid-truncate / file just rotated), and falling through
+            # seeded the evidence from the STALE Android/data copy
+            # (session-61 wart: "server.log session chunk" labeled with
+            # the fallback path). One re-probe (~1.5s) covers the
+            # transient without stalling the round; non-primary dirs and
+            # merged reads keep the single probe.
+            for _attempt in (0, 1):
+                try:
+                    _sz = adb.sh("wc -c < %s 2>/dev/null" % p,
+                                 timeout=20).strip()
+                    _parts = _sz.split()
+                    size = int(_parts[-1]) if _parts else None
+                except Exception:
+                    size = None
+                if size is not None or not first_only or d != _primary \
+                        or _attempt == 1:
+                    break
+                time.sleep(1.5)
             if size is None:
                 continue
             off = gj_offsets.get(p)
@@ -3460,6 +3475,14 @@ def main():
         _newdirs = [d for d in gj_find_cfgdirs() if d not in gj_dirs]
         if _newdirs:
             gj_dirs.extend(_newdirs)
+            # v0.6.31: re-apply the primary-first ordering when dirs are
+            # discovered LATE — the run-time scan can find the live
+            # /storage/emulated/0/SandBoxOL dir only after the stale
+            # Android/data fallback (v0.6.30 run: the match-watch chunk
+            # seeded from the fallback because it stayed first in the
+            # list). Offsets are keyed per-path, so a reorder is safe.
+            _ord = [d for d in gj_find_cfgdirs() if d in gj_dirs]
+            gj_dirs[:] = _ord + [d for d in gj_dirs if d not in _ord]
             ok("GJ: config dirs now: %s" % ", ".join(gj_dirs))
         _clog, _clog_path = gj_read("client.log")
         if _clog:
