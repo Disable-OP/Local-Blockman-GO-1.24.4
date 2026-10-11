@@ -97,8 +97,15 @@ jobs:
           # selftest: the wrapper alone (install filter -> exec /system/bin/true).
           # 0 = the filter installs and exec works; 42 = EINVAL (errno 22+64);
           # 65 = EPERM; 102 = ENOSYS. Run 38172868682: the in-app path hit 42.
-          adb -s localhost:5555 shell /data/local/tmp/wrap282 /system/bin/true || true
-          echo "wrap selftest exit: $?"
+          # v5 fix: the ALLOW rets were assembled as 0x7FF00000 (TRACE, not
+          # 0x7FFF0000 ALLOW) — TRACE with no ptracer fails EVERY syscall
+          # with -ENOSYS, so the wrapper's own execve died. Rebuilt+verified
+          # by byte-dump + a kernel-semantics BPF simulation before this run.
+          set +e
+          adb -s localhost:5555 shell /data/local/tmp/wrap282 /system/bin/true
+          rc=$?
+          echo "wrap selftest exit: $rc"
+          adb -s localhost:5555 shell 'echo -n "device-side rc: "; /data/local/tmp/wrap282 /system/bin/true; echo $?'
 
       - name: Launch + 15s keep-alive
         run: |

@@ -10,10 +10,13 @@
  * TSS was already stubbed by patch_antitp_282 — exit code 30 there).
  *
  * THE FIX: install a seccomp-BPF filter BEFORE exec'ing the real
- * app_process: exit(93)/exit_group(94) with code 25 or 30 return
+ * app_process: exit/exit_group with code 25 or 30 return
  * SECCOMP_RET_ERRNO(ENOSYS) instead of terminating — the verdict
  * becomes a no-op and the engine keeps running. Every other exit code
- * and every other syscall passes through unchanged.
+ * and every other syscall passes through unchanged. BOTH syscall-arch
+ * nr sets are matched: arm64 (exit=93, exit_group=94 — the wrapper
+ * itself) and arm32 (exit=1, exit_group=248 — every app process:
+ * the 2.8.2 APK is armeabi-v7a ONLY, so the engine is 32-bit).
  *
  * AMS launches:  <this binary> /system/bin/app_process64 <app args...>
  * (the wrap.<pkg> property value; honored on ro.debuggable builds —
@@ -49,16 +52,20 @@ _start:
     svc     #0
     cbnz    x0, fail21
 
-    /* --- 2. seccomp(SECCOMP_SET_MODE_FILTER, 0, &fprog); fail=22 --- */
+    /* --- 2. seccomp(SECCOMP_SET_MODE_FILTER, 0, &fprog); fail=22 ---
+       aarch64 ABI: args in x0..x5 — x0=op, x1=flags, x2=&fprog, nr in x8.
+       v5 fix: the registers were shuffled (x0=&fprog, x1=op, x2=0) so the
+       kernel saw op=huge-pointer -> do_seccomp default -> -EINVAL ALWAYS
+       (run 38172868682 exit 42), independent of the filter contents. */
     adr     x2, bpf
     sub     sp, sp, #32
-    mov     w3, #14
-    str     w3, [sp]                    /* fprog.len = 14           */
+    mov     w3, #11
+    str     w3, [sp]                    /* fprog.len = 11           */
     str     x2, [sp, #8]                /* fprog.filter = &bpf      */
-    mov     x0, sp
     mov     x8, #SYS_SECCOMP
-    mov     x1, #SECCOMP_SET_MODE_FILTER
-    mov     x2, #0
+    mov     x0, #SECCOMP_SET_MODE_FILTER /* x0 = op                  */
+    mov     x1, #0                      /* x1 = flags               */
+    mov     x2, sp                      /* x2 = uargs = &fprog      */
     svc     #0
     add     sp, sp, #32
     cbnz    x0, fail22
@@ -144,24 +151,49 @@ app_process32:
     .asciz "/system/bin/app_process"
 
 /* ---------------------------------------------------------------------------
-   THE BPF FILTER — 14 sock_filter instructions, 8 bytes each:
-   { u16 code; u8 jt; u8 jf; u32 k } -> one .xword (LE): (k<<32)|(jf<<16)|(jt<<8)|code
-   seccomp_data: nr at 0, args[0] low word at 0x10.
+   THE BPF FILTER — 11 sock_filter instructions, 8 bytes each:
+   { u16 code; u8 jt; u8 jf; u32 k } -> one .xword (LE):
+   (k<<32)|(jf<<24)|(jt<<16)|code  — byte2=jt, byte3=jf (struct order code,jt,jf,k).
+   seccomp_data: nr at 0, args[0] low word at 0x10 (same layout for compat).
+
+   v5 fixes (all three verified by a kernel-semantics simulation):
+   1. REGISTERS: seccomp(op,flags,uargs) args were shuffled (x0=&fprog,
+      x1=op, x2=0) -> the kernel saw op=garbage -> do_seccomp default ->
+      -EINVAL ALWAYS (run 38172868682 exit 42) regardless of the filter.
+      Now x0=op, x1=flags, x2=&fprog.
+   2. ALLOW VALUE: the default rets were 0x7FF00000 = SECCOMP_RET_TRACE,
+      not 0x7FFF0000 = SECCOMP_RET_ALLOW. TRACE with no ptracer fails
+      EVERY syscall with -ENOSYS, so the wrapper's own execve would die.
+   3. DUAL-ARCH NRs: the 2.8.2 APK is armeabi-v7a ONLY -> every app
+      process (incl. the engine) is 32-BIT, where exit=1 and
+      exit_group=248 (the wrapper itself is arm64: exit=93, exit_group=94
+      — those stay too). The verdict's exit_group(25) in the 32-bit
+      engine would have been ALLOWED with the 64-bit-only filter.
+
+   FLOW (11 insns, ERR=RET ERRNO(ENOSYS), OK=RET ALLOW):
+     0: nr = ABS[0]
+     1: JEQ 1   (arm32 exit)       -> 5, else 2
+     2: JEQ 93  (arm64 exit)       -> 5, else 3
+     3: JEQ 94  (arm64 exit_group) -> 5, else 4
+     4: JEQ 248 (arm32 exit_group) -> 5, else 10 OK
+     5: code = ABS[0x10] (args[0] low word)
+     6: JEQ 25 -> 9 ERR, else 7
+     7: JEQ 30 -> 9 ERR, else 8
+     8: JA +1 -> 10 OK
+     9: RET ERRNO(ENOSYS)          (the verdict exit becomes a no-op)
+    10: RET ALLOW                  (everything else passes)
    --------------------------------------------------------------------------- */
     .align  3
     .global bpf
 bpf:
     .xword 0x0000000000000020
-    .xword 0x0000005D01000015
-    .xword 0x0000000100000005
-    .xword 0x0000005E09000015
+    .xword 0x0000000100030015
+    .xword 0x0000005D00020015
+    .xword 0x0000005E00010015
+    .xword 0x000000F805000015
     .xword 0x0000001000000020
-    .xword 0x0000001900060015
-    .xword 0x0000001E00050015
-    .xword 0x7FF0000000000006
-    .xword 0x7FF0000000000006
-    .xword 0x7FF0000000000006
-    .xword 0x7FF0000000000006
-    .xword 0x7FF0000000000006
+    .xword 0x0000001900020015
+    .xword 0x0000001E00010015
+    .xword 0x0000000100000005
     .xword 0x0005002600000006
-    .xword 0x7FF0000000000006
+    .xword 0x7FFF000000000006
