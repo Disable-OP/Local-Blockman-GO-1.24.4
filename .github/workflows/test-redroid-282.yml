@@ -94,6 +94,11 @@ jobs:
           adb -s localhost:5555 shell setprop wrap.com.sandboxol.blockymods /data/local/tmp/wrap282
           echo "wrap property: $(adb -s localhost:5555 shell getprop wrap.com.sandboxol.blockymods)"
           echo "ro.debuggable:  $(adb -s localhost:5555 shell getprop ro.debuggable)"
+          # selftest: the wrapper alone (install filter -> exec /system/bin/true).
+          # 0 = the filter installs and exec works; 42 = EINVAL (errno 22+64);
+          # 65 = EPERM; 102 = ENOSYS. Run 38172868682: the in-app path hit 42.
+          adb -s localhost:5555 shell /data/local/tmp/wrap282 /system/bin/true || true
+          echo "wrap selftest exit: $?"
 
       - name: Launch + 15s keep-alive
         run: |
