@@ -3074,6 +3074,23 @@ def main_282(args):
     g282_alive_recover(adb, screen, pkg, act, "282-gamedetail")
     screen.snap("GJ282_detail")
 
+    # ---- v9: re-arm the wrap properties + dump the state right before the
+    # join (run 38178524142: the boot fleet got wrapped but the join-time
+    # :BlockmanGo fleet did not — suspected USAP static pool serving starts
+    # without the wrapper; the pool is now disabled, the props re-armed,
+    # and the on-device state is printed as the discriminator).
+    for _pn in ("com.sandboxol.blockymods",
+                "com.sandboxol.blockymods:BlockmanGo",
+                "com.sandboxol.blockymods:ipc",
+                "com.sandboxol.blockymods:push"):
+        adb.sh("setprop wrap.%s /data/local/tmp/wraplog.sh" % _pn, timeout=15)
+    _wstate = adb.sh(
+        "getprop | grep '^\\[wrap' ; "
+        "getprop persist.device_config.runtime_native.usap_pool_enabled",
+        timeout=15)
+    print("  [282] wrap state at join: %s"
+          % " ".join(str(_wstate).split())[:400])
+
     # ---- press the start control: btn_enter (gamedetail_bottom_view)
     _idre = re.compile(r"(btn_enter|iv_enter|btnEnter)", re.I)
     pressed = None

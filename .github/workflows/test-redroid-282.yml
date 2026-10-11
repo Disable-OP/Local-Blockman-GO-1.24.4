@@ -111,7 +111,17 @@ jobs:
           echo "wrap property: $(adb -s localhost:5555 shell getprop wrap.com.sandboxol.blockymods)"
           echo "ro.debuggable:  $(adb -s localhost:5555 shell getprop ro.debuggable)"
           echo "ro.zygote:      $(adb -s localhost:5555 shell getprop ro.zygote)"
-          echo "usap cfg:       $(adb -s localhost:5555 shell getprop persist.device_config.runtime_native.usap_pool_enabled)"
+          # v9: run 38178524142's wraplog PROVED the boot fleet was wrapped
+          # yet the join-time fleet was NOT (no wrap enter lines for
+          # 3933/4729/4895) — and the wrapped/unwrapped pattern ALTERNATES
+          # (fleet B 0.3s after fleet A). That is the STATIC USAP pool: a
+          # pre-forked unspecialized process is served WITHOUT the wrapper
+          # (the zygote server refills the pool asynchronously; the pool
+          # path does not apply invoke-with). Disable the pool BEFORE any
+          # app start so every fork takes the legacy path (which applies
+          # wrap.<niceName>); AMS's DeviceConfig listener forwards it.
+          adb -s localhost:5555 shell setprop persist.device_config.runtime_native.usap_pool_enabled false
+          echo "usap disabled:  $(adb -s localhost:5555 shell getprop persist.device_config.runtime_native.usap_pool_enabled)"
           # selftest: the wrapper alone (install filter -> exec /system/bin/true).
           # 0 = the filter installs and exec works; 42 = EINVAL (errno 22+64);
           # 65 = EPERM; 102 = ENOSYS. Run 38172868682: the in-app path hit 42.
