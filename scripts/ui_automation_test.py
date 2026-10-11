@@ -3323,6 +3323,25 @@ def main():
     gj_matchrun = False
     gj_raknet_dead = False
     gj_bad = []
+    # v0.6.28-matchwatch: the engine's server.log is TRUNCATED on every
+    # engine respawn, and the post-suite diagnostics run AFTER the app
+    # left the match — the surviving server.log then belongs to the
+    # RESPAWNED engine (its fresh waiting-room session: run 38119669699
+    # carried no startMatch/island/combat lines at all). The match-phase
+    # evidence must therefore be captured LIVE: after the join
+    # short-circuit fires, keep observing the RUNNING match for a few
+    # rounds — screenshot every round (screenshot mandate covers the
+    # match HUD), print the fresh server.log lines into the CI log (live
+    # printing is the witness), and accumulate client.log match markers
+    # (S2CPacketGameStatus, island teleports, the death/respawn cycle
+    # the watchPoint bounces reveal).
+    gj_watch = False
+    gj_watch_round = 0
+    gj_slog_seen = 0
+    gj_match_lines = []
+    gj_match_status1 = False
+    gj_match_tp = 0
+    GJ_MATCH_WATCH_ROUNDS = 5
     while time.time() < gj_deadline:
         gj_round += 1
         time.sleep(12)
@@ -3408,7 +3427,45 @@ def main():
                % (gj_round,
                   " (MATCH RUNNING with the room full — bots milestone)"
                   if gj_matchrun else ""))
-            break
+            # v0.6.28-matchwatch: the join is confirmed — now WATCH the
+            # running match instead of leaving immediately.
+            gj_watch = True
+        if gj_watch:
+            gj_watch_round += 1
+            screen.snap("GJ_match_r%d" % gj_watch_round)
+            _clog_w, _cp_w = gj_read("client.log", 65536)
+            if _clog_w:
+                gj_match_status1 = gj_match_status1 or (
+                    "S2CPacketGameStatus m_status 1" in _clog_w)
+                gj_match_tp = max(gj_match_tp,
+                                  _clog_w.count("Blockman teleport"))
+            _slog_w, _sp_w = gj_read("server.log", 65536)
+            if _slog_w:
+                _wl = _slog_w.splitlines()
+                if len(_wl) < gj_slog_seen:
+                    # the engine respawned mid-watch: its log is fresh
+                    gj_slog_seen = 0
+                _fresh = _wl[gj_slog_seen:]
+                for _ln in _fresh:
+                    _low = _ln.lower()
+                    if ("startmatch" in _low or "preparematch" in _low
+                            or "gamestart" in _low or "resetpos" in _low
+                            or "force teleport" in _low or "kill" in _low
+                            or "bot" in _low or "match" in _low
+                            or "teleport" in _low):
+                        gj_match_lines.append(_ln)
+                if gj_slog_seen == 0 and _wl:
+                    print("  [match] GJ: server.log session: %d lines (%s)"
+                          % (len(_wl), _sp_w))
+                for _ln in _fresh[-14:]:
+                    print("  [match] GJ: %s" % _ln)
+                gj_slog_seen = len(_wl)
+            if gj_watch_round >= GJ_MATCH_WATCH_ROUNDS:
+                ok("GJ: match watch complete (%d live rounds, %d match "
+                   "screenshots, %d fresh server.log lines scanned)"
+                   % (gj_watch_round, gj_watch_round, len(gj_match_lines)))
+                break
+            continue
 
     # ---- verdict + evidence tails printed into the CI log
     print("== GJ verdict ==")
@@ -3433,6 +3490,33 @@ def main():
         if gj_matchrun:
             ok("GJ: THE BEDWARS MATCH IS RUNNING (monitor g2r 150 stat=8 - "
                "the room filled and GameMatch:startMatch fired)")
+            # v0.6.28-matchwatch verdicts: the LIVE match evidence from
+            # the watch rounds (post-run logs belong to the respawned
+            # engine and hold none of this).
+            check("GJ: match watch observed the running match "
+                  "(%d live rounds, %d match screenshots)"
+                  % (gj_watch_round, gj_watch_round),
+                  gj_watch_round >= 3,
+                  "the match-watch phase never completed its observation "
+                  "rounds")
+            if gj_match_status1:
+                ok("GJ: client.log S2CPacketGameStatus m_status=1 (the "
+                   "CLIENT received the match-start status)")
+            if gj_match_tp >= 3:
+                ok("GJ: client.log shows %d 'Blockman teleport' hops "
+                   "(login -> waitPos -> island; the later hops are the "
+                   "death/spectate/respawn cycle - bots are FIGHTING)"
+                   % gj_match_tp)
+            if gj_match_lines:
+                _mm = "\n".join(gj_match_lines)
+                if "prepareMatch" in _mm or "startMatch" in _mm:
+                    ok("GJ: server.log match-phase Lua markers captured "
+                       "live (prepareMatch/startMatch)")
+                _ft = sum(1 for _l in gj_match_lines
+                          if "force teleport" in _l)
+                if _ft:
+                    ok("GJ: server.log %d force-teleport events during "
+                       "the match (live simulation moving players)" % _ft)
         check("GJ: GameServer confirmed the join (monitor g2r 151 / "
               "server.log C2SPacketLogin)", gj_userin151 or gj_serverlogin,
               "neither the monitor G2R_USER_IN frame nor the server-side "

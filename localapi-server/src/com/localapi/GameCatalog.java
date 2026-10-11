@@ -780,12 +780,20 @@ final class GameCatalog {
     static synchronized boolean removeChatRoom(StateStore store, String roomId) {
         if (roomId == null || roomId.isEmpty()) return false;
         JSONObject rooms = store.root().optJSONObject("chatRooms");
-        String[] names = JSONObject.getNames(rooms);
         boolean removed = false;
-        for (int i = 0; names != null && i < names.length; i++) {
-            if (roomId.equals(rooms.optString(names[i]))) {
-                rooms.remove(names[i]);
-                removed = true;
+        if (rooms != null) {
+            // JSONObject.getNames(JSONObject) is NOT part of Android's
+            // org.json (NoSuchMethodError on the device, queued since
+            // session 56) — walk the key iterator manually instead.
+            java.util.List<String> keys = new java.util.ArrayList<String>();
+            java.util.Iterator<String> kit = rooms.keys();
+            while (kit.hasNext()) keys.add(kit.next());
+            for (int i = 0; i < keys.size(); i++) {
+                String k = keys.get(i);
+                if (roomId.equals(rooms.optString(k))) {
+                    rooms.remove(k);
+                    removed = true;
+                }
             }
         }
         if (removed) store.save();
