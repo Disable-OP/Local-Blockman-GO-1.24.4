@@ -3524,46 +3524,74 @@ def main():
             # v0.6.32-drivenhuman: the suite DRIVES the client inside the
             # running match (session-62 optional direction (a) — document
             # SURVIVAL + INTERACTION, not AFK spectating). The in-game HUD
-            # is GL-rendered (no view nodes to find), so the gestures are
-            # raw display-fraction coordinates:
-            #   - r2: camera-look drag over empty scenery (right->center)
-            #     — rotates the viewpoint; provable by diffing the r2/r3
-            #     world renders.
-            #   - r4: short taps on the bottom-left joystick cluster
-            #     (strafe-left, walk, strafe-right) — moves the human a
-            #     few meters on the island.
-            # NEVER touched: the top-right stick figure (possible
-            # surrender/leave), the "..." tray, the hotbar, the top
-            # chevron. Everything is try/except-guarded — a failed or
-            # mis-targeted injection can never fail the suite.
+            # is GL-rendered (no view nodes to find), so gestures are
+            # coordinates. ROTATION LESSON (v0.6.32 run): the game renders
+            # LANDSCAPE (screencaps are 1280x720) while `wm size` reports
+            # the NATURAL portrait panel (720x1280) — `input` injects in
+            # the NATURAL frame, so landscape-fraction coords land at the
+            # transformed position (v0.6.32's joystick probes hit upper
+            # scenery instead of the HUD cluster; harmless, but inert).
+            # v0.6.33-drivenrot fixes the frame: gestures are composed in
+            # the LANDSCAPE (screencap) frame and mapped to natural coords
+            # via the ROT90 inverse (x_n=(1-y_r)*W_n, y_n=x_r*H_n — the
+            # phone-turned-clockwise geometry; under the mirror ROT270 the
+            # SAME natural point lands mirrored). Safety by construction:
+            # the primary evidence is CENTER-band camera drags — under
+            # EITHER mapping a mid-height horizontal sweep in the landscape
+            # frame is a look gesture, never a button:
+            #   - r2: camera-look drag right->left across the center band
+            #   - r4: reverse drag (back), then ONE walk-button tap at the
+            #     joystick cluster center (13%,75.7%) — worst case under
+            #     the mirror: an empty-scenery tap; best case: movement.
+            # NEVER touched: the top-right winged figure (surrender/fly?),
+            # the "..." tray, hotbar, top chevron. All injections are
+            # try/except-guarded (soft) — a failed or mis-targeted gesture
+            # can never fail the suite.
             try:
                 if gj_watch_round in (2, 4):
                     _wm = adb.sh("wm size", timeout=15)
                     _m = (re.search(r"Override size:\s*(\d+)x(\d+)", _wm)
                           or re.search(r"Physical size:\s*(\d+)x(\d+)", _wm))
-                    _dw, _dh = ((int(_m.group(1)), int(_m.group(2)))
-                                if _m else (1280, 720))
+                    _wn, _hn = ((int(_m.group(1)), int(_m.group(2)))
+                                if _m else (720, 1280))
+                    _so = adb.sh("dumpsys input 2>/dev/null | grep -io "
+                                 "'SurfaceOrientation[^\\n]*'", timeout=15)
+                    print("  [gj drive] display %dx%d; %s"
+                          % (_wn, _hn, (_so.splitlines() or ["orientation "
+                                                            "probe n/a"])[0]))
+
+                    def _r90(xf, yf):
+                        # landscape-frame fraction -> natural-frame coords
+                        # (ROT90 inverse: viewer-turned-clockwise maps
+                        # content x -> panel y, content y -> mirrored
+                        # panel x; under the mirror ROT270 the landing is
+                        # mirrored — only the look-drags are depended on)
+                        return (int((1.0 - yf) * _wn), int(xf * _hn))
+
                     if gj_watch_round == 2:
+                        _sx, _sy = _r90(0.72, 0.45)
+                        _ex, _ey = _r90(0.40, 0.45)
                         adb.sh("input swipe %d %d %d %d 700"
-                               % (int(_dw * 0.72), int(_dh * 0.42),
-                                  int(_dw * 0.40), int(_dh * 0.48)),
-                               timeout=20)
+                               % (_sx, _sy, _ex, _ey), timeout=20)
                         time.sleep(0.8)
-                        gj_actions.append("r2 camera-look drag (%dx%d)"
-                                          % (_dw, _dh))
-                        print("  [gj drive] r2 camera-look drag injected")
+                        gj_actions.append("r2 camera-look drag L->R "
+                                          "(natural %dx%d)" % (_wn, _hn))
+                        print("  [gj drive] r2 camera-look drag injected "
+                              "(%d,%d -> %d,%d)" % (_sx, _sy, _ex, _ey))
                     else:
-                        for _fx, _fy, _nm in ((0.048, 0.757, "strafe-L"),
-                                              (0.130, 0.757, "walk"),
-                                              (0.212, 0.757, "strafe-R")):
-                            _x, _y = int(_dw * _fx), int(_dh * _fy)
-                            adb.sh("input swipe %d %d %d %d 260"
-                                   % (_x, _y, _x, _y), timeout=20)
-                            time.sleep(0.35)
-                        time.sleep(0.8)
-                        gj_actions.append("r4 joystick probes "
-                                          "(strafe-L/walk/strafe-R)")
-                        print("  [gj drive] r4 joystick probes injected")
+                        _sx, _sy = _r90(0.40, 0.45)
+                        _ex, _ey = _r90(0.72, 0.45)
+                        adb.sh("input swipe %d %d %d %d 700"
+                               % (_sx, _sy, _ex, _ey), timeout=20)
+                        time.sleep(0.5)
+                        _wx, _wy = _r90(0.130, 0.757)  # walk button
+                        adb.sh("input swipe %d %d %d %d 260"
+                               % (_wx, _wy, _wx, _wy), timeout=20)
+                        time.sleep(0.6)
+                        gj_actions.append("r4 reverse camera drag + walk "
+                                          "tap (%d,%d)" % (_wx, _wy))
+                        print("  [gj drive] r4 reverse drag + walk tap "
+                              "injected (walk at %d,%d)" % (_wx, _wy))
             except Exception as _drive_err:
                 print("  [gj drive] injection failed (soft): %s"
                       % _drive_err)
