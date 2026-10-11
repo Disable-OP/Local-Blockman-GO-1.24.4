@@ -92,6 +92,19 @@ jobs:
           adb -s localhost:5555 push scripts/exithook/wrap282 /data/local/tmp/wrap282
           adb -s localhost:5555 shell chmod 755 /data/local/tmp/wrap282
           adb -s localhost:5555 shell setprop wrap.com.sandboxol.blockymods /data/local/tmp/wrap282
+          # v7: Zygote.getWrapProperty(appName) has NO fallback to the base
+          # package name (verified in AOSP 12 Zygote.java) — the ENGINE
+          # process nice name is com.sandboxol.blockymods:BlockmanGo, so it
+          # looks up wrap.<that exact string>. Run 38175583809 proved the
+          # filter works (selftest rc=0, join chain green to StartMc) but
+          # :BlockmanGo STILL exited cleanly (25) because it was never
+          # wrapped. Set the per-process properties explicitly (colons in
+          # property names: legal if setprop accepts them — the rc+getprop
+          # echo below is the empirical answer).
+          for PNAME in BlockmanGo ipc push; do
+            adb -s localhost:5555 shell "setprop 'wrap.com.sandboxol.blockymods:$PNAME' /data/local/tmp/wrap282"
+            echo "wrap(.:$PNAME) => '$(adb -s localhost:5555 shell getprop wrap.com.sandboxol.blockymods:$PNAME)'"
+          done
           echo "wrap property: $(adb -s localhost:5555 shell getprop wrap.com.sandboxol.blockymods)"
           echo "ro.debuggable:  $(adb -s localhost:5555 shell getprop ro.debuggable)"
           # selftest: the wrapper alone (install filter -> exec /system/bin/true).
