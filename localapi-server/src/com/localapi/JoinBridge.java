@@ -98,9 +98,15 @@ public final class JoinBridge {
 
             final String requestId = Long.toHexString(System.nanoTime())
                     + Long.toHexString(Math.abs(uid));
-            final String signature = Long.toHexString(
-                    Double.doubleToLongBits(Math.random()));
             final long timestamp = System.currentTimeMillis();
+            // The engine's C2S login gate (LORD_PLATFORM_LINUX branch is
+            // ACTIVE on the Android build, run 38107604916 'login fail,
+            // result code=1' = emErrTokenWrong): the token must equal
+            // SHA1_hex_lowercase(WEB_HTTP_SECRET + uid + gameTimestamp)
+            // where WEB_HTTP_SECRET is the constant the server binary
+            // embeds (Server.cpp: 'pq0194mxoqfh48L362G6R09T737E273X' - the
+            // same string serverConfig.json carries as 'secret').
+            final String signature = gameToken(uid, timestamp);
 
             // The engine resolves scripts by the ScriptSetting GameType key
             // (g####): force the hosted room's id so the engine loads the
@@ -230,6 +236,28 @@ public final class JoinBridge {
         } catch (Throwable t) {
             L.e(TAG + ": takeover failed: " + t);
             return false;
+        }
+    }
+
+    /** The server's login-gate token: SHA1_hex_lowercase(WEB_HTTP_SECRET +
+     *  uid + gameTimestamp) - byte-identical to C2SInitPacketHandles.cpp's
+     *  LORD_PLATFORM_LINUX check (Server::WEB_HTTP_SECRET constant, decimal
+     *  uid/ts, lowercase hex via std::hex). */
+    private static String gameToken(long uid, long timestamp) {
+        try {
+            java.security.MessageDigest md =
+                    java.security.MessageDigest.getInstance("SHA-1");
+            byte[] d = md.digest(("pq0194mxoqfh48L362G6R09T737E273X"
+                    + uid + timestamp).getBytes("UTF-8"));
+            StringBuilder sb = new StringBuilder(d.length * 2);
+            for (byte b : d) {
+                sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+                sb.append(Character.forDigit(b & 0xF, 16));
+            }
+            return sb.toString();
+        } catch (Throwable t) {
+            L.e(TAG + ": gameToken failed: " + t);
+            return "";
         }
     }
 
