@@ -152,6 +152,11 @@ def main():
         game_expr=("iget-object v1, p0, Lcom/sandboxol/blockymods/utils/B;"
                   "->b:Lcom/sandboxol/greendao/entity/Game;"),
         tag="B")
+    # x$a gate: the outer x's fields are PRIVATE, but R8 generated
+    # package-private accessor METHODS in x (x.e(x)->Context,
+    # x.a(x)->Game) that x$a calls legally (run 38162211265: a direct
+    # iget of x.a from the x$a bridge = IllegalAccessError -> local
+    # fallback). The bridge goes through those accessors.
     patched += patch_gate(
         APKTOOL_DIR,
         rel="smali_classes3/com/sandboxol/blockymods/utils/x$a.smali",
@@ -162,12 +167,16 @@ def main():
                 r"Landroidx/databinding/ObservableField;\)V"),
         ctx_expr=("iget-object v0, p0, Lcom/sandboxol/blockymods/utils/x$a;"
                   "->a:Lcom/sandboxol/blockymods/utils/x;\n"
-                  "    iget-object v0, v0, Lcom/sandboxol/blockymods/utils/x;"
-                  "->a:Landroid/content/Context;"),
+                  "    invoke-static {v0}, Lcom/sandboxol/blockymods/utils/x;"
+                  "->e(Lcom/sandboxol/blockymods/utils/x;)"
+                  "Landroid/content/Context;\n"
+                  "    move-result-object v0"),
         game_expr=("iget-object v1, p0, Lcom/sandboxol/blockymods/utils/x$a;"
                   "->a:Lcom/sandboxol/blockymods/utils/x;\n"
-                  "    iget-object v1, v1, Lcom/sandboxol/blockymods/utils/x;"
-                  "->d:Lcom/sandboxol/greendao/entity/Game;"),
+                  "    invoke-static {v1}, Lcom/sandboxol/blockymods/utils/x;"
+                  "->a(Lcom/sandboxol/blockymods/utils/x;)"
+                  "Lcom/sandboxol/greendao/entity/Game;\n"
+                  "    move-result-object v1"),
         tag="x$a")
     print(f"patch_join_282: done ({patched} file(s))")
 
@@ -230,6 +239,7 @@ def patch_gate(apktool_dir, rel, cls, sig, sig_re, ctx_expr, game_expr, tag):
     print(f"patch_join_282: {rel} patched ({tag} gate -> JoinBridge "
           f"takeover)")
     return 1
+
 
 
 if __name__ == "__main__":
