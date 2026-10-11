@@ -70,9 +70,14 @@ _start:
     add     sp, sp, #32
     cbnz    x0, fail22
 
-    /* --- 3. execve(argv[1], argv+1, envp); fail=23 --- */
-    ldr     x0, [x29, #8]               /* argv[1] = app_process    */
-    add     x1, x29, #8
+    /* --- 3. execve(argv[1], &argv[1], envp); fail=23 ---
+       Stack at entry: [x29]=argc, [x29+8]=argv[0] (THIS wrapper),
+       [x29+16]=argv[1] (the app_process path AMS hands us). v5 fix:
+       the old code exec'd argv[0] = itself (infinite self-exec loop;
+       the selftest would hang) and passed &argv[0] as argv (app_process
+       would mis-parse argv[0]=wrap282). execv convention: argv[0] = path. */
+    ldr     x0, [x29, #16]              /* argv[1] = app_process    */
+    add     x1, x29, #16                /* argv = &argv[1]          */
     ldr     x3, [x29]
     add     x3, x3, #2
     add     x2, x29, x3, lsl #3
@@ -92,7 +97,7 @@ try64:
        32-bit path on some builds; arm64 redroid has only the 64 ---
        fail=24 */
     adr     x0, app_process64
-    add     x1, x29, #8
+    add     x1, x29, #16                /* argv = &argv[1]          */
     ldr     x3, [x29]
     add     x3, x3, #2
     add     x2, x29, x3, lsl #3
@@ -110,7 +115,7 @@ fail24:
 try32:
     /* --- 5. execve("/system/bin/app_process", ...); fail=25 --- */
     adr     x0, app_process32
-    add     x1, x29, #8
+    add     x1, x29, #16                /* argv = &argv[1]          */
     ldr     x3, [x29]
     add     x3, x3, #2
     add     x2, x29, x3, lsl #3
