@@ -3196,6 +3196,28 @@ def main_282(args):
             for l in _tom.splitlines():
                 if "tombstone" in l:
                     print("  [tomb r%d] %s" % (rnd, l.strip()[-160:]))
+            # WHAT DID THE ENGINE SAY BEFORE DYING? (run 38167324535:
+            # 'Process ... exited cleanly (25)' x2 - TSS verdict or a
+            # legitimate engine-init failure changes the whole fix)
+            for d in (dirs or []):
+                _cl = adb.sh("tail -c 700 %s/client.log 2>/dev/null"
+                             % d, timeout=25)
+                if _cl:
+                    print("  [clog r%d] %s" % (rnd, _cl[-500:]))
+                    break
+            _recent = adb.sh(
+                "ls -t %s/*.log 2>/dev/null | head -3" % (dirs[0] if dirs
+                                                          else "/nonexistent"),
+                timeout=20)
+            print("  [logs r%d] %s" % (rnd, _recent[-160:]))
+            _raw = adb.sh(
+                "logcat -d -t 500 | grep -vE 'NetworkStats|InsetsState|"
+                "WindowManager|chatty|WifiService|NotificationService|"
+                "AudioService|InputDispatcher|ActivityTaskManager: "
+                "Visible|ImeTracker' | tail -28", timeout=45)
+            for l in _raw.splitlines():
+                if l.strip():
+                    print("  [raw r%d] %s" % (rnd, l.strip()[-240:]))
         # the press flow can park on a modal (NotWifiDialog on the no-wifi
         # redroid network, TwoButtonDialog res-load prompts): press the
         # positive button family generically
