@@ -4476,3 +4476,14 @@ resource is unavailable.
   * NEVER touched: the top-right stick figure (possible surrender/leave), the "..." tray, hotbar, top chevron. All injections try/except-guarded (soft) — a mis-targeted gesture can never fail the suite.
 - New verdict line: "[ok] GJ: drove the human inside the running match (r2 camera-look drag; r4 joystick probes...)". The injected-state screenshots land in the existing GJ_match_r1..r5 evidence.
 - Host suite 644/644; pushed 206f2c6 + tag v0.6.32-drivenhuman; build-release 38129541216 SUCCESS -> test-redroid 38129658906 in flight; deep 38129369414 in flight in parallel.
+
+## Session 63 cont. - v0.6.35-driveall VERDICT: THE DRIVE IS PIXEL-PROVEN (alive->alive camera yaw) (2026-10-11)
+
+- **v0.6.35-driveall (build 38132128642 + test-redroid 38132262642): SUCCESS, UI AUTOMATION: PASS.** All 5 paired captures (GJ_driveA/B_r1..r5) landed in the artifact. Pixel-diff ranking (sampled-grid, threshold 60): r1 0.000 (spawn-protection freeze — the identical frame matches the "Count down" state where look input is ignored), r2 0.043 (spectator), r3 0.108, r4 0.165, r5 0.089.
+- **THE PROOF (two independent ALIVE->ALIVE pairs):**
+  * r4: A = 20/20 HP facing a white wall/ceiling; B = 16/20 HP with "You are out of the map!" and a STRUCTURALLY different view (cyan-lit interior, pole edge) — the camera yawed between the two frames (only the drag + ambient bots in between).
+  * r5: A = 18/20 HP (purple portal center, shelf right); B = 18/20 HP with the world rotated ~20-30 degrees (portal shifted, teal glow bottom-left, plank diagonal top-left).
+- LESSONS now encoded in the suite: (1) the game renders landscape on a portrait-natural panel — gestures are composed in the landscape frame and mapped via the ROT90 inverse (mirror-safe by design; the drags are look gestures under either mapping); (2) SPECTATOR mode ignores look-drags entirely (identical r2 pair) — pairs must land while alive; (3) spawn protection freezes look input (identical r1 pair); (4) the AFK human dies every few seconds on this map, so pairs run on EVERY watch round.
+- Evidence: download/snap_GJ_drive{A_r4_alive,B_r4_yawed,A_r5_alive,B_r5_yawed}.png (main project download/ dir).
+- The walk tap (r4, walk button at 13%,75.7% mapped ROT90) remains SUGGESTIVE but unproven (the "You are out of the map!" in B hints at movement, but the ambient hit + edge position confound it). Next lever if wanted: a LONGER walk hold (input swipe 600-800ms) at the walk button, or probe after confirming alive via a pixel probe.
+- Deep suite: has NOT run on v0.6.32-35 (suite-only deltas since the v0.6.31 deep-green; low risk; next sweep can dispatch).
