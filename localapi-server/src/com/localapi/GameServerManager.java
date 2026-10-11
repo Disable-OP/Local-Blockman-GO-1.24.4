@@ -47,6 +47,15 @@ public final class GameServerManager {
      *  room they join runs the game the on-device server actually hosts. */
     public static final String ENGINE_GAME_ID = "g1008";
     public static final String ENGINE_MAP_ID = "m1008_2";
+
+    /** The engine version the CLIENT (1.24.4, classic resources path) sends
+     *  in C2SPacketCheckCSVersion - its own engineVersion.json (assets/
+     *  resources/Media) says 10068. The server must report the SAME value
+     *  or C2SPacketLogin is refused (C2SInitPacketHandles: version mismatch
+     *  -> S2CPacketCheckCSVersionResult{success=false} -> the client logs
+     *  "check version fail, server version = 10000" and drops the link
+     *  BEFORE ever sending the login - run 38096189424). */
+    public static final int CLIENT_ENGINE_VERSION = 10068;
     public static final String ENGINE_GAME_NAME = "BedWar";
 
     private static final String BUNDLE_DIR = "gameserver-bundle";
@@ -223,6 +232,35 @@ public final class GameServerManager {
         }
     }
 
+    /**
+     * The engine loads engineVersion.json through the ResourceGroupManager;
+     * the server's resource.cfg mounts ONLY ../client/... paths (no ./), and
+     * the bundle ships the file at bundle/server/engineVersion.json where NO
+     * group can see it ("Cannot locate a resource [engineVersion.json] in
+     * resource group [General] or any other group", run 38096189424) ->
+     * EngineVersionSetting defaults to 10000 -> the client's C2S version
+     * 10068 is rejected BEFORE the login -> ID_CONNECTION_LOST.
+     * Write the file into the MOUNTED ../client/ dir (bundle/client/) - the
+     * app's filesDir is writable, no bundle rebuild needed.
+     */
+    private static void ensureEngineVersionFile() {
+        try {
+            File clientDir = new File(bundleRoot(), "client");
+            if (!clientDir.isDirectory()) {
+                L.e("gs: engineVersion: client dir missing: " + clientDir);
+                return;
+            }
+            File f = new File(clientDir, "engineVersion.json");
+            if (f.isFile() && f.length() > 0) return;
+            writeText(f, "{\n  \"engineVersion\": " + CLIENT_ENGINE_VERSION
+                    + ",\n  \"useCmd\": \"true\",\n  \"logLevel\": \"debug\"\n}\n");
+            L.i("gs: engineVersion.json written -> " + f + " ("
+                    + CLIENT_ENGINE_VERSION + ")");
+        } catch (Throwable t) {
+            L.e("gs: engineVersion.json write failed: " + t);
+        }
+    }
+
     /** Preconditions + config + stale sweep + launch. Callers hold LOCK. */
     private static void spawnLocked(Context context) {
         try {
@@ -258,6 +296,7 @@ public final class GameServerManager {
                 MonitorServer.start();
                 sLogDir = resolveLogDir(context);
                 writeServerConfig(cfg);
+                ensureEngineVersionFile();
                 // Kill stale engine instances from earlier app boots FIRST:
                 // every boot spawned a new libgameserver while old ones kept
                 // running (isAlive() only tracks THIS boot's Process object).
