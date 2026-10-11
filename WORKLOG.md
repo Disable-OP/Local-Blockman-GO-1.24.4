@@ -4466,3 +4466,13 @@ resource is unavailable.
 - Teleport hops 15 -> 7 (halved; >2 hops now = out-of-map edge handling + rare damage events). Bot11 still rebirthed in the live watch lines = bots still FIGHT each other (PvP preserved). 16-player heartbeats, Server::tick ~61ms warnings (16 AI entities + match sim on the emulated ARM core — cosmetic).
 - Politeness note: the match's own flow (countdown, team islands, bed-breaking bots, regen) is fully engine-official — zero engine patches, csv-only tuning.
 - Session 62 also shipped (suite-only, tagged v0.6.31-primarypref): match-watch now prefers the LIVE primary logdir — two-probe primary reads in gj_read_since + late-discovered dirs re-ordered primary-first (the v0.6.30 run seeded its r1 chunk from the stale Android/data fallback because the live dir was discovered AFTER the fallback and never promoted). build 38128330904 -> test-redroid follow.
+
+## Session 63 - v0.6.32-drivenhuman: the suite DRIVES the client in-match; deep re-dispatched (2026-10-11)
+
+- Deep suite dispatched for v0.6.31-primarypref (38129369414, budget 5) — the explicit pending item from session 62 (deep had NOT run on the friendly-AI + primary-pref deltas).
+- Optional direction (a) implemented (the last big evidence upgrade): the GJ match-watch now DRIVES the client inside the running match instead of AFK spectating. The in-game HUD is GL-rendered (no view nodes), so gestures are raw display-fraction coordinates (wm-size parsed, 1280x720 fallback):
+  * r2: camera-look drag over empty scenery (72%,42% -> 40%,48%, 700ms) — rotates the viewpoint; provable by diffing the r2/r3 world renders.
+  * r4: short taps on the bottom-left joystick cluster (strafe-L 4.8%,75.7% / walk 13%,75.7% / strafe-R 21.2%,75.7%) — moves the human on the island.
+  * NEVER touched: the top-right stick figure (possible surrender/leave), the "..." tray, hotbar, top chevron. All injections try/except-guarded (soft) — a mis-targeted gesture can never fail the suite.
+- New verdict line: "[ok] GJ: drove the human inside the running match (r2 camera-look drag; r4 joystick probes...)". The injected-state screenshots land in the existing GJ_match_r1..r5 evidence.
+- Host suite 644/644; pushed 206f2c6 + tag v0.6.32-drivenhuman; build-release 38129541216 SUCCESS -> test-redroid 38129658906 in flight; deep 38129369414 in flight in parallel.
