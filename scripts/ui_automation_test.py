@@ -2742,6 +2742,428 @@ def localapi_paths(adb):
     return sorted(set(p for _, p in re.findall(r"REQ (\w+) (\S+)", log)))
 
 
+# ---------------------------------------------------------------------------
+# LINE 282 — the REAL UI JOIN on the 2.8.2 client (blockymods, engine 10078).
+#
+# The 1.24.4 phases above are id-hardcoded to the blockynexus hall; the
+# 2.8.2 client renders a DIFFERENT surface stack (decoded from the
+# decompiled 2.8.2, /home/z/bg282):
+#   HostActivity (app_activity_host: fl_container + rg_navigation +
+#   fl_game_details overlay) -> HomeFragment (app_fragment_home: srl_home /
+#   scroll_view / ll_container feed of app_item_game_basic cards, each with
+#   tv_game_name) -> card tap opens GameDetailFragment INTO fl_game_details
+#   (fragment_game_detail + gamedetail_bottom_view: btn_enter = the start
+#   control, btn_hall/btn_party beside it).
+#
+# Join chain (the 2.8.2 decode, mirror of the 1.24.4 va$b decode):
+#   btn_enter -> na.b -> GameApi.getTeamMiniGameToken
+#       (GET /game/api/v2/game/auth?typeId=<game> -> MiniGameToken)
+#     -> EnterGameActivity (GameResManager res gate; the v1 appres ships IN
+#        the APK, the holder serves /v1/game-res and check-update [])
+#     -> v.b(MiniGameToken, I, J) res-ready path
+#     -> v.a(MiniGameToken) = THE LOCAL GATE
+#     -> [patch_join_282 bridge] JoinBridge.takeOverJoin(ctx, game)
+#          hosted-only (g1046/g1008) + gaddr gate; builds
+#          EnterRealmsResult(gaddr, requestId, token=SHA1(secret+uid+ts))
+#          + POST /v1/joinbridge attr pushes -> StartMc.startGame ONLINE
+#     -> StartMcActivity -> BlockManEchoesActivity (engine, :BlockmanGo)
+#     -> client.log initGame ip[127.0.0.1] port[31108] gameType[g1008]
+#        mapId[m1008_2] -> RakNet connect -> C2S login (token gate)
+#     -> server.log C2SPacketLogin -> monitor: G2R_USER_IN (type=151).
+#
+# Evidence asserted below (mirror of the 1.24.4 GJ verdict, 2.8.2 markers):
+#   LocalAPI logcat: REQ GET /game/api/v2/game/auth, JoinBridge takeover,
+#     joinbridge PUSHED, StartMc.startGame dispatched (online),
+#     REQ POST /v1/joinbridge, monitor: human ... entered the room,
+#     monitor: g2r type=151
+#   client.log: initGame (ONLINE fields), emConnectSuc, login succ
+#   server.log: C2SPacketLogin / token correct
+#   BlockManEchoesActivity in dumpsys activity.
+#
+# NO pm clear: the workflow steps before this phase install + boot + stage
+# the 42MB g10078 engine bundle — a pm clear would wipe the staging and
+# re-download it. The phase ATTACHES to the live app (am start is
+# idempotent), dismisses first-launch dialogs, waits for the room, and
+# drives hall -> card -> btn_enter.
+
+_G282_BED_RE = re.compile(r"bed\s*war", re.I)
+
+
+def g282_dismiss_overlays(adb, screen, tag, rounds=8):
+    """2.8.2 first-launch surfaces: permission dialogs, the home guide
+    (dialog_home_guide - auto-closes via its tv_timer countdown), the
+    enter-game guide, activity/welfare popups. Generic dismissal: close
+    ids, permission grant texts, safe confirm texts. NO blind BACK: BACK
+    at the hall opens the exit dialog here (and a generic 'OK' would
+    confirm it - the 1.24.4 lesson about self-serving overlays, 2.8.2
+    edition). Bounded rounds; every outcome soft."""
+    close_ids = ("iv_close", "btn_close", "tv_close", "ivCancel",
+                 "iv_cancel", "btn_cancel", "iv_dialog_close")
+    confirm_texts = ("Got it", "GOT IT", "Skip", "Later", "I know")
+    quiet = 0
+    for _ in range(rounds):
+        nodes = screen.dump()
+        hit = None
+        for n in nodes:
+            if not n.center:
+                continue
+            rid = n.res.rsplit("/", 1)[-1] if n.res else ""
+            if rid in close_ids:
+                hit = ("close:" + rid, n)
+                break
+        if not hit:
+            for n in nodes:
+                t = (n.text or "").strip()
+                if t and t in ("Allow", "ALLOW", "While using the app",
+                               "Only this time") and n.center:
+                    hit = ("perm:" + t, n)
+                    break
+        if not hit:
+            for n in nodes:
+                t = (n.text or "").strip()
+                if t in confirm_texts and n.center and n.clickable:
+                    hit = ("text:" + t, n)
+                    break
+        if hit:
+            print("  [%s] overlay dismissed via %s" % (tag, hit[0]))
+            screen.tap_node(hit[1])
+            time.sleep(2)
+            quiet = 0
+            continue
+        quiet += 1
+        if quiet >= 2:
+            return
+        time.sleep(1.5)
+
+
+def g282_wait_room(adb, tag, budget=120):
+    """Wait for the on-device GameServer room BEFORE pressing join —
+    JoinBridge falls back to the local boot (toast) when gaddr is null.
+    Markers on logcat LocalAPI (2.8.2 line): 'gs: launched pid=' (the
+    engine process), 'monitor: game server connected' (the monitor link),
+    'monitor: G2R_CONNECT' (the room's hello). Already-up runs clear
+    instantly (the markers sit in the buffer from the earlier steps)."""
+    end = time.time() + budget
+    saw = set()
+    while time.time() < end:
+        log = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+        for marker in ("gs: launched pid=", "monitor: game server connected",
+                       "monitor: G2R_CONNECT"):
+            if marker in log:
+                saw.add(marker)
+        if "gs: launched pid=" in log and \
+                ("monitor: G2R_CONNECT" in log or
+                 "monitor: game server connected" in log):
+            ok("282: GameServer room is live (%s)" % ", ".join(sorted(saw)))
+            return True
+        time.sleep(5)
+    print("  [probe] 282: room markers incomplete after %ds (saw: %s) - "
+          "driving anyway (JoinBridge kicks staging itself)"
+          % (budget, ", ".join(sorted(saw)) or "nothing"))
+    return False
+
+
+def g282_find_cfgdirs(adb, package):
+    """All SandBoxOL config-dir candidates across read channels (the GJ
+    pattern; the engine's logdir flips between the legacy SandBoxOL root
+    and the app's external-files fallback, and the client engine writes
+    client.log to its own SandboxOL spelling)."""
+    cands = []
+    seen = set()
+
+    def add_all(out):
+        for l in (out or "").splitlines():
+            l = l.strip()
+            if l and l not in seen:
+                seen.add(l)
+                cands.append(l)
+
+    add_all(adb.sh(
+        "ls -d /storage/emulated/*/SandBoxOL/BlockMan/config"
+        " /storage/emulated/*/SandboxOL/BlockMan/config 2>/dev/null",
+        timeout=20))
+    add_all(adb.sh(
+        "run-as %s sh -c 'ls -d /storage/emulated/*/Sa*BoxOL/BlockMan/"
+        "config /storage/emulated/*/Android/data/%s/files/SandBoxOL/"
+        "config 2>/dev/null'" % (package, package), timeout=30))
+    add_all(adb.sh(
+        "ls -d /storage/emulated/*/Android/data/%s/files/SandBoxOL/config"
+        " 2>/dev/null" % package, timeout=20))
+    ordered = [c for c in cands
+               if c.endswith("/emulated/0/SandBoxOL/BlockMan/config")]
+    ordered += [c for c in cands if c not in ordered]
+    return ordered
+
+
+def g282_alive_recover(adb, screen, package, activity, stage):
+    """282-line alive-or-recover. relaunch_and_wait's main-screen probe
+    is 1.24.4-id-hardcoded (rgBottom/rb_1/flHomePage) and would burn two
+    full cycles on this client before reporting failure - the recovery
+    here waits on the 2.8.2 hall ids instead. Returns True when the app
+    is alive at return (recovered or never died)."""
+    if adb.pid(package):
+        return True
+    print("  [evidence] process died at stage: %s - relaunching" % stage)
+    for cycle in range(2):
+        adb.sh("am force-stop %s" % package)
+        time.sleep(3)
+        for attempt in range(3):
+            out = adb.sh("am start -n %s/%s" % (package, activity),
+                         timeout=45)
+            print("  [am start #%d] %s" % (attempt + 1,
+                                           (out or "").strip()[:160]))
+            deadline = time.time() + 30
+            while time.time() < deadline:
+                if adb.pid(package):
+                    break
+                time.sleep(2)
+            if adb.pid(package):
+                break
+            time.sleep(3)
+        if adb.pid(package):
+            time.sleep(8)
+            dismiss_permission_dialogs(screen)
+            g282_dismiss_overlays(adb, screen, stage)
+            if screen.wait_for(
+                    ids=["srl_home", "ll_container", "rg_navigation"],
+                    timeout=90, poll=3):
+                ok("282: recovered after death at %s" % stage)
+                return True
+        if cycle == 0:
+            print("  [retry] 282: hall not reached after relaunch - one "
+                  "more cycle")
+    return False
+
+
+def g282_read_log(adb, package, dirs, fname, nbytes=32768):
+    """Tail <fname> from EVERY candidate dir across channels (the GJ
+    merge lesson: a stale fallback copy must not shadow the live log)."""
+    texts = []
+    for d in dirs:
+        p = d + "/" + fname
+        try:
+            out = adb.sh("tail -c %d %s 2>/dev/null" % (nbytes, p),
+                         timeout=30)
+            if not out:
+                out = adb.sh("run-as %s tail -c %d %s 2>/dev/null"
+                             % (package, nbytes, p), timeout=30)
+            if out:
+                texts.append(out)
+        except Exception:
+            pass
+    return "\n".join(texts)
+
+
+def main_282(args):
+    """The 2.8.2 line: attach -> hall -> Bedwars card -> btn_enter ->
+    join evidence. Exit 0 = pass, 1 = fail (finish())."""
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except Exception:
+        pass
+    adb = Adb(args.serial)
+    screen = Screen(adb)
+    pkg, act = args.package, args.activity
+    print("== PHASE 282-GJ: real UI join on the 2.8.2 client "
+          "(blockymods, engine 10078) ==")
+
+    # ---- attach to the live app (idempotent am start; NO pm clear)
+    adb.sh("am start -n %s/%s" % (pkg, act))
+    time.sleep(8)
+    if not assert_alive(adb, pkg, "282 attach"):
+        finish()
+    dismiss_permission_dialogs(screen)
+    g282_dismiss_overlays(adb, screen, "attach")
+
+    # ---- hall render
+    hall = screen.wait_for(
+        ids=["srl_home", "ll_container", "rg_navigation"],
+        timeout=90, poll=3)
+    if not hall:
+        # one honest relaunch cycle before failing
+        print("  [probe] 282: hall not reached - relaunching once")
+        adb.sh("am force-stop %s" % pkg)
+        time.sleep(3)
+        adb.sh("am start -n %s/%s" % (pkg, act))
+        time.sleep(15)
+        if not assert_alive(adb, pkg, "282 relaunch"):
+            finish()
+        dismiss_permission_dialogs(screen)
+        g282_dismiss_overlays(adb, screen, "relaunch")
+        hall = screen.wait_for(
+            ids=["srl_home", "ll_container", "rg_navigation"],
+            timeout=90, poll=3)
+    if not hall:
+        screen.snap("GJ282_nohall")
+        debug_dump(screen, "GJ282-nohall")
+        fail("282: hall not rendered on the 2.8.2 client (no "
+             "srl_home/ll_container/rg_navigation)")
+        finish()
+    ok("282: hall rendered (visitor session)")
+    screen.snap("GJ282_hall")
+    g282_dismiss_overlays(adb, screen, "hall")
+
+    # ---- wait for the engine room BEFORE pressing join
+    g282_wait_room(adb, "282-room")
+
+    # ---- hall drive: the Bedwars card (pinned first by GameCatalog)
+    def collect_cards():
+        return [n for n in screen.dump()
+                if (n.res or "").rsplit("/", 1)[-1] == "tv_game_name"
+                and n.center and (n.text or "").strip()]
+
+    cards = collect_cards()
+    scrolls = 0
+    while not any(_G282_BED_RE.search(n.text) for n in cards) \
+            and scrolls < 4:
+        adb.sh("input swipe 360 900 360 300 300", timeout=20)
+        time.sleep(3)
+        scrolls += 1
+        for n in collect_cards():
+            if all(n.text != k.text for k in cards):
+                cards.append(n)
+    print("  [282] card candidates after %d scrolls: %s"
+          % (scrolls, [n.text[:16] for n in cards[:8]]))
+    bed = next((n for n in cards if _G282_BED_RE.search(n.text)), None)
+    if bed is None:
+        screen.snap("GJ282_nocard")
+        debug_dump(screen, "GJ282-nocard")
+        fail("282: no Bedwars card in the hall feed (hosted-only "
+             "JoinBridge joins g1046/g1008 only)")
+        finish()
+    ok("282: Bedwars hall card found (%r)" % bed.text.strip())
+    if not screen.tap_node(bed):
+        fail("282: Bedwars card tap failed (no bounds)")
+        finish()
+    screen.snap("GJ282_card")
+    time.sleep(8)  # the detail sheet renders over fl_game_details
+    g282_alive_recover(adb, screen, pkg, act, "282-gamedetail")
+    screen.snap("GJ282_detail")
+
+    # ---- press the start control: btn_enter (gamedetail_bottom_view)
+    _idre = re.compile(r"(btn_enter|iv_enter|btnEnter)", re.I)
+    pressed = None
+    for n in screen.dump():
+        if not n.center:
+            continue
+        tail = n.res.rsplit("/", 1)[-1] if n.res else ""
+        if n.res and _idre.search(tail):
+            pressed = "id:" + tail
+            screen.tap_node(n)
+            break
+    if not pressed:
+        # btn_enter may be off-dump while the sheet animates: one retry
+        time.sleep(4)
+        for n in screen.dump():
+            tail = n.res.rsplit("/", 1)[-1] if n.res else ""
+            if n.res and _idre.search(tail) and n.center:
+                pressed = "id:" + tail
+                screen.tap_node(n)
+                break
+    if not pressed:
+        screen.snap("GJ282_nostart")
+        debug_dump(screen, "GJ282-nostart")
+        fail("282: no start control (btn_enter) on the game detail")
+        finish()
+    ok("282: pressed the start control (%s)" % pressed)
+    screen.snap("GJ282_pressed")
+
+    # ---- evidence snapshots BEFORE the join (deltas are asserted below)
+    dirs = g282_find_cfgdirs(adb, pkg)
+    if dirs:
+        ok("282: config dirs %s" % ", ".join(dirs))
+    else:
+        print("  [probe] 282: config dirs not found YET (re-probed "
+              "each round)")
+    _auth0 = adb.raw("logcat", "-d", "-s", "LocalAPI",
+                     timeout=60).count("REQ GET /game/api/v2/game/auth")
+
+    # ---- join watch: every channel, a screenshot per round
+    fired = False          # the join left the dialog (takeover or auth)
+    takeover = started = pushed = False
+    echoes = False
+    init_online = connect = login_ok = False
+    server_login = user_in = False
+    watch_deadline = time.time() + 300
+    rnd = 0
+    while time.time() < watch_deadline and not (login_ok and user_in):
+        rnd += 1
+        time.sleep(10)
+        if not g282_alive_recover(adb, screen, pkg, act,
+                                  "282-watch-r%d" % rnd):
+            screen.snap("GJ282_watch_r%d" % rnd)
+            continue
+        # the first-time 'click fast enter game' guide overlay
+        # (dialog_enter_game_guide) swallows the btn_enter tap — tap its
+        # own highlighted region (ml_enter) when it is up
+        _guide = screen.find(ids=["ml_enter"])
+        if _guide and _guide.center:
+            print("  [282] enter-game guide overlay up - tapping ml_enter")
+            screen.tap_node(_guide)
+            time.sleep(3)
+        log = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
+        if log.count("REQ GET /game/api/v2/game/auth") > _auth0:
+            fired = True
+        if "JoinBridge: takeover ONLINE join" in log:
+            fired = takeover = True
+        if "joinbridge PUSHED" in log or "joinbridge cont pushed" in log:
+            pushed = True
+        if "StartMc.startGame dispatched (online)" in log:
+            started = True
+        echoes = "BlockManEchoesActivity" in adb.sh(
+            "dumpsys activity activities | grep -i BlockManEchoes",
+            timeout=30)
+        client = g282_read_log(adb, pkg, dirs, "client.log")
+        server = g282_read_log(adb, pkg, dirs, "server.log")
+        if re.search(r"initGame::??.*ip\[127\.0\.0\.1\].*port\[31108\]",
+                     client) or ("initGame" in client
+                                 and "port[31108]" in client):
+            init_online = True
+        if "emConnectSuc" in client:
+            connect = True
+        if re.search(r"login succ", client):
+            login_ok = True
+        if "C2SPacketLogin" in server:
+            server_login = True
+        if "monitor: g2r type=151" in log or \
+                re.search(r"monitor: human \S+ entered the room", log):
+            user_in = True
+        screen.snap("GJ282_watch_r%d" % rnd)
+        print("  [watch r%d] fired=%s takeover=%s started=%s pushed=%s "
+              "echoes=%s initOnline=%s connect=%s login=%s srvLogin=%s "
+              "userIn=%s" % (rnd, fired, takeover, started, pushed,
+                             echoes, init_online, connect, login_ok,
+                             server_login, user_in))
+        if not dirs:
+            dirs = g282_find_cfgdirs(adb, pkg)
+
+    # ---- verdict (hard once btn_enter was pressed)
+    print("== 282-GJ verdict ==")
+    check("282: join fired from the dialog (auth-token REQ or "
+          "JoinBridge takeover)", fired,
+          "the client never requested GET /game/api/v2/game/auth after "
+          "btn_enter")
+    check("282: JoinBridge took the join ONLINE", takeover,
+          "the bridge either never ran or fell back (gaddr null / "
+          "hosted-only mismatch)")
+    check("282: join attrs pushed (/v1/joinbridge PUSHED)", pushed or
+          (fired and "REQ POST /v1/joinbridge" in adb.raw(
+              "logcat", "-d", "-s", "LocalAPI", timeout=60)),
+          "no /v1/joinbridge traffic")
+    check("282: StartMc.startGame dispatched (online)", started)
+    check("282: engine activity up (BlockManEchoesActivity)", echoes)
+    check("282: client initGame ONLINE (ip 127.0.0.1 port 31108 "
+          "gameType g1008)", init_online)
+    check("282: client connected to the GameServer (emConnectSuc)",
+          connect)
+    check("282: client login accepted (login succ)", login_ok)
+    check("282: server saw the C2S login (server.log C2SPacketLogin)",
+          server_login)
+    check("282: the human entered the room (monitor g2r type=151 / "
+          "'human ... entered the room')", user_in)
+    finish()
+
+
 def main():
     # Line-buffered stdout: the CI step timeout kills the process and
     # block-buffered output loses the tail — exactly what hid the stall
@@ -2764,7 +3186,19 @@ def main():
     ap.add_argument("--mode", default=os.environ.get("UI_MODE", "fast"),
                     choices=["fast", "full"],
                     help="fast = CI core (~5 min); full = all deep phases")
+    ap.add_argument("--line", default=os.environ.get("UI_LINE", "auto"),
+                    choices=["auto", "classic", "282"],
+                    help="classic = the 1.24.4 blockynexus phases A-D+GJ; "
+                         "282 = the 2.8.2 blockymods UI join phase "
+                         "(attach -> hall -> Bedwars card -> btn_enter -> "
+                         "join evidence). auto picks by package.")
     args = ap.parse_args()
+    if args.line == "auto":
+        args.line = ("282" if args.package == "com.sandboxol.blockymods"
+                     else "classic")
+    if args.line == "282":
+        main_282(args)
+        return
     # MODE: "fast" (default) keeps CI at ~5 minutes - boot, visitor,
     # registration (Phase C), registered upgrade (Phase D core) and the
     # final assertions. "full" adds every deep-drive phase (B, E-O) for

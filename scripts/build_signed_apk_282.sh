@@ -37,8 +37,17 @@ fi
 # --- sanity: the patched tree must carry the localapi hooks ---
 grep -q "LocalServer;->startIfNeeded" "$TREE/smali/com/sandboxol/common/base/app/BaseApplication.smali" \
   || { echo "FATAL: bootstrap hook missing — run scripts/patch_bootstrap_282.py"; exit 1; }
-grep -rq "JoinBridge;->takeOverJoin" "$TREE/smali_classes3/com/sandboxol/blockymods/view/activity/join/v.smali" \
-  || { echo "FATAL: join bridge missing — run scripts/patch_join_282.py"; exit 1; }
+# ALL THREE StartMc.startGame callers must be bridged: v (deprecated join
+# dialog), utils/B (EnterGameHelperV2) and utils/x$a (EnterGameHelper) -
+# the v-only bridge sat on DEAD CODE (zero live refs to EnterGameActivity),
+# the 2.8.2 UI join booted local worlds through B/x$a.
+for gate in \
+  "smali_classes3/com/sandboxol/blockymods/view/activity/join/v.smali" \
+  "smali_classes3/com/sandboxol/blockymods/utils/B.smali" \
+  "smali_classes3/com/sandboxol/blockymods/utils/x\$a.smali"; do
+  grep -q "JoinBridge;->takeOverJoin" "$TREE/$gate" \
+    || { echo "FATAL: join bridge missing in $gate — run scripts/patch_join_282.py"; exit 1; }
+done
 if grep -rq '"https://d32gv25kv9q34j.cloudfront.net' "$TREE/smali" "$TREE"/smali_classes*/ 2>/dev/null; then
   echo "FATAL: unpatched cloudfront host — run scripts/patch_urls_282.py"; exit 1
 fi

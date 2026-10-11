@@ -125,6 +125,30 @@ jobs:
           adb -s localhost:5555 shell "ls -d /storage/emulated/*/SandBoxOL/BlockMan/map/* /storage/emulated/*/SandboxOL/BlockMan/map/* 2>/dev/null" || true
           adb -s localhost:5555 shell "find /storage/emulated/0/Android/data/$PACKAGE/files -maxdepth 4 -name map -type d 2>/dev/null" || true
 
+      - name: Real UI join drive (282 GJ phase)
+        # The REAL UI JOIN on the 2.8.2 client: attach to the live app ->
+        # hall -> Bedwars (g1046, pinned first) card -> btn_enter ->
+        # MiniGameToken -> JoinBridge takeover -> StartMc online ->
+        # engine initGame 127.0.0.1:31108 gameType=g1008 -> C2S login ->
+        # monitor g2r type=151. NO pm clear (it would wipe the staged
+        # engine bundle). Hard-verdict checks per channel; exit 1 on any
+        # miss so a silent local fallback can never green this workflow.
+        run: |
+          python3 scripts/ui_automation_test.py \
+            --serial localhost:5555 \
+            --package "$PACKAGE" \
+            --activity "$ACTIVITY" \
+            --line 282
+
+      - name: Pull UI-join evidence
+        if: always()
+        run: |
+          mkdir -p gjevidence
+          adb -s localhost:5555 shell "ls /sdcard/ 2>/dev/null" | tr -d '\r' | grep 'snap_GJ282_' | while read -r f; do
+            adb -s localhost:5555 pull "/sdcard/$f" gjevidence/ 2>/dev/null || true
+          done
+          ls -la gjevidence/ || echo "no GJ282 snaps (phase may not have run)"
+
       - name: Crash scan
         if: always()
         run: |
@@ -158,4 +182,5 @@ jobs:
             death282.png
             death_logcat.txt
             /tmp/localapi_probe.json
+            gjevidence/
           if-no-files-found: ignore
