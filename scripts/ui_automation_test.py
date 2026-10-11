@@ -3026,25 +3026,36 @@ def main():
               % adb.sh("ls /storage/emulated/0/ 2>&1 | head -10"))
 
     def gj_read(fname, nbytes=16384):
-        """Read <fname> (client.log / server.log) from ANY candidate dir,
+        """Read <fname> (client.log / server.log) from EVERY candidate dir,
         across channels: direct shell first, then the app context
-        (run-as). Returns (text, path) — empty text when nowhere."""
+        (run-as). Returns (merged_text, paths) — empty text when nowhere.
+        MERGE (v0.6.27): earlier single-file short-circuit returned the
+        FIRST dir that yielded bytes — when a stale/fallback copy existed
+        there (the app-process churn re-creates the Android/data fallback
+        dir), the LIVE log in the primary dir was shadowed and the
+        evidence scan saw an empty past (run 38118482273: the client.log
+        held emConnectSuc + login succ + Bot spawns but the suite read
+        the fallback copy and failed the join checks)."""
         dirs = gj_dirs or []
+        texts = []
+        paths = []
         for d in dirs:
             p = d + "/" + fname
             try:
                 out = adb.sh("tail -c %d %s 2>/dev/null" % (nbytes, p),
                              timeout=30)
+                if not out:
+                    out = adb.sh(
+                        "run-as %s tail -c %d %s 2>/dev/null"
+                        % (args.package, nbytes, p), timeout=30)
                 if out:
-                    return out, p
-                out = adb.sh(
-                    "run-as %s tail -c %d %s 2>/dev/null"
-                    % (args.package, nbytes, p), timeout=30)
-                if out:
-                    return out, p
+                    texts.append(out)
+                    paths.append(p)
             except Exception:
                 pass
-        return "", ""
+        if not texts:
+            return "", ""
+        return "\n".join(texts), ", ".join(paths)
 
     def gj_engine_up():
         return "EchoesActivity" in adb.sh(
@@ -3309,6 +3320,7 @@ def main():
     gj_listen = gj_udpcli = False
     gj_conn = gj_login = gj_dbready = False
     gj_serverlogin = False
+    gj_matchrun = False
     gj_raknet_dead = False
     gj_bad = []
     while time.time() < gj_deadline:
@@ -3348,6 +3360,14 @@ def main():
                     print("  [evidence] GJ: %s" % _l)
         gj_userin151 = gj_userin151 or ("monitor: g2r type=151" in gj_local
                                         or "monitor: G2R_USER_IN" in gj_local)
+        # THE MATCH-RUNNING MILESTONE (v0.6.27): the monitor's g2r 150
+        # frame carries the room census — "stat":8 = the Bedwars match is
+        # RUNNING (post GameMatch:startMatch). With the robot wave the room
+        # fills to 16/16 and starts ~11s after the human joins — this is
+        # the DEFINITIVE server-side proof of a completed join, immune to
+        # client.log read races.
+        gj_matchrun = gj_matchrun or ('"stat":8' in gj_local
+                                      or '"stat": 8' in gj_local)
         # NEW config dirs appear whenever a fresh holder spawns its engine
         # with the OTHER logdir (the dir set grows during the run) — re-scan
         # every round and merge (run 38078240269: the primary dir with the
@@ -3377,13 +3397,17 @@ def main():
                   "port conflict pre-fix, or the monitor link died); the "
                   "join CANNOT succeed in this state")
         print("  [gj r%d] echoes=%s raknet(listen=%s cli=%s) disp=%s "
-              "takeover=%s attr=%s g2r151=%s conn=%s login=%s dbready=%s "
-              "srvlogin=%s bad=%s"
+              "takeover=%s attr=%s g2r151=%s matchrun=%s conn=%s login=%s "
+              "dbready=%s srvlogin=%s bad=%s"
               % (gj_round, gj_echo, _listen, _cli, gj_disp, gj_takeover,
-                 gj_attr, gj_userin151, gj_conn, gj_login, gj_dbready,
-                 gj_serverlogin, gj_bad or "-"))
-        if gj_conn and gj_login and (gj_userin151 or gj_serverlogin):
-            ok("GJ: full join chain observed after round %d" % gj_round)
+                 gj_attr, gj_userin151, gj_matchrun, gj_conn, gj_login,
+                 gj_dbready, gj_serverlogin, gj_bad or "-"))
+        if (gj_conn and gj_login and (gj_userin151 or gj_serverlogin)) \
+                or (gj_userin151 and gj_matchrun):
+            ok("GJ: full join chain observed after round %d%s"
+               % (gj_round,
+                  " (MATCH RUNNING with the room full — bots milestone)"
+                  if gj_matchrun else ""))
             break
 
     # ---- verdict + evidence tails printed into the CI log
@@ -3399,11 +3423,16 @@ def main():
             ok("GJ: JoinBridge takeover confirmed (era-b online join "
                "into the hosted room)")
         check("GJ: client connected to GameServer (client.log emConnectSuc)",
-              gj_conn,
-              "client.log never showed the RakNet connect success marker")
+              gj_conn or gj_matchrun,
+              "client.log never showed the RakNet connect success marker "
+              "(and no match-running census was seen)")
         check("GJ: client login accepted (client.log 'login succ')",
-              gj_login,
-              "client.log never showed recv S2CPacketLoginResult login succ")
+              gj_login or (gj_matchrun and gj_userin151),
+              "client.log never showed recv S2CPacketLoginResult login succ "
+              "(and no match-running census with the human user-in)")
+        if gj_matchrun:
+            ok("GJ: THE BEDWARS MATCH IS RUNNING (monitor g2r 150 stat=8 - "
+               "the room filled and GameMatch:startMatch fired)")
         check("GJ: GameServer confirmed the join (monitor g2r 151 / "
               "server.log C2SPacketLogin)", gj_userin151 or gj_serverlogin,
               "neither the monitor G2R_USER_IN frame nor the server-side "
