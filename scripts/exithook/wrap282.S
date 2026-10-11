@@ -35,10 +35,11 @@
     .equ SECCOMP_SET_MODE_FILTER, 1
     .equ ENOSYS, 38
 
+.balign 4
 _start:
     mov     x29, sp                     /* x29 = original stack */
 
-    /* --- 1. prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) --- */
+    /* --- 1. prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); fail=21 --- */
     mov     x8, #SYS_PRCTL
     mov     x0, #PR_SET_NO_NEW_PRIVS
     mov     x1, #1
@@ -46,11 +47,9 @@ _start:
     mov     x3, #0
     mov     x4, #0
     svc     #0
-    cbnz    x0, fail
+    cbnz    x0, fail21
 
-    /* --- 2. seccomp(SECCOMP_SET_MODE_FILTER, 0, &fprog) ---
-       struct sock_fprog { u16 len; <pad>; struct sock_filter *filter; }
-       built on the stack: [sp] = len (14), [sp+8] = &bpf             */
+    /* --- 2. seccomp(SECCOMP_SET_MODE_FILTER, 0, &fprog); fail=22 --- */
     adr     x2, bpf
     sub     sp, sp, #32
     mov     w3, #14
@@ -62,19 +61,47 @@ _start:
     mov     x2, #0
     svc     #0
     add     sp, sp, #32
-    cbnz    x0, fail
+    cbnz    x0, fail22
 
-    /* --- 3. execve(argv[1], argv+1, envp); envp = x29 + (argc+2)*8 --- */
+    /* --- 3. execve(argv[1], argv+1, envp); fail=23 --- */
     ldr     x0, [x29, #8]               /* argv[1] = app_process    */
-    add     x1, x29, #8                 /* argv+1                   */
-    ldr     x3, [x29]                   /* argc                     */
-    add     x3, x3, #2                  /* +1 for argv's NULL,
-                                           +1 since envp starts after it */
+    add     x1, x29, #8
+    ldr     x3, [x29]
+    add     x3, x3, #2
     add     x2, x29, x3, lsl #3
     mov     x8, #SYS_EXECVE
     svc     #0
-    /* app_process64 missing? retry the 32-bit path (this is an arm64
-       build so the retry is belt-and-braces only) */
+    cbnz    x0, try64
+
+.balign 4
+.balign 4
+fail23:
+    mov     x0, #23
+    b       fail
+
+.balign 4
+try64:
+    /* --- 4. execve("/system/bin/app_process64", ...) — AMS hands the
+       32-bit path on some builds; arm64 redroid has only the 64 ---
+       fail=24 */
+    adr     x0, app_process64
+    add     x1, x29, #8
+    ldr     x3, [x29]
+    add     x3, x3, #2
+    add     x2, x29, x3, lsl #3
+    mov     x8, #SYS_EXECVE
+    svc     #0
+    cbnz    x0, try32
+
+.balign 4
+.balign 4
+fail24:
+    mov     x0, #24
+    b       fail
+
+.balign 4
+try32:
+    /* --- 5. execve("/system/bin/app_process", ...); fail=25 --- */
     adr     x0, app_process32
     add     x1, x29, #8
     ldr     x3, [x29]
@@ -83,9 +110,29 @@ _start:
     mov     x8, #SYS_EXECVE
     svc     #0
 
+.balign 4
+.balign 4
+fail25:
+    mov     x0, #25
+    b       fail
+
+.balign 4
+.balign 4
+fail21:
+    mov     x0, #21
+    b       fail
+.balign 4
+.balign 4
+fail22:
+    mov     x0, #22
+    b       fail
+
+app_process64:
+    .asciz "/system/bin/app_process64"
+
+.balign 4
 fail:
     mov     x8, #SYS_EXIT_GROUP
-    mov     x0, #1
     svc     #0
 
 app_process32:
