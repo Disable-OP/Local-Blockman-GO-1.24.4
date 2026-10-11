@@ -3014,33 +3014,59 @@ def main_282(args):
     # ---- wait for the engine room BEFORE pressing join
     g282_wait_room(adb, "282-room")
 
-    # ---- hall drive: the Bedwars card (pinned first by GameCatalog)
+    # ---- hall drive: the Bedwars card (pinned first by GameCatalog).
+    # THE CLICK LIVES ON iv_pic (GamePicItem — listadapter.f/d bind
+    # setOnClickListener to the pic; run 38157845994: tapping the
+    # tv_game_name text was a no-op, the dump proved 125 nodes with the
+    # feed intact). Cards are collected as (pic, name) pairs: each
+    # tv_game_name's pic is the nearest iv_pic ABOVE it sharing its left
+    # region (app_item_game_basic: cv_pic above tv_game_name).
     def collect_cards():
-        return [n for n in screen.dump()
-                if (n.res or "").rsplit("/", 1)[-1] == "tv_game_name"
-                and n.center and (n.text or "").strip()]
+        nodes = screen.dump()
+        pics = [n for n in nodes
+                if (n.res or "").rsplit("/", 1)[-1] == "iv_pic" and n.center]
+        cards = []
+        for n in nodes:
+            if (n.res or "").rsplit("/", 1)[-1] != "tv_game_name" \
+                    or not n.center or not (n.text or "").strip():
+                continue
+            tx, ty = n.center
+            best, bestd = None, 10 ** 9
+            for p in pics:
+                px, py = p.center
+                if abs(px - tx) > 90 or not (0 < ty - p.center[1] < 220):
+                    continue
+                d = abs(px - tx) + (ty - py)
+                if d < bestd:
+                    best, bestd = p, d
+            if best is not None:
+                cards.append((best, n))
+        return cards
 
     cards = collect_cards()
     scrolls = 0
-    while not any(_G282_BED_RE.search(n.text) for n in cards) \
+    while not any(_G282_BED_RE.search(nm.text) for _, nm in cards) \
             and scrolls < 4:
         adb.sh("input swipe 360 900 360 300 300", timeout=20)
         time.sleep(3)
         scrolls += 1
-        for n in collect_cards():
-            if all(n.text != k.text for k in cards):
-                cards.append(n)
+        known = {nm.text for _, nm in cards}
+        for pic, nm in collect_cards():
+            if nm.text not in known:
+                cards.append((pic, nm))
     print("  [282] card candidates after %d scrolls: %s"
-          % (scrolls, [n.text[:16] for n in cards[:8]]))
-    bed = next((n for n in cards if _G282_BED_RE.search(n.text)), None)
-    if bed is None:
+          % (scrolls, [nm.text[:16] for _, nm in cards[:8]]))
+    card = next(((p, nm) for p, nm in cards
+                 if _G282_BED_RE.search(nm.text)), None)
+    if card is None:
         screen.snap("GJ282_nocard")
         debug_dump(screen, "GJ282-nocard")
         fail("282: no Bedwars card in the hall feed (hosted-only "
              "JoinBridge joins g1046/g1008 only)")
         finish()
-    ok("282: Bedwars hall card found (%r)" % bed.text.strip())
-    if not screen.tap_node(bed):
+    bed_pic, bed_nm = card
+    ok("282: Bedwars hall card found (%r)" % bed_nm.text.strip())
+    if not screen.tap_node(bed_pic):
         fail("282: Bedwars card tap failed (no bounds)")
         finish()
     screen.snap("GJ282_card")
