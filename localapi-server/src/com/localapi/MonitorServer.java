@@ -51,6 +51,9 @@ public final class MonitorServer {
     private static Thread sAcceptThread;
     private static Thread sReadThread;
     private static int sBoundPort;
+    /** One robot wave per engine link; reset in acceptLoop on every new
+     *  engine socket (a swept/respawned engine is a FRESH world). */
+    private static boolean sRobotsPushed;
 
     private MonitorServer() {}
 
@@ -145,6 +148,7 @@ public final class MonitorServer {
                     sGame = s;
                     sOut = new DataOutputStream(new java.io.BufferedOutputStream(
                             s.getOutputStream()));
+                    sRobotsPushed = false; // fresh engine link -> fresh wave
                 }
                 final Socket sock = s;
                 Thread r = new Thread(() -> readLoop(sock), "LocalApiMonitorRead");
@@ -185,6 +189,19 @@ public final class MonitorServer {
             case G2R_CONNECT:
                 L.i("monitor: G2R_CONNECT " + abbreviate(json));
                 send(R2G_CONNECT_REPLY, "{}");
+                // The engine announced itself AFTER the Lua loaded (RoomManager
+                // is created post-ScriptManager load, and server.log proves the
+                // connect packet follows "script loadded on linux"). Fire the
+                // robot wave here: 15 AI attrs (isRobot=true) complete the
+                // Bedwars room to startPlayers=16 (4 teams x 4). The engine
+                // turns each attr into a real AI player via
+                // PlayerAIListener.onDynamicAttrInit -> AITeamManager:newAi ->
+                // GamePlayerControl:ctor -> World:addEntityPlayerAI +
+                // entity:sendLogin(platformId) - the AIs enter PlayerManager
+                // and WaitingPlayerTask starts its countdown once 16 players
+                // are in. Once per engine link (the flag resets on every new
+                // engine socket in acceptLoop).
+                pushRobotWave();
                 break;
             case G2R_HEARTBEAT:
                 break; // steady state, too noisy to log
@@ -197,6 +214,52 @@ public final class MonitorServer {
                 L.i("monitor: g2r type=" + type + " " + abbreviate(json));
                 break;
         }
+    }
+
+    /** One wave of AI player attrs for the Bedwars room. robotId=1 selects
+     *  AI group 1 in the map's AiPlayerConfig.csv (per-team behavior rows
+     *  101+); teams cycle 1..4 (teamPlayers=4). Synthetic platform uids
+     *  900000001+ never collide with real users (10001+) and never log in
+     *  via RakNet, so the login requestId gate never sees them. reqId is
+     *  a placeholder - RoomClient::_parseUserAttr only requires the FIELD
+     *  to exist for robots. */
+    private static void pushRobotWave() {
+        synchronized (LOCK) {
+            if (sRobotsPushed) return;
+            sRobotsPushed = true;
+        }
+        final int COUNT = 15; // startPlayers(16) - the human
+        Thread t = new Thread(() -> {
+            try { Thread.sleep(800); } catch (InterruptedException ignored) { return; }
+            int sent = 0;
+            for (int i = 1; i <= COUNT; i++) {
+                try {
+                    JSONObject o = new JSONObject();
+                    o.put("reqId", "bots");
+                    o.put("id", 900000000L + i);
+                    o.put("clz", 1);
+                    o.put("team", ((i - 1) % 4) + 1);
+                    o.put("rid", 1);
+                    o.put("sex", 1);
+                    o.put("vip", 0);
+                    o.put("name", "Bot" + i);
+                    o.put("isRobot", true);
+                    o.put("robotId", 1);
+                    JSONObject skin = new JSONObject();
+                    skin.put("skin_color", "255-225-195-255");
+                    o.put("skin", skin);
+                    send(R2G_USER_ATTR, o.toString());
+                    sent++;
+                    try { Thread.sleep(120); } catch (InterruptedException ignored) { break; }
+                } catch (Throwable t2) {
+                    L.e("monitor: robot attr " + i + " failed: " + t2);
+                }
+            }
+            L.i("monitor: pushed " + sent + "/" + COUNT
+                    + " robot attrs (isRobot=true, robotId=1, teams 1..4)");
+        }, "LocalApiMonitorRobots");
+        t.setDaemon(true);
+        t.start();
     }
 
     private static String abbreviate(String s) {

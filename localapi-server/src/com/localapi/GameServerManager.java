@@ -65,7 +65,7 @@ public final class GameServerManager {
     /** Script-tree overlay marker: completes the merged BedWar plugin tree
      *  with the BaseGame mirror files the engine's Lua loader needs. */
     private static final String OVERLAY_VERSION_FILE = "overlay-version";
-    private static final String OVERLAY_VERSION = "bedwar-full-2"; // bump to re-apply
+    private static final String OVERLAY_VERSION = "bedwar-full-3"; // bump to re-apply
 
     /** Engine-faithful runtime layout: the server CWD is <bundle>/server
      *  (resource.cfg reads ../client/), while GameServerManager's staging
@@ -733,7 +733,12 @@ public final class GameServerManager {
         o.put("name", "BedWar");
         o.put("gtype", "g1008");
         o.put("monitoraddr", "127.0.0.1:" + MonitorServer.boundPort());
-        o.put("maxplayer", 8);
+        // startPlayers=16 in the map's config.yml: WaitingPlayerTask never
+        // fires while the room holds fewer than 16 players AND
+        // isPlayerEnough(16) can never pass with maxplayer=8. 16 = 4 teams
+        // x teamPlayers(4); the monitor's robot wave completes the seats
+        // (v0.6.26-bots).
+        o.put("maxplayer", 16);
         o.put("isDebug", false);
         o.put("secret", "pq0194mxoqfh48L362G6R09T737E273X");
         o.put("isChina", false);
