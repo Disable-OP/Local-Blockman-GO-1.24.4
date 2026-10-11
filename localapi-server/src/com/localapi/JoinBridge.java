@@ -3,6 +3,7 @@ package com.localapi;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
+import android.widget.Toast;
 
 import org.json.JSONObject;
 
@@ -76,7 +77,32 @@ public final class JoinBridge {
             }
             final String gaddr = GameServerManager.gameAddr();
             if (gaddr == null) {
-                L.i(TAG + ": no live GameServer gaddr - local fallback");
+                // v0.6.36-joinhint: the engine exists ONLY after
+                // GameServerManager.ensure() stages the runtime bundle
+                // (64MB GitHub download + overlay; MapAssets' maps pack
+                // rides the same release). Until that lands, EVERY tap
+                // used to silently fall through here and the engine
+                // booted a local world with ip[]/port[0]/mapId[] and
+                // died on the empty-URL map download (HttpDownloader
+                // error 5 -> onDownloadMapFailure x2) - the exact
+                // physical-phone report of 2026-10-11. Make the
+                // fallback HONEST: kick a staging retry (idempotent,
+                // single-flight; a no-op when this process is not the
+                // 18080 holder - the holder retries via its own
+                // dispatch kick at the token request) and tell the
+                // user why, instead of a silent dead-end boot.
+                boolean kicked = GameServerManager.kick();
+                L.i(TAG + ": no live GameServer gaddr - local fallback"
+                        + " (kick=" + kicked + ")");
+                try {
+                    Toast.makeText(ctx,
+                            "Game world is still preparing (first run"
+                                    + " downloads game files). Please try"
+                                    + " again in a few minutes.",
+                            Toast.LENGTH_LONG).show();
+                } catch (Throwable t2) {
+                    L.e(TAG + ": prepare toast failed: " + t2);
+                }
                 return false;
             }
 
