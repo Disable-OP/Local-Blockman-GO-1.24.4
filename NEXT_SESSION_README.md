@@ -3000,3 +3000,33 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   the ctor UNFILTERED (delay the arm past the dlopen — arm at the FIRST verdict
   attempt instead of +4.2s; the verdict then no-ops but the ctor's checks all ran
   clean) — v13's delayed-arm logic re-targeted at loadSO/handlePreInit return.
+
+## Cron-session delta 12 (read FIRST — v38 verdict: the trap GAUNTLET; the baseline experiment decides the strategy)
+
+- **v38 verdict (run 38249979823)**: the SIGILL trap-skipper WORKS — `SILL:0` (both
+  engine processes), **37 S: skips fired, ZERO 0x169d14 tombstones**. But the engine
+  still dies: a NEW death — **SIGSEGV (SEGV_MAPERR) at libBlockMan+0x16b8a4**, same
+  call_constructors frame. The S: pattern exposes the mechanism: after 5 scattered
+  hits, a TIGHT +88-byte loop of 32 consecutive traps (3191575212 → 3191578028) —
+  **the TSS walks a dispatch table where EVERY entry is a trap** (its "I should be
+  dead" continuation after our exit-block no-ops the verdict). Rescuing traps one at
+  a time cannot win an unbounded gauntlet.
+- **THE STRATEGIC QUESTION** (delta 11's decision tree resolved): the TSS turned
+  hostile at BOOT (the exit(30) verdict, ~60-150s after launch — cont.4's finding) —
+  long before the join. WHAT triggered it? (a) the RE-SIGNED APK (anti-repackaging
+  — then serving the pristine APK to signature-reading opens could work) or (b) the
+  redroid ENVIRONMENT (emulator/root/userdebug detection — then NO APK-side fix can
+  ever work and the 10078 line needs a real device or an environment war).
+- **THE BASELINE EXPERIMENT (shipped: test-redroid-282-original.yml, run
+  38252063346)**: install the OFFICIAL unpatched APK (straight from the CDN, original
+  signature, no hooks at all) on the SAME redroid and watch the TSS's native fate for
+  5 minutes. Its death mode names the enemy:
+  - original DIES (exit/SIGILL/crash) → the ENVIRONMENT is the trigger → the 10078
+    line needs a physical device (or an environment-hiding war: hide ro.debuggable,
+    the supervisor process, the ptrace storm — the maghide-class rabbit hole);
+  - original SURVIVES → the REPACKAGING is the trigger → v40 = serve the pristine
+    APK to .apk opens (the supervisor ADDFDs a pre-opened pristine fd; the workflow
+    pushes the official APK to /data/local/tmp/pristine282.apk) and the boot verdict
+    should never fire.
+- Keep in mind for either branch: the 1.24.4/10068 line remains GREEN end-to-end
+  (Bedwars with bots); the 10078 line's blocker is exclusively the TSS's punish loop.
