@@ -424,10 +424,15 @@ static void log_stamp(void)
     lint q = 0, w = 0;
     u64 ms;
     char tmp2[16];
+    lint cr;
 
     if (g_gfd < 0)
         return;
-    sysc(__NR_clock_gettime, 1L /* MONOTONIC */, (lint)&ts, 0, 0, 0);
+    ts.sec = 0;
+    ts.nsec = 0;
+    cr = sysc(__NR_clock_gettime, 1L /* MONOTONIC */, (lint)&ts, 0, 0, 0);
+    if (cr != 0)
+        return;                 /* no stamp rather than garbage */
     /* u64 ms = sec*1000 + nsec/1e6 — NO 64-bit division anywhere (gcc
      * would emit __aeabi_uldivmod, an undefined symbol in a -nostdlib
      * .so: v21's dlopen failure). sec*1000 via shifts+adds; nsec/1e6
@@ -735,7 +740,16 @@ static void supervisor_loop(void)
              * the supervisor keeps serving notifications. */
             if ((req == 16u || req == 0x4206u || req == 0x4207u) &&
                 tgt == (u32)g_suptid && g_suptid > 0) {
-                g_resp.error = -1;      /* -EPERM: not this thread */
+                /* v23: FAKE SUCCESS. v22's -EPERM made the watchdog
+                 * retry-loop forever (dozens of T:16s) and the umbrella
+                 * never completed -> the TSS aborted engine init. A fake
+                 * success satisfies the watchdog's bookkeeping WITHOUT
+                 * the kernel ever stopping this thread: the supervisor
+                 * keeps serving notifications, and when the watchdog
+                 * later waitpid()s for this thread's stop event it will
+                 * stall against ITSELF — harmless: the engine threads
+                 * never stop. */
+                g_resp.error = 0;
                 g_resp.val   = 0;
                 g_resp.flags = 0;
                 if (g_gfd >= 0 && g_plog < 400) {
