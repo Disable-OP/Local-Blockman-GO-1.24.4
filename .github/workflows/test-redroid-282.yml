@@ -206,7 +206,7 @@ jobs:
         run: |
           mkdir -p gjevidence
           echo "== seccomp guard file evidence =="
-          adb -s localhost:5555 shell "cat /data/user/0/com.sandboxol.blockymods/files/seccomp_guard.log 2>/dev/null || echo (no guard log)"
+          adb -s localhost:5555 shell "cat /data/user/0/com.sandboxol.blockymods/files/seccomp_guard.log 2>/dev/null" || echo "(no guard log)"
           echo "== wraplog.txt (which processes actually got wrapped) =="
           adb -s localhost:5555 shell cat /data/local/tmp/wraplog.txt 2>/dev/null || echo "(no wraplog)"
           cp <(adb -s localhost:5555 shell cat /data/local/tmp/wraplog.txt 2>/dev/null) wraplog.txt 2>/dev/null || adb -s localhost:5555 shell cat /data/local/tmp/wraplog.txt > wraplog.txt 2>/dev/null || true
