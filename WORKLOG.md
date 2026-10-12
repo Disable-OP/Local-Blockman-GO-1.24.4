@@ -4809,3 +4809,20 @@ resource is unavailable.
   v7a device (delta 13 architecture) — blocked in this sandbox.
 - Docs: 10078_GAME_SERVER_UPDATE.md section 7.1 (the full addendum), delta 17.
 - Commits this session: (see push) — review tool + assembler + uploader + docs.
+
+## Session 74 - ENGINE-10078 holder: the multi-game selection (selectGame + per-game serverConfig + the serving-driven join path) (2026-10-12)
+
+Task: delta 17's item 1 — the holder must serve the JOINED game, not just BedWar.
+
+Work Log:
+- GAMES table: `GameServerManager.GameDef{gid,name,mapId,bots}` x5 (g1008 BedWar/m1008_2/15 bots; g1048/g1049/g1050/g1042 with their bundle scriptdir names + map ids, 0 bots). `defFor` accepts "1048"/"g1048"; `isGameStaged` probes the staged bundle's `scripts/<name>/ScriptMain.lua` + non-empty map dir — one dex, both lines, honest fallback for un-staged rooms.
+- `selectGame(gid)`: unknown/un-staged -> default BedWar; engine down -> pending selection (next boot picks it); alive same -> no-op; alive different -> 9s-rate-limited switch (destroy + stale sweep + kick respawn). Returns the gid the engine WILL serve.
+- `writeServerConfig(cfg, GameDef)` — room identity keys from the def (pure `buildServerConfigJson` extracted); `spawnLocked` records `sCurrentGid`; `ensureEngineMap()` places the pending/current game's map; `MonitorServer`'s wave is game-aware (`currentBotWave()`: 15 only for BedWar).
+- Handlers: dispatch reordered (token check FIRST — invalid dispatches no longer boot/switch; selectGame BEFORE kick so a first boot serves the JOINED game; pin reads `currentGameIdOrDefault` after the 10s poll); dispatchParty same; /v1/joinbridge gains optional `gameId` + `"serving"` in the response. JoinBridge: hosted gate extended to staged games; one ensure=false pre-call with gameId drives setGameId/mapId/mapUrl from `serving`.
+- Rig testability: `-Dlocalapi.gsBundleDir` override in bundleRoot(); `hostSelfTest` under `-Dlocalapi.gsSelftest=1` (stages a 5-game fake bundle, asserts table/probe/config-shape/selectGame/wave); HostTest runs it before the boot. Suite: +5 gs-multi checks (joinbridge serving x3, fixture boot, GS-SELFTEST OK) -> **696/696 GREEN** (was 691).
+- The 2.8.2 seed stage bump: `build_signed_apk_282.sh` gs-line.json stageVersion g10078-b1 -> g10078-b2 (devices restage the v2 multi-game bundle).
+- classes6.dex rebuilt: 341,176 B. Commit + push.
+
+Stage Summary:
+- The holder now routes joins by game: BedWar stays the proven default and every other join lands on its own room when the staged bundle hosts it. Both dispatch (hall join) and dispatch-party (group join) plus the UI Quick-in bridge speak the same selection protocol.
+- Next: the pristine-client on-device drive (delta 13) — now the first live exercise of the version-gate fix AND the multi-game selection; suggested first target BedWar, then a SkyBlock join for the first selectGame switch.

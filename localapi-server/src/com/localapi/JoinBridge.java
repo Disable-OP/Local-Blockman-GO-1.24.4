@@ -90,16 +90,29 @@ public final class JoinBridge {
                 // cannot read the tapped id -> keep the proven takeover
             }
             String tappedDigits = tapped.replaceAll("[^0-9]", "");
+            // MULTI-GAME (docs/10078_GAME_SERVER_UPDATE.md §7.1): the hosted
+            // mapping is no longer Bedwars-only. The staged bundle's rooms
+            // come from GameServerManager.GAMES; a tap whose game the bundle
+            // actually stages (scripts/<name>/ScriptMain.lua + a non-empty
+            // map dir) joins THAT room; everything else keeps the proven
+            // hosted pair (1046/1008) and the local-world fallback.
+            String tappedGid = tappedDigits.isEmpty() ? ""
+                    : "g" + tappedDigits;
+            GameServerManager.GameDef tappedDef = GameServerManager
+                    .defFor(tappedGid);
+            boolean tappedHosted = tappedDef != null
+                    && GameServerManager.isGameStaged(tappedDef);
             boolean hosted = tappedDigits.isEmpty()
-                    || tappedDigits.equals("1046") || tappedDigits.equals("1008");
+                    || tappedDigits.equals("1046") || tappedDigits.equals("1008")
+                    || tappedHosted;
             if (!hosted) {
                 L.i(TAG + ": game " + tapped
-                        + " is not hosted (only g1046 Bedwars -> g1008)"
-                        + " - local fallback");
+                        + " is not hosted (staged rooms: BedWar + the"
+                        + " bundle's multi-game set) - local fallback");
                 try {
                     Toast.makeText(ctx,
-                            "This build hosts Bedwars only - that game is"
-                                    + " not available yet.",
+                            "This game is not available on the local server"
+                                    + " yet.",
                             Toast.LENGTH_LONG).show();
                 } catch (Throwable t2) {
                     L.e(TAG + ": hosted-only toast failed: " + t2);
@@ -166,21 +179,45 @@ public final class JoinBridge {
             // same string serverConfig.json carries as 'secret').
             final String signature = gameToken(uid, timestamp);
 
+            // MULTI-GAME: ask the holder to SELECT the tapped game BEFORE
+            // forcing the entity's id — the response's "serving" names the
+            // room the engine will actually host (the holder falls back to
+            // the default BedWar room for anything its bundle does not
+            // stage). One lightweight ensure=false call: no sweep, just the
+            // selection + an opportunistic first push.
+            String servingId = GameServerManager.ENGINE_GAME_ID;
+            try {
+                String preRes = httpPost("/v1/joinbridge",
+                        joinBridgeBody(uid, requestId, 1, nick, 0,
+                                "Oversea", false, tappedGid));
+                if (preRes != null) {
+                    JSONObject pre = new JSONObject(preRes);
+                    String s = pre.optString("serving", "");
+                    if (!s.isEmpty()) servingId = s;
+                }
+            } catch (Throwable pt) {
+                L.i(TAG + ": select pre-call failed ("
+                        + pt.getClass().getSimpleName()
+                        + ") - default room " + servingId);
+            }
+            final GameServerManager.GameDef servingDef =
+                    GameServerManager.defForOrDefault(servingId);
+
             // The engine resolves scripts by the ScriptSetting GameType key
-            // (g####): force the hosted room's id so the engine loads the
-            // BedWar scripts + m1008_2 map regardless of the tapped card.
-            // The entity's isNewEngine/isUgc flags stay as tapped (they
+            // (g####): force the SERVING room's id so the engine loads that
+            // game's scripts + map regardless of the tapped card. The
+            // entity's isNewEngine/isUgc flags stay as tapped (they
             // already boot the correct engine .so for this client).
             gameEntity.getClass().getMethod("setGameId", String.class)
-                    .invoke(gameEntity, GameServerManager.ENGINE_GAME_ID);
-            final String mapId = GameServerManager.ENGINE_MAP_ID;
+                    .invoke(gameEntity, servingDef.gid);
+            final String mapId = servingDef.mapId;
 
             // Map bundle for the engine: result.mapUrl feeds the native
             // download -> checksums.md5 verify -> onMapDownloadSuccess ->
             // resetGameDispatch -> RakNet connect.
             final String mapUrl;
             final int resVersion;
-            JSONObject entry = MapAssets.entryForGame(GameServerManager.ENGINE_GAME_ID);
+            JSONObject entry = MapAssets.entryForGame(servingDef.gid);
             if (entry != null) {
                 mapUrl = MapAssets.durlFor(entry);
                 resVersion = entry.optInt("version", 1);
@@ -209,7 +246,7 @@ public final class JoinBridge {
                     // (run 38092797697: the attrs never landed, the C2S
                     // login timed out).
                     final String preBody = joinBridgeBody(fUid, fReqId, 1,
-                            fNick, 0, fCountry, true);
+                            fNick, 0, fCountry, true, "");
                     // WAIT FOR THE PUSH before startGame (bounded 25s): the
                     // client's C2S login is ONE-SHOT and fires ~10-15s after
                     // startGame - the attrs MUST already be on the engine
@@ -270,7 +307,7 @@ public final class JoinBridge {
                     // (push-only, ensure=false - NEVER sweep once the client
                     // may be connected) for ~44s after that.
                     final String postBody = joinBridgeBody(fUid, fReqId, 1,
-                            fNick, 0, fCountry, false);
+                            fNick, 0, fCountry, false, "");
                     new Thread(new Runnable() {
                         @Override public void run() {
                             try { Thread.sleep(30000L); }
@@ -288,8 +325,9 @@ public final class JoinBridge {
             }, "JoinBridge").start();
 
             L.i(TAG + ": takeover ONLINE join uid=" + uid + " gaddr=" + gaddr
-                    + " game=" + GameServerManager.ENGINE_GAME_ID
-                    + " map=" + mapId + " requestId=" + requestId);
+                    + " tapped=" + tapped + " serving=" + servingDef.gid
+                    + " (" + servingDef.name + ") map=" + mapId
+                    + " requestId=" + requestId);
             return true;
         } catch (Throwable t) {
             L.e(TAG + ": takeover failed: " + t);
@@ -319,9 +357,12 @@ public final class JoinBridge {
         }
     }
 
-    /** Build the /v1/joinbridge request body. */
+    /** Build the /v1/joinbridge request body (gameId may be empty — the
+     *  holder treats it as "no selection change" and reports the current
+     *  serving room). */
     private static String joinBridgeBody(long uid, String reqId, int sex,
-            String name, int vip, String country, boolean ensure) {
+            String name, int vip, String country, boolean ensure,
+            String gameId) {
         try {
             JSONObject o = new JSONObject();
             o.put("id", uid);
@@ -331,6 +372,7 @@ public final class JoinBridge {
             o.put("vip", vip);
             o.put("country", country);
             o.put("ensure", ensure);
+            if (gameId != null && !gameId.isEmpty()) o.put("gameId", gameId);
             return o.toString();
         } catch (Throwable t) {
             return "{\"id\":" + uid + ",\"reqId\":\"" + reqId

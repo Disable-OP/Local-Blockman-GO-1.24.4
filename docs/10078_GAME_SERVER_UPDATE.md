@@ -519,3 +519,24 @@ provable only to "BlockManEchoesActivity is up". v35 instruments the chain:
 
 The decision table (last marker reached = the stall point) is in
 NEXT_SESSION_README delta 9.
+
+### 7.2 Addendum (cron 20261012-20): the holder multi-game selection SHIPPED
+
+- Delta 17's item 1 is done (suite 696/696, +5 gs-multi): the holder routes
+  every join through `GameServerManager.selectGame(gid)` — the hosted-room
+  table (GameDef{gid,name,mapId,bots} x5) matches the bundle's staged trees,
+  `isGameStaged` (scripts/<name>/ScriptMain.lua + non-empty maps/<gid>/<mapId>/)
+  keeps the SAME dex honest on the BedWar-only 1.24.4 bundle, and an
+  alive-engine game switch respawns with the new scriptdir/mapdir under the
+  shared 9s respawn window. serverConfig room keys (scriptdir/mapdir/id/
+  mapid/name/gtype) come from the def (maxplayer stays 16 everywhere);
+  ensureEngineMap places the selected game's map; the monitor robot wave is
+  BedWar-only (currentBotWave(): 15 vs 0).
+- Join-path integration: dispatch (token check first, selectGame BEFORE
+  kick, pin = the RUNNING game), dispatch-party (same), /v1/joinbridge
+  (+ optional gameId, response "serving"), JoinBridge (hosted gate extends
+  to staged games; one ensure=false pre-call drives setGameId/mapId/mapUrl
+  from "serving").
+- Stage: the 2.8.2 seed gs-line.json stageVersion -> g10078-b2 (restage the
+  v2 bundle). Rig: -Dlocalapi.gsBundleDir + the hostSelfTest under
+  -Dlocalapi.gsSelftest=1 (GS-SELFTEST OK in the suite's boot log).

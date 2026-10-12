@@ -40,11 +40,14 @@ public final class GameServerManager {
     /** RakNet listen port the engine will be pointed at via Dispatch.gaddr. */
     public static final int GAME_PORT = 31108;
 
-    /** The room this manager configures the engine with (serverConfig.json):
-     *  a BedWar g1008 room on map m1008_2. Dispatch pins every join to THIS
-     *  game while the server is alive (Handlers.dispatch) — the engine is
-     *  server-authoritative, so whatever hall card the player tapped, the
-     *  room they join runs the game the on-device server actually hosts. */
+    /** The DEFAULT room this manager configures the engine with
+     *  (serverConfig.json): a BedWar g1008 room on map m1008_2 — also the
+     *  fallback for every join whose game the staged bundle does not host.
+     *  MULTI-GAME (docs/10078_GAME_SERVER_UPDATE.md §7.1): the g10078
+     *  bundle v2 stages FIVE games (the GAMES table below); dispatch/
+     *  dispatch-party now select the JOINED game via selectGame() and the
+     *  engine is respawned with that game's scriptdir/mapdir when it
+     *  differs from the running one (rate-limited by the 9s window). */
     public static final String ENGINE_GAME_ID = "g1008";
     public static final String ENGINE_MAP_ID = "m1008_2";
 
@@ -60,6 +63,190 @@ public final class GameServerManager {
      *  the 1.24.4 line, 10078 for the 2.8.2 line. */
     public static final int CLIENT_ENGINE_VERSION = 10068;
     public static final String ENGINE_GAME_NAME = "BedWar";
+
+    // ------------------------------------------------------------------
+    // MULTI-GAME (§7.1): the staged bundle's hosted rooms.
+    //
+    // gid -> (scriptdir name, map id, robot-wave size, display name).
+    //   name    = the scripts/<name> dir AND serverConfig "name"
+    //   mapId   = serverConfig mapid; mapdir = <serverDir>/maps/<gid>/<mapId>
+    //   bots    = the room-monitor robot wave size (BedWar needs
+    //             startPlayers(16) seats filled -> 15 bots; the other games
+    //             start without a player-count gate -> NO wave)
+    //   maxplayer stays 16 for every game (an upper bound >= any startPlayers;
+    //     BedWar's 16 = 4 teams x teamPlayers(4), the monitor wave completes
+    //     the seats).
+    // The g10078 bundle v2 stages all five; the 1.24.4 bundle (g1008-b2)
+    // stages BedWar ONLY — isGameStaged() probes the staged dirs, so the
+    // same dex serves both lines and an un-staged selection falls back to
+    // the default room.
+
+    /** One hosted room definition. */
+    public static final class GameDef {
+        public final String gid;    // engine ScriptSetting key ("g1048")
+        public final String name;   // scripts/<name> + serverConfig "name"
+        public final String mapId;  // serverConfig mapid
+        public final int bots;      // monitor robot-wave size (0 = none)
+        GameDef(String gid, String name, String mapId, int bots) {
+            this.gid = gid; this.name = name; this.mapId = mapId; this.bots = bots;
+        }
+    }
+
+    /** The hosted rooms of the runtime bundles (order = stability only). */
+    private static final GameDef[] GAMES = {
+            new GameDef("g1008", "BedWar", "m1008_2", 15),
+            new GameDef("g1048", "SkyBlock", "m1048_1", 0),
+            new GameDef("g1049", "SkyBlockMiningArea", "m1049_2", 0),
+            new GameDef("g1050", "SkyBlockProduct", "m1050_1", 0),
+            new GameDef("g1042", "PixelGunHall", "m1042_1", 0),
+    };
+
+    /** The room every fallback lands on (the proven BedWar room). */
+    public static GameDef defaultDef() { return GAMES[0]; }
+
+    /** Resolve an engine-form ("g1048") or numeric ("1048") game id to its
+     *  hosted-room def; anything unknown (incl. null/"") -> null. */
+    public static GameDef defFor(String gid) {
+        if (gid == null) return null;
+        String g = gid.trim();
+        if (g.isEmpty()) return null;
+        if (!g.startsWith("g") && !g.startsWith("G")) {
+            if (g.matches("[0-9]+")) g = "g" + g;
+            else return null;
+        }
+        for (GameDef d : GAMES) if (d.gid.equalsIgnoreCase(g)) return d;
+        return null;
+    }
+
+    /** defFor with the default fallback (never null). */
+    public static GameDef defForOrDefault(String gid) {
+        GameDef d = defFor(gid);
+        return d != null ? d : defaultDef();
+    }
+
+    /** True when the STAGED bundle actually carries this room (scripts/
+     *  <name>/ScriptMain.lua — the engine load contract — plus a non-empty
+     *  maps/<gid>/<mapId>/ dir). The 1.24.4 bundle hosts BedWar only, so
+     *  this is what keeps the other selections honest there. Never throws
+     *  (rig-safe: no staged bundle -> false). */
+    public static boolean isGameStaged(GameDef d) {
+        if (d == null) return false;
+        try {
+            File root = serverDir();
+            if (root == null) return false;
+            if (!new File(new File(new File(root, "scripts"), d.name),
+                    "ScriptMain.lua").isFile()) return false;
+            File mapDir = new File(new File(new File(new File(root, "maps"),
+                    d.gid), d.mapId), "");
+            String[] kids = mapDir.list();
+            return kids != null && kids.length > 0;
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    /** The game the RUNNING engine was spawned with (null = never spawned
+     *  in this process). Set after a successful launch; kept after death
+     *  ("last known") — the alive check gates every consumer. */
+    private static volatile String sCurrentGid;
+
+    /** The game the NEXT spawn will configure (selectGame writes it; the
+     *  boot/switch path consumes it). */
+    private static volatile String sPendingGid;
+
+    /** The running game's id, or the line default when nothing was ever
+     *  spawned in this process (never null). */
+    public static String currentGameIdOrDefault() {
+        String g = sCurrentGid;
+        return g != null ? g : defaultDef().gid;
+    }
+
+    /** The def the NEXT spawn will use (pending selection, else the last
+     *  known, else the default). Never null. */
+    private static GameDef pendingOrDefaultDef() {
+        String p = sPendingGid;
+        if (p != null) {
+            GameDef d = defFor(p);
+            if (d != null && isGameStaged(d)) return d;
+        }
+        String c = sCurrentGid;
+        if (c != null) {
+            GameDef d = defFor(c);
+            if (d != null && isGameStaged(d)) return d;
+        }
+        return defaultDef();
+    }
+
+    /** The robot-wave size for the game the engine is currently running
+     *  (MonitorServer consults this on G2R_USER_IN). */
+    public static int currentBotWave() {
+        return defForOrDefault(currentGameIdOrDefault()).bots;
+    }
+
+    /**
+     * MULTI-GAME join hook: make the engine serve the JOINED game.
+     *
+     *   - unknown / un-staged selection  -> the default BedWar room
+     *   - engine dead                    -> record the pending game; the
+     *                                       next boot (kick()) picks it up
+     *   - engine alive, same game        -> no-op
+     *   - engine alive, different game   -> rate-limited switch: stop the
+     *                                       engine and respawn it with the
+     *                                       new scriptdir/mapdir (the same
+     *                                       9s window ensureLiveEngine
+     *       uses — a fresh engine needs ~2-4s to link the monitor, and a
+     *       kill loop would starve it forever)
+     *
+     * @return the game id the engine WILL serve for this join (callers pin
+     *         their dispatch payloads to it — the room the client actually
+     *         joins must always match what gaddr points at). Never null,
+     *         never throws.
+     */
+    public static String selectGame(String gid) {
+        try {
+            GameDef want = defFor(gid);
+            if (want == null || !isGameStaged(want)) want = defaultDef();
+            synchronized (LOCK) {
+                if (!isAlive()) {
+                    sPendingGid = want.gid;
+                    if (!want.gid.equals(String.valueOf(sCurrentGid))) {
+                        L.i("gs: selectGame -> " + want.gid + " ("
+                                + want.name + ", engine down: next spawn"
+                                + " uses it)");
+                    }
+                    return want.gid;
+                }
+                if (want.gid.equals(sCurrentGid)) {
+                    sPendingGid = want.gid;
+                    return want.gid; // already serving
+                }
+                long now = System.currentTimeMillis();
+                if (now - sLastRespawnMs < RESPAWN_WINDOW_MS) {
+                    L.i("gs: selectGame " + want.gid + " refused (respawn"
+                            + " window) - serving " + sCurrentGid);
+                    return sCurrentGid != null ? sCurrentGid
+                            : defaultDef().gid;
+                }
+                sLastRespawnMs = now;
+                sPendingGid = want.gid;
+                L.i("gs: selectGame switch " + sCurrentGid + " -> "
+                        + want.gid + " (" + want.name + ") - respawning");
+                Process p = sProcess;
+                sProcess = null;
+                if (p != null) {
+                    try { p.destroy(); } catch (Throwable ignored) {}
+                }
+            }
+            // outside LOCK: best-effort leftover sweep (frees RakNet 31108
+            // for the fresh engine), then the single-flight boot
+            killStaleEngines();
+            kick();
+            return want.gid;
+        } catch (Throwable t) {
+            L.e("gs: selectGame failed: " + t);
+            return defaultDef().gid;
+        }
+    }
 
     private static final String BUNDLE_DIR = "gameserver-bundle";
     private static final String STAGE_VERSION_FILE = "stage-version";
@@ -180,12 +367,23 @@ public final class GameServerManager {
      *  <staging>/bundle — detect instead of assuming (run 210 lesson: the
      *  server never found resource.cfg one level short). */
     private static File bundleRoot() {
+        // HOST-RIG override (scripts/test_server_host.py): lets the suite
+        // stage a fake bundle tree without an Android Context. Unset on
+        // device — the normal path below.
+        String ov = System.getProperty("localapi.gsBundleDir");
+        if (ov != null && !ov.trim().isEmpty()) {
+            File f = new File(ov.trim());
+            File nested = new File(f, "bundle");
+            return new File(nested, "server").isDirectory() ? nested : f;
+        }
+        if (sBundleDir == null) return null;
         File nested = new File(sBundleDir, "bundle");
         return new File(nested, "server").isDirectory() ? nested : sBundleDir;
     }
 
     private static File serverDir() {
-        return new File(bundleRoot(), "server");
+        File root = bundleRoot();
+        return root == null ? null : new File(root, "server");
     }
 
     private static final Object LOCK = new Object();
@@ -412,6 +610,10 @@ public final class GameServerManager {
      */
     private static long sLastRespawnMs;
 
+    /** Min seconds between engine (re)spawns (ensureLiveEngine + the
+     *  selectGame switch share it). */
+    private static final long RESPAWN_WINDOW_MS = 9000L;
+
     public static void ensureLiveEngine() {
         synchronized (LOCK) {
             try {
@@ -431,7 +633,7 @@ public final class GameServerManager {
                 MonitorServer.start(); // now bindable
                 if (isAlive() && MonitorServer.gameConnected()) return;
                 long now = System.currentTimeMillis();
-                if (now - sLastRespawnMs < 9000L) {
+                if (now - sLastRespawnMs < RESPAWN_WINDOW_MS) {
                     return; // a fresh engine is booting - let it connect
                 }
                 sLastRespawnMs = now;
@@ -576,7 +778,7 @@ public final class GameServerManager {
                     return;
                 }
                 sLogDir = resolveLogDir(context);
-                writeServerConfig(cfg);
+                writeServerConfig(cfg, pendingOrDefaultDef());
                 ensureEngineVersionFile();
                 // Kill stale engine instances from earlier app boots FIRST:
                 // every boot spawned a new libgameserver while old ones kept
@@ -635,7 +837,10 @@ public final class GameServerManager {
                 pump.setDaemon(true);
                 pump.start();
                 L.i("gs: launched pid=" + pid() + " logdir=" + sLogDir
-                        + " port=" + GAME_PORT);
+                        + " port=" + GAME_PORT + " game="
+                        + pendingOrDefaultDef().gid + " ("
+                        + pendingOrDefaultDef().name + ")");
+                sCurrentGid = pendingOrDefaultDef().gid;
         } catch (Throwable t) {
             L.e("gs: start failed: " + t);
         }
@@ -689,11 +894,11 @@ public final class GameServerManager {
                 L.e("gs: ensureEngineMap: no store yet");
                 return;
             }
-            JSONObject entry = MapAssets.entryForGame(ENGINE_GAME_ID);
+            JSONObject entry = MapAssets.entryForGame(pendingOrDefaultDef().gid);
             String zipName = entry == null ? "" : entry.optString("zipName");
             if (zipName == null || zipName.isEmpty() || !zipName.endsWith(".zip")) {
                 L.e("gs: ensureEngineMap: no map bundle entry for "
-                        + ENGINE_GAME_ID);
+                        + pendingOrDefaultDef().gid);
                 return;
             }
             File zip = MapAssets.resolveUri(store, "sandbox/games/maps/" + zipName);
@@ -702,6 +907,9 @@ public final class GameServerManager {
                 return;
             }
             String mapNameReal = zipName.substring(0, zipName.length() - 4);
+            // MULTI-GAME: the selected room's map id — the engine (and the
+            // client's MapManager) must see the map the join will run.
+            final String engineMapId = pendingOrDefaultDef().mapId;
             int placed = 0;
             File ext = Environment.getExternalStorageDirectory();
             File[] roots = (ext != null)
@@ -711,7 +919,7 @@ public final class GameServerManager {
                 if (root == null) continue;
                 for (String spelling : new String[]{"SandboxOL", "SandBoxOL"}) {
                     File mapIdDir = new File(root,
-                            spelling + "/BlockMan/map/" + ENGINE_MAP_ID);
+                            spelling + "/BlockMan/map/" + engineMapId);
                     if (placeMap(mapIdDir, zip, mapNameReal)) placed++;
                 }
             }
@@ -727,7 +935,7 @@ public final class GameServerManager {
                 if (own != null) {
                     for (String spelling : new String[]{"SandboxOL", "SandBoxOL"}) {
                         File mapIdDir = new File(own,
-                                spelling + "/BlockMan/map/" + ENGINE_MAP_ID);
+                                spelling + "/BlockMan/map/" + engineMapId);
                         if (placeMap(mapIdDir, zip, mapNameReal)) placed++;
                     }
                 }
@@ -857,27 +1065,44 @@ public final class GameServerManager {
 
     /**
      * RoomGameConfig JSON — keys exactly as getRGConfigFromCmdline/getTestRGConfig
-     * reads them (dev/server/src/main.cpp).
+     * reads them (dev/server/src/main.cpp). MULTI-GAME: the room identity
+     * keys (scriptdir/mapdir/id/mapid/name/gtype) come from the GameDef;
+     * everything else is game-independent.
      */
-    private static void writeServerConfig(File cfg) throws Exception {
+    private static void writeServerConfig(File cfg, GameDef d) throws Exception {
+        JSONObject o = buildServerConfigJson(d, sLogDir,
+                MonitorServer.boundPort());
+        FileOutputStream out = new FileOutputStream(cfg);
+        out.write(o.toString().getBytes("UTF-8"));
+        out.close();
+        L.i("gs: config written -> " + cfg + " (game=" + d.gid + ")");
+    }
+
+    /** The pure config builder (package-private for the host rig selftest):
+     *  every key the engine's cmdline config reader consumes, pinned to the
+     *  given room definition. */
+    static JSONObject buildServerConfigJson(GameDef d, File logDir,
+                                            int monitorPort) throws Exception {
+        File sdir = serverDir();
         JSONObject o = new JSONObject();
         o.put("ip", "127.0.0.1");
         o.put("port", GAME_PORT);
-        o.put("logdir", sLogDir.getAbsolutePath() + "/");
-        o.put("scriptdir", new File(new File(serverDir(), "scripts"), "BedWar")
+        o.put("logdir", logDir.getAbsolutePath() + "/");
+        o.put("scriptdir", new File(new File(sdir, "scripts"), d.name)
                 .getAbsolutePath());
-        o.put("mapdir", new File(new File(new File(serverDir(), "maps"), "g1008"),
-                "m1008_2").getAbsolutePath() + "/");
-        o.put("id", "g1008");
-        o.put("mapid", "m1008_2");
-        o.put("name", "BedWar");
-        o.put("gtype", "g1008");
-        o.put("monitoraddr", "127.0.0.1:" + MonitorServer.boundPort());
-        // startPlayers=16 in the map's config.yml: WaitingPlayerTask never
+        o.put("mapdir", new File(new File(new File(sdir, "maps"), d.gid),
+                d.mapId).getAbsolutePath() + "/");
+        o.put("id", d.gid);
+        o.put("mapid", d.mapId);
+        o.put("name", d.name);
+        o.put("gtype", d.gid);
+        o.put("monitoraddr", "127.0.0.1:" + monitorPort);
+        // startPlayers=16 in BedWar's config.yml: WaitingPlayerTask never
         // fires while the room holds fewer than 16 players AND
         // isPlayerEnough(16) can never pass with maxplayer=8. 16 = 4 teams
         // x teamPlayers(4); the monitor's robot wave completes the seats
-        // (v0.6.26-bots).
+        // (v0.6.26-bots). The other games have no startPlayers gate in
+        // their map config — 16 stays a harmless room-capacity bound.
         o.put("maxplayer", 16);
         o.put("isDebug", false);
         o.put("secret", "pq0194mxoqfh48L362G6R09T737E273X");
@@ -912,10 +1137,119 @@ public final class GameServerManager {
         JSONObject redis = new JSONObject();
         redis.put("ip", ""); redis.put("password", ""); redis.put("port", 0);
         o.put("redisConfig", redis);
-        FileOutputStream out = new FileOutputStream(cfg);
-        out.write(o.toString().getBytes("UTF-8"));
-        out.close();
-        L.i("gs: config written -> " + cfg);
+        return o;
+    }
+
+    /**
+     * HOST-RIG selftest (never runs on device): exercises the multi-game
+     * machinery end-to-end in-process — the GAMES table, the staged-tree
+     * probe, the per-game config shape, the selectGame fallbacks and the
+     * game-aware robot wave. scripts/test_server_host.py boots a throwaway
+     * HostTest with -Dlocalapi.gsSelftest=1 and greps for GS-SELFTEST OK.
+     *
+     * Stages a FAKE bundle at <bundleDir>/server (ScriptMain.lua + a
+     * non-empty map dir per game — exactly what isGameStaged probes), so
+     * the assertions are deterministic with no Android runtime.
+     */
+    static void hostSelfTest(File bundleDir) {
+        int n = 0;
+        try {
+            // keep the rig override and the selftest tree one source of truth
+            if (System.getProperty("localapi.gsBundleDir") == null) {
+                System.setProperty("localapi.gsBundleDir",
+                        bundleDir.getAbsolutePath());
+            }
+            File sdir = new File(bundleDir, "server");
+            // stage the fake bundle: every hosted game looks installed
+            for (GameDef d : GAMES) {
+                File sm = new File(new File(new File(sdir, "scripts"), d.name),
+                        "ScriptMain.lua");
+                sm.getParentFile().mkdirs();
+                if (!sm.exists() && !sm.createNewFile()) {
+                    throw new IllegalStateException("stage failed " + sm);
+                }
+                File md = new File(new File(new File(new File(sdir, "maps"),
+                        d.gid), d.mapId), "");
+                md.mkdirs();
+                new File(md, "config.yml").createNewFile();
+            }
+            // 1. the table
+            check(n++, defFor("g1008") == defaultDef()
+                    && defFor("g1008").name.equals("BedWar")
+                    && defFor("g1008").mapId.equals("m1008_2")
+                    && defFor("g1008").bots == 15, "g1008 def");
+            check(n++, defFor("1048") != null && defFor("g1048") != null
+                    && defFor("g1048").name.equals("SkyBlock")
+                    && defFor("g1048").mapId.equals("m1048_1")
+                    && defFor("g1048").bots == 0, "g1048 def (numeric form)");
+            check(n++, defFor("g1049").name.equals("SkyBlockMiningArea")
+                    && defFor("g1049").mapId.equals("m1049_2")
+                    && defFor("g1050").name.equals("SkyBlockProduct")
+                    && defFor("g1050").mapId.equals("m1050_1")
+                    && defFor("g1042").name.equals("PixelGunHall")
+                    && defFor("g1042").mapId.equals("m1042_1"),
+                    "g1049/g1050/g1042 defs");
+            check(n++, defFor("g9999") == null && defFor("") == null
+                    && defFor(null) == null && defFor("garbage") == null
+                    && defForOrDefault("g9999") == defaultDef(),
+                    "unknown -> null / default fallback");
+            // 2. the staged probe
+            for (GameDef d : GAMES) {
+                check(n++, isGameStaged(d), "staged " + d.gid);
+            }
+            // 3. the per-game config shape
+            File logDir = new File(bundleDir, "logs");
+            logDir.mkdirs();
+            for (GameDef d : GAMES) {
+                JSONObject c = buildServerConfigJson(d, logDir, 18081);
+                boolean ok = c.optString("scriptdir").equals(
+                        new File(new File(sdir, "scripts"), d.name)
+                                .getAbsolutePath())
+                        && c.optString("mapdir").equals(new File(new File(
+                                new File(sdir, "maps"), d.gid), d.mapId)
+                                .getAbsolutePath() + "/")
+                        && c.optString("id").equals(d.gid)
+                        && c.optString("mapid").equals(d.mapId)
+                        && c.optString("name").equals(d.name)
+                        && c.optString("gtype").equals(d.gid)
+                        && c.optInt("maxplayer") == 16
+                        && c.optString("monitoraddr").equals("127.0.0.1:18081")
+                        && c.optString("gameDataServiceAddr")
+                                .equals("http://127.0.0.1:18080");
+                check(n++, ok, "config shape " + d.gid);
+            }
+            // 4. selectGame fallbacks (no engine on the rig: the pending
+            //    selection is recorded and returned)
+            check(n++, selectGame("g9999").equals("g1008")
+                    && selectGame("").equals("g1008")
+                    && selectGame(null).equals("g1008"),
+                    "selectGame unknown -> default");
+            check(n++, selectGame("g1048").equals("g1048")
+                    && selectGame("1049").equals("g1049")
+                    && pendingOrDefaultDef().gid.equals("g1049"),
+                    "selectGame records the pending room");
+            check(n++, selectGame("g1008").equals("g1008")
+                    && pendingOrDefaultDef().gid.equals("g1008"),
+                    "selectGame back to the default");
+            // 5. the game-aware robot wave
+            check(n++, currentBotWave() == 15, "wave for the default room");
+            sCurrentGid = "g1048";
+            check(n++, currentBotWave() == 0, "no wave for SkyBlock");
+            sCurrentGid = "g1008";
+            check(n++, currentBotWave() == 15, "wave restored for BedWar");
+            sCurrentGid = null;
+            System.out.println("GS-SELFTEST OK (" + n + " assertions)");
+        } catch (Throwable t) {
+            System.out.println("GS-SELFTEST FAILED at " + (n + 1)
+                    + " assertions: " + t);
+            t.printStackTrace();
+        }
+    }
+
+    /** Tiny assertion helper for hostSelfTest (throws on failure). */
+    private static void check(int idx, boolean ok, String what) {
+        if (!ok) throw new IllegalStateException("assertion #" + (idx + 1)
+                + " failed: " + what);
     }
 
     private static File findBinary(Context context) {

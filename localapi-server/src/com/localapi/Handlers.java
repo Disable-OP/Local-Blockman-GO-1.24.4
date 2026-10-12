@@ -1465,7 +1465,10 @@ final class Handlers {
             L.i("dispatch-party: no members -> code 0 (Lua retries then fails)");
             return "{\"code\":0,\"message\":\"no members\",\"data\":null}";
         }
-        // Lazy engine boot + pin-to-server (identical policy to dispatch())
+        // MULTI-GAME selection BEFORE the boot (identical policy to
+        // dispatch()): the pending room is the party's game, then the lazy
+        // engine boot / switch runs below.
+        GameServerManager.selectGame(gameType);
         boolean gsKicked = GameServerManager.kick();
         String gameAddrEarly = GameServerManager.gameAddr();
         for (int i = 0; gsKicked && gameAddrEarly == null && i < 20; i++) {
@@ -1476,8 +1479,12 @@ final class Handlers {
         String defaultMap = mapId;
         String gameAddr = GameServerManager.gameAddr();
         if (gameAddr != null) {
-            engineType = GameServerManager.ENGINE_GAME_ID;
-            defaultMap = GameServerManager.ENGINE_MAP_ID;
+            // PIN-TO-SERVER (multi-game): the room the engine actually
+            // hosts after the selection above.
+            GameServerManager.GameDef d = GameServerManager.defFor(
+                    GameServerManager.currentGameIdOrDefault());
+            engineType = d.gid;
+            defaultMap = d.mapId;
         }
         JSONObject mapEntry = engineType.matches("g[0-9]+")
                 ? MapAssets.entryForGame(engineType) : null;
@@ -1546,7 +1553,12 @@ final class Handlers {
      * (sweep + respawn a stale one - SAFE, the client engine boots only
      * after startGame). ensure=false (post-startGame): push-only, never
      * sweep (the client may already be connected to the engine).
-     * Response: {"code":1,"pushed":bool,"gameConnected":bool}.
+     * MULTI-GAME: an optional "gameId" names the JOINED game — the holder
+     * runs GameServerManager.selectGame(gameId) (staged-bundle fallback to
+     * the default room) BEFORE the ensure loop; the response carries
+     * "serving" = the room the engine will actually host, which the UI
+     * bridge must use for its setGameId/mapId/mapUrl.
+     * Response: {"code":1,"pushed":bool,"gameConnected":bool,"serving":gid}.
      */
     public static String joinBridge(Ctx ctx, StateStore store) {
         long uid = 0;
@@ -1556,6 +1568,7 @@ final class Handlers {
         int vip = 0;
         String country = "Oversea";
         boolean ensure = true;
+        String gameId = "";
         try {
             JSONObject b = new JSONObject(ctx.body());
             uid = b.optLong("id", 0);
@@ -1565,7 +1578,15 @@ final class Handlers {
             vip = b.optInt("vip", 0);
             country = b.optString("country", "Oversea");
             ensure = b.optBoolean("ensure", true);
+            // MULTI-GAME: the UI bridge names the JOINED game; the holder
+            // selects it (fallback default) BEFORE the ensure loop respawns
+            // anything — the response's "serving" tells the UI which room
+            // the client will actually join.
+            gameId = b.optString("gameId", "");
         } catch (Throwable ignored) {}
+        String serving = gameId.isEmpty()
+                ? GameServerManager.currentGameIdOrDefault()
+                : GameServerManager.selectGame(gameId);
         boolean pushed = false;
         if (uid > 0 && requestId != null && !requestId.isEmpty()) {
             // CAP the in-handler poll at ~3s: the caller (JoinBridge) loops
@@ -1591,27 +1612,18 @@ final class Handlers {
         out.put("code", 1);
         out.put("pushed", pushed);
         out.put("gameConnected", MonitorServer.gameConnected());
+        out.put("serving", serving);
         L.i("joinbridge: uid=" + uid + " req=" + requestId
-                + " ensure=" + ensure + " -> pushed=" + pushed
+                + " ensure=" + ensure + " gameId=" + gameId
+                + " serving=" + serving + " -> pushed=" + pushed
                 + " connected=" + MonitorServer.gameConnected());
         return out.toString();
     }
 
     private static String dispatch(Ctx ctx, StateStore store, boolean follow) {
-        // Lazy engine boot on the join moment: the FIRST boot's one-shot
-        // startIfPossible can give up while the 64MB bundle is still
-        // staging, and nothing retried in that process (run 38073049374:
-        // the first boot never started the engine at all). Idempotent +
-        // background (GameServerManager.kick). When a boot is actually in
-        // flight, hold the response briefly so THIS dispatch (the client
-        // only dispatches once per join) serves the real RakNet gaddr
-        // instead of the legacy loopback the engine cannot join.
-        boolean gsKicked = GameServerManager.kick();
-        String gameAddrEarly = GameServerManager.gameAddr();
-        for (int i = 0; gsKicked && gameAddrEarly == null && i < 20; i++) {
-            try { Thread.sleep(500); } catch (InterruptedException ie) { break; }
-            gameAddrEarly = GameServerManager.gameAddr();
-        }
+        // Fail-fast token check (moved above the boot wait: an invalid
+        // dispatch must not boot/switch the engine — the same fail envelope
+        // as before, just without the side effects).
         String token = ctx.header("x-shahe-token");
         String uidHdr = ctx.header("x-shahe-uid");
         JSONObject mt = store.findMiniToken(token);
@@ -1636,26 +1648,44 @@ final class Handlers {
         String engineType = game == null ? gameType
                 : game.optString("scriptType", gameType);
         String defaultMap = game == null ? "" : game.optString("mapName", "");
-        // PIN-TO-SERVER: while the on-device GameServer is alive, EVERY
-        // join dispatches into the room it actually hosts (BedWar g1008 on
-        // map m1008_2 — serverConfig.json). The engine is
-        // server-authoritative: the room's S2C game-info packet tells the
-        // client what it joined. Serving the tapped card's own script id
-        // instead would send the client to download THAT game's map and
-        // then mismatch the g1008 room (run 38073051447: the Sandbox card
-        // never even reached dispatch — its Quick-in is client-local; with
-        // the Bedwars hall pinned first AND this pin, any online join
-        // lands on the BedWar room).
+        // MULTI-GAME selection BEFORE the boot: the pending room is the
+        // JOINED game (selectGame falls back to the default BedWar room when
+        // the staged bundle does not host it) so the engine below boots —
+        // or switches — into the game the client asked for.
+        GameServerManager.selectGame(engineType);
+        // Lazy engine boot on the join moment: the FIRST boot's one-shot
+        // startIfPossible can give up while the 64MB bundle is still
+        // staging, and nothing retried in that process (run 38073049374:
+        // the first boot never started the engine at all). Idempotent +
+        // background (GameServerManager.kick). When a boot is actually in
+        // flight (first boot OR a selectGame switch), hold the response
+        // briefly so THIS dispatch (the client dispatches once per join)
+        // serves the real RakNet gaddr instead of the legacy loopback the
+        // engine cannot join.
+        boolean gsKicked = GameServerManager.kick();
+        String gameAddrEarly = GameServerManager.gameAddr();
+        for (int i = 0; gsKicked && gameAddrEarly == null && i < 20; i++) {
+            try { Thread.sleep(500); } catch (InterruptedException ie) { break; }
+            gameAddrEarly = GameServerManager.gameAddr();
+        }
+        // PIN-TO-SERVER (multi-game): while the on-device GameServer is
+        // alive, EVERY join dispatches into the room it actually hosts —
+        // which now follows the selection above instead of hard-pinning
+        // BedWar. The engine is server-authoritative: the room's S2C
+        // game-info packet tells the client what it joined. Serving the
+        // tapped card's own script id instead would send the client to
+        // download THAT game's map and then mismatch the hosted room (run
+        // 38073051447).
         String gameAddr0 = GameServerManager.gameAddr();
         if (gameAddr0 != null) {
-            engineType = GameServerManager.ENGINE_GAME_ID;
-            defaultMap = GameServerManager.ENGINE_MAP_ID;
-            mapName = GameServerManager.ENGINE_MAP_ID;
-            JSONObject serverGame = GameCatalog.byId(store, engineType);
-            name = serverGame == null
-                    ? GameServerManager.ENGINE_GAME_NAME
-                    : serverGame.optString("gameTitle",
-                            GameServerManager.ENGINE_GAME_NAME);
+            GameServerManager.GameDef d = GameServerManager.defFor(
+                    GameServerManager.currentGameIdOrDefault());
+            engineType = d.gid;
+            defaultMap = d.mapId;
+            mapName = d.mapId;
+            JSONObject serverGame = GameCatalog.byId(store, d.gid);
+            name = serverGame == null ? d.name
+                    : serverGame.optString("gameTitle", d.name);
         }
         String croomId = game == null
                 ? GameCatalog.chatRoom(store, "game-" + (gameType.isEmpty() ? "lobby" : gameType))

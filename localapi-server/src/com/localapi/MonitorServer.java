@@ -227,33 +227,44 @@ public final class MonitorServer {
      *  the login completed, and WaitingPlayerTask only starts its countdown
      *  once isPlayerEnough(startPlayers) passes — which needs the bots — so
      *  the ~2.6s the wave takes to land cannot outrun the match start.
-     *  Robots (ids ROBOT_UID_BASE+) never re-trigger the wave. */
+     *  Robots (ids ROBOT_UID_BASE+) never re-trigger the wave.
+     *  MULTI-GAME: only games with a player-count gate get a wave (BedWar's
+     *  startPlayers=16); GameServerManager.currentBotWave() answers 0 for
+     *  the others (SkyBlock/PixelGunHall start with whatever humans join). */
     private static void onUserIn(String json) {
         try {
             long id = new JSONObject(json).optLong("id", 0);
             if (id > 0 && id < ROBOT_UID_BASE) {
+                int wave = GameServerManager.currentBotWave();
+                if (wave <= 0) {
+                    L.i("monitor: human " + id + " entered the room — game "
+                            + GameServerManager.currentGameIdOrDefault()
+                            + " needs no robot wave");
+                    return;
+                }
                 L.i("monitor: human " + id + " entered the room — pushing "
-                        + "the robot wave");
-                pushRobotWave();
+                        + "the robot wave (" + wave + ")");
+                pushRobotWave(wave);
             }
         } catch (Throwable t) {
             L.e("monitor: user-in parse failed: " + t);
         }
     }
 
-    /** One wave of AI player attrs for the Bedwars room. robotId=1 selects
-     *  AI group 1 in the map's AiPlayerConfig.csv (per-team behavior rows
-     *  101+); teams cycle 1..4 (teamPlayers=4). Synthetic platform uids
-     *  ROBOT_UID_BASE+1.. never collide with real users (10001+) and never
-     *  log in via RakNet, so the login requestId gate never sees them.
-     *  reqId is a placeholder - RoomClient::_parseUserAttr only requires
-     *  the FIELD to exist for robots. */
-    private static void pushRobotWave() {
+    /** One wave of AI player attrs for the hosted room (the size comes from
+     *  the game's GameDef — BedWar: 15 = startPlayers(16) - the human).
+     *  robotId=1 selects AI group 1 in the map's AiPlayerConfig.csv
+     *  (per-team behavior rows 101+); teams cycle 1..4 (teamPlayers=4).
+     *  Synthetic platform uids ROBOT_UID_BASE+1.. never collide with real
+     *  users (10001+) and never log in via RakNet, so the login requestId
+     *  gate never sees them. reqId is a placeholder - RoomClient::
+     *  _parseUserAttr only requires the FIELD to exist for robots. */
+    private static void pushRobotWave(int count) {
         synchronized (LOCK) {
             if (sRobotsPushed) return;
             sRobotsPushed = true;
         }
-        final int COUNT = 15; // startPlayers(16) - the human
+        final int COUNT = count;
         Thread t = new Thread(() -> {
             try { Thread.sleep(800); } catch (InterruptedException ignored) { return; }
             int sent = 0;

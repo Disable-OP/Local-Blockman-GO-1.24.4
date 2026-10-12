@@ -4102,6 +4102,83 @@ def main():
             proc_gi.kill()
         log_gi.close()
 
+    # ---- gs multi-game selection (delta 18: the hosted-room table) ----
+    # 1) endpoint level: /v1/joinbridge carries "serving" — with NO staged
+    #    bundle every selection falls back to the default BedWar room
+    #    (isGameStaged probes scripts/<name>/ScriptMain.lua + a non-empty
+    #    maps/<gid>/<mapId>/ — absent on the rig without the override).
+    print("== Wave gs-multi: hosted-room selection ==")
+    dir_mg = tempfile.mkdtemp(prefix="localapi-gsmulti-")
+    port_mg = random.randint(20000, 32000)
+    while port_mg in (PORT, port2, port3, port4, port5, port6, port7, port8):
+        port_mg = random.randint(20000, 32000)
+    proc_mg, log_mg = boot_hosttest(dir_mg, port_mg)
+    try:
+        base_mg = "http://127.0.0.1:%d" % port_mg
+        check("gs-multi: fixture instance boots", wait_serving(base_mg), "")
+        jb_mg = call("POST", "/v1/joinbridge",
+                     body={"id": 10001, "reqId": "mg-1", "ensure": False,
+                           "gameId": "g1048"}, base=base_mg)
+        check("gs-multi: joinbridge serving present (fallback, no bundle)",
+              jb_mg.get("code") == 1 and jb_mg.get("serving") == "g1008",
+              str(jb_mg)[:200])
+        jb_mg2 = call("POST", "/v1/joinbridge",
+                      body={"id": 10001, "reqId": "mg-2", "ensure": False,
+                            "gameId": "g9999"}, base=base_mg)
+        check("gs-multi: unknown gameId falls back to the default room",
+              jb_mg2.get("code") == 1 and jb_mg2.get("serving") == "g1008",
+              str(jb_mg2)[:200])
+        jb_mg3 = call("POST", "/v1/joinbridge",
+                      body={"id": 10001, "reqId": "mg-3", "ensure": False},
+                      base=base_mg)
+        check("gs-multi: no gameId reports the current/default room",
+              jb_mg3.get("code") == 1 and jb_mg3.get("serving") == "g1008",
+              str(jb_mg3)[:200])
+    finally:
+        try:
+            proc_mg.terminate()
+            proc_mg.wait(timeout=10)
+        except Exception:
+            proc_mg.kill()
+        log_mg.close()
+
+    # 2) Java level: the GameServerManager selftest (staged fake bundle ->
+    #    the full hosted-room table, per-game config shape, selectGame
+    #    fallbacks, the game-aware robot wave). The selftest prints
+    #    GS-SELFTEST OK / FAILED to stdout (boot.log) BEFORE the HTTP boot.
+    dir_st = tempfile.mkdtemp(prefix="localapi-gsselftest-")
+    port_st = random.randint(20000, 32000)
+    while port_st in (PORT, port2, port3, port4, port5, port6, port7, port8):
+        port_st = random.randint(20000, 32000)
+    proc_st, log_st = boot_hosttest(dir_st, port_st,
+                                    extra_props=["-Dlocalapi.gsSelftest=1"])
+    try:
+        marker = b"GS-SELFTEST"
+        hit = b""
+        end = time.time() + 30
+        while time.time() < end:
+            try:
+                with open(os.path.join(dir_st, "boot.log"), "rb") as f:
+                    blob = f.read()
+                if marker in blob:
+                    hit = blob
+                    break
+            except Exception:
+                pass
+            time.sleep(0.3)
+        ok_st = b"GS-SELFTEST OK" in hit
+        detail = hit[hit.index(marker): hit.index(marker) + 300].decode(
+            "utf-8", "replace") if hit else "marker never appeared"
+        check("gs-multi: Java selftest (defs/config/selectGame/wave) green",
+              ok_st, detail.replace("\n", " | ")[:280])
+    finally:
+        try:
+            proc_st.terminate()
+            proc_st.wait(timeout=10)
+        except Exception:
+            proc_st.kill()
+        log_st.close()
+
 
     # --- Wave 282: the 2.8.2 (blockymods, engine 10078) client surface ---
     # Pins the Mods282 state-backed handlers: PayUserInfo shape (decompiled

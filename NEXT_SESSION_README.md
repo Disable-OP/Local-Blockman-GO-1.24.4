@@ -3248,3 +3248,83 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
      version-gate fix.
   3. Optional: SkyBlock cosmetic light-block definitions (myplugin:*_light
      1361-1366) as a CustomBlocks csv if the spawn looks wrong on-device.
+
+## Cron-session delta 18 (read FIRST — the HOLDER MULTI-GAME SELECTION is DONE: selectGame + per-game serverConfig + the serving-driven dispatch/joinbridge; suite 696/696)
+
+- **Delta 17's item 1 (holder multi-game selection) is COMPLETE** — pure Java,
+  suite-verified (691 -> 696 checks, +5 gs-multi, all green):
+  - **The hosted-room table** (`GameServerManager.GameDef` + `GAMES`): g1008
+    BedWar/m1008_2 (bots 15), g1048 SkyBlock/m1048_1, g1049
+    SkyBlockMiningArea/m1049_2, g1050 SkyBlockProduct/m1050_1, g1042
+    PixelGunHall/m1042_1 (bots 0). `defFor` normalizes "1048"->"g1048";
+    unknown/null -> null. **`isGameStaged(def)`** probes the STAGED bundle
+    (`scripts/<name>/ScriptMain.lua` — the engine load contract — plus a
+    non-empty `maps/<gid>/<mapId>/`): the SAME dex serves both lines — the
+    1.24.4 bundle (BedWar-only) honestly falls back, the g10078 v2 bundle
+    hosts all five.
+  - **`selectGame(gid)`** (the join hook): unknown/un-staged -> the default
+    BedWar room; engine dead -> record `sPendingGid` (the next boot picks it
+    up); alive + same game -> no-op; alive + different -> RATE-LIMITED
+    switch (the shared 9s `RESPAWN_WINDOW_MS`): stop the engine, sweep, and
+    respawn with the new scriptdir/mapdir. Returns the gid the engine WILL
+    serve — callers pin their payloads to it, so the room the client joins
+    always matches what gaddr points at.
+  - **`writeServerConfig(cfg, GameDef)`** — the room identity keys
+    (scriptdir/mapdir/id/mapid/name/gtype) now come from the def (extracted
+    pure `buildServerConfigJson`); maxplayer stays 16 for every game
+    (BedWar's 4x4 seats; the others have no startPlayers gate — a harmless
+    capacity bound). `spawnLocked` records `sCurrentGid` after a launch.
+  - **`ensureEngineMap()`** is selection-aware: it places the map of the
+    PENDING/current game (`pendingOrDefaultDef()`), so JoinBridge's
+    pre-join placement puts down the JOINED game's map, not always m1008_2.
+  - **`MonitorServer`'s robot wave is game-aware**: `currentBotWave()`
+    answers 15 for BedWar (startPlayers 16 - the human) and 0 for the
+    others (SkyBlock/PixelGunHall start with whatever humans join — pushing
+    a 15-bot BedWar wave into them would be wrong).
+  - **`Handlers.dispatch`** (reordered, fail-fast): the token check runs
+    FIRST (an invalid dispatch no longer boots/switches the engine — same
+    fail envelope), then the catalog resolves the JOINED gid, then
+    `selectGame` runs BEFORE `kick()` (so a first boot picks the joined
+    game, not the default), then the 10s poll (covers both a first boot and
+    a switch respawn), then the pin reads the ACTUALLY RUNNING game
+    (`currentGameIdOrDefault` -> GameDef) for gameType/mid/mname/name and
+    the map downurl. **`dispatchParty`** gets the same selection + pin.
+    **`/v1/joinbridge`** accepts an optional `gameId` (selectGame) and the
+    response gains **`"serving"`** — the room the UI bridge must join.
+  - **`JoinBridge`** (the 1.24.4-line UI takeover): the hosted gate now
+    accepts any game the staged bundle hosts (tapped "1048" ->
+    `isGameStaged(g1048)`), makes ONE lightweight ensure=false pre-call
+    with `gameId` BEFORE `setGameId`, and drives
+    setGameId/mapId/mapUrl/resVersion from the response's `serving` def.
+    The 1046/1008 pair stays hosted unconditionally (proven behavior).
+  - **THE STAGE BUMP**: the 2.8.2 seed asset (`build_signed_apk_282.sh`)
+    now says `"stageVersion": "g10078-b2"` so devices staged on b1 restage
+    the v2 multi-game bundle. The 1.24.4 line keeps g1008-b2 (its bundle
+    did not change).
+- **RIG TESTABILITY** (no Android runtime needed): `bundleRoot()` honors
+  `-Dlocalapi.gsBundleDir` (the suite stages a fake bundle tree); a
+  `GameServerManager.hostSelfTest(bundleDir)` (run by `HostTest` under
+  `-Dlocalapi.gsSelftest=1`) stages a 5-game fake bundle and asserts the
+  table, the staged probe, the per-game config shape, the selectGame
+  fallbacks and the game-aware wave — the suite greps `GS-SELFTEST OK` from
+  the boot log. The suite's gs-multi wave: 4 endpoint checks (joinbridge
+  serving fallbacks) + the selftest check.
+- **Watch in the first multi-game on-device run**: (1) a game switch kills
+  the engine mid-join if a dispatch lands inside another join's 9s window —
+  the response then serves the CURRENT room's ids (consistent, the client
+  joins what gaddr points at); (2) the dispatch/dispatch-party attr push is
+  still one-shot after the poll — if a switch respawn links the monitor
+  slower than ~10s the login gate may miss attrs (the 1.24.4 line's
+  JoinBridge loop already retries; the 2.8.2 dispatch flow will show it).
+- **NEXT (in order):**
+  1. The pristine-client on-device drive (delta 13): hosts redirect +
+     self-CA + official 2.8.2 APK — v7a hardware required; NOW the first
+     live exercise of BOTH the version-gate fix (delta 17) and the
+     multi-game selection (this delta). Suggested first target: BedWar
+     (proven room), then a SkyBlock join (exercises selectGame's first
+     switch end-to-end).
+  2. Optional: SkyBlock cosmetic light-block CustomBlocks csv (delta 17's
+     item 3) if the spawn looks wrong on-device.
+  3. Then: monitor-log review of the first 10078 match (the C2SPacketLogin
+     fields §6 residual risk; `WebService:GetUserAttr`'s colorfulNickName
+     path).

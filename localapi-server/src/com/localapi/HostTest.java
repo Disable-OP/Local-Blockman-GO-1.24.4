@@ -14,6 +14,15 @@ public final class HostTest {
             System.err.println("usage: HostTest <stateDir> <port>");
             System.exit(2);
         }
+        // MULTI-GAME selftest (scripts/test_server_host.py): with
+        // -Dlocalapi.gsSelftest=1, exercise GameServerManager's hosted-room
+        // table / staged probe / per-game config / selectGame fallbacks
+        // BEFORE the HTTP server boots; the suite greps the boot log for
+        // GS-SELFTEST OK. Inert on device (the property is never set).
+        if (System.getProperty("localapi.gsSelftest") != null) {
+            GameServerManager.hostSelfTest(new File(args[0],
+                    "gs-selftest-bundle"));
+        }
         StateStore store = new StateStore(new File(args[0]));
         GameCatalog.ensure(store);
         GameCatalog.drift(store);
