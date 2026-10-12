@@ -91,6 +91,8 @@ typedef long               lint;
 #define __NR_pidfd_open   434L
 #define __NR_pidfd_getfd  438L
 #define __NR_getppid      110L
+#define __NR_fcntl        72L
+#define __NR_readlinkat  267L
 #define __NR_ptrace      101L
 #define __NR_kill         62L
 #define __NR_clock_gettime 228L
@@ -172,6 +174,8 @@ static inline lint sysc6(lint n, lint a, lint b, lint c, lint d, lint e,
 #define __NR_pidfd_open   434L
 #define __NR_pidfd_getfd  438L
 #define __NR_getppid       64L
+#define __NR_fcntl        55L
+#define __NR_readlinkat  332L
 #define __NR_ptrace      26L
 #define __NR_kill         37L
 #define __NR_clock_gettime 263L
@@ -266,6 +270,9 @@ static inline lint sysc6(lint n, lint a, lint b, lint c, lint d, lint e,
 
 #ifndef BGSCOMP_LOGPATH
 #define BGSCOMP_LOGPATH "/data/local/tmp/guardlog.txt"
+#endif
+#ifndef BGSCOMP_CHILDLOG
+#define BGSCOMP_CHILDLOG "/data/local/tmp/childlog.txt"
 #endif
 
 /* ------------------------------------------------------------------ */
@@ -1037,72 +1044,143 @@ static struct bgshm *g_shm;
 
 static void supervisor_child(void)
 {
-    struct bgshm *shm = g_shm;
     struct { long s; long ns; } ts;
-    lint pdf, l;
+    char pbuf[48];
+    lint pp, w2 = 0;
+    u32 uv = (u32)sysc(__NR_getppid, 0, 0, 0, 0, 0);
+    char t3[12];
+    lint l = -1;
 
-    if (shm)
-        while (shm->lfd < 0) {
-            ts.s = 0;
-            ts.ns = 1000000L;
-            sysc(__NR_nanosleep, (lint)&ts, 0, 0, 0, 0);
+    /* v28: the child logs to its OWN file (the inherited guardlog fd
+     * did not land — root cause irrelevant now, the childlog is proven)
+     * and coordinates through the guardlog's LSTFD line. The listener
+     * is validated WITHOUT consuming a notification: readlinkat of the
+     * parent's /proc/<ppid>/fd/<n> must say "anon_inode:[seccomp..."
+     * (the v26/v27 RECV probe ORPHANED the parent's first pending
+     * notification and hung it forever). */
+    g_gfd = sysc(__NR_openat, AT_FDCWD, (lint)BGSCOMP_CHILDLOG,
+                 O_WRONLY | O_APPEND | O_CREAT, 0666L, 0);
+    log_str("CH0 spawned\n");
+
+    pp = 0;
+    { static const char pre[7] = "/proc/";
+      lint i2; for (i2 = 0; i2 < 6; i2++) pbuf[pp++] = pre[i2]; }
+    if (uv == 0) t3[w2++] = '0';
+    while (uv) { u32 d; uv = udiv10(uv, &d); t3[w2++] = (char)('0' + d); }
+    while (w2) pbuf[pp++] = t3[--w2];
+    pbuf[pp++] = '/';
+    { lint dirbase = pp;   /* "/proc/<ppid>/fd/" prefix len */
+      (void)dirbase; }
+
+    for (;;) {
+        lint lg = sysc(__NR_openat, AT_FDCWD, (lint)BGSCOMP_LOGPATH,
+                       O_RDONLY, 0, 0);
+        if (lg >= 0) {
+            char buf[4096];
+            lint n = sysc(__NR_read, lg, (lint)buf, (lint)sizeof(buf), 0, 0);
+            sysc(__NR_close, lg, 0, 0, 0, 0);
+            if (n > 0) {
+                lint i, j;
+                for (i = n - 7; i >= 0; i--) {
+                    if (buf[i] == 'L' && buf[i+1] == 'S' && buf[i+2] == 'T' &&
+                        buf[i+3] == 'F' && buf[i+4] == 'D' && buf[i+5] == ':') {
+                        lint v = 0;
+                        int any = 0;
+                        for (j = i + 6; j < n && buf[j] >= '0' &&
+                                        buf[j] <= '9'; j++) {
+                            v = v * 10 + (buf[j] - '0');
+                            any = 1;
+                        }
+                        if (any && v > 2 && v < 1024)
+                            l = v;
+                        break;
+                    }
+                }
+            }
         }
-    /* the child was forked BEFORE the install: the listener fd does not
-     * exist in its table. PULL it from the parent: pidfd_open(ppid) +
-     * pidfd_getfd — the child has ptrace-grade access to its own parent
-     * (same uid, dumpable). The RECV queue lives in the filter object,
-     * which the fd references — the child does NOT need the filter
-     * itself (it was forked pre-install and is unfiltered: its own
-     * syscalls never self-notify). */
-    l = shm ? shm->lfd : -1;
-    log_str("CH1\n");           /* the fd number is visible on the page */
-    if (l >= 0) {
-        pdf = sysc(__NR_pidfd_open, sysc(__NR_getppid, 0, 0, 0, 0, 0),
-                   0, 0, 0, 0);
-        log_num("CH2:", pdf);
-        if (pdf >= 0) {
-            l = sysc(__NR_pidfd_getfd, pdf, shm->lfd, 0, 0, 0);
-            sysc(__NR_close, pdf, 0, 0, 0, 0);
-            log_num("CH3:", l);
-        }
-        if (l < 0) {
-            /* fallback: re-open the parent's /proc/<ppid>/fd/<n> —
-             * the child is UNFILTERED (pre-install fork), so this
-             * openat cannot self-notify. */
-            char pbuf[48];
-            lint pp = 0, q2 = 0, w2 = 0;
-            char t3[12];
-            u32 uv = (u32)sysc(__NR_getppid, 0, 0, 0, 0, 0);
-            static const char pre[16] = "/proc//fd/";
-            for (q2 = 0; q2 < 16; q2++)
-                pbuf[pp++] = (q2 == 5) ? '/' : pre[q2];  /* insert pid */
-            pp = 5;                       /* overwrite after /proc/ */
-            if (uv == 0) t3[w2++] = '0';
-            while (uv) { u32 d; uv = udiv10(uv, &d); t3[w2++] = (char)('0' + d); }
-            while (w2) pbuf[pp++] = t3[--w2];
-            pbuf[pp++] = '/';
-            uv = (u32)shm->lfd; w2 = 0;
-            while (uv) { u32 d; uv = udiv10(uv, &d); t3[w2++] = (char)('0' + d); }
-            while (w2) pbuf[pp++] = t3[--w2];
-            pbuf[pp] = 0;
-            l = sysc(__NR_openat, AT_FDCWD, (lint)pbuf, 2 /*O_RDWR*/, 0, 0);
-            log_num("CH4:", l);
-        }
+        if (l >= 0)
+            break;
+        ts.s = 0;
+        ts.ns = 2000000L;
+        sysc(__NR_nanosleep, (lint)&ts, 0, 0, 0, 0);
     }
-    g_lfd = (int)l;
-    log_num("CH5:", g_lfd);
-    if (g_lfd < 0)
-        for (;;) {              /* no listener: park LOUDLY (CH6) */
-            log_str("CH6\n");
-            ts.s = 1;
-            ts.ns = 0;
-            sysc(__NR_nanosleep, (lint)&ts, 0, 0, 0, 0);
+    log_num("CH1 lstfd:", l);
+
+    { lint tries = 0;
+    for (;;) {
+        lint pdf = sysc(__NR_pidfd_open,
+                        sysc(__NR_getppid, 0, 0, 0, 0, 0), 0, 0, 0, 0);
+        if ((++tries % 100) == 0) {
+            log_num("CH8p:", pdf);
         }
-    log_str("CH7\n");           /* serving */
-    supervisor_loop();          /* never returns */
+        if (pdf >= 0) {
+            lint cand = sysc(__NR_pidfd_getfd, pdf, (lint)l, 0, 0, 0);
+            sysc(__NR_close, pdf, 0, 0, 0, 0);
+            if (tries == 1)
+                log_num("CH8c:", cand);
+            if (cand >= 0) {
+                /* validate WITHOUT consuming: readlink the parent's
+                 * /proc/<ppid>/fd/<l> — a seccomp listener reads back
+                 * "anon_inode:[seccomp notify" */
+                char lbuf[64];
+                char path2[48];
+                lint q2 = 0, w3 = 0;
+                u32 u3 = (u32)l;
+                char t4[12];
+                static const char pre2[7] = "/proc/";
+                lint i3;
+                for (i3 = 0; i3 < 6; i3++) path2[q2++] = pre2[i3];
+                u3 = (u32)sysc(__NR_getppid, 0, 0, 0, 0, 0);
+                w3 = 0;
+                while (u3) { u32 d; u3 = udiv10(u3, &d); t4[w3++] = (char)('0' + d); }
+                while (w3) path2[q2++] = t4[--w3];
+                path2[q2++] = '/';   /* /proc/<ppid>/fd/<n> */
+                path2[q2++] = 'f';
+                path2[q2++] = 'd';
+                path2[q2++] = '/';
+                u3 = (u32)l; w3 = 0;
+                while (u3) { u32 d; u3 = udiv10(u3, &d); t4[w3++] = (char)('0' + d); }
+                while (w3) path2[q2++] = t4[--w3];
+                path2[q2] = 0;
+                { lint rl = sysc(__NR_readlinkat, AT_FDCWD, (lint)path2,
+                                 (lint)lbuf, (lint)sizeof(lbuf) - 1, 0);
+                  if (tries < 4) {
+                      lbuf[40] = 0;
+                      log_num("CH8r:", rl);
+                      log_str("CH8t:");
+                      sysc(__NR_write, g_gfd, (lint)path2,
+                           slen(path2), 0, 0);
+                      log_str("\n");
+                  }
+                  if (rl >= 18) {
+                      static const char want[19] =
+                          "anon_inode:seccomp";
+                      lint k, hit = 1;
+                      for (k = 0; k < 18; k++)
+                          if (lbuf[k] != want[k]) { hit = 0; break; }
+                      if (hit) {
+                          g_lfd = (int)cand;
+                          log_num("CH2 serving fd:", g_lfd);
+                          supervisor_loop();   /* NEVER returns */
+                      }
+                  } }
+            }
+        }
+        l = -1;
+        ts.s = 0;
+        ts.ns = 2000000L;
+        sysc(__NR_nanosleep, (lint)&ts, 0, 0, 0, 0);
+    }
+    } /* tries */
 }
 
 /* ------------------------------------------------------------------ */
+/* the constructor                                                     */
+/* ------------------------------------------------------------------ *//* ------------------------------------------------------------------ */
+/* the constructor                                                     */
+/* ------------------------------------------------------------------ *//* ------------------------------------------------------------------ */
+/* the constructor                                                     */
+/* ------------------------------------------------------------------ *//* ------------------------------------------------------------------ */
 /* the constructor                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -1147,24 +1225,13 @@ void bgscomp_ctor(void)
      * the CURRENT value). The supervisor must ALREADY carry it when TSYNC
      * walks the thread group, or the sync fails (-EINVAL on the whole
      * install). So: NNP -> spawn -> install. */
-    /* v24b: fork the supervisor BEFORE anything is notified. The child
-     * inherits the filter at fork time (a copy happens for whatever
-     * exists NOW — the zygote/ART policies — and our filter later via
-     * ... no: the child is forked BEFORE our install, so it has NO
-     * copy of it; the SHARED queue lives in the filter object the
-     * child reaches through the INHERITED LISTENER FD — the kernel
-     * serves a notification to ANY task holding that fd, filtered or
-     * not. The child waits for the fd number on the shared page. */
-    g_shm = (struct bgshm *)sysc6(__NR_mmap, 0, 4096L,
-                                  3L /*PROT_READ|WRITE*/,
-                                  0x21L /*MAP_SHARED|MAP_ANONYMOUS*/,
-                                  -1L, 0L);
-    if ((lint)g_shm > 0) {
-        g_shm->lfd = -1;
-        g_shm->ready = 0;
-    } else {
-        g_shm = 0;
-    }
+    /* v26: fork the supervisor BEFORE anything is notified. The child is
+     * UNFILTERED (forked pre-install — it cannot even self-notify) and
+     * DISCOVERS the listener by probing the parent's /proc/<ppid>/fd
+     * entries once the install lands (see supervisor_child). The
+     * notification queue lives in the filter object behind that fd, and
+     * the kernel delivers every notification — the TSYNC'd engine
+     * threads' included — to whichever task holds the fd. */
     {
         lint fk = fork_process();
         if (fk == 0)
@@ -1189,9 +1256,8 @@ void bgscomp_ctor(void)
              (lint)&p15, 0, 0);
     if (r >= 0) {
         g_lfd = (int)r;
-        if (g_shm)
-            g_shm->lfd = g_lfd;     /* wake the supervisor process */
         log_num("LST:", g_lfd);
+        log_num("LSTFD:", g_lfd);   /* the child parses THIS line */
         /* v24b: the supervisor is a SEPARATE PROCESS (forked pre-install,
          * woken here) — the watchdog enumerates /proc/<engine>/task which
          * will NEVER contain it: it cannot stop what serves the replies.
