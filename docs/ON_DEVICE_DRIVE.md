@@ -13,10 +13,10 @@ incl. the drive-TLS wave).
 +--------------------------------------------------------------+
 | v7a DEVICE (root)                                            |
 |                                                              |
-|  com.disabngo.blockynexus   (the PATCHED b7 harness APK)     |
+|  com.disabngo.blockynexus   (the PATCHED b8 harness APK)     |
 |    holder   127.0.0.1:18080  http  (397+ routes, 21 games)   |
 |    driveTLS 127.0.0.1:443    https (DriveTls, drive/server.p12)
-|    GameServer libgameserver.so (g10078 bundle v6 staged)     |
+|    GameServer libgameserver.so (g10078 bundle v7 staged)     |
 |                                                              |
 |  com.sandboxol.blockymods   (the OFFICIAL 2.8.2 APK)         |
 |    API base  https://d32gv25kv9q34j.cloudfront.net --+        |

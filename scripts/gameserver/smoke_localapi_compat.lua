@@ -44,8 +44,21 @@ local function makeEngineEvent(name)
   return eng
 end
 
--- the real IScriptEvent from the bundle
-dofile("/tmp/v6/bundle/server/scripts/BedWarSolo/base/event/IScriptEvent.lua")
+-- the real IScriptEvent from the bundle, pinned as a repo fixture
+-- (byte-identical to every scriptdir's base/event/IScriptEvent.lua in
+-- bundle v7, md5 68130c9724004f6895c8f27df49ac307). Loaded relative to
+-- THIS file so the smoke survives /tmp cleanups (it used to dofile
+-- /tmp/v6/bundle/... — an ephemeral, generation-stale path).
+local here = (arg and arg[0] or ""):match("^(.*)[/\\]") or "."
+local fixture = here .. "/fixtures/IScriptEvent.lua"
+local fh = io.open(fixture, "rb")
+if not fh then
+  error("smoke: missing pinned fixture " .. fixture
+        .. " — restore scripts/gameserver/fixtures/IScriptEvent.lua "
+        .. "(md5 68130c9724004f6895c8f27df49ac307)", 0)
+end
+fh:close()
+dofile(fixture)
 
 -- fire order recorder
 local order = {}

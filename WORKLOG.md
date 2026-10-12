@@ -5104,3 +5104,72 @@ Stage Summary:
   every join now exercises the event bridge; the monitor-log watch list
   is in doc §20. Sandbox-side: nothing left to stage; the wave table is
   final for this bundle (g1056 wave 0 is correct-by-design).
+
+## Session 82 - THE V7 FRESH-EYES AUDIT: the event-layer repair verified against the real shipped trees; the smoke de-/tmp/-ed (2026-10-13)
+
+- The device stayed hardware-bound; per delta 25 ("nothing left to
+  stage") the session became the adversarial verification pass of the
+  v7 event-layer repair BEFORE the device session burns time on it —
+  every claim in doc §20 re-derived from the SHIPPED bundle, not the
+  staging copies.
+- GREEN ON ARRIVAL: host suite 701/701 on HEAD (22a0863); behavioral
+  smoke 28/28 both scenarios; bundle v7 re-fetched from the release
+  assets and md5-verified (d50f53ca2aebd1b0d6edfdb9337ce5c7,
+  100,240,057 B — round-trip holds on a fresh sandbox /tmp).
+- THE AUDIT (all against the unpacked v7 release bundle, then deleted):
+  (1) require placement — `require "base.localapi_compat"` sits
+  immediately before `BaseListener:init()` in ALL 19 scriptdirs;
+  (2) FALSE-POSITIVE SCAN SURFACE EMPTY — the whole bundle defines
+  `__name` exactly once (a read in engine_base/debug/dapmyhandle.lua,
+  not in the boot path, reading entity objects — never an event
+  global); only the C++ ClassRegister globals carry the signature, so
+  the _G scan cannot replace a Lua-side class;
+  (3) NO PRE-COMPAT SLOT TAKERS — every engine-event registration in
+  every tree happens inside an init function reached post-GameInit
+  (traced the deepest case: BaseMain requires SumRechargeConfig/
+  SumRechargeHelper early, but SumRechargeHelper:init() -> the
+  RechargeResultEvent registration is called from BaseListener.lua:88,
+  i.e. THROUGH the proxy) — the forwarder can never silently drop a
+  subscription;
+  (4) g1008's own CEvents is a PLAIN table (no metatable) so
+  reconcile() runs; its Events.lua tail defines the global
+  onScriptEvent FUNCTION (the dead 10078 by-name bridge — harmless
+  here; Lua-side onScriptEvent callers still work through the
+  reconciled CEvents + lazy __index);
+  (5) the dual dot/colon registerCallBack override is never hit in a
+  wrong shape — the only 2-arg sites are closure-paren artifacts or
+  CommonDataEvents (a plain Lua bus with its own (name, fn) convention,
+  not an engine object, untouched);
+  (6) the [ai-presence] fallback touches only proven in-tree APIs
+  (VectorUtil.ZERO at base/util/VectorUtil.lua:148 in every overlay
+  tree; addEntityPlayerAI(Vector, name, seq, fn) = the exact
+  GamePlayerControl:ctor shape), idempotent per userId, pcall-guarded,
+  self-cleaning via the 90 s unclaimed-attr kick.
+- TWO DEFECTS FOUND + FIXED (both in-repo, no re-ship needed — the
+  shipped bundle itself is CORRECT):
+  (a) smoke_localapi_compat.lua dofile'd /tmp/v6/bundle/... — an
+  ephemeral, generation-STALE path (the smoke only passed because
+  session 81's unpacked tree survived in /tmp; the next /tmp cleanup
+  would have killed the behavioral gate). The bundle's IScriptEvent.lua
+  is now pinned as scripts/gameserver/fixtures/IScriptEvent.lua
+  (byte-identical to every scriptdir copy, md5 68130c9724004f6895c8f27
+  df49ac307) and the smoke loads it relative to arg[0] — re-ran 28/28
+  from a foreign CWD.
+  (b) docs/ON_DEVICE_DRIVE.md §1 diagram still said "b7 harness" /
+  "bundle v6 staged" (§2/§5 already said b8/v7) — corrected.
+- RECORDED, NOT FIXED (deliberate): the compat module's header
+  documents the scan signature as `__name == global name` but the code
+  never enforces the equality. With finding (2) the false-positive
+  surface is EMPTY in the shipped trees, so the loosened check is
+  belt-and-suspenders — and editing the module now would diverge the
+  repo copy from the md5-pinned bundle v7. If a future bundle ever
+  re-assembles (v8+), add `rawget(v, "__name") == name` to
+  isEngineEvent in the same pass.
+- OPS: /tmp hit 100% mid-suite (this session's audit unpack + the
+  smoke's old /tmp/v6 dependency + stale temp dirs) — removed ~570 MB
+  (audit unpack, the v6 leftover, the fetch copy); suite re-ran green.
+  /tmp/lua_build (lua 5.1.5 + lpgate) preserved.
+- Next: UNCHANGED — the device drive on b8 (docs/ON_DEVICE_DRIVE.md
+  §6, 11 steps; §20 watch list). The bridge is now adversarially
+  verified against the exact shipped bytes; nothing sandbox-side is
+  open on the v7 line.

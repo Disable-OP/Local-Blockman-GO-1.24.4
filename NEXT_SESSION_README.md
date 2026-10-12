@@ -3663,3 +3663,38 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   always fetch the shipped bundle from the release assets and verify
   against the documented md5 (done this session: v6 = 9af0cc69... matched,
   then patched -> v7).
+
+## Cron-session delta 26 (read FIRST — the v7 event-layer repair is ADVERSARIALLY VERIFIED against the shipped bytes; the behavioral smoke lost its /tmp dependency; b8 drive unchanged)
+
+- The device stayed hardware-bound; delta 25 said "nothing left to
+  stage", so the session became the pre-drive verification pass: every
+  §20 claim re-derived from the SHIPPED v7 bundle (re-fetched from the
+  release assets, md5 d50f53ca... verified fresh) instead of staging
+  copies. VERDICT: the bridge is sound. Highlights: require placement
+  correct in all 19 dirs; the _G scan's false-positive surface is EMPTY
+  (the bundle defines __name exactly once, a debug-handler read that is
+  never an event global); NO tree registers on an engine event before
+  the compat require (traced the deepest chain — SumRechargeHelper:init
+  runs from BaseListener.lua:88, through the proxy); g1008's own CEvents
+  is a plain table so reconcile() runs; no 2-arg dot-form registrations
+  exist on engine objects; the [ai-presence] APIs are the proven
+  GamePlayerControl:ctor shapes. Full chain in WORKLOG Session 82.
+- TWO FIXES shipped (repo-only; the bundle needs NO re-ship):
+  (1) smoke_localapi_compat.lua no longer dofiles
+  /tmp/v6/bundle/... (ephemeral + generation-stale — the gate would
+  have died on the next /tmp cleanup); the bundle's IScriptEvent.lua is
+  pinned as scripts/gameserver/fixtures/IScriptEvent.lua (md5
+  68130c9724004f6895c8f27df49ac307) and loaded relative to arg[0];
+  smoke re-proven 28/28 from a foreign CWD.
+  (2) docs/ON_DEVICE_DRIVE.md §1 diagram corrected to b8/v7.
+- RECORDED for any future v8+ re-assembly: the compat header documents
+  `__name == global name` but isEngineEvent does not enforce the
+  equality — add `rawget(v, "__name") == name` in the same pass as any
+  future bundle change (do NOT touch the module for this alone; it
+  would diverge the repo copy from the pinned bundle v7).
+- Suite 701/701 re-run green post-fixes; smoke 28/28. OPS: /tmp filled
+  mid-session — audit artifacts cleaned (~570 MB); /tmp/lua_build kept.
+- NEXT: the device drive on b8, docs/ON_DEVICE_DRIVE.md §6, exactly as
+  delta 25 left it — 11 steps, evidence per step via
+  scripts/ondrive_collect.sh, watch list in doc §20. Sandbox-side: the
+  v7 line is closed; a device (or adb) is the only missing input.
