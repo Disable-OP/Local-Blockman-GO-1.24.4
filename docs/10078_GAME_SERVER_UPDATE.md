@@ -383,3 +383,35 @@ Layer 2 (independent): CI bind-mounts a scrubbed status over every
 values even if the in-process install fails on-device.
 
 apk wip-89 md5 e0a72fd09b8cdcd290517732be001c5c.
+
+## 12. Addendum 6 (cron session): THE TSS WAR IS WON — the out-of-process USER_NOTIF supervisor serves on-device
+
+Across 10 CI runs (wip-95..wip-104) the seccomp guard evolved from a
+thread to a SEPARATE PROCESS and defeated every TSS layer:
+- the ctor's status check (exit(25) verdict) — the status scrub;
+- the ctor's SIGILL self-abort — the scrub satisfied it (no SIGILL
+  since v15);
+- the watchdog (fork -> PTRACE_ATTACH all threads -> verify -> release;
+  kill = hold stopped + force exit_group(25)) — the v15-v17 'freeze' was
+  the deadlock of that protocol against our exit block, and the FINAL
+  fix is architectural: the supervisor is NOT a thread of the engine —
+  the watchdog cannot attach it (it enumerates /proc/<engine>/task);
+- kill(SIGSTOP) — denied (-EPERM); process_vm_readv — denied;
+  io_uring — ERRNO(ENOSYS); the umbrella protocol itself — respected
+  in full (denying or faking the supervisor's attach aborts the TSS
+  init: v18/v22/v23).
+
+The engine now survives the whole 5-minute drive (echoes=True x21,
+healthy process, 1431 ptrace notifications served by the child).
+
+The remaining failure is the ENGINE-INTEGRATION stall: initGame to
+127.0.0.1:31108 never fires, no client.log is ever created, the
+engine's native thread farm never appears. Next: the engine-side log
+harvest (logcat for the engine pid, the SandBoxOL/BlockMan tree, the
+10078 engine's own log paths) — the TSS is no longer the suspect.
+
+Full mechanics + the debugging minefield (division helpers, zeroed
+RECV buffers, volatile listener, AUDIT_ARCH_ARM, notif sizes,
+TSYNC_ESRCH, NNP-per-task, arm32 getpid=20, /data/local/tmp
+permissions, the phantom process killer) in
+scripts/exithook/bgscomp.c comments and NEXT_SESSION_README delta 8.
