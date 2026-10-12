@@ -6,3 +6,5 @@ dist/
 __pycache__/
 localapi-server/build/
 build-282/
+sup_selftest
+sup_selftest_x86

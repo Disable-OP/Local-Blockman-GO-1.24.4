@@ -346,3 +346,40 @@ All 403 Lua files in the bundle pass a Lua 5.1 parse (luaparse gate).
   the 2.8.2 hall flow is getMiniGameToken (`/game/api/v2/game/auth`, routed)
   -> getResInfo (`/v1/game-res`, routed) -> local gate a(token) -> bridge;
   the tpshell base loads libtprt.so but the dexes are NOT packed.
+
+## 11. Addendum 5 (cron session): v15 — the USER_NOTIF status-scrub supervisor (SHIPPED, host-proven)
+
+The TSS war's final mechanism. libbgscomp.so is now built from
+`scripts/exithook/bgscomp.c` (C, -nostdlib, armhf cross-gcc; the hand-asm
+bgscomp.S built v10-v14 is retired).
+
+Chain: ctor pre-opens /proc/self/status + /proc/self/mem + the guardlog →
+prctl(NNP) → raw-clone spawns the supervisor → seccomp(SET_MODE_FILTER,
+TSYNC|NEW_LISTENER|TSYNC_ESRCH=1|8|16, bpf15). bpf15 = v14's
+exit(25|30)->ERRNO(ENOSYS) block + v11's PR_GET_SECCOMP/GET_NNP fakes +
+USER_NOTIF on open/openat/openat2. The supervisor replies a scrubbed memfd
+("Seccomp: 0", "NoNewPrivs: 0") for /proc/<x>/status opens and
+SECCOMP_USER_NOTIF_FLAG_CONTINUE for everything else — the TSS ctor's
+detection read returns clean values, so the verdict (and its SIGILL
+fallback) should never fire. No ADDFD: same process, same fd table.
+
+Kernel-law learned on the way (each one a proven failure mode):
+TSYNC_ESRCH is REQUIRED for TSYNC|NEW_LISTENER (5.9+); NNP is per-task and
+inherited at clone (set before spawning the supervisor); NOTIF_RECV needs a
+ZEROED buffer per call; the listener fd global must be volatile;
+AUDIT_ARCH_ARM=0x40000028; notif struct = 80 B on 6.1+ kernels; a
+USER_NOTIF filter without a listener blocks its syscalls FOREVER (the
+fallback chain uses only ALLOW/ERRNO rets); CONTINUE requires val==0 and
+error==0.
+
+Proof: a per-ABI x86_64 build of the same C ran the full cycle on kernel
+5.10 (install → scrub read-back "Seccomp: 0"/"NoNewPrivs: 0" → CONTINUE
+passthrough → openat2 scrub → clean exit). sim_bpf_bgscomp.py validates the
+filters (kernel checker semantics + scenarios) and byte-verifies the
+committed .so against the source; both wired into build_signed_apk_282.sh.
+
+Layer 2 (independent): CI bind-mounts a scrubbed status over every
+:BlockmanGo /proc/<pid>/status (fsloop.sh daemon) — the ctor reads clean
+values even if the in-process install fails on-device.
+
+apk wip-89 md5 e0a72fd09b8cdcd290517732be001c5c.
