@@ -4645,3 +4645,65 @@ resource is unavailable.
   NO APK MODIFICATION = NO TSS HOSTILITY (baseline-proven).
 - Releases wip-105..wip-109, runs 38241104113/38244681621/38247471065/
   38249979823/38253499828 + the baseline 38252063346.
+
+## Session 71 - ENGINE-10078 GameServer C++: the session-protocol binder + ConnectorManager compat (2026-10-12)
+
+- USER DIRECTIVE executed: focus the 10078 upgrade on the GameServer C++ first (the
+  Lua scripts come after). The decompile base (815/815 at /home/z/src10078) was diffed
+  against the 10068 engine tree; the deltas were triaged into Lua-side vs C++-side.
+- THE ONE HARD C++ DELTA — the HttpRequest session protocol. The 10078
+  engine_server/web/WebService.lua rewired the whole inner-API response path:
+  10068 = `HttpRequest.asyncGet(url, params, luaFunction)` (the binder wraps the
+  function in a LuaRef and calls it with (result, code)); 10078 =
+  `addRequest(...)` caches the request under `RequestCache[++RequestSession]` and
+  calls `HttpRequest.asyncGet(url, params, request.session)` — a NUMBER — expecting
+  the engine to dispatch the raw response to the GLOBAL `onHttpResponse(session,
+  result)`. With the 10068 binary every 10078 inner-API response died at
+  `pcall` ("attempt to call a number value") — the shipped g10078 bundle was
+  parse-clean but would have been HTTP-dead at runtime.
+- THE FIX (dual-protocol binder, one binary serves both bundles):
+  `dev/logic/Src/LuaRegister/Template/ParamTranslate/ParamTranslate.h` —
+  `FunctionalTranslate::innerRead<std::function<RVal(Args...)>>` now dispatches on
+  `lua_type`: LUA_TFUNCTION -> the untouched LuaRef path (10068); LUA_TNUMBER ->
+  the session path (captures the session, and on invoke does exactly what the
+  engine does everywhere else: registry[-2] traceback, lua_getglobal
+  "onHttpResponse", pushnumber session, push FIRST arg (the raw result; the http
+  status code arg is dropped — the 10078 Lua contract takes (session, result)),
+  pcall(2,1)); anything else -> a no-op handler (the old path raised
+  "attempt to call a nil value" on every response).
+- THE COMPANION FIX — ConnectorManager compat. The 10078
+  engine_server/connector/ConnectorCenter.lua (started from BedWarServer.lua:62)
+  resolves `ConnectorManager.Instance():createConnect/getConnectorClient` when the
+  holder answers the NEW `/game/api/v1/inner/region/connector-cluster/
+  {regionCode}/{gameId}` endpoint with an addr; the 10068 tree has no such class.
+  New `dev/server/src/Network/ConnectorManager.{h,cpp}`: an inert manager
+  (createConnect logs + no-ops, getConnectorClient returns NULL -> the binder's
+  CPPDataToLua pushes nil -> every ConnectorCenter call site guards
+  `if not ConnectorClient then return end`). Registered via the standard
+  _BEGIN_REGISTER_CLASS block; file(GLOB_RECURSE) picks it up with no CMake edit.
+- VERIFIED three ways: (1) g++ -fsyntax-only on Network_Register.cpp (which
+  instantiates the new innerRead branch through the HttpRequest registrations) and
+  on ConnectorManager.cpp with the full engine include chain — clean; (2) a
+  RUNTIME contract test (dev/tools_test/test_session.cpp + Lua 5.1 built from the
+  engine's own Sources) driving the REAL decompiled 10078 WebService.lua and the
+  REAL 10068 WebService.lua through the exact patched-binder stack discipline:
+  session protocol parse-through (golds=250), '{}' degradation, legacy function
+  protocol preserved, stack balance with onHttpResponse missing — ALL GREEN;
+  (3) patch_sources.py pipeline simulation on a fresh-assembled tree — the
+  ParamTranslate patch + the two new files apply byte-identically to the dev tree
+  and re-run idempotent.
+- SHIPPED: scripts/gameserver/patch_sources.py section 5 (the embedded
+  _PT_OLD/_PT_NEW anchors + the _write_new files) — the next build-gameserver.yml
+  run produces a libgameserver-arm64.so that serves the 10068 AND the 10078
+  script bundles. Lesson encoded: patch() reads text-mode (universal newlines),
+  so embedded anchors must be LF-normalized.
+- DELTAS TRIAGED AS NON-C++ (for the record): the three NEW inner endpoints
+  (career/time, pay consume, connector-cluster) are URL-level — the holder owns
+  them; the Pay request body (engineVersion/appVersion/packageName + currency
+  1->0) is ALREADY in HttpRequest::pay verbatim; the pay RESPONSE fields
+  (diamonds/gDiamonds/golds/orderId) are unchanged 10068 vs 10078; PacketSender's
+  18 functions are identical; GameAnalyticsRequest signatures match. The
+  '/mt/api/*' + blockFgCoin/blockCoin/blockDiamond claims from the earlier
+  session summary DO NOT EXIST in the actual 10078 sources (grep across the full
+  decompiled tree + the 2.8.2 jadx output returned nothing) — the summary
+  overstated; this session's diffs are the authoritative list.

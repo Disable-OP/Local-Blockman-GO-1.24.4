@@ -3073,3 +3073,36 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   chain, the trap-skipper, the supervisor — all reusable knowledge).
 - The smali/dex-side knowledge (JoinBridge, GameServerManager, the gs-line seed)
   remains valid for the holder's DISPATCH shapes.
+
+## Cron-session delta 14 (read FIRST — the 10078 GameServer C++ is DONE: the session-protocol binder ships in patch_sources; build-gameserver produces the dual-line .so)
+
+- The GameServer C++ 10078 update is COMPLETE and verified (WORKLOG session 71).
+  The single hard delta was the HttpRequest session protocol: the 10078
+  WebService.lua passes `HttpRequest.asyncGet(url, params, <session-number>)` and
+  expects the global `onHttpResponse(session, result)` — the 10068 binder expected
+  a Lua function. `patch_sources.py` section 5 now patches
+  `FunctionalTranslate::innerRead<std::function<...>>` into a DUAL protocol
+  (function = 10068 legacy, number = 10078 session, other = no-op) and writes the
+  new inert `Network/ConnectorManager.{h,cpp}` (the 10078 connector-cluster stub;
+  NULL client -> Lua nil -> the feature no-ops crash-free). ONE binary serves BOTH
+  script bundles.
+- Verified: syntax-gated TUs (Network_Register instantiates the new branch),
+  a runtime contract test against the REAL decompiled WebService.lua of both
+  versions (all green), and a fresh-tree patch_sources simulation (byte-identical,
+  idempotent).
+- NEXT (in order):
+  1. Dispatch build-gameserver.yml (workflow_dispatch) -> the new
+     libgameserver-arm64.so on localapi-assets. The 10078 line is BLOCKED on this
+     binary (the current .so kills every 10078 inner-API response).
+  2. The Lua phase (user-approved next after C++): the g10078 bundle needs NO
+     shim change for HttpRequest/ConnectorManager anymore (both now live in C++);
+     the remaining Lua work is the g1008 game scripts review + the holder-side
+     inner endpoints (career/time, pay consume, connector-cluster no-addr,
+     thumbs-up, segment integral, mails status, game data v2 — the full 36-endpoint
+     list in docs/10078_GAME_SERVER_UPDATE.md §2.6).
+  3. The pristine-client pivot (delta 13) stays the client-side architecture: the
+     external holder + redroid hosts redirect + self-CA; the GameServer execs on
+     the redroid with the g10078 bundle.
+- Watch in the first 10078 match run: the C2SPacketLogin fields (§6 residual
+  risk), and `WebService:GetUserAttr`'s colorfulNickName path (StringUtil.
+  reconstructName — a 10078 engine_base util, pure Lua, already in the bundle).
