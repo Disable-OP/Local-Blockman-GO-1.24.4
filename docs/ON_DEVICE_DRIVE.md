@@ -102,7 +102,10 @@ adb install -r official-bg-2.8.2-v7a-4151.apk  # the pristine client
 | 4 | solo **g1061** join via the hall (first selectGame switch through the family) | `game.BedWarServer` on m1061_1; map loads |
 | 5 | duo **g1062** join | same, m1062_1 |
 | 6 | WalkingDead / BirdSimulator / Tycoon / EggWar joins | each: first-boot + join + monitor-log review |
-| 7 | (if blocks misrender) per-game `id_mappings.ini` from the g1046-10078 appres pattern (docs §14) | render correct |
+| 7 | **g1043/g1044/g1045 PixelGun** rooms (the shared-scriptdir family, waves 5/5/1) | each room loads its own mapdir under the ONE PixelGunGame scriptdir |
+| 8 | **g1054 SkyWarLuckyBlock** join (FIRST of the new-style base.* wiring class — 94 base.* requires resolve under scripts/SkyWarLuckyBlock/base/); wave 2 fires (startPlayers 3) | `base.Base` loads from scriptdir/base/; monitor log shows Match.lua start after the human joins |
+| 9 | **g1058 SkyWarLuckyBlockHall** + **g1056/g1057 TowerDefense** pair (wave 0 rooms — observe the teammateNum gate from the logs before ever adding bots) | halls idle clean; g1056 starts a process as soon as the human enters (teammateNum 1) |
+| 10 | (if blocks misrender) per-game `id_mappings.ini` from the g1046-10078 appres pattern (docs §14) | render correct |
 
 After EVERY step: `sh scripts/ondrive_collect.sh <step-N>` — it snapshots
 logcat (`LocalAPI`, `GS`, `BLOCK`, engine tags), the holder state dir, the

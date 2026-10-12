@@ -4973,3 +4973,32 @@ Stage Summary:
   rejects any map without config.yml — the g1014/g1001 lesson encoded).
 - Next: the device drive (b5) — the PixelGun joins are new firsts; then
   the remaining appres games; the 2019 games wait for a config pass.
+
+## Session 79 - BUNDLE v5: the SkyWarLuckyBlock + TowerDefense families (2026-10-13)
+
+- Candidate sweep round 2 over all 436 map stems: the per-gid full map
+  packs (`maps/g<gid>.<ts>.zip`, the 2021 waves) are the real publish
+  convention; the SkyWar01-style name stems are 2018/2019 only. Two
+  families passed the config.yml+setting completeness check:
+  SkyWarLuckyBlock (g1054+g1058, maps 2020-12/2021-07) and TowerDefense
+  (g1056+g1057, maps 2020-03 — the config era started earlier than
+  assumed). g1053/g1024/g1047 rejected on completeness.
+- The require-graph gate caught the session's key fact: the four trees
+  are NEW-STYLE (~94 `base.*` requires each) -> the v3 BedWar wiring is
+  the correct recipe (overlay base68 at <scriptdir>/base/ = 94/94
+  resolved; the plugins' own engine trees resolve only 55/38),
+  lua/base at ROOT (BaseHeader + deps; g1054's MountConfig), server at
+  root. Zero collisions; no engine_* requires anywhere.
+- GATES: parse 655/655; requires 632, 0 unresolved / 0 engine-ns;
+  C++ sweep 526 resolved + 12 lua-defined members (BlockManager,
+  Wallet=data/BaseWallet.lua) — NO new shims.
+- Waves from the games' own code: g1054 startPlayers 3 -> 2 (the proven
+  pattern); g1056 teammateNum defaults to 1 -> any bot would auto-start
+  a game with no human -> 0; halls 0. Teams 1..4.
+- Holder: NINETEEN defs + selftest blocks; suite 701/701; classes6.dex
+  347,228 B. SHIPPED: bundle v5 (93,043,591 B / 10,024 entries, md5
+  6bcd20b9..., byte-identical round-trip) + b6 harness (seed
+  g10078-b6, md5 9b2699d9...) on localapi-assets AND wip-100.
+- Next: the device drive (b6) — SkyWarLuckyBlock is the first join of
+  the new base/ wiring class; then the g1056 wave tuning; the 2019
+  games still wait for a config pass.

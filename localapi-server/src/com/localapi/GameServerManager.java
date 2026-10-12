@@ -102,7 +102,9 @@ public final class GameServerManager {
     /** The hosted rooms of the runtime bundles (order = stability only).
      *  Bundle v3 (docs §14): the BedWar family (hall/solo/duo from the
      *  June-2021 source trees) + WalkingDead/BirdSimulator/Tycoon/EggWar
-     *  join the v2 set — TWELVE hosted rooms. */
+     *  join the v2 set — TWELVE hosted rooms. Bundle v4 (§17) adds the
+     *  PixelGun room family, bundle v5 (§18) the SkyWarLuckyBlock +
+     *  TowerDefense families — NINETEEN hosted rooms. */
     private static final GameDef[] GAMES = {
             new GameDef("g1008", "BedWar", "m1008_2", 15, 4),
             new GameDef("g1046", "BedWarHall", "m1046_2", 0, 4),
@@ -124,6 +126,17 @@ public final class GameServerManager {
             new GameDef("g1043", "PixelGunGame", "m1043_1", 5, 4),
             new GameDef("g1044", "PixelGunGame", "m1044_1", 5, 4),
             new GameDef("g1045", "PixelGunGame", "m1045_1", 1, 4),
+            // v5: the SkyWarLuckyBlock + TowerDefense families (§18) —
+            // four rooms, each its own scriptdir (the ScriptSetting rows
+            // carry four distinct Names), complete 2020-2021 map data.
+            // g1054: startPlayers 3 (map config.yml) -> wave 2 (2 < 3 so
+            // bots alone can never start it); g1056: the teammateNum gate
+            // defaults to 1 — any bot would auto-start a game with no
+            // human -> wave 0; the two halls: wave 0 like every hall.
+            new GameDef("g1054", "SkyWarLuckyBlock", "m1054_1", 2, 4),
+            new GameDef("g1058", "SkyWarLuckyBlockHall", "m1058_1", 0, 4),
+            new GameDef("g1056", "TowerDefense", "m1056_1", 0, 4),
+            new GameDef("g1057", "TowerDefenseHall", "m1057_1", 0, 4),
     };
 
     /** The room every fallback lands on (the proven BedWar room). */
@@ -1262,6 +1275,22 @@ public final class GameServerManager {
                     && defFor("g1045").bots == 1
                     && defFor("g1043").teams == 4,
                     "v4 PixelGun room defs (5/5/1 bots, shared scriptdir)");
+            // 1d. the v5 families (§18): SkyWarLuckyBlock room+hall and
+            //     TowerDefense room+hall — four distinct scriptdirs; the
+            //     g1054 wave is the startPlayers 3 gate minus one
+            //     (bots can never satisfy it alone); the teammateNum-gated
+            //     room and the two halls carry wave 0
+            check(n++, defFor("g1054").name.equals("SkyWarLuckyBlock")
+                    && defFor("g1054").mapId.equals("m1054_1")
+                    && defFor("g1054").bots == 2 && defFor("g1054").teams == 4
+                    && defFor("g1058").name.equals("SkyWarLuckyBlockHall")
+                    && defFor("g1058").mapId.equals("m1058_1")
+                    && defFor("g1056").name.equals("TowerDefense")
+                    && defFor("g1056").mapId.equals("m1056_1")
+                    && defFor("g1056").bots == 0
+                    && defFor("g1057").name.equals("TowerDefenseHall")
+                    && defFor("g1057").mapId.equals("m1057_1"),
+                    "v5 family defs (skywar 2 bots, TD 0, halls 0)");
             // 2. the staged probe
             for (GameDef d : GAMES) {
                 check(n++, isGameStaged(d), "staged " + d.gid);
@@ -1319,6 +1348,18 @@ public final class GameServerManager {
             sCurrentGid = "g1043";
             check(n++, currentBotWave() == 5,
                     "pixelgun team wave (5 bots)");
+            sCurrentGid = "g1054";
+            check(n++, currentBotWave() == 2 && currentBotWaveTeams() == 4,
+                    "skywar lucky block wave (2 bots, 4 teams)");
+            sCurrentGid = "g1056";
+            check(n++, currentBotWave() == 0,
+                    "towerdefense wave 0 (teammateNum gate)");
+            sCurrentGid = "g1057";
+            check(n++, currentBotWave() == 0,
+                    "towerdefense hall wave 0");
+            sCurrentGid = "g1058";
+            check(n++, currentBotWave() == 0,
+                    "skywar lucky block hall wave 0");
             sCurrentGid = null;
             System.out.println("GS-SELFTEST OK (" + n + " assertions)");
         } catch (Throwable t) {

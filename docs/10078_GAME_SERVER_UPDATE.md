@@ -804,3 +804,71 @@ NEXT_SESSION_README delta 9.
   then the remaining appres games' joins. The g1014/g1001-style 2019 games
   stay UNSTAGED until a config.yml reconstruction pass (on-device observation
   first).
+
+## 18. Addendum 12 (cron session): BUNDLE v5 — THE SKYWARLUCKYBLOCK + TOWERDEFENSE FAMILIES: four rooms, new-style base.* wiring, b6 shipped
+
+- The candidate sweep round 2 (all 436 map stems re-classified by date):
+  the REAL map-publish convention is per-gid full map packs under
+  `maps/g<gid>.<ts>.zip` (the 2021-05/07 waves) plus per-map
+  `m<gid>_<n>.<ts>.zip` publishes — the "SkyWar01-style name stems" are
+  the 2018/2019 generation ONLY (g1002 SkyWar's own maps: 2019-05, the
+  config-less era — REJECTED like g1014/g1001). The 2020+ unstaged
+  candidates were exactly two families:
+  **SkyWarLuckyBlock (g1054 room + g1058 hall**, maps 2020-12/2021-07 —
+  the same publish waves as the proven BedWar/PixelGun data) and
+  **TowerDefense (g1056 room + g1057 hall)**, maps 2020-03 — which DO
+  ship complete config.yml + setting/ (the config-in-zip era started
+  earlier than assumed). g1053 (2019-11), g1024 (single 2021-02 zip,
+  maps 2018), g1047 (single 2020-04 zip, maps 2019-11) rejected on
+  completeness. g1048/g1049/g1050 (SkyBlock) were already staged (v2).
+- **Four rooms, each its own scriptdir** (the ScriptSetting rows carry
+  four distinct Names — unlike the PixelGun family's shared one):
+  SkyWarLuckyBlock / SkyWarLuckyBlockHall / TowerDefense /
+  TowerDefenseHall.
+- **WIRING (the require-graph gate caught it — the session's key
+  finding)**: these trees are NEW-STYLE — each carries ~94 distinct
+  `base.*` requires (base.Base, base.DBManager, base.util.*, ...). The
+  v4-style "base68 at scriptdir root" leaves ALL of them unresolved;
+  the v3 BedWar-family recipe is the correct one: **the 10068 overlay
+  base goes to <scriptdir>/base/** (resolves 94/94 — the plugin zips'
+  own engine_server/engine_base trees resolve only 55/38: the overlay
+  is the complete one), the plugins' `lua/base/` merges AT ROOT
+  (g1054: config/MountConfig.lua required by its GameConfig;
+  g1056/g1057: BaseHeader.lua + its data/entity/manager/util deps,
+  required by their ScriptMain), the server tree merges at root
+  (server files win). Verified ZERO collisions (base68 vs lua/base,
+  lua/base vs lua/server) for all four plugins. No
+  engine_server.*/engine_base.* requires anywhere — cleaner than the
+  2021 BedWar hall (no 2-file engine_server wiring needed).
+- **GATES (all green)**: Lua parse 655/655 across the four merged
+  scriptdirs (lpgate); require-graph 632 requires, **0 unresolved /
+  0 engine-namespace / 0 guarded-unresolved**; C++ registration sweep
+  526 resolved, 12 unresolved — ALL `[lua-defined-member]`
+  (SkyWarLuckyBlock BlockManager methods; TowerDefense Wallet = the
+  game's own data/BaseWallet.lua). NO new shims.
+- **Gates->waves (read from the maps' own config.yml + the plugins' own
+  start code)**: g1054 `Match.lua: getReadyPlayerCount() >=
+  GameConfig.startPlayers` with startPlayers **3** -> **wave 2**
+  (bots alone can never satisfy it; one human joins -> 3 -> starts —
+  the proven BedWar-family pattern); g1056 has NO startPlayers —
+  `WaitPlayerStatus` starts a process when `#playerList >=
+  teammateNum`, and teammateNum comes from the HALL queue defaulting
+  to **1** → any bot in the queue would auto-start a game with no
+  human -> **wave 0** (on-device observation tunes it); the two halls
+  -> **wave 0** like every hall. Teams cycle the proven 1..4
+  (g1054's map even ships GameTeam.csv).
+- **Holder**: GAMES = NINETEEN defs (v5 block: g1054 2 bots, g1058/
+  g1056/g1057 0); selftest 1d block (def assertions) + wave assertions
+  for all four. **Suite 701/701**; classes6.dex 345,976 -> 347,228 B.
+- **SHIPPED**: bundle v5 (`gameserver-runtime-g10078.tar.gz`,
+  93,043,591 B / 10,024 entries, md5 `6bcd20b9cf9becea93d2a0204cc8a4f4`,
+  PAX tar, byte-identical round-trip) + the **b6 harness APK** (seed
+  `g10078-b6`, 166,663,330 B, md5 `9b2699d9ec0b2fb9ce2184f027846c52`)
+  on localapi-assets AND wip-100 (both round-trip verified).
+- Tooling: `scripts/gameserver/assemble_multigame_v5.py` (idempotent;
+  re-extracts the plugin zips itself; config.yml+setting completeness
+  guard kept; the v3 base/ recipe encoded).
+- **NEXT** (device-bound, checklist unchanged — now drives b6): the
+  SkyWarLuckyBlock join is the new first (the base/ wiring class), the
+  TowerDefense pair the second; then the g1056 wave tuning question
+  (teammateNum), then the 2019 games' config.yml reconstruction pass.

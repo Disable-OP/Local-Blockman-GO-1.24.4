@@ -3532,3 +3532,33 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   PixelGun joins are the new firsts (shared-scriptdir switch + the
   5/5/1 waves); the four v3 games + g1008 + hall + solo/duo unchanged;
   the 2019 games stay unstaged until their config.yml reconstruction pass.
+
+## Cron-session delta 23 (read FIRST — BUNDLE v5 IS NINETEEN ROOMS: the SkyWarLuckyBlock (g1054 room + g1058 hall) and TowerDefense (g1056 + g1057) families joined the line; NEW-STYLE base.* wiring (v3 recipe); suite 701/701; b6 shipped)
+
+- The device is still hardware-bound; took the sweep-again path. The
+  "SkyWar01-style name stems" turned out to be the 2018/2019
+  config-less generation (g1002 SkyWar itself REJECTED) — the real
+  2020+ candidates were the SkyWarLuckyBlock and TowerDefense families
+  (their map zips ship complete config.yml + setting/, 2020-12/2021 and
+  2020-03 respectively).
+- KEY WIRING FACT (the require-graph gate caught it): the four trees
+  are NEW-STYLE — ~94 `base.*` requires each — so the v4-style base68-
+  at-root leaves them ALL unresolved. The v3 BedWar recipe is the
+  contract: overlay base68 -> <scriptdir>/base/ (94/94 resolved; the
+  plugins' own engine trees cover only 55/38), the plugins' lua/base
+  merged AT ROOT (BaseHeader + deps / MountConfig), server tree at
+  root. Zero collisions; no engine_* requires.
+- Gates green: parse 655/655; requires 632 / 0 unresolved;
+  C++ sweep 526 resolved + 12 [lua-defined-member] (BlockManager,
+  Wallet) — NO new shims. Waves: g1054 = 2 (startPlayers 3, the proven
+  gate); g1056 = 0 (teammateNum defaults to 1 — bots would auto-start
+  a game with no human); halls = 0.
+- SHIPPED: bundle v5 (93,043,591 B / 10,024 entries, md5 6bcd20b9...,
+  round-trip byte-identical) + b6 harness (seed g10078-b6, md5
+  9b2699d9...) on localapi-assets AND wip-100. assemble_multigame_v5.py
+  (idempotent, self-extracting, completeness guard kept).
+- The device checklist (docs/ON_DEVICE_DRIVE.md) now drives b6: the
+  SkyWarLuckyBlock join is the new first (the base/ wiring class), the
+  TowerDefense pair the second; the g1056 wave tuning question
+  (teammateNum from hall queue) is the new observation item. The 2019
+  games (g1014/g1001/g1002...) stay unstaged until the config pass.
