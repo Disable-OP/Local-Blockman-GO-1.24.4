@@ -3106,3 +3106,24 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 - Watch in the first 10078 match run: the C2SPacketLogin fields (§6 residual
   risk), and `WebService:GetUserAttr`'s colorfulNickName path (StringUtil.
   reconstructName — a 10078 engine_base util, pure Lua, already in the bundle).
+
+## Cron-session delta 15 (read FIRST — the dual-line libgameserver is BUILT and ON THE RELEASE: run 38261377166 green, markers verified)
+
+- build-gameserver.yml run 38261377166: ALL GREEN (~25 min, warm ccache) —
+  "Patch sources" applied section 5 on CI untouched, ndk-build arm64-v8a
+  succeeded, the static sanity passed, and libgameserver-arm64.so (51,166,896 B,
+  sha256 prefix 0849878e91dd33e1, NDK r17c / aarch64 / android-21) is attached to
+  the localapi-assets release.
+- Marker verification on the shipped binary (downloaded + strings):
+  "[10078] global onHttpResponse missing" present (the session-protocol
+  diagnostic), "[ConnectorManager-compat] createConnect(...)" present, and the
+  Lua-side registration names ConnectorManager/createConnect/getConnectorClient
+  all embedded. The 10068 client line keeps its exact runtime behavior (the
+  LUA_TFUNCTION path is byte-identical code).
+- The 10078 line's binary blocker is GONE. Next sessions: (1) the Lua/holder
+  phase (the 36 inner endpoints of docs/10078_GAME_SERVER_UPDATE.md §2.6 —
+  career/time, pay consume, connector-cluster MUST answer no-addr; plus the
+  thumbs-up/segment/mails/game-data-v2 set), (2) the pristine-client (delta 13)
+  on-device drive: hosts redirect + self-CA + the official 2.8.2 APK join flow
+  onto the GameServer with the g10078 bundle, (3) multi-game bundles
+  (g1048/g1055/g1042) per the §7 recipe.
