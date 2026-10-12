@@ -56,6 +56,52 @@ public final class LocalServer {
     }
 
     /**
+     * v13: the DELAYED arm. Hard evidence across runs 38183140775/38179978542/
+     * 38184428463/38185960054/38191430753:
+     * - the TSS ctor self-checks run INSIDE EchoesRenderer.nativePreInit at
+     *   ~+2.5s after the engine process boots, DETECT an early-installed
+     *   seccomp filter and SIGILL the process (packed code, un-fakeable via
+     *   PR_GET_SECCOMP);
+     * - nativePreInit NEVER RETURNS before the verdict (~+5.3s), so the
+     *   post-load hooks never run;
+     * - the window between the ctor checks and the verdict is ~2.8s wide.
+     * => arm from a daemon thread DELAYED into that window (4200ms after
+     * process start): the ctor checks see no filter, the verdict does.
+     */
+    private static void maybeDelayedSeccompArm() {
+        try {
+            String proc = "";
+            try {
+                java.io.FileInputStream fis =
+                        new java.io.FileInputStream("/proc/self/cmdline");
+                byte[] buf = new byte[64];
+                int n = fis.read(buf);
+                fis.close();
+                if (n > 0) {
+                    proc = new String(buf, 0, n, "UTF-8").trim();
+                }
+            } catch (Throwable ignored) {
+                // fall through: no cmdline -> no delayed arm
+            }
+            if (proc.contains("BlockmanGo")) {
+                Thread t = new Thread(() -> {
+                    try {
+                        Thread.sleep(4200L);
+                        System.loadLibrary("bgscomp");
+                        L.i("seccomp engine guard armed (libbgscomp, delayed 4200ms)");
+                    } catch (Throwable te) {
+                        L.e("seccomp engine guard (delayed) failed: " + te);
+                    }
+                }, "seccomp-delayed-arm");
+                t.setDaemon(true);
+                t.start();
+            }
+        } catch (Throwable t) {
+            L.e("seccomp engine guard (delayed spawn) failed: " + t);
+        }
+    }
+
+    /**
      * v12.1 probe: called from the TOP of AbstractEngineEnv.loadSO. If this
      * line never appears while libBlockMan still loads, the engine load
      * bypasses loadSO entirely and the real loader must be found.
@@ -71,6 +117,7 @@ public final class LocalServer {
     private static boolean gsBootedHere;
 
     public static void startIfNeeded(Context context) {
+        maybeDelayedSeccompArm();
         Context app = context.getApplicationContext();
         sApp = app;
         File filesDir = app.getFilesDir();
