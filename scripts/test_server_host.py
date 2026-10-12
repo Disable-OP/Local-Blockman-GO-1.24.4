@@ -3903,8 +3903,8 @@ def main():
               str(x_inner)[:200])
         r_inner = call("GET", "/config/files/player-identity-config?reload=true",
                        base=base_gi)
-        check("gs-inner: app /config/files routes NOT intercepted",
-              r_inner.get("code") in (0, 1),
+        check("gs-inner: config file = identity cache empty map (code 1, no retry)",
+              r_inner.get("code") == 1 and r_inner.get("data") == {},
               str(r_inner)[:200])
         # ---- v0.6.37: real inner endpoints (props / purchase / settlement) ----
         # register a REAL user (the fixture store starts empty; uid 1 only
@@ -3988,6 +3988,112 @@ def main():
                   % uid_i, base=base_gi)
         check("gs-inner: mails empty list (CheckMails iterates data)",
               ml.get("code") == 1 and ml.get("data") == [], str(ml)[:200])
+        mst = call("POST", "/gameaide/api/v1/inner/game/mails/12/status?status=1"
+                   "&userId=%d&gameType=g1008" % uid_i, body={}, base=base_gi)
+        check("gs-inner: mails/{id}/status accepted (UpdateMails)",
+              mst.get("code") == 1, str(mst)[:200])
+
+        # ---- engine 10078 inner surface (cron-20261012-18) ----
+        # /api/v2/game/data: the 10078 DBManager load/save persistence.
+        # A miss MUST be code 11 (Lua maps it to {__first=true}); code 0/
+        # null would retry 3x then KICK THE PLAYER (DBManager.getGameData).
+        miss = call("GET", "/api/v2/game/data?userId=%d&subKey=GAME_DATA&tableName=g1008"
+                    % uid_i, base=base_gi)
+        check("gs10078: game/data miss = code 11 (first-time, no kick path)",
+              miss.get("code") == 11 and miss.get("data") is None,
+              str(miss)[:200])
+        sv = call("POST", "/api/v2/game/data?tableName=g1008",
+                  body=[{"userId": uid_i, "subKey": "GAME_DATA",
+                         "level": 7, "coins": 123, "win": True}],
+                  base=base_gi)
+        check("gs10078: game/data save = code 1 (saveGameData gate)",
+              sv.get("code") == 1, str(sv)[:200])
+        hit = call("GET", "/api/v2/game/data?userId=%d&subKey=GAME_DATA&tableName=g1008"
+                   % uid_i, base=base_gi)
+        check("gs10078: game/data hit roundtrips the blob verbatim",
+              hit.get("code") == 1
+              and (hit.get("data") or {}).get("level") == 7
+              and (hit.get("data") or {}).get("coins") == 123
+              and (hit.get("data") or {}).get("win") is True
+              and str((hit.get("data") or {}).get("userId")) == str(uid_i),
+              str(hit)[:200])
+        gdf = os.path.join(dir_gi, "localapi", "gamedata", "g1008.json")
+        check("gs10078: game/data persisted to gamedata/<table>.json",
+              os.path.isfile(gdf), gdf)
+        gt = call("GET", "/user/api/v1/inner/user/game/career/time?userId=%d"
+                  "&gameIds=g1008,g1046" % uid_i, base=base_gi)
+        check("gs10078: career/time empty map (total_game_time sums 0)",
+              gt.get("code") == 1 and gt.get("data") == {}, str(gt)[:200])
+        sr = call("GET", "/pay/api/v1/inner/user/game/recharge/sum/gDiamond"
+                  "?userId=%d&gameId=g1008" % uid_i, base=base_gi)
+        check("gs10078: recharge sum = numeric 0 (total_recharge_cube)",
+              sr.get("code") == 1 and sr.get("data") == 0, str(sr)[:200])
+        hc = call("GET", "/pay/pay/api/v1/inner/user/consume?userId=%d" % uid_i,
+                  base=base_gi)
+        check("gs10078: pay/pay consume = false (CheckHaveCubeOrder)",
+              hc.get("code") == 1 and hc.get("data") is False, str(hc)[:200])
+        hr = call("GET", "/pay/api/v1/pay/inner/has/user/recharge?userId=%d"
+                  % uid_i, base=base_gi)
+        check("gs10078: has/recharge status 0 (HasRecharge)",
+              hr.get("code") == 1 and (hr.get("data") or {}).get("status") == 0,
+              str(hr)[:200])
+        dc = call("GET", "/game/api/v1/inner/region/disp-cluster/1001?engineType=v1",
+                  base=base_gi)
+        check("gs10078: disp-cluster region + dispUrl -> THIS holder",
+              dc.get("code") == 1
+              and (dc.get("data") or {}).get("region") == 1001
+              and str((dc.get("data") or {}).get("dispUrl", "")).startswith(
+                  "http://127.0.0.1"),
+              str(dc)[:200])
+        cc = call("GET", "/game/api/v1/inner/region/connector-cluster/1001/g1008",
+                  base=base_gi)
+        check("gs10078: connector-cluster no-addr (ConnectorCenter inert)",
+              cc.get("code") == 1 and cc.get("data") == {}
+              and "addr" not in (cc.get("data") or {}),
+              str(cc)[:200])
+        seg = call("GET", "/gameaide/api/v1/inner/user/segment/info?userId=%d"
+                   "&gameId=g1008&lastSeason=0" % uid_i, base=base_gi)
+        check("gs10078: segment info schema-true zeros (GameSeason shape)",
+              seg.get("code") == 1
+              and (seg.get("data") or {}).get("segment") == 0
+              and (seg.get("data") or {}).get("integral") == 0
+              and (seg.get("data") or {}).get("timeRemains", 0) > 0,
+              str(seg)[:200])
+        rkg = call("GET", "/gameaide/api/v1/inner/game/rank?key=bed&pageNo=0&pageSize=10",
+                   base=base_gi)
+        check("gs10078: record rank GET = empty list (MaxRecordHelper)",
+              rkg.get("code") == 1 and rkg.get("data") == [], str(rkg)[:200])
+        rkp = call("POST", "/gameaide/api/v1/inner/game/rank",
+                   body={"key": "bed", "maxSize": 10, "member": "1",
+                         "scores": 5}, base=base_gi)
+        check("gs10078: record rank POST accepted (ReportOneRecord code 1)",
+              rkp.get("code") == 1, str(rkp)[:200])
+        dp = call("POST", "/v1/dispatch-party",
+                  body={"gtype": "g1008", "rid": 1001, "ever": 10078,
+                        "prv": False,
+                        "mem": [{"uid": uid_i, "name": "tester",
+                                 "pioneer": True, "picUrl": "",
+                                 "country": "US", "lang": "en",
+                                 "appVersion": "4151"}],
+                        "mapid": "m1008_2"},
+                  base=base_gi)
+        dpd = dp.get("data") if isinstance(dp.get("data"), dict) else dp
+        ga = str(dpd.get("gaddr", ""))
+        check("gs10078: dispatch-party code 1 + gaddr ip:port (takeGroupStart)",
+              dp.get("code") == 1 and ":" in ga, str(dp)[:250])
+        check("gs10078: dispatch-party requestIds[uid] issued for every member",
+              isinstance(dpd.get("requestIds"), dict)
+              and str(dpd.get("requestIds", {}).get(str(uid_i), "")) != "",
+              str(dpd.get("requestIds"))[:200])
+        check("gs10078: dispatch-party mid/downurl present (sendDispatchInfo)",
+              str(dpd.get("mid", "")) != "" and isinstance(dpd.get("downurl"), str),
+              "mid=%s downurl=%s" % (dpd.get("mid"), dpd.get("downurl")))
+        dp0 = call("POST", "/v1/dispatch-party",
+                   body={"gtype": "g1008", "rid": 1001, "ever": 10078,
+                         "prv": False, "mem": [], "mapid": "m1008_2"},
+                   base=base_gi)
+        check("gs10078: dispatch-party without members = code 0 (honest fail)",
+              dp0.get("code") == 0, str(dp0)[:200])
     finally:
         proc_gi.terminate()
         try:

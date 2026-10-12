@@ -4707,3 +4707,46 @@ resource is unavailable.
   session summary DO NOT EXIST in the actual 10078 sources (grep across the full
   decompiled tree + the 2.8.2 jadx output returned nothing) — the summary
   overstated; this session's diffs are the authoritative list.
+
+## Session 72 - ENGINE-10078 holder: the inner-API phase (real game/data store + 12 schema-true endpoints + dispatch-party) (2026-10-12)
+
+- The delta-15 prescription executed: the Lua/holder phase's inner-API surface.
+  Every schema extracted from the DECOMPILED 10078 callers (WebService.lua's 36
+  endpoint constants, PayHelper, DBManager, ConnectorCenter, GameGroupManager,
+  NewReportUtil, SumRechargeHelper, MaxRecordHelper, GameSeason/GamePlayer,
+  PlayerIdentityCache) — no guessed shapes.
+- THE HEADLINE: /api/v2/game/data is load-bearing on 10078. The decompiled
+  DBManager kicks the player on load-nil (3x retry) AND on 3 failed saves
+  (PushFailedRecord>=3). The green 10068 line only dodges this because its
+  bundle has the isLocalDb patch (WebService.lua line 4 — game_cache/*.db
+  round-trip, HTTP never fires); the decompiled 10078 WebService.lua has no
+  such patch, so the holder MUST answer. NEW GameDataStore.java:
+  <stateDir>/localapi/gamedata/<table>.json, atomic tmp+rename, GET miss ->
+  code 11 (the official "no record" -> Lua {__first=true}), POST
+  [{userId, subKey, ...}] upsert -> code 1 (never 3 = re-read storm).
+- 12 schema-true handlers added to gameServerInner(): career/time {},
+  recharge/sum/gDiamond 0 (fixes a 10068-line shape bug too — the old UNMAPPED
+  leak fed a TABLE into total_recharge_cube), /pay/pay/.../consume false,
+  has/user/recharge {status:0}, disp-cluster {region, dispUrl:holder},
+  connector-cluster {} no-addr (inert connector; an addr would never connect
+  and isReconnecting would cache sends forever), player-identity-config {},
+  segment/info zeros + timeRemains, game/rank GET[]/POST 1, mails/{id}/status 1.
+- NEW /v1/dispatch-party (LocalHttpd branch before the RoutingTable) mirroring
+  dispatch(): pin-to-server, per-member requestIds, MapAssets downurl,
+  notifyDispatch per member; payload INSIDE data (formatData returns
+  result.data — top-level payload = nil crash at data.gaddr); no members ->
+  code 0.
+- Routing: + /pay/api/v1/inner/, /pay/pay/api/v1/inner/ prefixes (no app-facing
+  collisions — verified against the RoutingTable), the targeted
+  player-identity-config branch, /v1/dispatch-party. Ctx gained verb().
+- THE TRAP HIT AND FIXED: a blanket /config/files/ prefix hijacked 14 app-facing
+  RoutingTable handlers (check-version, banner, sensitive-words, ads-cd... —
+  8 suite failures) — narrowed to the single player-identity-config file name.
+  LESSON: intersect every new inner prefix with the existing route table.
+- Verified: build_server_dex green (333,676 B dex); host suite 691/691 (was
+  673; +18 gs10078 checks incl. the game/data miss/save/roundtrip/persist
+  chain and the dispatch-party shape set). The 10068 line untouched (isLocalDb
+  bypasses game/data HTTP; all new paths additive).
+- Commits this session: (see delta 16) — NEXT_SESSION_README delta 16 carries
+  the handover; the g1008 game-scripts review + the pristine-client on-device
+  drive (delta 13 architecture) are the remaining 10078 line items.

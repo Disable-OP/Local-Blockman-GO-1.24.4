@@ -19,6 +19,10 @@ final class Handlers {
     private Handlers() {}
 
     interface Ctx {
+        /** HTTP method ("GET"/"POST"/...) — /api/v2/game/data and the
+         *  record-rank path are dual-verb (read vs write). */
+        String verb();
+
         String query(String name);
 
         /** All values of a repeated query parameter (Retrofit String[] expansion). */
@@ -1261,13 +1265,266 @@ final class Handlers {
             if (clean.equals("/gameaide/api/v1/inner/game/mails")) {
                 return "{\"code\":1,\"message\":\"ok\",\"data\":[]}";
             }
+            if (clean.startsWith("/gameaide/api/v1/inner/game/mails/")
+                    && clean.endsWith("/status")) {
+                // WebService:UpdateMails(id, status) — the mark-read echo.
+                return "{\"code\":1,\"message\":\"ok\",\"data\":{}}";
+            }
+
+            // ---- engine 10078 inner surface (the decompiled WebService.lua
+            // + DBManager + ConnectorCenter + GameGroupManager contracts;
+            // session cron-20261012-18). The 10068 line never calls these
+            // paths (its isLocalDb patch bypasses HTTP), so every entry here
+            // is additive to the proven 10068 behavior.
+
+            // GET/POST /api/v2/game/data — THE player save-data DB (10078's
+            // DBManager KICKS THE PLAYER on load-nil-after-3-retries or on 3
+            // failed saves; the 10068 bundle dodges via its isLocalDb file
+            // patch, which the decompiled 10078 WebService.lua LACKS).
+            // GET params userId/subKey/tableName: hit -> {code:1,data:blob};
+            // miss -> code 11 (WebService.GetUserGameData maps code 11 ->
+            // {__first=true}, the official "no record yet" — code 0/null
+            // would retry-then-kick instead).
+            // POST body: [{"userId","subKey",...fields}] -> {code:1}
+            // (saveGameData treats code!=1 as failure; code 3 = re-read
+            // storm path — never answer 3).
+            if (clean.equals("/api/v2/game/data")) {
+                String table = String.valueOf(ctx.query("tableName"));
+                if ("POST".equals(ctx.verb())) {
+                    String raw = ctx.body();
+                    JSONArray list = new JSONArray(raw == null
+                            || raw.length() == 0 ? "[]" : raw);
+                    GameDataStore gd = GameDataStore.at(store.baseDir());
+                    int saved = 0;
+                    for (int i = 0; i < list.length(); i++) {
+                        JSONObject entry = list.optJSONObject(i);
+                        if (entry == null) continue;
+                        // the entry carries userId + subKey + the data
+                        // fields; store verbatim (Lua addCache strips the
+                        // id keys on load, like the official service)
+                        Object uid = entry.opt("userId");
+                        Object skey = entry.opt("subKey");
+                        if (uid == null || skey == null) continue;
+                        gd.put(table, String.valueOf(uid),
+                                String.valueOf(skey), entry);
+                        saved++;
+                    }
+                    L.i("gs-inner: game/data SAVE table=" + table
+                            + " entries=" + saved);
+                    return "{\"code\":1,\"message\":\"ok\",\"data\":{}}";
+                }
+                long uid = parseLongSafe(ctx.query("userId"));
+                String subKey = String.valueOf(ctx.query("subKey"));
+                JSONObject blob = GameDataStore.at(store.baseDir())
+                        .get(table, String.valueOf(uid), subKey);
+                L.i("gs-inner: game/data LOAD table=" + table + " uid=" + uid
+                        + " subKey=" + subKey + " -> "
+                        + (blob != null ? "hit" : "MISS(code 11)"));
+                if (blob == null) {
+                    return "{\"code\":11,\"message\":\"no record\","
+                            + "\"data\":null}";
+                }
+                return "{\"code\":1,\"message\":\"ok\",\"data\":"
+                        + blob.toString() + "}";
+            }
+            // GET /user/api/v1/inner/user/game/career/time — 10078 NEW.
+            // NewReportUtil.getTotalGameTimeData sums the values of the
+            // {gameType: seconds} map into player.total_game_time (code==1
+            // gate; nil-data retries 3x). Empty map = sum 0 = clean.
+            if (clean.equals("/user/api/v1/inner/user/game/career/time")) {
+                return "{\"code\":1,\"message\":\"ok\",\"data\":{}}";
+            }
+            // GET /pay/api/v1/inner/user/game/recharge/sum/gDiamond —
+            // SumRechargeHelper assigns data -> player.total_recharge_cube.
+            // 0 = no recharges (is_first_recharge reports true once). The
+            // old UNMAPPED leak answered data:{} (a TABLE assigned where a
+            // number belongs) — this fixes the 10068 line's shape too.
+            if (clean.equals(
+                    "/pay/api/v1/inner/user/game/recharge/sum/gDiamond")) {
+                return "{\"code\":1,\"message\":\"ok\",\"data\":0}";
+            }
+            // GET /pay/pay/api/v1/inner/user/consume — CheckHaveCubeOrder
+            // (10078 NEW; no caller in the decompiled tree — g1008
+            // ReportUtil sets have_cube_order locally — but keep the
+            // contract: false = no cube orders = "first consume").
+            if (clean.equals("/pay/pay/api/v1/inner/user/consume")) {
+                return "{\"code\":1,\"message\":\"ok\",\"data\":false}";
+            }
+            // GET /pay/api/v1/pay/inner/has/user/recharge — HasRecharge
+            // reads data.status (defaults 0 on nil; answer it schema-true).
+            if (clean.equals("/pay/api/v1/pay/inner/has/user/recharge")) {
+                return "{\"code\":1,\"message\":\"ok\",\"data\":{\"status\":0}}";
+            }
+            // GET /game/api/v1/inner/region/disp-cluster/{regionCode} —
+            // GameGroupManager.takeGroupStart needs info.region +
+            // info.dispUrl, then POSTs {dispUrl}/v1/dispatch-party. Point
+            // dispUrl at THIS holder (dispatchParty answers there).
+            if (clean.startsWith(
+                    "/game/api/v1/inner/region/disp-cluster/")) {
+                String region = clean.substring(
+                        clean.lastIndexOf('/') + 1);
+                JSONObject data = new JSONObject();
+                try { data.put("region", Long.parseLong(region)); }
+                catch (Throwable bad) { data.put("region", 0); }
+                data.put("dispUrl", LOCAL_BASE_URL);
+                L.i("gs-inner: disp-cluster region=" + region
+                        + " -> " + LOCAL_BASE_URL);
+                return "{\"code\":1,\"message\":\"ok\",\"data\":"
+                        + data.toString() + "}";
+            }
+            // GET /game/api/v1/inner/region/connector-cluster/{r}/{g} —
+            // 10078 NEW (ConnectorCenter:createConnect). MUST answer
+            // no-addr: data present (kills the 3x nil-retry) but without
+            // .addr so the Lua takes its logError-and-return path and the
+            // connector stays INERT (the C++ ConnectorManager stub no-ops
+            // anyway; an addr would still never connect and would leave
+            // isReconnecting caching every sendMsg forever).
+            if (clean.startsWith(
+                    "/game/api/v1/inner/region/connector-cluster/")) {
+                return "{\"code\":1,\"message\":\"ok\",\"data\":{}}";
+            }
+            // GET /config/files/{fileName} — GetPlayerIdentityCache
+            // (player-identity-config). Empty map = IdentityCaches{} =
+            // plain-name path (the Lua guards every field). code 1 also
+            // kills the 3x retry loop.
+            if (clean.startsWith("/config/files/")) {
+                return "{\"code\":1,\"message\":\"ok\",\"data\":{}}";
+            }
+            // GET /gameaide/api/v1/inner/user/segment/info — g1008
+            // GamePlayer/GameSeason read data.segment/integral/rank/
+            // timeRemains (nil -> 3 retries per player join). Schema-true
+            // zeros: segment 0, no rank, season ends at month boundary.
+            if (clean.equals("/gameaide/api/v1/inner/user/segment/info")) {
+                JSONObject data = new JSONObject();
+                data.put("segment", 0);
+                data.put("integral", 0);
+                data.put("rank", 0);
+                data.put("timeRemains", seasonTimeRemains());
+                return "{\"code\":1,\"message\":\"ok\",\"data\":"
+                        + data.toString() + "}";
+            }
+            // GET/POST /gameaide/api/v1/inner/game/rank — MaxRecordHelper
+            // (GetRecordList iterates a record array {member, score};
+            // ReportOneRecord wants code 1). Local room = no cross-room
+            // records: empty list, accept reports.
+            if (clean.equals("/gameaide/api/v1/inner/game/rank")) {
+                if ("POST".equals(ctx.verb())) {
+                    return "{\"code\":1,\"message\":\"ok\",\"data\":{}}";
+                }
+                return "{\"code\":1,\"message\":\"ok\",\"data\":[]}";
+            }
         } catch (Throwable t) {
             L.e("gs-inner " + clean + " failed: " + t);
         }
-        // Graceful envelope for everything else (exp rule, identity config,
-        // treasurebox, ranks, season info, game data — the Lua callers all
-        // treat nil data as a graceful fallback).
+        // Graceful envelope for everything else (exp rule, user exp, exp
+        // records, honor upload, season reward, thumbs-up, msg send, app
+        // ranks, reporting list — every one of those Lua callers treats nil
+        // data or a missing callback as a graceful fallback).
         return "{\"code\":0,\"message\":\"ok\",\"data\":null}";
+    }
+
+    /** Seconds until the next month boundary (season timeRemains -> the Lua
+     *  floors it to days for the season panel). */
+    private static long seasonTimeRemains() {
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        c.add(java.util.Calendar.MONTH, 1);
+        c.set(java.util.Calendar.DAY_OF_MONTH, 1);
+        c.set(java.util.Calendar.HOUR_OF_DAY, 0);
+        c.set(java.util.Calendar.MINUTE, 0);
+        c.set(java.util.Calendar.SECOND, 0);
+        c.set(java.util.Calendar.MILLISECOND, 0);
+        return Math.max(0L,
+                (c.getTimeInMillis() - System.currentTimeMillis()) / 1000L);
+    }
+
+    /**
+     * POST /v1/dispatch-party — the 10078 GameGroupManager.takeGroupStart
+     * bridge (engine-side group starts). The Lua first GETs
+     * /game/api/v1/inner/region/disp-cluster/{regionCode} (we answer
+     * dispUrl=LOCAL_BASE_URL) and then POSTs {dispUrl}/v1/dispatch-party
+     * with {gtype, rid, ever, prv, mem:[{uid,name,picUrl,country,lang,
+     * appVersion}], mapid}. The callback reads code==1 + data.gaddr
+     * ("ip:port"), data.mid, data.downurl, data.requestIds[userId] and
+     * sendDispatchInfo's each member onto our GameServer — so this mirrors
+     * dispatch(): pin-to-server, per-member requestIds, notifyDispatch for
+     * the room-monitor login gate.
+     */
+    public static String dispatchParty(Ctx ctx, StateStore store) {
+        JSONObject body;
+        try {
+            String raw = ctx.body();
+            body = new JSONObject(raw == null || raw.length() == 0
+                    ? "{}" : raw);
+        } catch (Throwable t) {
+            body = new JSONObject();
+        }
+        String gameType = body.optString("gtype", "");
+        String mapId = body.optString("mapid", "");
+        JSONArray mem = body.optJSONArray("mem");
+        if (mem == null || mem.length() == 0) {
+            L.i("dispatch-party: no members -> code 0 (Lua retries then fails)");
+            return "{\"code\":0,\"message\":\"no members\",\"data\":null}";
+        }
+        // Lazy engine boot + pin-to-server (identical policy to dispatch())
+        boolean gsKicked = GameServerManager.kick();
+        String gameAddrEarly = GameServerManager.gameAddr();
+        for (int i = 0; gsKicked && gameAddrEarly == null && i < 20; i++) {
+            try { Thread.sleep(500); } catch (InterruptedException ie) { break; }
+            gameAddrEarly = GameServerManager.gameAddr();
+        }
+        String engineType = gameType;
+        String defaultMap = mapId;
+        String gameAddr = GameServerManager.gameAddr();
+        if (gameAddr != null) {
+            engineType = GameServerManager.ENGINE_GAME_ID;
+            defaultMap = GameServerManager.ENGINE_MAP_ID;
+        }
+        JSONObject mapEntry = engineType.matches("g[0-9]+")
+                ? MapAssets.entryForGame(engineType) : null;
+        JSONObject out = new JSONObject();
+        // NOTE: the payload MUST sit inside "data" — the Lua formatData
+        // returns result.data to the callback (a top-level payload would
+        // surface as nil and crash data.gaddr).
+        out.put("code", 1);
+        out.put("message", "ok");
+        out.put("gaddr", gameAddr != null ? gameAddr : "127.0.0.1:18080");
+        out.put("dispUrl", LOCAL_BASE_URL);
+        out.put("gameType", engineType);
+        out.put("mid", defaultMap == null || defaultMap.isEmpty()
+                ? (mapEntry != null ? mapEntry.optString("mapName",
+                        String.valueOf(1000 + (Math.abs(gameType.hashCode())
+                                % 9000)))
+                        : String.valueOf(1000 + (Math.abs(gameType.hashCode())
+                                % 9000)))
+                : defaultMap);
+        out.put("downurl", mapEntry == null ? "" : MapAssets.durlFor(mapEntry));
+        out.put("region", body.optInt("rid", 0));
+        out.put("signature", "local");
+        out.put("timestamp", System.currentTimeMillis() / 1000L);
+        JSONObject reqIds = new JSONObject();
+        for (int i = 0; i < mem.length(); i++) {
+            JSONObject m = mem.optJSONObject(i);
+            if (m == null) continue;
+            long uid = m.optLong("uid", 0);
+            if (uid <= 0) continue;
+            // a fresh per-issuance id — the SAME value must reach the room
+            // monitor (notifyDispatch) and the client (requestIds[uid])
+            String requestId = "dp-" + Long.toHexString(
+                    System.nanoTime()) + "-" + uid;
+            reqIds.put(String.valueOf(uid), requestId);
+            GameServerManager.notifyDispatch(uid, requestId, 1,
+                    m.optString("name", "Player"), 0,
+                    m.optString("country", ""));
+        }
+        out.put("requestIds", reqIds);
+        JSONObject resp = new JSONObject();
+        resp.put("code", 1);
+        resp.put("message", "ok");
+        resp.put("data", out);
+        L.i("dispatch-party: gtype=" + gameType + " members=" + mem.length()
+                + " -> gaddr=" + out.optString("gaddr") + " engineType="
+                + engineType);
+        return resp.toString();
     }
 
     /** Tolerant long parse for query params ("null"/""/garbage -> 0). */

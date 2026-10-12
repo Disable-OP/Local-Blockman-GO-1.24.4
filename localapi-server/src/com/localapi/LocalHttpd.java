@@ -86,7 +86,12 @@ public class LocalHttpd extends NanoHTTPD {
         final java.util.Map<String, String> pathParams = new java.util.HashMap<>();
         final String fUri = uri;
         final String fBody = body;
+        final String verb0 = verb;
         final Handlers.Ctx ctx = new Handlers.Ctx() {
+            public String verb() {
+                return verb0;
+            }
+
             public String query(String name) {
                 List<String> vals = session.getParameters().get(name);
                 return (vals == null || vals.isEmpty()) ? null : vals.get(0);
@@ -348,6 +353,8 @@ public class LocalHttpd extends NanoHTTPD {
                 || cleanUri.startsWith("/game/api/v1/inner/")
                 || cleanUri.startsWith("/game/api/v1/users/games/settlement")
                 || cleanUri.startsWith("/pay/api/v1/pay/inner/")
+                || cleanUri.startsWith("/pay/api/v1/inner/")
+                || cleanUri.startsWith("/pay/pay/api/v1/inner/")
                 || cleanUri.startsWith("/pay/api/v2/inner/")
                 || cleanUri.startsWith("/api/v2/game/data")) {
             try {
@@ -367,6 +374,31 @@ public class LocalHttpd extends NanoHTTPD {
             } catch (Throwable t) {
                 L.e("joinbridge handler threw: " + t);
                 return "{\"code\":1,\"pushed\":false,\"gameConnected\":false,\"error\":\"thrown\"}";
+            }
+        }
+        if (cleanUri.equals("/v1/dispatch-party")) {
+            // INTERNAL (engine 10078): GameGroupManager.takeGroupStart's
+            // group dispatch — the Lua reaches it through OUR disp-cluster
+            // dispUrl answer. Must precede the RoutingTable (which knows
+            // /v1/dispatch but not the -party variant).
+            try {
+                return Handlers.dispatchParty(ctx, store);
+            } catch (Throwable t) {
+                L.e("dispatch-party handler threw: " + t);
+                return "{\"code\":0,\"message\":\"error\",\"data\":null}";
+            }
+        }
+        if (cleanUri.startsWith("/config/files/player-identity-config")) {
+            // INTERNAL (engine 10078): WebService.GetPlayerIdentityCache.
+            // ONLY this file name — the RoutingTable owns every OTHER
+            // /config/files/{name} (check-version, banner, sensitive words,
+            // ads-cd... 14 app-facing handlers; a blanket prefix hijacked
+            // them and broke the suite).
+            try {
+                return Handlers.gameServerInner(ctx, store);
+            } catch (Throwable t) {
+                L.e("gs-inner config threw: " + t);
+                return "{\"code\":0,\"message\":\"ok\",\"data\":null}";
             }
         }
         String kind;

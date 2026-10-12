@@ -123,6 +123,28 @@ The remainder are NEW in 10078 and need real-or-default handlers in `Handlers.ja
 (plus the already-implemented 7). A 10078-mode `gameServerInner()` should answer these
 with schema-true empty/rank-shaped objects — the client degrades gracefully on most.
 
+**IMPLEMENTED (session 72, 2026-10-12 — host suite 691/691):** the load-bearing set is
+real, the rest schema-true, the remainder proven degrade-safe on the code=0/null fallback:
+- `/api/v2/game/data` GET/POST — **REAL** (`GameDataStore.java`, file-per-tableName under
+  `localapi/gamedata/`; GET miss = **code 11** → the Lua `{__first=true}` first-time path;
+  POST `[{userId,subKey,...}]` upsert → code 1). LOAD-BEARING: the decompiled DBManager
+  KICKS the player on load-nil (3x retry) or 3 failed saves; the 10068 bundle only ever
+  dodged this via its `isLocalDb` patch, which the 10078 WebService.lua lacks.
+- `/v1/dispatch-party` — **REAL** (before the RoutingTable; mirrors dispatch(): pin-to-server,
+  per-member requestIds, MapAssets downurl, notifyDispatch; payload INSIDE `data`).
+- schema-true: career/time `{}`, recharge/sum/gDiamond `0`, `/pay/pay/.../consume` `false`,
+  has/user/recharge `{status:0}`, disp-cluster `{region, dispUrl:holder}`,
+  connector-cluster `{}` (**no-addr** — inert connector, no 3x retry),
+  `/config/files/player-identity-config` `{}` (ONLY that file name — 14 other
+  `/config/files/*` names belong to the app RoutingTable), segment/info
+  `{segment:0,integral:0,rank:0,timeRemains}`, game/rank GET `[]`/POST `1`,
+  mails/{id}/status `1`.
+- fallback (degrade-safe per the decompiled callers): exp rule/user exp/records, honor
+  upload, season reward, thumbs-up ×3, msg send, app ranks (uses/rank, games/{gid}/rank),
+  reporting list.
+- Routing additions: `/pay/api/v1/inner/`, `/pay/pay/api/v1/inner/` prefixes (no app-facing
+  collisions), the targeted identity-config branch, `/v1/dispatch-party`; `Ctx.verb()`.
+
 ## 3. The g10078 runtime bundle (built and verified)
 
 `gameserver-runtime-g10078.tar.gz` (41.4 MB, 3,381 files) — layout:

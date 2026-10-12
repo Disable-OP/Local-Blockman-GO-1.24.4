@@ -3127,3 +3127,78 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   on-device drive: hosts redirect + self-CA + the official 2.8.2 APK join flow
   onto the GameServer with the g10078 bundle, (3) multi-game bundles
   (g1048/g1055/g1042) per the §7 recipe.
+
+## Cron-session delta 16 (read FIRST — the 10078 holder inner-API is DONE: real /api/v2/game/data store + the 12 schema-true endpoints + /v1/dispatch-party; host suite 691/691)
+
+- THE LUA/HOLDER PHASE (delta 14's step 2) is complete for the inner-API surface.
+  Every schema was extracted from the DECOMPILED callers (not guesses):
+  WebService.lua (all 36 endpoint constants), PayHelper.lua (wallet echo),
+  DBManager.lua (the kick semantics), ConnectorCenter.lua (no-addr contract),
+  GameGroupManager.lua (disp-cluster -> dispatch-party chain), NewReportUtil.lua
+  (career/time sum), SumRechargeHelper.lua (gcube number), MaxRecordHelper.lua
+  (record rank), GameSeason/GamePlayer (segment info), PlayerIdentityCache.lua
+  (config file).
+- THE HEADLINE FINDING: /api/v2/game/data is LOAD-BEARING on the 10078 line.
+  The decompiled DBManager KICKS THE PLAYER on player-data failure — load: 3x
+  nil-retry then kickOutPlayer + GetDBDataErrorEvent; save: 3x code!=1 retry
+  then PushFailedRecord>=3 -> kickOutPlayer. The green 10068 line dodges this
+  ONLY because its runtime bundle carries the private-server isLocalDb patch
+  (WebService.lua line 4: game data round-trips to game_cache/*.db, HTTP never
+  fires) — a patch the DECOMPILED 10078 WebService.lua does NOT have. With the
+  old code=0/null fallback the 10078 line would have kicked every player on
+  their first save/load. NEW: localapi-server/src/com/localapi/GameDataStore.java
+  — a file-per-tableName JSON store (<stateDir>/localapi/gamedata/<table>.json,
+  atomic tmp+rename, per-dir singleton) backing GET (hit -> code 1 + blob;
+  miss -> CODE 11 = the official "no record" which WebService.GetUserGameData
+  maps to {__first=true}) and POST (body = [{userId, subKey, ...fields}]
+  upserts -> code 1; NEVER answer 3 = the re-read storm path). Blobs stored
+  verbatim — the Lua addCache strips userId/subKey/__first on load.
+- THE 12 SCHEMA-TRUE ENDPOINT HANDLERS in Handlers.gameServerInner() (each with
+  the decompiled caller in the comment): career/time -> {} (total_game_time 0),
+  recharge/sum/gDiamond -> 0 (number! the old UNMAPPED leak served {} — a TABLE
+  into total_recharge_cube), /pay/pay/api/v1/inner/user/consume -> false (10078
+  NEW CheckHaveCubeOrder; no live caller but the contract is pinned),
+  has/user/recharge -> {status:0}, disp-cluster/{regionCode} -> {region,
+  dispUrl:LOCAL_BASE_URL} (feeds dispatch-party), connector-cluster -> {} =
+  NO-ADDR (kills the 3x nil-retry; ConnectorCenter logs one error and stays
+  inert — the C++ ConnectorManager stub no-ops anyway; an addr would leave
+  isReconnecting=true caching every sendMsg forever), /config/files/
+  player-identity-config -> {} (identity cache empty = plain names; ONLY this
+  file name — the RoutingTable owns 14 OTHER /config/files/{name} app handlers
+  [check-version/banner/sensitive-words/ads-cd...]; a blanket prefix hijacked
+  them and failed the suite — LESSON: intersect new inner prefixes with the
+  existing route table first), segment/info -> {segment:0, integral:0, rank:0,
+  timeRemains:<month boundary>} (GameSeason/GamePlayer read all four; nil =
+  3 retries per player join), game/rank GET [] / POST code 1
+  (MaxRecordHelper: the record cache is LOCAL, HTTP is cross-room sync only),
+  mails/{id}/status -> code 1.
+- /v1/dispatch-party (NEW route, before the RoutingTable): the 10078
+  GameGroupManager.takeGroupStart group dispatch. Mirrors dispatch():
+  pin-to-server (gameAddr -> ENGINE_GAME_ID/ENGINE_MAP_ID), per-member
+  requestId "dp-<hex>-<uid>" in requestIds[string uid], MapAssets downurl,
+  notifyDispatch per member (the room-monitor login gate). PAYLOAD INSIDE
+  "data" — the Lua formatData returns result.data to the callback (a top-level
+  payload surfaces as nil and would crash data.gaddr). No members -> code 0
+  (the Lua retries 3x then fails honestly).
+- ROUTING additions in LocalHttpd.route(): prefixes /pay/api/v1/inner/ and
+  /pay/pay/api/v1/inner/ (neither had app-facing routes — verified against the
+  RoutingTable); the targeted player-identity-config branch; the
+  /v1/dispatch-party branch. Handlers.Ctx gained verb() (the dual-verb
+  /api/v2/game/data + game/rank need GET vs POST).
+- REMAIN ON THE code=0/null FALLBACK (verified degrade-safe from the callers):
+  ExpRule (disable), user exp (nil-skip), exp records/honor upload/season
+  reward (fire-and-forget), thumbs-up x3, msg send, app ranks (uses/rank +
+  games/{gameId}/rank: no callback on nil data), reporting list.
+- VERIFIED: build_server_dex green (classes6.dex 333,676 B) and the host suite
+  691/691 (was 673 — the 18 new gs10078 checks: game/data miss-code-11,
+  save+roundtrip+file-persist, career/time, recharge-sum 0, consume false,
+  has-recharge, disp-cluster, connector no-addr, segment zeros, record rank
+  GET/POST, dispatch-party shape x3 + no-members fail, mails status).
+  THE 10068 LINE IS UNTOUCHED (its isLocalDb patch bypasses game/data HTTP;
+  every new path is additive; the suite re-proves the whole surface).
+- NEXT SESSIONS: (1) the g1008 game-scripts review (the remaining Lua phase
+  item — the bundle itself needs NO shim: HttpRequest/ConnectorManager live in
+  C++, game/data + the inner surface live in the holder now); (2) the
+  pristine-client on-device drive (delta 13): hosts redirect + self-CA +
+  official 2.8.2 APK, dispatch -> g10078 bundle GameServer; (3) multi-game
+  bundles (g1048/g1055/g1042) per the §7 recipe.
