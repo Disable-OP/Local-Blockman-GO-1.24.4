@@ -87,6 +87,7 @@ typedef long               lint;
 #define __NR_nanosleep    35L
 #define __NR_getpid       39L
 #define __NR_ptrace      101L
+#define __NR_PROCESS_VM_READV 310L
 #define __NR_prctl       157L
 #define __NR_openat      257L
 #define __NR_exit_group  231L
@@ -103,6 +104,7 @@ typedef long               lint;
 #define BPF_NR_EXIT      60
 #define BPF_NR_PRCTL     157
 #define BPF_NR_PTRICE    101
+#define BPF_NR_VMREADV   310
 #define BPF_NR_CLONE     56
 
 static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
@@ -134,6 +136,7 @@ static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
 #define __NR_nanosleep  162L
 #define __NR_getpid      22L
 #define __NR_ptrace      26L
+#define __NR_PROCESS_VM_READV 276L
 #define __NR_prctl      172L
 #define __NR_openat     322L
 #define __NR_exit_group 248L
@@ -150,6 +153,7 @@ static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
 #define BPF_NR_EXIT      1
 #define BPF_NR_PRCTL     172
 #define BPF_NR_PTRICE    26
+#define BPF_NR_VMREADV   276
 #define BPF_NR_CLONE     120
 
 static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
@@ -288,31 +292,32 @@ struct seccomp_notif_addfd {
 
 static const struct sock_filter bpf15[] = {
     { 0x20, 0,  0,  4           },   /*  0 LD [4]  arch        */
-    { 0x15, 0, 23,  AUDIT_ARCH_THIS },  /*  1 JEQ arch jt=0 jf=23 */
+    { 0x15, 0, 24,  AUDIT_ARCH_THIS },  /*  1 JEQ arch jt=0 jf=24 */
     { 0x20, 0,  0,  0           },   /*  2 LD [0]  nr          */
-    { 0x15, 18, 0,  BPF_NR_OPENAT },  /*  3 openat  -> 22       */
-    { 0x15, 17, 0,  BPF_NR_OPEN },    /*  4 open    -> 22       */
-    { 0x15, 16, 0,  BPF_NR_OPENAT2 }, /*  5 openat2 -> 22       */
-    { 0x15, 11, 0,  BPF_NR_PRCTL },   /*  6 prctl   -> 18       */
-    { 0x15, 6,  0,  BPF_NR_EXITGROUP }, /*  7 exit_gr -> 14     */
-    { 0x15, 5,  0,  BPF_NR_EXIT },    /*  8 exit    -> 14       */
-    { 0x15, 13, 0,  425         },   /*  9 io_uring_setup -> 23 */
-    { 0x15, 12, 0,  426         },   /* 10 io_uring_enter -> 23 */
-    { 0x15, 11, 0,  427         },   /* 11 io_uring_reg   -> 23 */
-    { 0x15, 9,  0,  BPF_NR_PTRICE },  /* 12 ptrace  -> 22       */
-    { 0x15, 8, 11,  BPF_NR_CLONE },   /* 13 clone   -> 22 / 25  */
-    { 0x20, 0,  0,  16          },   /* 14 LD [16] args0.lo    */
-    { 0x15, 7,  0,  25          },   /* 15 ==25 -> 23          */
-    { 0x15, 6,  0,  30          },   /* 16 ==30 -> 23          */
-    { 0x05, 0,  0,  7           },   /* 17 JA -> 25            */
-    { 0x20, 0,  0,  16          },   /* 18 LD [16] option      */
-    { 0x15, 4,  0,  21          },   /* 19 PR_GET_SECCOMP->24  */
-    { 0x15, 3,  0,  36          },   /* 20 PR_GET_NNP    ->24  */
-    { 0x05, 0,  0,  3           },   /* 21 JA -> 25            */
-    { 0x06, 0,  0,  0x7FC00000U },   /* 22 RET USER_NOTIF      */
-    { 0x06, 0,  0,  0x00050026U },   /* 23 RET ERRNO(ENOSYS)   */
-    { 0x06, 0,  0,  0x00050000U },   /* 24 RET ERRNO(0)        */
-    { 0x06, 0,  0,  0x7FFF0000U },   /* 25 RET ALLOW           */
+    { 0x15, 19, 0,  BPF_NR_OPENAT },  /*  3 openat  -> 23       */
+    { 0x15, 18, 0,  BPF_NR_OPEN },    /*  4 open    -> 23       */
+    { 0x15, 17, 0,  BPF_NR_OPENAT2 }, /*  5 openat2 -> 23       */
+    { 0x15, 12, 0,  BPF_NR_PRCTL },   /*  6 prctl   -> 19       */
+    { 0x15, 7,  0,  BPF_NR_EXITGROUP }, /*  7 exit_gr -> 15     */
+    { 0x15, 6,  0,  BPF_NR_EXIT },    /*  8 exit    -> 15       */
+    { 0x15, 14, 0,  425         },   /*  9 io_uring_setup -> 24 */
+    { 0x15, 13, 0,  426         },   /* 10 io_uring_enter -> 24 */
+    { 0x15, 12, 0,  427         },   /* 11 io_uring_reg   -> 24 */
+    { 0x15, 10, 0,  BPF_NR_PTRICE },  /* 12 ptrace  -> 23       */
+    { 0x15, 9,  0,  BPF_NR_CLONE },   /* 13 clone   -> 23       */
+    { 0x15, 8, 11,  BPF_NR_VMREADV }, /* 14 vm_readv -> 23 / 26  */
+    { 0x20, 0,  0,  16          },   /* 15 LD [16] args0.lo    */
+    { 0x15, 7,  0,  25          },   /* 16 ==25 -> 24          */
+    { 0x15, 6,  0,  30          },   /* 17 ==30 -> 24          */
+    { 0x05, 0,  0,  7           },   /* 18 JA -> 26            */
+    { 0x20, 0,  0,  16          },   /* 19 LD [16] option      */
+    { 0x15, 4,  0,  21          },   /* 20 PR_GET_SECCOMP->25  */
+    { 0x15, 3,  0,  36          },   /* 21 PR_GET_NNP    ->25  */
+    { 0x05, 0,  0,  3           },   /* 22 JA -> 26            */
+    { 0x06, 0,  0,  0x7FC00000U },   /* 23 RET USER_NOTIF      */
+    { 0x06, 0,  0,  0x00050026U },   /* 24 RET ERRNO(ENOSYS)   */
+    { 0x06, 0,  0,  0x00050000U },   /* 25 RET ERRNO(0)        */
+    { 0x06, 0,  0,  0x7FFF0000U },   /* 26 RET ALLOW           */
 };
 
 /* bpf14 (fallback): the exact v14 filter — ERRNO(ENOSYS) on the verdict
@@ -644,41 +649,15 @@ static void supervisor_loop(void)
          * ptrace_stop). Notify these two, log, CONTINUE — zero behavior
          * change, full visibility of WHO attaches WHEN with WHAT. */
         if (nr == __NR_ptrace) {
-            u32 req = (u32)g_notif.data.args[0];
-            /* v18: the TSS watchdog PTRACE_ATTACHes every engine thread
-             * (v17: 14x ATTACH from the forked child), scans memory
-             * through the attach, and its kill protocol — hold the
-             * threads stopped while forcing the tracee into
-             * exit_group(25) — DEADLOCKS against our exit block (the
-             * v15/v16/v17 ptrace_stop freeze). Deny the attach: without
-             * the ptrace umbrella the watchdog cannot stop or scan us.
-             * ATTACH=16, SEIZE=0x4206, INTERRUPT=0x4207. */
-            if (req == 16u || req == 0x4206u || req == 0x4207u) {
-                g_resp.error = -1;          /* -EPERM */
-                g_resp.val   = 0;
-                g_resp.flags = 0;
-                if (g_gfd >= 0 && g_plog < 400) {
-                    lint q = 0;
-                    u32 uv = (u32)g_notif.pid;
-                    g_plog++;
-                    g_num[q++] = 'X';
-                    g_num[q++] = ':';
-                    if (uv == 0) g_num[q++] = '0';
-                    while (uv && q < (lint)sizeof(g_num) - 2) {
-                        u32 d;
-                        uv = udiv10(uv, &d);
-                        g_num[q++] = (char)('0' + d);
-                    }
-                    g_num[q++] = '\n';
-                    sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
-                }
-                goto reply;
-            }
-            /* other ptrace requests: log + pass through */
+            /* v19: ATTACH denial REVERTED — v18 proved the TSS ABORTS
+             * engine init when its watchdog cannot attach (echoes never
+             * came up; the umbrella is MANDATORY). Log everything, pass
+             * everything: the freeze comes from the watchdog's LATER
+             * tamper response, not from the attach itself. */
             if (g_gfd >= 0 && g_plog < 400) {
                 lint q = 0, w = 0;
                 char tmp2[12];
-                u32 uv = req;
+                u32 uv = (u32)g_notif.data.args[0];
                 g_plog++;
                 g_num[q++] = 'T';
                 g_num[q++] = ':';
@@ -687,7 +666,6 @@ static void supervisor_loop(void)
                 while (w) g_num[q++] = tmp2[--w];
                 g_num[q++] = '@';
                 uv = (u32)g_notif.pid;
-                if (uv == 0) tmp2[w++] = '0';
                 w = 0;
                 while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
                 while (w) g_num[q++] = tmp2[--w];
@@ -695,6 +673,38 @@ static void supervisor_loop(void)
                 sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
             }
             g_resp.flags = SECCOMP_USER_NOTIF_FLAG_CONTINUE;
+            goto reply;
+        }
+        if (nr == __NR_PROCESS_VM_READV) {
+            /* v19: the watchdog's memory scan channel. In v17 the
+             * ATTACHes succeeded, ZERO further ptrace requests appeared,
+             * yet the scan still detected the tampering — it reads
+             * memory via process_vm_readv, which never showed in the
+             * ptrace log. DENY it: the scan cannot run. If the TSS
+             * fails-open, the engine finally plays; if it fails-closed
+             * the death pattern will say so. args: (pid, lvec, liovcnt,
+             * rvec, riovcnt, flags) — args[0] = the TARGET pid. */
+            if (g_gfd >= 0 && g_plog < 400) {
+                lint q = 0, w = 0;
+                char tmp2[12];
+                u32 uv = (u32)g_notif.data.args[0];
+                g_plog++;
+                g_num[q++] = 'V';
+                g_num[q++] = ':';
+                if (uv == 0) tmp2[w++] = '0';
+                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
+                while (w) g_num[q++] = tmp2[--w];
+                g_num[q++] = '@';
+                uv = (u32)g_notif.pid;
+                w = 0;
+                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
+                while (w) g_num[q++] = tmp2[--w];
+                g_num[q++] = '\n';
+                sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
+            }
+            g_resp.error = -1;              /* -EPERM: the scan is blind */
+            g_resp.val   = 0;
+            g_resp.flags = 0;
             goto reply;
         }
         if (nr == __NR_clone) {
