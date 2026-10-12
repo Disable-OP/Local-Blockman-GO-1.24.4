@@ -4948,3 +4948,28 @@ Stage Summary:
   green). The persisted-tree shortcut is now part of the recipe knowledge.
 - Next: the device drive (unchanged checklist) — solo is now the FIRST
   8-team live wave.
+
+## Session 78 - BUNDLE v4: the PixelGun room family (2026-10-13)
+
+- Candidate sweep over all 50,624 CDN zips: g1014 JailBreak + g1001
+  HungryGame rejected (2019 maps ship NO config.yml/setting — blind room-
+  config reconstruction); the 2020/2021-generation games carry complete
+  map data. v4 = the PixelGun room family g1043/g1044/g1045 (the rooms
+  behind the staged g1042 hall — the BedWar-family pattern for a shooter).
+- Wiring facts: the three plugin trees are byte-identical and the
+  ScriptSetting rows share Name "PixelGunGame" -> ONE scriptdir, THREE
+  GameDefs (room = the mapdir); 143 requires / 0 missing / 0 engine-
+  namespace (the 10068 overlay base at root stays the engine contract).
+- Maps ship config.yml + setting/ + GunConfig/TeamConfig/Skill csvs:
+  startPlayers 6/6/2 -> waves 5/5/1 (teams 1..4 proven cycle).
+- GATES: parse 151/151 (lpgate rebuilt: Lua 5.1.5 liblua.a + parse-only
+  wrapper); require-graph 143/143; C++ API sweep 81 resolved, 4 flags all
+  pure-Lua BlockManager members (verified) — NO new shims.
+- Holder: 15 defs; selftest def+wave assertions; suite 701/701;
+  classes6.dex 345,976 B.
+- SHIPPED: bundle v4 (84,994,807 B / 8,586 entries, md5 f4703675...,
+  round-trip verified) + b5 harness (seed g10078-b5, md5 0940c0ac...) on
+  localapi-assets + wip-100. assemble_multigame_v4.py written (idempotent;
+  rejects any map without config.yml — the g1014/g1001 lesson encoded).
+- Next: the device drive (b5) — the PixelGun joins are new firsts; then
+  the remaining appres games; the 2019 games wait for a config pass.

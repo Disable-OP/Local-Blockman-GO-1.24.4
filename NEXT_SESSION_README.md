@@ -3511,3 +3511,24 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   drives b4: g1008 bots → g1046 hall → g1061 solo (first live 8-team wave)
   → g1062 duo → the four new games. Per-game wave tuning happens from the
   monitor logs after those joins.
+
+## Cron-session delta 22 (read FIRST — BUNDLE v4 IS FIFTEEN ROOMS: the PixelGun room family (g1043/44/45, one shared scriptdir, waves 5/5/1) joined the line; suite 701/701; b5 shipped)
+
+- The candidate sweep rejected the 2019-era games (g1014/g1001: their map
+  zips predate config.yml/setting-in-zip — GameConfig would init from
+  nothing) and took the 2020-generation PixelGun rooms: the three rooms
+  behind the staged g1042 hall, wired like the BedWar family.
+- ONE scriptdir ("PixelGunGame", per the ScriptSetting rows), THREE
+  GameDefs (the room IS the mapdir): maps ship complete config.yml +
+  setting/ + game csvs; startPlayers 6/6/2 -> waves 5/5/1; teams 1..4.
+- Gates green: parse 151/151 (lpgate rebuilt from Lua 5.1.5 source — recipe
+  in WORKLOG s78), requires 143/143, C++ sweep 81 resolved + 4 pure-Lua
+  BlockManager flags (verified; documented non-issue class).
+- SHIPPED: bundle v4 (md5 f4703675..., 84,994,807 B / 8,586 entries,
+  round-trip verified) + b5 harness (md5 0940c0ac..., seed g10078-b5) on
+  localapi-assets AND wip-100. assemble_multigame_v4.py (idempotent; the
+  no-config.yml rejection guard encoded).
+- The device checklist (docs/ON_DEVICE_DRIVE.md) now drives b5: the
+  PixelGun joins are the new firsts (shared-scriptdir switch + the
+  5/5/1 waves); the four v3 games + g1008 + hall + solo/duo unchanged;
+  the 2019 games stay unstaged until their config.yml reconstruction pass.

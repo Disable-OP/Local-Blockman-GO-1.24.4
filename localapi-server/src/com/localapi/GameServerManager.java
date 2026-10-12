@@ -116,6 +116,14 @@ public final class GameServerManager {
             new GameDef("g1025", "Tycoon", "m1025_1", 0, 4),
             new GameDef("g1018", "EggWar", "m1018_1", 0, 4),
             new GameDef("g1042", "PixelGunHall", "m1042_1", 0, 4),
+            // v4: the PixelGun room family (§17) — THREE rooms behind the
+            // staged hall, all loading the ONE scripts/PixelGunGame dir
+            // (the ScriptSetting rows share Name "PixelGunGame"; the room
+            // selection is the mapdir). startPlayers 6/6/2 (the maps ship
+            // complete config.yml) -> waves 5/5/1; teams cycle the proven 1..4.
+            new GameDef("g1043", "PixelGunGame", "m1043_1", 5, 4),
+            new GameDef("g1044", "PixelGunGame", "m1044_1", 5, 4),
+            new GameDef("g1045", "PixelGunGame", "m1045_1", 1, 4),
     };
 
     /** The room every fallback lands on (the proven BedWar room). */
@@ -1241,6 +1249,19 @@ public final class GameServerManager {
                     && defFor("g1018").name.equals("EggWar")
                     && defFor("g1018").mapId.equals("m1018_1"),
                     "v3 appres game defs");
+            // 1c. the v4 PixelGun room family (§17): three gids share the ONE
+            //     scriptdir name; distinct mapdirs; waves 5/5/1 (startPlayers
+            //     6/6/2 straight from the maps' own config.yml)
+            check(n++, defFor("g1043").name.equals("PixelGunGame")
+                    && defFor("g1044").name.equals("PixelGunGame")
+                    && defFor("g1045").name.equals("PixelGunGame")
+                    && defFor("g1043").mapId.equals("m1043_1")
+                    && defFor("g1044").mapId.equals("m1044_1")
+                    && defFor("g1045").mapId.equals("m1045_1")
+                    && defFor("g1043").bots == 5 && defFor("g1044").bots == 5
+                    && defFor("g1045").bots == 1
+                    && defFor("g1043").teams == 4,
+                    "v4 PixelGun room defs (5/5/1 bots, shared scriptdir)");
             // 2. the staged probe
             for (GameDef d : GAMES) {
                 check(n++, isGameStaged(d), "staged " + d.gid);
@@ -1292,6 +1313,12 @@ public final class GameServerManager {
             sCurrentGid = "g1062";
             check(n++, currentBotWave() == 15 && currentBotWaveTeams() == 8,
                     "duo wave (15 bots, 8 teams)");
+            sCurrentGid = "g1045";
+            check(n++, currentBotWave() == 1 && currentBotWaveTeams() == 4,
+                    "pixelgun duel wave (1 bot, 4 teams)");
+            sCurrentGid = "g1043";
+            check(n++, currentBotWave() == 5,
+                    "pixelgun team wave (5 bots)");
             sCurrentGid = null;
             System.out.println("GS-SELFTEST OK (" + n + " assertions)");
         } catch (Throwable t) {

@@ -751,3 +751,56 @@ NEXT_SESSION_README delta 9.
   pristine drive on b4 — g1008 bots → g1046 hall → g1061 solo (FIRST live
   8-team wave: 7 bots on 8 islands with full AI rows) → g1062 duo → the
   four new games; observe and tune from the monitor logs.
+
+## 17. Addendum 11 (cron session): BUNDLE v4 — THE PIXELGUN ROOM FAMILY (g1043/44/45): three rooms, one scriptdir, complete 2020 map data; b5 shipped
+
+- The candidate sweep (50,624 CDN zips re-classified): the interesting new
+  genres split into the 2019-era games (g1014 JailBreak, g1001 HungryGame —
+  plugin trees are self-contained and gate-clean, BUT their map zips predate
+  config.yml/setting-in-zip: joining them would init GameConfig from
+  nothing, a blind room-config reconstruction) vs the 2020/2021-generation
+  games whose maps ship COMPLETE room data. **v4 takes the PixelGun room
+  family** — the three rooms behind the ALREADY-STAGED PixelGunHall (g1042,
+  v2): the BedWar-family pattern repeated for a shooter.
+- **The three rooms share ONE scriptdir**: the g1043/g1044/g1045 plugin
+  trees are byte-identical (diff -r empty) and the ScriptSetting rows for
+  all three gids carry Name "PixelGunGame" — the engine loads
+  scripts/PixelGunGame for every room; the room selection is the mapdir.
+  One tree, three GameDefs.
+- **Zero wiring surprises**: the server tree is old-style bare requires —
+  143 requires, 0 missing inside the tree, 0 engine-namespace requires
+  (engine_base/engine_client trees inside the plugin zips are NOT wired;
+  the 10068 overlay base at root remains the engine contract, exactly like
+  every v2/v3 game).
+- **The maps ship everything** (2020-12 generation, unlike g1014/g1001's
+  2019 maps): config.yml (gameType, startPlayers, maxPlayers 16, initPos,
+  deathLineY...), setting/, GunConfig/TeamConfig/Skill csvs. Gates read
+  straight from the maps: g1043 startPlayers 6, g1044 6, g1045 2 →
+  **waves 5/5/1** (teams cycle the proven 1..4; GameDef.teams=4 — on-device
+  observation tunes it).
+- **GATES (all green)**: Lua parse 151/151 (lpgate rebuilt from the Lua
+  5.1.5 source: src/liblua.a + a parse-only luaL_loadfile wrapper);
+  require-graph 143/143 (same python resolver as the static review); C++
+  registration sweep 81 resolved, 4 flags = BlockManager.* — all four are
+  `[lua-defined-member]` (the tool's own classification; verified in
+  manager/BlockManager.lua) — the same documented non-issue class as
+  WorldInfo.*/SceneManager.*. NO new shims.
+- **ScriptSetting**: the three rows flipped Enable=1 + EngineVersion
+  90900→10078 (Name/MapName were already correct — no retarget needed).
+- **Holder**: GAMES = FIFTEEN defs (g1043/g1044/g1045 added: name
+  "PixelGunGame" ×3, mapIds m1043_1/m1044_1/m1045_1, bots 5/5/1, teams 4);
+  the selftest's staged-probe loop covers them automatically; new def +
+  wave assertions. **Suite 701/701**; classes6.dex 345,976 B.
+- **SHIPPED**: bundle v4 on localapi-assets (`gameserver-runtime-g10078.tar.gz`,
+  84,994,807 B / 8,586 entries, md5 `f47036757a6f1b0b6673c1722d4ce584`,
+  PAX tar, round-trip verified) + the **b5 harness APK** (seed
+  `g10078-b5`, 166,663,330 B, md5 `0940c0acfb60653ed13fa4d97dd75f96`) on
+  localapi-assets AND wip-100.
+- Tooling: `scripts/gameserver/assemble_multigame_v4.py` (idempotent; argv =
+  bundle-server-dir + dl-dir + overlay-base-dir; rejects any map without
+  config.yml — the guard the g1014/g1001 rejection is encoded as).
+- **NEXT** (device-bound, checklist unchanged): the b5 drive — the PixelGun
+  joins are new firsts (the shared-scriptdir room switch + the 5/5/1 waves);
+  then the remaining appres games' joins. The g1014/g1001-style 2019 games
+  stay UNSTAGED until a config.yml reconstruction pass (on-device observation
+  first).
