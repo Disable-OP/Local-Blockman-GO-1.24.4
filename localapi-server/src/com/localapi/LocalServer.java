@@ -55,6 +55,15 @@ public final class LocalServer {
         }
     }
 
+    /**
+     * v12.1 probe: called from the TOP of AbstractEngineEnv.loadSO. If this
+     * line never appears while libBlockMan still loads, the engine load
+     * bypasses loadSO entirely and the real loader must be found.
+     */
+    public static void probeEngineLoadSite() {
+        L.i("probe: loadSO entered (engine load site)");
+    }
+
     /** The app context for the engine boot (host rig: null — no engine). */
     private static volatile Context sApp;
     /** One engine boot per process, no matter how many holders happen. */

@@ -28,6 +28,8 @@ TREE = sys.argv[1] if len(sys.argv) > 1 else "/home/z/bg282/apktool_out"
 PATH = TREE + "/smali/com/sandboxol/center/router/moduleInfo/game/AbstractEngineEnv.smali"
 
 HOOK = "invoke-static {}, Lcom/localapi/LocalServer;->armEngineGuardNow()V"
+PROBE = "invoke-static {}, Lcom/localapi/LocalServer;->probeEngineLoadSite()V"
+METHOD_HEAD = ".method public loadSO(Landroid/content/Context;)V"
 RELINK = "invoke-static {p1, v0}, Lcom/getkeepsafe/relinker/b;->a(Landroid/content/Context;Ljava/lang/String;)V"
 
 src = open(PATH).read()
@@ -39,6 +41,12 @@ lines = src.split("\n")
 out = []
 inserted = 0
 for i, line in enumerate(lines):
+    if line.strip() == METHOD_HEAD and "probeEngineLoadSite" not in src:
+        out.append(line)
+        out.append("")
+        out.append("    # probe: prove whether this load site runs at all")
+        out.append("    " + PROBE)
+        continue
     out.append(line)
     if line.strip() == RELINK:
         out.append("")
