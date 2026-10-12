@@ -737,7 +737,7 @@ static void supervisor_loop(void)
         /* v16 diagnostics: EVERY /proc/* open the TSS (or the engine)
          * makes is logged — the run's dead drops told us the TSS never
          * opened status; this tells us what it DOES read. Capped. */
-        if (pclass != PC_NONE && g_gfd >= 0 && g_plog < 300) {
+        if (pclass != PC_NONE && g_gfd >= 0 && g_plog < 1500) {
             lint i2, st = 0, q = 0;
             u32 uv = nr;
             g_plog++;
@@ -780,7 +780,7 @@ static void supervisor_loop(void)
              * process is invisible to it, so every attach can complete
              * and the umbrella finishes (v18/v22/v23: any interference
              * with the attach protocol aborts the TSS init). */
-            if (g_gfd >= 0 && g_plog < 400) {
+            if (g_gfd >= 0 && g_plog < 1500) {
                 lint q = 0, w = 0;
                 char tmp2[12];
                 u32 uv = (u32)g_notif.data.args[0];
@@ -802,7 +802,7 @@ static void supervisor_loop(void)
             goto reply;
         }
         if (nr == __NR_clone) {
-            if (g_gfd >= 0 && g_plog < 400) {
+            if (g_gfd >= 0 && g_plog < 1500) {
                 lint q = 0, w = 0;
                 char tmp2[12];
                 u32 uv = (u32)g_notif.data.args[0];
@@ -1055,21 +1055,50 @@ static void supervisor_child(void)
      * itself (it was forked pre-install and is unfiltered: its own
      * syscalls never self-notify). */
     l = shm ? shm->lfd : -1;
+    log_str("CH1\n");           /* the fd number is visible on the page */
     if (l >= 0) {
         pdf = sysc(__NR_pidfd_open, sysc(__NR_getppid, 0, 0, 0, 0, 0),
                    0, 0, 0, 0);
+        log_num("CH2:", pdf);
         if (pdf >= 0) {
             l = sysc(__NR_pidfd_getfd, pdf, shm->lfd, 0, 0, 0);
             sysc(__NR_close, pdf, 0, 0, 0, 0);
+            log_num("CH3:", l);
+        }
+        if (l < 0) {
+            /* fallback: re-open the parent's /proc/<ppid>/fd/<n> —
+             * the child is UNFILTERED (pre-install fork), so this
+             * openat cannot self-notify. */
+            char pbuf[48];
+            lint pp = 0, q2 = 0, w2 = 0;
+            char t3[12];
+            u32 uv = (u32)sysc(__NR_getppid, 0, 0, 0, 0, 0);
+            static const char pre[16] = "/proc//fd/";
+            for (q2 = 0; q2 < 16; q2++)
+                pbuf[pp++] = (q2 == 5) ? '/' : pre[q2];  /* insert pid */
+            pp = 5;                       /* overwrite after /proc/ */
+            if (uv == 0) t3[w2++] = '0';
+            while (uv) { u32 d; uv = udiv10(uv, &d); t3[w2++] = (char)('0' + d); }
+            while (w2) pbuf[pp++] = t3[--w2];
+            pbuf[pp++] = '/';
+            uv = (u32)shm->lfd; w2 = 0;
+            while (uv) { u32 d; uv = udiv10(uv, &d); t3[w2++] = (char)('0' + d); }
+            while (w2) pbuf[pp++] = t3[--w2];
+            pbuf[pp] = 0;
+            l = sysc(__NR_openat, AT_FDCWD, (lint)pbuf, 2 /*O_RDWR*/, 0, 0);
+            log_num("CH4:", l);
         }
     }
     g_lfd = (int)l;
+    log_num("CH5:", g_lfd);
     if (g_lfd < 0)
-        for (;;) {              /* no listener: park quietly */
+        for (;;) {              /* no listener: park LOUDLY (CH6) */
+            log_str("CH6\n");
             ts.s = 1;
             ts.ns = 0;
             sysc(__NR_nanosleep, (lint)&ts, 0, 0, 0, 0);
         }
+    log_str("CH7\n");           /* serving */
     supervisor_loop();          /* never returns */
 }
 
