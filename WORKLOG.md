@@ -4619,3 +4619,29 @@ resource is unavailable.
   no "so on game main init end" = nativePreInit still blocked (the engine's own
   logcat tail then says where); initGame gameAddr EMPTY = the attrs never cross
   EnterRealmsResult -> Controller; offline-exit = a redroid GL failure.
+
+## Session 70 - the repackage wall reached its memory-only core; the pivot (2026-10-12)
+
+- v35 (the probes), v36 (io_uring), v37 (seccomp GET_MODE), v38 (the SIGILL skipper),
+  v40 (the pristine apk serve) — five runs against the join-time death:
+  - v35: the probes never fire (the crash precedes handlePreInit).
+  - v36/v37/v40: zero /proc opens, zero io_uring, zero seccomp, zero apk opens —
+    the TSS's checks NEVER use a notified syscall.
+  - v38: the skipper rescued 37 traps (a +88-byte gauntlet — a dispatch table of
+    trap entries) but the TSS SIGSEGVs deeper (0x16b8a4). Unbounded punishment.
+  - The tombstones: the runtime bytes at the fault are decrypted TRAP GARBAGE;
+    the faulting "function" IS ctor entry #2409; lr lives in the linker.
+- THE BASELINE (test-redroid-282-original.yml, run 38252063346): the OFFICIAL
+  unpatched APK survives 300s on the SAME redroid — zero deaths. THE TSS ONLY
+  FIGHTS REPACKAGING (the environment is clean for it).
+- THE VERDICT: the repackage check reads PROCESS MEMORY (the apk/dexes are
+  mmap'd) — no syscall-level interception exists. The war against the packed
+  verifier (patching its embedded hashes) is self-defeating (the PEEKTEXT storm
+  verifies its own pages).
+- THE PIVOT (delta 13): the 10078 line continues on the PRISTINE client with
+  network-layer redirection — /etc/hosts → the external holder (plain Java,
+  673/673 suite) with a self-CA in the redroid system store, the GameServer exec'd
+  on the redroid, the dispatch steering the official join flow onto our server.
+  NO APK MODIFICATION = NO TSS HOSTILITY (baseline-proven).
+- Releases wip-105..wip-109, runs 38241104113/38244681621/38247471065/
+  38249979823/38253499828 + the baseline 38252063346.
