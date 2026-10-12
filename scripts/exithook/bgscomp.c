@@ -168,7 +168,7 @@ static inline lint sysc6(lint n, lint a, lint b, lint c, lint d, lint e,
 #define __NR_ioctl       54L
 #define __NR_clone      120L
 #define __NR_nanosleep  162L
-#define __NR_getpid      22L
+#define __NR_getpid       20L
 #define __NR_gettid      224L
 #define __NR_mmap         192L
 #define __NR_pidfd_open   434L
@@ -255,6 +255,8 @@ static inline lint sysc6(lint n, lint a, lint b, lint c, lint d, lint e,
 #define PR_SET_SECCOMP       22L
 #define PR_GET_SECCOMP       21L
 #define PR_SET_NO_NEW_PRIVS  38L
+#define PR_SET_DUMPABLE       6L
+#define PR_SET_PTRACER  0x59616d61L
 #define PR_GET_NO_NEW_PRIVS  36L
 #define SECCOMP_MODE_FILTER   2L
 
@@ -1239,6 +1241,14 @@ void bgscomp_ctor(void)
         lint fk = fork_process();
         if (fk == 0)
             supervisor_child();         /* the child — forever */
+        /* v33: LEGALIZE the child's pidfd_getfd. The TSS names its own
+         * watchdog with PR_SET_PTRACER (that is why ITS attaches pass
+         * while our child's pull returned -EPERM); do the same for the
+         * supervisor, and restore dumpable in case the zygote/TSS
+         * cleared it (the dumpable gate is the other half of
+         * PTRACE_MODE_ATTACH_REALCREDS). */
+        sysc(__NR_prctl, PR_SET_PTRACER, fk, 0, 0, 0);
+        sysc(__NR_prctl, PR_SET_DUMPABLE, 1, 0, 0, 0);
         log_num("SUPF:", fk);
     }
 
