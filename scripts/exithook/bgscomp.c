@@ -86,6 +86,7 @@ typedef long               lint;
 #define __NR_clone        56L
 #define __NR_nanosleep    35L
 #define __NR_getpid       39L
+#define __NR_gettid      186L
 #define __NR_ptrace      101L
 #define __NR_kill         62L
 #define __NR_clock_gettime 228L
@@ -144,6 +145,7 @@ static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
 #define __NR_clone      120L
 #define __NR_nanosleep  162L
 #define __NR_getpid      22L
+#define __NR_gettid      224L
 #define __NR_ptrace      26L
 #define __NR_kill         37L
 #define __NR_clock_gettime 263L
@@ -379,6 +381,7 @@ static int g_pfd = -1;   /* pre-opened /proc/self/maps  (O_RDONLY) */
 static int g_nfd = -1;   /* pre-opened /proc/self/mountinfo        */
 static int g_gfd = -1;   /* guardlog (O_APPEND)                    */
 static int g_mypid = 0;  /* our tgid — self vs forked-child notifications */
+static int g_suptid = 0; /* the supervisor thread's tid — the watchdog must never stop it */
 static u32 g_plog = 0;   /* /proc-path notification log counter    */
 /* g_lfd is written by the installing (main) thread and read by the
  * supervisor thread in a tight loop — it MUST be volatile, or the
@@ -425,22 +428,35 @@ static void log_stamp(void)
     if (g_gfd < 0)
         return;
     sysc(__NR_clock_gettime, 1L /* MONOTONIC */, (lint)&ts, 0, 0, 0);
-    ms = (u64)ts.sec * 1000u + (u64)ts.nsec / 1000000u;
+    /* u64 ms = sec*1000 + nsec/1e6 — NO 64-bit division anywhere (gcc
+     * would emit __aeabi_uldivmod, an undefined symbol in a -nostdlib
+     * .so: v21's dlopen failure). sec*1000 via shifts+adds; nsec/1e6
+     * via shift-subtract; the digit loop is 64-bit shift-subtract. */
+    {
+        u64 sec1000 = (u64)ts.sec;
+        int i;
+        u64 t2 = 0, r2 = 0;
+        for (i = 3; i > 0; i--) sec1000 += sec1000 << 2;  /* *5 */
+        sec1000 <<= 3;                                    /* *8 => *40 */
+        t2 = 0; r2 = 0;
+        for (i = 63; i >= 0; i--) {
+            r2 = (r2 << 1) | (u64)((u64)ts.nsec >> i & 1u);
+            if (r2 >= 1000000u) { r2 -= 1000000u; t2 |= ((u64)1 << i); }
+        }
+        ms = sec1000 + t2;
+    }
     if (ms == 0) {
         tmp2[w++] = '0';
     }
     while (ms) {
-        u32 d;
-        u32 lo = (u32)(ms % 10u);
         u64 q10 = 0, r10 = 0;
         int i;
         for (i = 63; i >= 0; i--) {
             r10 = (r10 << 1) | (u64)((ms >> i) & 1u);
             if (r10 >= 10) { r10 -= 10; q10 |= ((u64)1 << i); }
         }
-        d = (u32)r10;
+        tmp2[w++] = (char)('0' + (u32)r10);
         ms = q10;
-        tmp2[w++] = (char)('0' + d);
     }
     while (w) g_num[q++] = tmp2[--w];
     g_num[q++] = ' ';
@@ -706,11 +722,41 @@ static void supervisor_loop(void)
          * ptrace_stop). Notify these two, log, CONTINUE — zero behavior
          * change, full visibility of WHO attaches WHEN with WHAT. */
         if (nr == __NR_ptrace) {
-            /* v19: ATTACH denial REVERTED — v18 proved the TSS ABORTS
-             * engine init when its watchdog cannot attach (echoes never
-             * came up; the umbrella is MANDATORY). Log everything, pass
-             * everything: the freeze comes from the watchdog's LATER
-             * tamper response, not from the attach itself. */
+            u32 req = (u32)g_notif.data.args[0];
+            u32 tgt = (u32)g_notif.data.args[1];
+            /* v22 THE SURGICAL FIX for the mutual deadlock: v15-v20's
+             * freeze = the watchdog ATTACHing EVERY thread INCLUDING
+             * this supervisor; the supervisor stops mid-RECV and EVERY
+             * later notification (the watchdog's own GETREGS included)
+             * waits forever for a reply that can never come. v18 showed
+             * denying ALL attaches aborts the TSS init — the umbrella
+             * is mandatory. So: allow EVERY attach EXCEPT the one whose
+             * target is THIS thread — the watchdog keeps its umbrella,
+             * the supervisor keeps serving notifications. */
+            if ((req == 16u || req == 0x4206u || req == 0x4207u) &&
+                tgt == (u32)g_suptid && g_suptid > 0) {
+                g_resp.error = -1;      /* -EPERM: not this thread */
+                g_resp.val   = 0;
+                g_resp.flags = 0;
+                if (g_gfd >= 0 && g_plog < 400) {
+                    lint q = 0;
+                    u32 uv = (u32)g_notif.pid;
+                    g_plog++;
+                    log_stamp();
+                    g_num[q++] = 'X';
+                    g_num[q++] = ':';
+                    if (uv == 0) g_num[q++] = '0';
+                    while (uv && q < (lint)sizeof(g_num) - 2) {
+                        u32 d;
+                        uv = udiv10(uv, &d);
+                        g_num[q++] = (char)('0' + d);
+                    }
+                    g_num[q++] = '\n';
+                    sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
+                }
+                goto reply;
+            }
+            /* log everything, pass everything (v19 behavior) */
             if (g_gfd >= 0 && g_plog < 400) {
                 lint q = 0, w = 0;
                 char tmp2[12];
@@ -1054,8 +1100,10 @@ void bgscomp_ctor(void)
     /* the supervisor spawns BEFORE the filter so TSYNC covers it too —
      * by design it only issues ALLOWed syscalls. */
     tid = clone_supervisor();
-    if (tid == 0)
+    if (tid == 0) {
+        g_suptid = (int)sysc(__NR_gettid, 0, 0, 0, 0, 0);
         supervisor_loop();      /* the child — never returns */
+    }
     log_num("SUP:", tid);
 
     p15.len    = (unsigned short)(sizeof(bpf15) / sizeof(bpf15[0]));
