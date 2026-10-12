@@ -97,6 +97,9 @@ jobs:
           # wraplog.txt then execs the seccomp wrapper. The wrapped process
           # runs as the APP uid, so pre-create the log world-writable.
           adb -s localhost:5555 shell "rm -f /data/local/tmp/wraplog.txt; touch /data/local/tmp/wraplog.txt; chmod 666 /data/local/tmp/wraplog.txt"
+          # v13.2: the libbgscomp ctor reports its prctl results here (0666 —
+          # the app uid writes; the file survives logcat rotation)
+          adb -s localhost:5555 shell "rm -f /data/local/tmp/guardlog.txt; touch /data/local/tmp/guardlog.txt; chmod 666 /data/local/tmp/guardlog.txt"
           # v7 taught: Zygote.getWrapProperty(niceName) has NO pkg:proc->pkg
           # fallback; set the exact per-process-name properties. v8 taught
           # (run 38177186129): they ARE set+read back, yet :BlockmanGo still
@@ -206,6 +209,7 @@ jobs:
         run: |
           mkdir -p gjevidence
           echo "== seccomp guard file evidence =="
+          adb -s localhost:5555 shell "cat /data/local/tmp/guardlog.txt 2>/dev/null" || true
           adb -s localhost:5555 shell "cat /data/user/0/com.sandboxol.blockymods/files/seccomp_guard.log 2>/dev/null" || echo "(no guard log)"
           echo "== wraplog.txt (which processes actually got wrapped) =="
           adb -s localhost:5555 shell cat /data/local/tmp/wraplog.txt 2>/dev/null || echo "(no wraplog)"

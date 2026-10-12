@@ -30,7 +30,11 @@ bgscomp_ctor:
     @ syscall register. v10.1: the first build trashed r7 and the linker's
     @ soinfo::call_constructors faulted right after the ctor returned
     @ (SIGSEGV in do_dlopen, a ~3s restart loop — run 38181791036).
-    push    {r4, r5, r7, lr}
+    @ v13.2: both prctl results are now REPORTED to
+    @ /data/local/tmp/guardlog.txt ("OK", "NNP:<errno-hex>", "SC:<errno-hex>")
+    @ — run 38194682340 proved the install can silently fail (ARMED logged,
+    @ the verdict still exit(25) 43s later).
+    push    {r4, r5, r6, r7, lr}
     sub     sp, sp, #16
     @ struct sock_fprog { u16 len; pad; const struct sock_filter *filter; }
     @ arm32 layout: len at [sp], filter at [sp, #4]
@@ -45,10 +49,11 @@ bgscomp_ctor:
     mov     r1, #1
     mov     r2, #0
     mov     r3, #0
-    mov     r4, #0                  @ arg5 (r4 was &bpf — reloaded below)
+    mov     r4, #0
     svc     #0
-    cmp     r0, #0
-    bne     done
+    mov     r5, r0                  @ save the raw return
+    cmp     r5, #0
+    bne     nnp_fail
 
     @ prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &fprog)
     adr     r4, bpf
@@ -56,10 +61,105 @@ bgscomp_ctor:
     mov     r0, #22                 @ PR_SET_SECCOMP
     mov     r1, #2                  @ SECCOMP_MODE_FILTER
     mov     r2, sp                  @ &fprog
-    svc     #0                      @ 0 = installed, -errno = not (harmless)
+    svc     #0
+    mov     r5, r0                  @ save the raw return
+    cmp     r5, #0
+    bne     sc_fail
+
+    @ ok
+    adr     r0, msg_ok
+    mov     r1, #3
+    bl      guard_append
+    b       done
+
+nnp_fail:
+    adr     r0, msg_nnp
+    mov     r1, #4
+    bl      guard_append
+    bl      append_err2
+    b       done
+
+sc_fail:
+    adr     r0, msg_sc
+    mov     r1, #3
+    bl      guard_append
+    bl      append_err2
+
 done:
     add     sp, sp, #16
-    pop     {r4, r5, r7, pc}
+    pop     {r4, r5, r6, r7, pc}
+
+@ ---------------------------------------------------------------------------
+@ guard_append: append r1 bytes from [r0] to /data/local/tmp/guardlog.txt
+@ (pre-created 0666 by CI — the app uid can write it). Preserves r4-r7.
+@ Clobbers r0-r3, r12.
+@ ---------------------------------------------------------------------------
+guard_append:
+    push    {r4, r5, r6, r7, lr}
+    mov     r6, r0                  @ buf
+    mov     r5, r1                  @ len
+    @ fd = openat(AT_FDCWD, path, O_WRONLY|O_APPEND|O_CREAT, 0666)
+    mov     r7, #322                @ __NR_openat (arm32 EABI)
+    mvn     r0, #99                 @ AT_FDCWD = -100
+    adr     r1, guard_path
+    mov     r2, #0x441              @ O_WRONLY|O_APPEND|O_CREAT
+    mov     r3, #0666
+    svc     #0
+    cmp     r0, #0
+    blt     ga_done                 @ cannot open — silently give up
+    mov     r4, r0                  @ fd
+    @ write(fd, buf, len)
+    mov     r7, #4                  @ __NR_write
+    mov     r0, r4
+    mov     r1, r6
+    mov     r2, r5
+    svc     #0
+    @ close(fd)
+    mov     r7, #6
+    mov     r0, r4
+    svc     #0
+ga_done:
+    pop     {r4, r5, r6, r7, pc}
+
+@ append_err2: writes (r5 & 0xff) as two hex digits + "\n" via guard_append.
+@ Clobbers r0-r3, r12. Preserves r4-r7.
+@ ---------------------------------------------------------------------------
+append_err2:
+    push    {r4, r5, r6, r7, lr}
+    sub     sp, sp, #16             @ the 3-byte buffer on the stack
+    mov     r1, sp
+    and     r0, r5, #0xff
+    mov     r2, r0
+    lsr     r0, r0, #4              @ high nibble
+    bl      nib2chr
+    strb    r0, [r1]
+    and     r0, r2, #0xf            @ low nibble
+    bl      nib2chr
+    strb    r0, [r1, #1]
+    mov     r0, #10                 @ '\n'
+    strb    r0, [r1, #2]
+    mov     r0, sp
+    mov     r1, #3
+    bl      guard_append
+    add     sp, sp, #16
+    pop     {r4, r5, r6, r7, pc}
+
+@ nib2chr: r0 in 0..15 -> '0'-'9'/'a'-'f' in r0
+nib2chr:
+    cmp     r0, #9
+    addls   r0, r0, #48             @ '0'
+    addhi   r0, r0, #87             @ 'a' - 10
+    bx      lr
+
+    .balign 4
+guard_path:
+    .asciz "/data/local/tmp/guardlog.txt"
+msg_ok:
+    .asciz "OK\n"
+msg_nnp:
+    .asciz "NNP:"
+msg_sc:
+    .asciz "SC:"
 
 @ ---------------------------------------------------------------------------
 @ THE BPF FILTER — 19 sock_filter instructions, 8 bytes each:
