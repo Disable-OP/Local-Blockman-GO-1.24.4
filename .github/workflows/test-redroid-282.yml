@@ -321,6 +321,16 @@ jobs:
             adb -s localhost:5555 shell "tail -c 600 $D/server.log 2>/dev/null" || true
           done
           adb -s localhost:5555 logcat -d -s LocalAPI:* | grep -E "C2SPacketLogin|g2r|monitor" | tail -12 || true
+          echo "== [9] TOMBSTONES (the full memory-near-pc dump = the SIGILL's runtime bytes) =="
+          adb -s localhost:5555 shell "ls -la /data/tombstones 2>/dev/null" || true
+          for T in /data/tombstones/tombstone_0*; do
+            [ -e "$T" ] || continue
+            echo "----- $T (head 150) -----"
+            adb -s localhost:5555 shell "head -150 $T" 2>/dev/null | grep -vE "^$" | head -150 || true
+          done
+          mkdir -p tombstones
+          adb -s localhost:5555 pull /data/tombstones tombstones/ 2>/dev/null || true
+          ls -la tombstones/ 2>/dev/null | head -5 || true
 
       - name: Crash scan
         if: always()
@@ -387,6 +397,7 @@ jobs:
             death_logcat.txt
             englog.txt
             wraplog.txt
+            tombstones/
             /tmp/localapi_probe.json
             gjevidence/
           if-no-files-found: ignore

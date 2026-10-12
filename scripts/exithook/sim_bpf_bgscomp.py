@@ -56,7 +56,7 @@ def parse_filters(src_path):
             MACROS = {"AUDIT_ARCH_THIS": 0x40000028, "BPF_NR_OPENAT": 322,
                       "BPF_NR_OPEN": 5, "BPF_NR_OPENAT2": 437,
                       "BPF_NR_EXITGROUP": 248, "BPF_NR_EXIT": 1,
-                      "BPF_NR_PRCTL": 172, "BPF_NR_PTRICE": 26, "BPF_NR_CLONE": 120, "BPF_NR_VMREADV": 276, "BPF_NR_KILL": 37, "BPF_NR_TKILL": 238, "BPF_NR_TGKILL": 268, "BPF_NR_SIGQUEUE": 265}
+                      "BPF_NR_PRCTL": 172, "BPF_NR_PTRICE": 26, "BPF_NR_CLONE": 120, "BPF_NR_VMREADV": 276, "BPF_NR_KILL": 37, "BPF_NR_TKILL": 238, "BPF_NR_TGKILL": 268, "BPF_NR_SIGQUEUE": 265, "BPF_NR_SECCOMP": 383}
             if kraw in MACROS:
                 k = MACROS[kraw]
             elif kraw.startswith("0x"):
@@ -204,7 +204,7 @@ def main():
         ("write-> ALLOW", run(b15, 4, 0), ("RET", RET_ALLOW)),
         ("ioctl-> ALLOW", run(b15, 54, 0), ("RET", RET_ALLOW)),
         ("memfd_create -> ALLOW", run(b15, 385, 0), ("RET", RET_ALLOW)),
-        ("seccomp -> ALLOW", run(b15, 383, 0), ("RET", RET_ALLOW)),
+        ("seccomp(383) -> USER_NOTIF (v37: faked in the supervisor)", run(b15, 383, 2), ("RET", RET_USER_NOTIF)),
         ("clone(120) -> USER_NOTIF", run(b15, 120, 0), ("RET", RET_USER_NOTIF)),
         ("ptrace(26) -> USER_NOTIF", run(b15, 26, 0), ("RET", RET_USER_NOTIF)),
         ("process_vm_readv(276) -> USER_NOTIF", run(b15, 276, 0), ("RET", RET_USER_NOTIF)),
@@ -224,6 +224,8 @@ def main():
         ("exit_group(0)  -> ALLOW", run(b14, 248, 0), ("RET", RET_ALLOW)),
         ("prctl(GET_SECCOMP=21) -> ERRNO(0)", run(b14, 172, 21), ("RET", RET_ERRNO | 0)),
         ("prctl(GET_NNP=36)     -> ERRNO(0)", run(b14, 172, 36), ("RET", RET_ERRNO | 0)),
+        ("seccomp(GET_MODE=2) -> ERRNO(0) (v37 fake)", run(b14, 383, 2), ("RET", RET_ERRNO | 0)),
+        ("seccomp(SET_MODE=1) -> ALLOW (execute)", run(b14, 383, 1), ("RET", RET_ALLOW)),
         ("openat -> ALLOW (no notify!)", run(b14, 322, 0), ("RET", RET_ALLOW)),
         ("read   -> ALLOW", run(b14, 3, 0), ("RET", RET_ALLOW)),
     ]

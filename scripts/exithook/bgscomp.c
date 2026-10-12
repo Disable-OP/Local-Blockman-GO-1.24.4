@@ -122,6 +122,7 @@ typedef long               lint;
 #define BPF_NR_TGKILL    234
 #define BPF_NR_SIGQUEUE  129
 #define BPF_NR_CLONE     56
+#define BPF_NR_SECCOMP   317
 
 static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
 {
@@ -205,6 +206,7 @@ static inline lint sysc6(lint n, lint a, lint b, lint c, lint d, lint e,
 #define BPF_NR_TGKILL    268
 #define BPF_NR_SIGQUEUE  265
 #define BPF_NR_CLONE     120
+#define BPF_NR_SECCOMP   383
 
 static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
 {
@@ -377,41 +379,43 @@ struct seccomp_notif_addfd {
 
 static const struct sock_filter bpf15[] = {
     { 0x20, 0,  0,  4           },   /*  0 LD [4]  arch        */
-    { 0x15, 0, 28,  AUDIT_ARCH_THIS },  /*  1 JEQ arch jt=0 jf=28 */
+    { 0x15, 0, 29,  AUDIT_ARCH_THIS },  /*  1 JEQ arch jt=0 jf=29 (ALLOW=31) */
     { 0x20, 0,  0,  0           },   /*  2 LD [0]  nr          */
-    { 0x15, 23, 0,  BPF_NR_OPENAT },  /*  3 openat  -> 27       */
-    { 0x15, 22, 0,  BPF_NR_OPEN },    /*  4 open    -> 27       */
-    { 0x15, 21, 0,  BPF_NR_OPENAT2 }, /*  5 openat2 -> 27       */
-    { 0x15, 16, 0,  BPF_NR_PRCTL },   /*  6 prctl   -> 23       */
+    { 0x15, 24, 0,  BPF_NR_OPENAT },  /*  3 openat  -> 28       */
+    { 0x15, 23, 0,  BPF_NR_OPEN },    /*  4 open    -> 28       */
+    { 0x15, 22, 0,  BPF_NR_OPENAT2 }, /*  5 openat2 -> 28       */
+    { 0x15, 17, 0,  BPF_NR_PRCTL },   /*  6 prctl   -> 24       */
     { 0x15, 11, 0,  BPF_NR_EXITGROUP }, /*  7 exit_gr -> 19     */
     { 0x15, 10, 0,  BPF_NR_EXIT },    /*  8 exit    -> 19       */
-    { 0x15, 17, 0,  425         },   /*  9 io_uring_setup -> 27 (v36: NOTIFY) */
-    { 0x15, 16, 0,  426         },   /* 10 io_uring_enter -> 27 (v36: NOTIFY) */
-    { 0x15, 15, 0,  427         },   /* 11 io_uring_reg   -> 27 (v36: NOTIFY) */
-    { 0x15, 14, 0,  BPF_NR_PTRICE },  /* 12 ptrace  -> 27       */
-    { 0x15, 13, 0,  BPF_NR_CLONE },   /* 13 clone   -> 27       */
-    { 0x15, 12, 0,  BPF_NR_VMREADV }, /* 14 vm_readv -> 27       */
-    { 0x15, 11, 0,  BPF_NR_KILL },    /* 15 kill    -> 27       */
-    { 0x15, 10, 0,  BPF_NR_TGKILL },  /* 16 tgkill  -> 27       */
-    { 0x15, 9,  0,  BPF_NR_TKILL },   /* 17 tkill   -> 27       */
-    { 0x15, 8, 11,  BPF_NR_SIGQUEUE }, /* 18 sigqueue -> 27 / 30 */
-    { 0x20, 0,  0,  16          },   /* 19 LD [16] args0.lo    */
-    { 0x15, 7,  0,  25          },   /* 20 ==25 -> 28          */
-    { 0x15, 6,  0,  30          },   /* 21 ==30 -> 28          */
-    { 0x05, 0,  0,  7           },   /* 22 JA -> 30            */
-    { 0x20, 0,  0,  16          },   /* 23 LD [16] option      */
-    { 0x15, 4,  0,  21          },   /* 24 PR_GET_SECCOMP->29  */
-    { 0x15, 3,  0,  36          },   /* 25 PR_GET_NNP    ->29  */
-    { 0x05, 0,  0,  3           },   /* 26 JA -> 30            */
-    { 0x06, 0,  0,  0x7FC00000U },   /* 27 RET USER_NOTIF      */
-    { 0x06, 0,  0,  0x00050026U },   /* 28 RET ERRNO(ENOSYS)   */
-    { 0x06, 0,  0,  0x00050000U },   /* 29 RET ERRNO(0)        */
-    { 0x06, 0,  0,  0x7FFF0000U },   /* 30 RET ALLOW           */
+    { 0x15, 18, 0,  425         },   /*  9 io_uring_setup -> 28 (v36: NOTIFY) */
+    { 0x15, 17, 0,  426         },   /* 10 io_uring_enter -> 28 (v36: NOTIFY) */
+    { 0x15, 16, 0,  427         },   /* 11 io_uring_reg   -> 28 (v36: NOTIFY) */
+    { 0x15, 15, 0,  BPF_NR_PTRICE },  /* 12 ptrace  -> 28       */
+    { 0x15, 14, 0,  BPF_NR_CLONE },   /* 13 clone   -> 28       */
+    { 0x15, 13, 0,  BPF_NR_VMREADV }, /* 14 vm_readv -> 28       */
+    { 0x15, 12, 0,  BPF_NR_KILL },    /* 15 kill    -> 28       */
+    { 0x15, 11, 0,  BPF_NR_TGKILL },  /* 16 tgkill  -> 28       */
+    { 0x15, 10, 0,  BPF_NR_TKILL },   /* 17 tkill   -> 28       */
+    { 0x15, 9,  0,  BPF_NR_SIGQUEUE }, /* 18 sigqueue -> 28 / 19 (seccomp) */
+    { 0x15, 8,  0,  BPF_NR_SECCOMP }, /* 19 seccomp  -> 28 (v37: NOTIFY) */
+    { 0x20, 0,  0,  16          },   /* 20 LD [16] args0.lo    */
+    { 0x15, 7,  0,  25          },   /* 21 ==25 -> 29          */
+    { 0x15, 6,  0,  30          },   /* 22 ==30 -> 29          */
+    { 0x05, 0,  0,  7           },   /* 23 JA -> 31            */
+    { 0x20, 0,  0,  16          },   /* 24 LD [16] option      */
+    { 0x15, 4,  0,  21          },   /* 25 PR_GET_SECCOMP->30  */
+    { 0x15, 3,  0,  36          },   /* 26 PR_GET_NNP    ->30  */
+    { 0x05, 0,  0,  3           },   /* 27 JA -> 31            */
+    { 0x06, 0,  0,  0x7FC00000U },   /* 28 RET USER_NOTIF      */
+    { 0x06, 0,  0,  0x00050026U },   /* 29 RET ERRNO(ENOSYS)   */
+    { 0x06, 0,  0,  0x00050000U },   /* 30 RET ERRNO(0)        */
+    { 0x06, 0,  0,  0x7FFF0000U },   /* 31 RET ALLOW           */
 };
 
-/* bpf14 (fallback): the exact v14 filter — ERRNO(ENOSYS) on the verdict
- * exits + the prctl fakes, NO USER_NOTIF (a listener-less process must
- * never return USER_NOTIF from a filter). 19 instructions. The arm64 nr
+/* bpf14 (fallback): the v14 filter + the v37 seccomp(GET_MODE) fake —
+ * ERRNO(ENOSYS) on the verdict exits, ERRNO(0) on seccomp(GET_MODE) and
+ * the prctl GET fakes, NO USER_NOTIF (a listener-less process must never
+ * return USER_NOTIF from a filter). 22 instructions. The arm64 nr
  * entries (93/94/167) stay literal: they are belt-and-braces for the
  * 64-bit edge case on the arm build and inert elsewhere. */
 static const struct sock_filter bpf14[] = {
@@ -419,21 +423,24 @@ static const struct sock_filter bpf14[] = {
     { 0x15, 3,  0,  BPF_NR_EXIT },    /*  1 arm32 exit    -> 5  */
     { 0x15, 2,  0,  93          },   /*  2 arm64 exit    -> 5  */
     { 0x15, 1,  0,  94          },   /*  3 arm64 exit_gr -> 5  */
-    { 0x15, 0,  5,  BPF_NR_EXITGROUP }, /*  4 arm32 exit_gr -> 5 */
+    { 0x15, 0,  5,  BPF_NR_EXITGROUP }, /*  4 arm32 exit_gr -> 5 / 10 */
     { 0x20, 0,  0,  16          },   /*  5 LD [16] args0       */
     { 0x15, 2,  0,  25          },   /*  6 ==25 -> 9           */
     { 0x15, 1,  0,  30          },   /*  7 ==30 -> 9           */
-    { 0x05, 0,  0,  9           },   /*  8 JA -> 18            */
+    { 0x05, 0,  0,  12          },   /*  8 JA -> 21 (harmless exit ALLOW) */
     { 0x06, 0,  0,  0x00050026U },   /*  9 RET ERRNO(ENOSYS)   */
-    { 0x15, 1,  0,  167         },   /* 10 arm64 prctl -> 12   */
-    { 0x15, 0,  6,  BPF_NR_PRCTL },   /* 11 arm32 prctl -> 12   */
-    { 0x20, 0,  0,  16          },   /* 12 LD [16] option      */
-    { 0x15, 3,  0,  21          },   /* 13 GET_SECCOMP -> 17   */
-    { 0x15, 2,  0,  36          },   /* 14 GET_NNP     -> 17   */
-    { 0x05, 0,  0,  2           },   /* 15 JA -> 18            */
-    { 0x05, 0,  0,  1           },   /* 16 JA -> 18 (filler)   */
-    { 0x06, 0,  0,  0x00050000U },   /* 17 RET ERRNO(0)        */
-    { 0x06, 0,  0,  0x7FFF0000U },   /* 18 RET ALLOW           */
+    { 0x15, 0,  2,  BPF_NR_SECCOMP }, /* 10 seccomp -> 11 / 13 (v37) */
+    { 0x20, 0,  0,  16          },   /* 11 LD [16] args0       */
+    { 0x15, 7,  0,  2           },   /* 12 GET_MODE(2) -> 20 (v37 fake) */
+    { 0x15, 1,  0,  167         },   /* 13 arm64 prctl -> 15   */
+    { 0x15, 0,  6,  BPF_NR_PRCTL },   /* 14 arm32 prctl -> 15 / 21 */
+    { 0x20, 0,  0,  16          },   /* 15 LD [16] option      */
+    { 0x15, 3,  0,  21          },   /* 16 GET_SECCOMP -> 20   */
+    { 0x15, 2,  0,  36          },   /* 17 GET_NNP     -> 20   */
+    { 0x05, 0,  0,  2           },   /* 18 JA -> 21 (ALLOW)    */
+    { 0x05, 0,  0,  1           },   /* 19 JA -> 21 (filler)   */
+    { 0x06, 0,  0,  0x00050000U },   /* 20 RET ERRNO(0)        */
+    { 0x06, 0,  0,  0x7FFF0000U },   /* 21 RET ALLOW           */
 };
 
 /* ------------------------------------------------------------------ */
@@ -864,6 +871,48 @@ static void supervisor_loop(void)
                 while (w) g_num[q++] = tmp2[--w];
                 g_num[q++] = '\n';
                 sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
+            }
+            g_resp.flags = SECCOMP_USER_NOTIF_FLAG_CONTINUE;
+            goto reply;
+        }
+
+        /* v37: seccomp(2) — THE filter-detection probe. SECCOMP_GET_MODE
+         * (flag 2) on a filtered process returns 2 (filter mode); the
+         * prctl(PR_GET_SECCOMP) fake alone left THIS channel answering
+         * the real value — and a detector comparing both (they must be
+         * consistent on a clean system) or just probing GET_MODE caught
+         * the filter in EVERY filter-era run (the ctor SIGILL at
+         * libBlockMan+0x169d14, zero /proc opens, zero io_uring calls —
+         * the only observable deltas left were exit-block + GET_MODE).
+         * Fake: GET_MODE -> returns 0 (= SECCOMP_MODE_DISABLED, the
+         * clean-system answer, consistent with the prctl(21) fake).
+         * Everything else (SET_MODE_FILTER etc.) CONTINUEs for real. */
+        if (nr == BPF_NR_SECCOMP) {
+            if (g_gfd >= 0 && g_plog < 1500) {
+                lint q = 0, w = 0;
+                char tmp2[12];
+                u32 uv = (u32)g_notif.data.args[0];
+                g_plog++;
+                g_num[q++] = 'G';
+                g_num[q++] = ':';
+                if (uv == 0) tmp2[w++] = '0';
+                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
+                while (w) g_num[q++] = tmp2[--w];
+                g_num[q++] = '@';
+                uv = (u32)g_notif.pid;
+                w = 0;
+                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
+                while (w) g_num[q++] = tmp2[--w];
+                g_num[q++] = '\n';
+                sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
+            }
+            if ((u32)g_notif.data.args[0] == 2) {
+                /* SECCOMP_GET_MODE -> "0" (disabled): val=0, error=0,
+                 * flags=0 — the syscall RETURNS 0, no CONTINUE. */
+                g_resp.val   = 0;
+                g_resp.error = 0;
+                g_resp.flags = 0;
+                goto reply;
             }
             g_resp.flags = SECCOMP_USER_NOTIF_FLAG_CONTINUE;
             goto reply;
