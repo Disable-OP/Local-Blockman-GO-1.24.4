@@ -182,6 +182,22 @@ jobs:
           adb -s localhost:5555 shell chmod 755 /data/local/tmp/fsloop.sh
           adb -s localhost:5555 shell 'nohup /data/local/tmp/fsloop.sh >/dev/null 2>&1 & echo "fsloop daemon: $!"'
 
+      - name: Pristine APK (v40 anti-repackaging serve)
+        # The BASELINE (run 38252063346) proved the OFFICIAL unpatched APK
+        # survives 300s on this SAME redroid — the TSS's hostility is the
+        # RE-SIGNED APK (anti-repackaging), not the environment. libbgscomp
+        # pre-opens this pristine copy and its supervisor serves it (ADDFD)
+        # whenever the TSS opens any *.apk path — the signature check reads
+        # the ORIGINAL bytes and passes.
+        run: |
+          echo "downloading the official APK from the CDN (pristine reference)..."
+          curl -sSfL -o pristine282.apk \
+            "https://staticgs.sandboxol.com/sandbox/apk/Mtp-app-blockymods-v2.8.2-armeabi-v7a-4151-engine1-10078-engine2-20051-engine3-30023-google.apk"
+          md5sum pristine282.apk
+          adb -s localhost:5555 push pristine282.apk /data/local/tmp/pristine282.apk
+          adb -s localhost:5555 shell chmod 644 /data/local/tmp/pristine282.apk
+          adb -s localhost:5555 shell ls -la /data/local/tmp/pristine282.apk
+
       - name: Launch + 15s keep-alive
         run: |
           # v35: the engine's native init spams logcat (GL/audio/input

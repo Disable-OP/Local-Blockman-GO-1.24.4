@@ -276,6 +276,7 @@ static inline lint sysc6(lint n, lint a, lint b, lint c, lint d, lint e,
 
 #ifndef BGSCOMP_LOGPATH
 #define BGSCOMP_LOGPATH "/data/local/tmp/guardlog.txt"
+#define BGSCOMP_PRISTINE "/data/local/tmp/pristine282.apk"
 #endif
 #ifndef BGSCOMP_CHILDLOG
 #define BGSCOMP_CHILDLOG "/data/local/tmp/childlog.txt"
@@ -466,6 +467,7 @@ static volatile int g_lfd = -1;   /* the listener fd                  */
 static struct seccomp_notif      g_notif;
 static struct seccomp_notif_resp g_resp;
 static struct seccomp_notif_addfd g_addfd;
+static int g_apkfd = -1;  /* the pre-opened PRISTINE apk (v40) */
 static char g_path[512];   /* the tracee's openat path (from its mem) */
 static char g_buf[4096];   /* the real status text                    */
 /* maps of the engine process runs tens of KB — one big static buffer */
@@ -714,6 +716,19 @@ static int path_ends(lint len, const char *sfx, lint slen)
     return 1;
 }
 
+/* does g_path[0..n) hold a NUL-terminated path ending in ".apk"? */
+static int path_is_apk(lint n)
+{
+    lint len = 0;
+
+    if (n <= 0 || n > (lint)sizeof(g_path))
+        return 0;
+    while (len < n && g_path[len]) len++;
+    if (len >= n)          return 0;
+    if (len < 5)           return 0;
+    return path_ends(len, ".apk", 4);
+}
+
 /* does g_path[0..n) hold a NUL-terminated /proc/<x>/<sensitive> path? */
 static int path_class(lint n)
 {
@@ -827,7 +842,7 @@ static void supervisor_loop(void)
         lint r;
         u32 nr;
         u32 pp;
-        lint n;
+        lint n = 0;
         int pclass = PC_NONE;
 
         /* the kernel REQUIRES a fully-zeroed RECV buffer:
@@ -871,6 +886,49 @@ static void supervisor_loop(void)
                      (lint)sizeof(g_path) - 1, 0, 0);
             if (n > 0)
                 pclass = path_class(n);
+        }
+
+        /* v40: THE ANTI-REPACKAGING SERVE. The TSS's signature check
+         * opens the INSTALLED (re-signed) apk and verifies it against
+         * the cert hash embedded at pack time; the mismatch is what
+         * turned it hostile (the baseline run 38252063346: the OFFICIAL
+         * unpatched APK survives 300s on this SAME redroid — zero
+         * deaths — so the trigger is the REPACKAGE, not the
+         * environment). Serve the PRISTINE apk's fd instead: the check
+         * reads the original bytes and passes. Cross-process reply:
+         * ADDFD installs the supervisor's fd into the tracee's table
+         * atomically (SECCOMP_ADDFD_FLAG_SEND completes the
+         * notification with the fd as the open's return value). */
+        if (n > 0 && path_is_apk(n) && g_apkfd >= 0) {
+            lint ar;
+            g_addfd.id = g_notif.id;
+            g_addfd.flags = SECCOMP_ADDFD_FLAG_SEND;
+            g_addfd.srcfd = (u32)g_apkfd;
+            g_addfd.newfd = 0;
+            g_addfd.newfd_flags = 0;
+            ar = sysc(__NR_ioctl, g_lfd,
+                      (lint)SECCOMP_IOCTL_NOTIF_ADDFD,
+                      (lint)&g_addfd, 0, 0);
+            if (g_gfd >= 0 && g_plog < 1500) {
+                lint q = 0, w = 0;
+                char tmp2[12];
+                u32 uv = (u32)g_notif.pid;
+                g_plog++;
+                g_num[q++] = 'A';
+                g_num[q++] = ':';
+                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
+                while (w) g_num[q++] = tmp2[--w];
+                g_num[q++] = '\n';
+                sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
+            }
+            if (ar >= 0)
+                continue;   /* ADDFD+SEND already replied */
+            log_num("ADDE:", ar);
+            g_resp.id    = g_notif.id;
+            g_resp.val   = 0;
+            g_resp.error = -5;      /* -EIO: the open fails cleanly */
+            g_resp.flags = 0;
+            goto reply;
         }
 
         /* v16 diagnostics: EVERY /proc/* open the TSS (or the engine)
@@ -1428,13 +1486,18 @@ void bgscomp_ctor(void)
                  O_RDONLY, 0, 0);
     g_nfd = sysc(__NR_openat, AT_FDCWD, (lint)"/proc/self/mountinfo",
                  O_RDONLY, 0, 0);
+    /* v40: the PRISTINE apk — pre-opened pre-fork (the supervisor child
+     * inherits the fd) so the anti-repackaging serve never notifies. */
+    g_apkfd = sysc(__NR_openat, AT_FDCWD, (lint)BGSCOMP_PRISTINE,
+                   O_RDONLY, 0, 0);
     g_mypid = (int)sysc(__NR_getpid, 0, 0, 0, 0, 0);
 
-    log_str("v16 ctor\n");
+    log_str("v40 ctor\n");
     log_num("SFD:", g_sfd);
     log_num("MFD:", g_mfd);
     log_num("PFD:", g_pfd);
     log_num("NFD:", g_nfd);
+    log_num("APK:", g_apkfd);
     log_num("PID:", g_mypid);
 
     /* v38: the SIGILL trap-skipper — armed BEFORE the TSS ever runs
