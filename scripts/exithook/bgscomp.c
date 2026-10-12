@@ -97,6 +97,7 @@ typedef long               lint;
 #define __NR_kill         62L
 #define __NR_clock_gettime 228L
 #define __NR_rt_sigqueueinfo 129L
+#define __NR_rt_sigaction   13L
 #define __NR_tkill       200L
 #define __NR_tgkill      234L
 #define __NR_PROCESS_VM_READV 310L
@@ -181,6 +182,7 @@ static inline lint sysc6(lint n, lint a, lint b, lint c, lint d, lint e,
 #define __NR_kill         37L
 #define __NR_clock_gettime 263L
 #define __NR_rt_sigqueueinfo 265L
+#define __NR_rt_sigaction  174L
 #define __NR_tkill       238L
 #define __NR_tgkill      268L
 #define __NR_PROCESS_VM_READV 276L
@@ -554,6 +556,116 @@ static u32 udiv10(u32 v, u32 *rem)
         *rem = r;
     return q;
 }
+
+static void log_num(const char *tag, lint v);
+
+/* ------------------------------------------------------------------ */
+/* v38: the SIGILL trap-skipper.                                       */
+/*                                                                     */
+/* EVIDENCE CHAIN (wip-104/105/106/107 — runs 38237179615,             */
+/* 38241104113, 38244681621, 38247471065): the engine always dies at   */
+/* libBlockMan+0x169d14, SIGILL ILL_ILLOPC, in linker                  */
+/* call_constructors <- do_dlopen — ~0.8s after the join-time dlopen   */
+/* starts. Every syscall-probe hypothesis is EXONERATED (the           */
+/* supervisor served zero /proc opens, zero io_uring, zero seccomp     */
+/* notifications across all four runs; prctl(21/36) and seccomp-       */
+/* GET_MODE were faked consistently by v37). The wip-107 tombstone's   */
+/* memory-near-pc shows RUNTIME bytes that are STILL undefined         */
+/* opcodes (trap garbage), and lr points INSIDE the linker's           */
+/* call_constructors — the faulting "function" IS an init_array ctor   */
+/* entry (r10 = 0x969 = 2409 = the ctor index) whose decrypted body    */
+/* is a deliberate trap page. Reading: the TSS verdict path runs       */
+/* exit(25|30) -> our filter ENOSYSes it -> the verdict code           */
+/* continues into a trap page (or the ctor list contains a decoy       */
+/* trap entry). Either way the SIGILL is a CALL-site recoverable at    */
+/* lr: skipping the faulting ctor lets call_constructors continue      */
+/* the list and the dlopen complete.                                   */
+/*                                                                     */
+/* The handler edits the ucontext: arm_pc := arm_lr (the caller's      */
+/* resume point in the linker), logs S:<pc>@<tid> to the guardlog,     */
+/* and returns through a hand-rolled rt_sigreturn restorer (bare       */
+/* -nostdlib: no libc trampoline). Installed at libbgscomp load        */
+/* (+4.2s) — long before the join-time dlopen.                         */
+/* ------------------------------------------------------------------ */
+#if !defined(__x86_64__)
+
+#define SA_RESTORER_  0x04000000u
+#define SA_SIGINFO_   0x00000004u
+#define SA_RESTART_   0x10000000u
+
+/* the sigreturn trampoline the kernel jumps to when the handler
+ * returns — mov r7,#173 (rt_sigreturn); svc #0 */
+__asm__(".text\n.align 2\n.globl sigill_restorer\n.type sigill_restorer,%function\n"
+        "sigill_restorer:\n"
+        "  mov r7, #173\n"
+        "  svc #0\n");
+void sigill_restorer(void);
+
+/* arm32 sigcontext offsets inside ucontext_t:
+ * uc_flags(0) uc_link(4) uc_stack(8..19) uc_mcontext(20..91)
+ *   sigcontext: trap_no(20) error_code(24) oldmask(28)
+ *   arm_r0(32) r1(36) r2(40) r3(44) r4(48) r5(52) r6(56) r7(60)
+ *   r8(64) r9(68) r10(72) fp(76) ip(80) sp(84) lr(88) pc(92)
+ *   cpsr(96) fault_address(100) */
+#define UC_ARM_LR  88
+#define UC_ARM_PC  92
+
+static volatile unsigned long g_sigill_fires = 0;
+
+static void sigill_skip(int sig, void *si, void *ucv)
+{
+    unsigned char *uc = (unsigned char *)ucv;
+    volatile unsigned long *lr = (volatile unsigned long *)(uc + UC_ARM_LR);
+    volatile unsigned long *pc = (volatile unsigned long *)(uc + UC_ARM_PC);
+    unsigned long fault = *pc;
+    lint q = 0, w = 0;
+    char tmp2[12];
+    u32 uv;
+
+    (void)sig; (void)si;
+    g_sigill_fires++;
+    *pc = *lr;      /* resume the CALLER of the faulting ctor */
+    if (g_gfd >= 0 && g_plog < 1500) {
+        g_plog++;
+        g_num[q++] = 'S';
+        g_num[q++] = ':';
+        uv = (u32)fault;
+        if (uv == 0) tmp2[w++] = '0';
+        while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
+        while (w) g_num[q++] = tmp2[--w];
+        g_num[q++] = '\n';
+        sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
+    }
+}
+
+static void install_sigill_skipper(void)
+{
+    /* kernel_sigaction on arm32: handler, flags, restorer, mask(8B) */
+    struct {
+        unsigned long handler;
+        unsigned long flags;
+        void *restorer;
+        unsigned long mask[2];
+    } act, old;
+    lint r;
+
+    act.handler = (unsigned long)sigill_skip;
+    act.flags = SA_SIGINFO_ | SA_RESTORER_ | SA_RESTART_;
+    act.restorer = (void *)sigill_restorer;
+    act.mask[0] = 0; act.mask[1] = 0;
+    r = sysc(__NR_rt_sigaction, 4 /* SIGILL */, (lint)&act, (lint)&old,
+             8 /* sigsetsize */, 0);
+    log_num("SILL:", r);
+}
+
+#else  /* x86_64 host selftest: no trap-skipper needed */
+
+static void install_sigill_skipper(void)
+{
+    log_str("SILL:skip(x86)\n");
+}
+
+#endif  /* !__x86_64__ */
 
 static void log_num(const char *tag, lint v)
 {
@@ -1324,6 +1436,11 @@ void bgscomp_ctor(void)
     log_num("PFD:", g_pfd);
     log_num("NFD:", g_nfd);
     log_num("PID:", g_mypid);
+
+    /* v38: the SIGILL trap-skipper — armed BEFORE the TSS ever runs
+     * (libbgscomp loads at the delayed-arm time; the join-time dlopen
+     * of libBlockMan comes tens of seconds later). */
+    install_sigill_skipper();
 
     /* NNP FIRST: no_new_privs is a PER-TASK flag (inherited at clone from
      * the CURRENT value). The supervisor must ALREADY carry it when TSYNC
