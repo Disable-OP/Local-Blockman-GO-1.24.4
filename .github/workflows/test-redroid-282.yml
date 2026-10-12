@@ -100,6 +100,18 @@ jobs:
           # v13.2: the libbgscomp ctor reports its prctl results here (0666 —
           # the app uid writes; the file survives logcat rotation)
           adb -s localhost:5555 shell "rm -f /data/local/tmp/guardlog.txt; touch /data/local/tmp/guardlog.txt; chmod 666 /data/local/tmp/guardlog.txt"
+          # v30: the supervisor child logs here — pre-create 666 (the app
+          # uid CANNOT create new files in /data/local/tmp: the dir is
+          # root:shell without o+w — the v30 run's "(no childlog)")
+          adb -s localhost:5555 shell "rm -f /data/local/tmp/childlog.txt; touch /data/local/tmp/childlog.txt; chmod 666 /data/local/tmp/childlog.txt"
+          # v31: ANDROID 12'S PHANTOM PROCESS KILLER. The supervisor is a
+          # raw fork() of the app process — EXACTLY what AMS's phantom
+          # process reaper hunts (untracked app-forked children). It was
+          # killing the supervisor mid-init, stalling every notified
+          # syscall and aborting the engine start. Disable it.
+          adb -s localhost:5555 shell settings put global settings_enable_monitor_phantom_procs false || true
+          adb -s localhost:5555 shell device_config put activity_manager max_phantom_processes 2147483647 || true
+          echo "phantom procs monitor: $(adb -s localhost:5555 shell settings get global settings_enable_monitor_phantom_procs)"
           # v7 taught: Zygote.getWrapProperty(niceName) has NO pkg:proc->pkg
           # fallback; set the exact per-process-name properties. v8 taught
           # (run 38177186129): they ARE set+read back, yet :BlockmanGo still
