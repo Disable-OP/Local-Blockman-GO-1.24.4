@@ -619,10 +619,11 @@ static void supervisor_loop(void)
             g_num[q++] = 'P';
             g_num[q++] = ':';
             if (uv == 0) g_num[q++] = '0';
-            while (uv) {
-                u32 d;
-                uv = udiv10(uv, &d);
-                g_num[q++] = (char)('0' + d);
+            {
+                char tmp2[12];
+                lint w = 0;
+                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
+                while (w) g_num[q++] = tmp2[--w];
             }
             g_num[q++] = ':';
             for (i2 = 0; i2 < n && g_path[i2]; i2++)
@@ -642,27 +643,76 @@ static void supervisor_loop(void)
          * picture (v15/v16: zero proc-file reads, the engine frozen in
          * ptrace_stop). Notify these two, log, CONTINUE — zero behavior
          * change, full visibility of WHO attaches WHEN with WHAT. */
-        if (nr == __NR_ptrace || nr == __NR_clone) {
-            if (g_gfd >= 0 && g_plog < 400) {
-                lint q = 0;
-                u32 uv = (u32)g_notif.data.args[0];
-                g_plog++;
-                g_num[q++] = (nr == __NR_ptrace) ? 'T' : 'C';
-                g_num[q++] = ':';
-                if (uv == 0) g_num[q++] = '0';
-                while (uv && q < (lint)sizeof(g_num) - 10) {
-                    u32 d;
-                    uv = udiv10(uv, &d);
-                    g_num[q++] = (char)('0' + d);
+        if (nr == __NR_ptrace) {
+            u32 req = (u32)g_notif.data.args[0];
+            /* v18: the TSS watchdog PTRACE_ATTACHes every engine thread
+             * (v17: 14x ATTACH from the forked child), scans memory
+             * through the attach, and its kill protocol — hold the
+             * threads stopped while forcing the tracee into
+             * exit_group(25) — DEADLOCKS against our exit block (the
+             * v15/v16/v17 ptrace_stop freeze). Deny the attach: without
+             * the ptrace umbrella the watchdog cannot stop or scan us.
+             * ATTACH=16, SEIZE=0x4206, INTERRUPT=0x4207. */
+            if (req == 16u || req == 0x4206u || req == 0x4207u) {
+                g_resp.error = -1;          /* -EPERM */
+                g_resp.val   = 0;
+                g_resp.flags = 0;
+                if (g_gfd >= 0 && g_plog < 400) {
+                    lint q = 0;
+                    u32 uv = (u32)g_notif.pid;
+                    g_plog++;
+                    g_num[q++] = 'X';
+                    g_num[q++] = ':';
+                    if (uv == 0) g_num[q++] = '0';
+                    while (uv && q < (lint)sizeof(g_num) - 2) {
+                        u32 d;
+                        uv = udiv10(uv, &d);
+                        g_num[q++] = (char)('0' + d);
+                    }
+                    g_num[q++] = '\n';
+                    sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
                 }
+                goto reply;
+            }
+            /* other ptrace requests: log + pass through */
+            if (g_gfd >= 0 && g_plog < 400) {
+                lint q = 0, w = 0;
+                char tmp2[12];
+                u32 uv = req;
+                g_plog++;
+                g_num[q++] = 'T';
+                g_num[q++] = ':';
+                if (uv == 0) tmp2[w++] = '0';
+                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
+                while (w) g_num[q++] = tmp2[--w];
                 g_num[q++] = '@';
                 uv = (u32)g_notif.pid;
-                if (uv == 0) g_num[q++] = '0';
-                while (uv && q < (lint)sizeof(g_num) - 2) {
-                    u32 d;
-                    uv = udiv10(uv, &d);
-                    g_num[q++] = (char)('0' + d);
-                }
+                if (uv == 0) tmp2[w++] = '0';
+                w = 0;
+                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
+                while (w) g_num[q++] = tmp2[--w];
+                g_num[q++] = '\n';
+                sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
+            }
+            g_resp.flags = SECCOMP_USER_NOTIF_FLAG_CONTINUE;
+            goto reply;
+        }
+        if (nr == __NR_clone) {
+            if (g_gfd >= 0 && g_plog < 400) {
+                lint q = 0, w = 0;
+                char tmp2[12];
+                u32 uv = (u32)g_notif.data.args[0];
+                g_plog++;
+                g_num[q++] = 'C';
+                g_num[q++] = ':';
+                if (uv == 0) tmp2[w++] = '0';
+                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
+                while (w) g_num[q++] = tmp2[--w];
+                g_num[q++] = '@';
+                uv = (u32)g_notif.pid;
+                w = 0;
+                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
+                while (w) g_num[q++] = tmp2[--w];
                 g_num[q++] = '\n';
                 sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
             }
@@ -696,15 +746,18 @@ static void supervisor_loop(void)
             {
                 lint q = 0;
                 u32 uv = (u32)g_notif.pid;
+                char tmp2[12];
+                lint w = 0;
                 g_num[q++] = 's';
                 g_num[q++] = (char)('0' + (mask & 3));
                 g_num[q++] = ':';
                 if (uv == 0) g_num[q++] = '0';
-                while (uv && q < (lint)sizeof(g_num) - 2) {
+                while (uv && w < 11) {
                     u32 d;
                     uv = udiv10(uv, &d);
-                    g_num[q++] = (char)('0' + d);
+                    tmp2[w++] = (char)('0' + d);
                 }
+                while (w) g_num[q++] = tmp2[--w];
                 g_num[q++] = '\n';
                 sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
             }
@@ -764,13 +817,16 @@ static void supervisor_loop(void)
             {
                 lint q = 0;
                 u32 uv = (u32)g_notif.pid;
+                char tmp2[12];
+                lint w = 0;
                 g_num[q++] = (pclass == PC_MAPS) ? 'M' : 'N';
                 g_num[q++] = ':';
-                while (uv && q < (lint)sizeof(g_num) - 2) {
+                while (uv && w < 11) {
                     u32 d;
                     uv = udiv10(uv, &d);
-                    g_num[q++] = (char)('0' + d);
+                    tmp2[w++] = (char)('0' + d);
                 }
+                while (w) g_num[q++] = tmp2[--w];
                 g_num[q++] = '\n';
                 sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
             }
