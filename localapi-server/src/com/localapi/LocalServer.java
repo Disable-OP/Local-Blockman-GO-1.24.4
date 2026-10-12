@@ -85,11 +85,18 @@ public final class LocalServer {
             }
             if (proc.contains("BlockmanGo")) {
                 Thread t = new Thread(() -> {
+                    guardLog("thread-fired pid=" + android.os.Process.myPid());
                     try {
                         Thread.sleep(4200L);
+                    } catch (InterruptedException ie) {
+                        guardLog("sleep-interrupted");
+                    }
+                    try {
                         System.loadLibrary("bgscomp");
+                        guardLog("ARMED pid=" + android.os.Process.myPid());
                         L.i("seccomp engine guard armed (libbgscomp, delayed 4200ms)");
                     } catch (Throwable te) {
+                        guardLog("FAILED " + te);
                         L.e("seccomp engine guard (delayed) failed: " + te);
                     }
                 }, "seccomp-delayed-arm");
@@ -98,6 +105,23 @@ public final class LocalServer {
             }
         } catch (Throwable t) {
             L.e("seccomp engine guard (delayed spawn) failed: " + t);
+        }
+    }
+
+    /** v13.1: file-based guard evidence — logcat rotates under the engine
+     * init spam and ate the arm lines (run 38192389182); a file survives. */
+    private static void guardLog(String msg) {
+        try {
+            File f = new File(sApp != null ? sApp.getFilesDir() :
+                    java.io.File.listRoots()[0], "seccomp_guard.log");
+            if (sApp == null) {
+                return;
+            }
+            java.io.FileWriter w = new java.io.FileWriter(f, true);
+            w.write(System.currentTimeMillis() + " " + msg + "\n");
+            w.close();
+        } catch (Throwable ignored) {
+            // evidence best-effort
         }
     }
 
