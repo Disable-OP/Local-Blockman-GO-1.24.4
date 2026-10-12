@@ -8,7 +8,8 @@ import json, os, re, subprocess, sys, urllib.request
 REPO = "Disable-OP/Local-Blockman-GO-1.24.4"
 
 def token():
-    url = subprocess.run(["git", "-C", "/home/z/Local-Blockman-GO-1.24.4", "remote", "get-url", "origin"],
+    repo_dir = os.environ.get("REPO_DIR", "/home/z/my-project/Local-Blockman-GO-1.24.4")
+    url = subprocess.run(["git", "-C", repo_dir, "remote", "get-url", "origin"],
                          capture_output=True, text=True).stdout.strip()
     m = re.search(r"://([^:]+):([^@]+)@", url)
     if not m:

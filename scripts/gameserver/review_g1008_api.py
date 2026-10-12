@@ -87,13 +87,21 @@ SHIM_METHODS = {
 }
 
 # ---------- 3. Lua trees the g10078 bundle loads on the server ----------
-TREES = [
-    ("engine_server",  SRC + "/Engine/lua/engine_server", False),
-    ("engine_base",    SRC + "/Engine/lua/engine_base",   False),
-    ("engine_plugins", SRC + "/Engine/lua/plugins",       False),
-    ("game_server",    SRC + "/Game/g1008/lua/server",    True),
-    ("game_base",      SRC + "/Game/g1008/lua/base",      True),
-]
+# Tree-args override (docs §7.1 / delta 17): pass lua dirs as argv to sweep any
+# tree (e.g. the v3 games) — "python3 review_g1008_api.py /path/tree1 [/path/tree2 ...]"
+if len(sys.argv) > 1:
+    _root = os.path.commonpath([os.path.abspath(a) for a in sys.argv[1:]])
+    SRC = _root
+    TREES = [(os.path.basename(os.path.normpath(a)), os.path.abspath(a), True)
+             for a in sys.argv[1:]]
+else:
+    TREES = [
+        ("engine_server",  SRC + "/Engine/lua/engine_server", False),
+        ("engine_base",    SRC + "/Engine/lua/engine_base",   False),
+        ("engine_plugins", SRC + "/Engine/lua/plugins",       False),
+        ("game_server",    SRC + "/Game/g1008/lua/server",    True),
+        ("game_base",      SRC + "/Game/g1008/lua/base",      True),
+    ]
 
 # ---------- 4. Lua-side definitions (shadow detection) ----------
 def collect_lua_defs(paths):

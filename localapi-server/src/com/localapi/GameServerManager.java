@@ -43,8 +43,8 @@ public final class GameServerManager {
     /** The DEFAULT room this manager configures the engine with
      *  (serverConfig.json): a BedWar g1008 room on map m1008_2 — also the
      *  fallback for every join whose game the staged bundle does not host.
-     *  MULTI-GAME (docs/10078_GAME_SERVER_UPDATE.md §7.1): the g10078
-     *  bundle v2 stages FIVE games (the GAMES table below); dispatch/
+     *  MULTI-GAME (docs/10078_GAME_SERVER_UPDATE.md §7.1 + §14): the
+     *  g10078 bundle v3 stages TWELVE games (the GAMES table below); dispatch/
      *  dispatch-party now select the JOINED game via selectGame() and the
      *  engine is respawned with that game's scriptdir/mapdir when it
      *  differs from the running one (rate-limited by the 9s window). */
@@ -92,12 +92,22 @@ public final class GameServerManager {
         }
     }
 
-    /** The hosted rooms of the runtime bundles (order = stability only). */
+    /** The hosted rooms of the runtime bundles (order = stability only).
+     *  Bundle v3 (docs §14): the BedWar family (hall/solo/duo from the
+     *  June-2021 source trees) + WalkingDead/BirdSimulator/Tycoon/EggWar
+     *  join the v2 set — TWELVE hosted rooms. */
     private static final GameDef[] GAMES = {
             new GameDef("g1008", "BedWar", "m1008_2", 15),
+            new GameDef("g1046", "BedWarHall", "m1046_2", 0),
+            new GameDef("g1061", "BedWarSolo", "m1061_1", 0),
+            new GameDef("g1062", "BedWarDuo", "m1062_1", 0),
             new GameDef("g1048", "SkyBlock", "m1048_1", 0),
             new GameDef("g1049", "SkyBlockMiningArea", "m1049_2", 0),
             new GameDef("g1050", "SkyBlockProduct", "m1050_1", 0),
+            new GameDef("g1051", "WalkingDead", "m1051_1", 0),
+            new GameDef("g1041", "BirdSimulator", "m1041_2", 0),
+            new GameDef("g1025", "Tycoon", "m1025_1", 0),
+            new GameDef("g1018", "EggWar", "m1018_1", 0),
             new GameDef("g1042", "PixelGunHall", "m1042_1", 0),
     };
 
@@ -1193,6 +1203,24 @@ public final class GameServerManager {
                     && defFor(null) == null && defFor("garbage") == null
                     && defForOrDefault("g9999") == defaultDef(),
                     "unknown -> null / default fallback");
+            // 1b. the v3 BedWar family + the four appres games (§14)
+            check(n++, defFor("g1046").name.equals("BedWarHall")
+                    && defFor("g1046").mapId.equals("m1046_2")
+                    && defFor("1061").name.equals("BedWarSolo")
+                    && defFor("g1061").mapId.equals("m1061_1")
+                    && defFor("g1062").name.equals("BedWarDuo")
+                    && defFor("g1062").mapId.equals("m1062_1")
+                    && defFor("g1046").bots == 0,
+                    "v3 BedWar family defs");
+            check(n++, defFor("g1051").name.equals("WalkingDead")
+                    && defFor("g1051").mapId.equals("m1051_1")
+                    && defFor("g1041").name.equals("BirdSimulator")
+                    && defFor("g1041").mapId.equals("m1041_2")
+                    && defFor("g1025").name.equals("Tycoon")
+                    && defFor("g1025").mapId.equals("m1025_1")
+                    && defFor("g1018").name.equals("EggWar")
+                    && defFor("g1018").mapId.equals("m1018_1"),
+                    "v3 appres game defs");
             // 2. the staged probe
             for (GameDef d : GAMES) {
                 check(n++, isGameStaged(d), "staged " + d.gid);

@@ -4826,3 +4826,59 @@ Work Log:
 Stage Summary:
 - The holder now routes joins by game: BedWar stays the proven default and every other join lands on its own room when the staged bundle hosts it. Both dispatch (hall join) and dispatch-party (group join) plus the UI Quick-in bridge speak the same selection protocol.
 - Next: the pristine-client on-device drive (delta 13) — now the first live exercise of the version-gate fix AND the multi-game selection; suggested first target BedWar, then a SkyBlock join for the first selectGame switch.
+
+## Session 75 - BUNDLE v3: the BedWar family (hall/solo/duo) + 4 more games + the official 2.8.2 APK verified & shipped (2026-10-12)
+
+Task: delta 18's next steps — the user's asks: (1) the official 2.8.2 APK (apkmirror or better),
+(2) more maps/games from the CDN URL dump (zips_all_sorted_unique.txt), (3) keep the
+GameServer/Client line moving toward a live 10078 match.
+
+Work Log:
+- Read WORKLOG/NEXT_SESSION (state = delta 18) + docs/10078_GAME_SERVER_UPDATE.md. The 10078
+  line's binary blocker was already gone (delta 15), the inner-API done (delta 16), the
+  multi-game bundle v2 + version-gate fix shipped (delta 17), the holder selection done
+  (delta 18). The remaining gaps: the pristine-client drive needs the OFFICIAL APK, and the
+  bundle hosted 5 rooms only.
+- OFFICIAL APK: downloaded from the official CDN URL documented in §1 (sandboxol staticgs,
+  not apkmirror — the version.json still serves it): md5 59d9946d341ec1550337aaaba9465cd6
+  EXACT match. Verified: engineVersion.json = 10078 (v2 20051 / v3 30023), 7 dexes,
+  libBlockMan.so 24,001,148 B v7a. Uploaded to localapi-assets as official-bg-2.8.2-v7a-4151.apk.
+- URL dump analysis (50,624 zips): maps by game = g1046 x230, g1008 x197, g1061 x113, g1062
+  x111, g1051 x27, g1041 x11, g1025 x10, g1018 x5...; appres 2021-era (1007x): g1046 @10078
+  x69 (the ONLY exact-engine appres), g1042/g1057/g1053/g1058/g1055/g1054/g1048/g1047/
+  g1051/g1041/g1025/g1018 @10076. Candidates picked: the BedWar family (g1046 hall + g1061
+  solo + g1062 duo — the 2.8.2 BedWar entry chain) + g1051/g1041/g1025/g1018.
+- Downloaded 15 zips (plugins g1046/g1061/g1062, appres g1046-10078 + the four 10076 appres,
+  7 map zips). KEY FINDING: the three plugins server trees are byte-identical (diff=0) —
+  ONE BedWar script base, ScriptMain branches GameType=="g1046" -> hall.BedWarServer.
+- assemble_multigame_v3.py (idempotent v3 assembler): BedWar family wired from the plugins
+  SOURCE trees + the 10078 appres game settings (id_mappings + GeneralProbability — the only
+  10078-exact settings on the CDN); the four appres games from Scripts/Game/<gid>/lua/server.
+  Two lessons encoded: (1) the game-level base MERGES at scriptdir root (the flattened
+  contract; cp clobbers sibling dirs — merge_tree, server wins collisions); (2) the 2021
+  hall's lazy "base.common.config.CommonActivityConfig" require satisfied at base/common/
+  config/ + the 2-file engine_server wiring (data/CommonActivity + util/CommonActivityReportUtil)
+  for the isClient-else branch (fired only by m1046_2's CommonActivitySetting.json).
+- GATES: parse 1,769/1,769 (lpgate rebuilt from Lua 5.1.5 source + parse-only wrapper —
+  no distro lua5.1 in this sandbox); require-graph 1,803 scanned, 27 unresolved = ALL
+  isClient-guarded client-branch requires (documented-safe); C++ API sweep 1,445 resolved,
+  flags = WorldInfo.* (pure-Lua global, §2.4 non-issue) + SceneManager.* (BirdSimulator's
+  own Lua global) + 2 csv-filename regex artifacts. NO new shims.
+- ScriptSetting: 7 rows Enable=1 + EngineVersion=10078; BedWar family Name retarget
+  (BedWarHall/BedWarSolo/BedWarDuo). LESSON: cols[1]=GroupDirectory, cols[2]=Name (the
+  first run corrupted the group column; rebuilt from the v2 tarball).
+- Holder: GAMES = 12 defs (bots 0 for the new rooms — only g1008 pushes the 15-bot wave);
+  hostSelfTest stages all 12 + two new v3 checks; stageVersion g10078-b2 -> g10078-b3.
+- classes6.dex 342,316 B; upload_release_asset.py repo-dir decoupled (REPO_DIR env, was
+  hardcoded to the old sandbox path); review_g1008_api.py gained the argv tree-args
+  override (delta 17 claimed it, the code didn't have it).
+- Bundle v3 packed (77,625,396 B, 8,205 entries) + uploaded to localapi-assets.
+
+Stage Summary:
+- The g10078 line now hosts TWELVE games including the complete BedWar family the 2.8.2
+  client enters through (hall -> solo/duo/4x4), and the pristine official client (verified
+  10078) is a repo release asset. The host suite ran green over the whole surface.
+- Next: the pristine-client on-device drive (delta 13: hosts redirect + self-CA + this APK,
+  v7a device) — first BedWar g1008 (bots), then the g1046 hall (first live family exercise),
+  then solo/duo (first selectGame switch), then the four new games; observe the solo/duo
+  startPlayers gates (their maps ship AIConfig.csv — per-game bot waves possible next).

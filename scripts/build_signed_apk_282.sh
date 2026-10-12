@@ -77,7 +77,7 @@ cat > "$SEEDS/gs-line.json" <<'EOF'
 {
   "line": "g10078",
   "clientEngineVersion": 10078,
-  "stageVersion": "g10078-b2",
+  "stageVersion": "g10078-b3",
   "applyOverlay": false
 }
 EOF

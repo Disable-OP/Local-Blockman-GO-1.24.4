@@ -3328,3 +3328,88 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   3. Then: monitor-log review of the first 10078 match (the C2SPacketLogin
      fields §6 residual risk; `WebService:GetUserAttr`'s colorfulNickName
      path).
+
+## Cron-session delta 19 (read FIRST — the BUNDLE IS TWELVE GAMES: the BedWar family (hall/solo/duo) + WalkingDead/BirdSimulator/Tycoon/EggWar, and the OFFICIAL 2.8.2 client is a repo artifact; suite 696/696)
+
+- **THE OFFICIAL 2.8.2 APK IS DOWNLOADED, VERIFIED AND SHIPPED** — delta 13's
+  pristine-client drive no longer has an asset blocker. Source: the official
+  CDN file §1 documents (`sandbox/apk/Mtp-app-blockymods-v2.8.2-...-google.apk`
+  — apkmirror was never needed; `sandbox/apk/version.json` still serves it),
+  md5 `59d9946d341ec1550337aaaba9465cd6` = §1's exact value. Inside:
+  engineVersion.json = **10078** (v2 20051 / v3 30023 — all match §1), 7 dexes,
+  libBlockMan.so 24,001,148 B armeabi-v7a. On `localapi-assets` as
+  `official-bg-2.8.2-v7a-4151.apk` (155,747,472 B).
+- **THE g10078 BUNDLE IS NOW TWELVE GAMES** — `gameserver-runtime-g10078.tar.gz`
+  v3 on localapi-assets (77,625,396 B, 8,205 entries; was 59.3 MB/4,797). The
+  v2 five + SEVEN new, all wired old-style (the v2 recipe):
+  | gid | scriptdir | map | tree |
+  |---|---|---|---|
+  | g1046 | BedWarHall | maps/g1046/m1046_2 | plugins g1046.1624869606359 (SOURCE, June 2021) |
+  | g1061 | BedWarSolo | maps/g1061/m1061_1 | plugins g1061.1624869628947 |
+  | g1062 | BedWarDuo | maps/g1062/m1062_1 | plugins g1062.1624869655519 |
+  | g1051 | WalkingDead | maps/g1051/m1051_1 | appres-g1051-10076 (SOURCE) |
+  | g1041 | BirdSimulator | maps/g1041/m1041_2 | appres-g1041-10076 |
+  | g1025 | Tycoon | maps/g1025/m1025_1 | appres-g1025-10076 |
+  | g1018 | EggWar | maps/g1018/m1018_1 | appres-g1018-10076 (July-2021 map) |
+  The three BedWar plugins server trees are BYTE-IDENTICAL (diff=0): one
+  BedWar script base, `ScriptMain` branches `GameType=="g1046"` ->
+  `hall.BedWarServer` (the hall — m1046_2 ships CommonActivitySetting.json;
+  solo/duo maps don't), else -> `game.BedWarServer`. The g1008 PROVEN room
+  keeps the tuned 2020 scripts/BedWar untouched (still the default + the
+  15-bot wave); the family are NEW scriptdirs — the 1.24.4 bundle honestly
+  falls back on all twelve via isGameStaged().
+- **TWO WIRING LESSONS (encoded in `scripts/gameserver/assemble_multigame_v3.py`)**:
+  1. The plugins zips keep the game-level base SEPARATED (lua/base/...) while
+     the engine contract is the FLATTENED tree — the base must MERGE at
+     scriptdir root (server files win collisions). Per-dir copytree CLOBBERS
+     siblings (base/hall vanished under the server's hall/) — merge_tree.
+  2. The 2021 hall carries ONE restructured-era leftover: a lazy
+     `require "base.common.config.CommonActivityConfig"` in a LuaTimer. In the
+     old layout "base.*" = the ENGINE base (no common/). Fix: place the game
+     base's file at `base/common/config/`; its isClient-else branch needs
+     `engine_server.data.CommonActivity` — wired as exactly TWO files
+     (+ util/CommonActivityReportUtil, require-free). Wiring the WHOLE 2021
+     engine_server tree would drag restructured "engine_base.*" requires that
+     cannot resolve in this old-style layout.
+- **Game settings**: the BedWar family shares the g1046-10078 appres's
+  Scripts/Game/g1008/setting (id_mappings.ini + GeneralProbability*.csv — the
+  ONLY 10078-exact game settings on the CDN); WalkingDead (ItemBulletClip,
+  ItemCustom) and BirdSimulator (GeneralProbability pair + ItemCustom) carry
+  their appres csvs; Tycoon/EggWar ship none (empty dirs). No new map zip
+  carries id_mappings.ini — engine default mapping applies (the §7.1 cosmetic
+  note extends to these games until on-device).
+- **GATES (all green)**: parse 1,769/1,769 new .lua (lpgate = Lua 5.1.5 built
+  from source + a parse-only luaL_loadfile wrapper — rebuild recipe in the
+  session log; no distro lua in the sandbox); require-graph 1,803 scanned,
+  27 unresolved = ALL `isClient`-guarded (CommonHeader x7 + CommonActivityConfig
+  client-branch x2 per BedWar dir) — documented-safe, server never runs them;
+  C++ registration sweep (`review_g1008_api.py` — NOW actually has the argv
+  tree-args override delta 17 claimed) 1,445 resolved across the seven trees;
+  flags = WorldInfo.* x7/dir (pure-Lua global) + SceneManager.* x19
+  (BirdSimulator's own Lua global) + 2 csv-literal regex artifacts (Tycoon).
+  NO new shims — the BaseMain 8-entry set stands.
+- **ScriptSetting**: 7 rows Enable=1 + EngineVersion=10078 + the BedWar
+  family Name retarget (g1046 BedWar->BedWarHall, g1061 -> BedWarSolo,
+  g1062 -> BedWarDuo). COLUMN NOTE: cols[1]=GroupDirectory, cols[2]=Name.
+- **Holder**: GAMES = 12 defs (bots 0 for the new rooms; only the proven
+  g1008 room pushes the 15-bot wave); hostSelfTest stages all 12 + 2 new v3
+  def checks; stageVersion -> **g10078-b3** (b2 devices restage);
+  classes6.dex 342,316 B. Suite **696/696** (the gs-multi wave incl.
+  "Java selftest (defs/config/selectGame/wave) green").
+- **Tooling fixes this session**: upload_release_asset.py reads REPO_DIR (env,
+  default the current checkout path) instead of the hardcoded old sandbox
+  path; review_g1008_api.py argv override.
+- **NEXT (in order):**
+  1. The pristine-client on-device drive (delta 13, §14): v7a hardware, hosts
+     redirect + self-CA + `official-bg-2.8.2-v7a-4151.apk`. FIRST BedWar g1008
+     (the proven room, bots — "in game with bots in bedwars"), THEN the g1046
+     hall (first live exercise of the family wiring + the lazy
+     CommonActivityConfig require), THEN a solo/duo join (first selectGame
+     switch through the family).
+  2. The four new games on-device (WalkingDead/BirdSimulator/Tycoon/EggWar)
+     — each is a first-boot + join + monitor-log review.
+  3. Per-game bot waves: the solo/duo maps SHIP AIConfig.csv +
+     AiPlayerConfig.csv — g1061/g1062 can carry bots once their startPlayers
+     gates are observed; tune GameDef.bots + the wave then.
+  4. If a 10078 client misrenders blocks in the new games, ship per-game
+     id_mappings.ini from the g1046-10078 appres pattern (§14).

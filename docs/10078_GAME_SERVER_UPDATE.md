@@ -540,3 +540,95 @@ NEXT_SESSION_README delta 9.
 - Stage: the 2.8.2 seed gs-line.json stageVersion -> g10078-b2 (restage the
   v2 bundle). Rig: -Dlocalapi.gsBundleDir + the hostSelfTest under
   -Dlocalapi.gsSelftest=1 (GS-SELFTEST OK in the suite's boot log).
+
+## 14. Addendum 8 (cron session): THE BUNDLE GOES MULTI-GAME x12 — the BedWar family (hall/solo/duo) + four more games, the official 2.8.2 APK verified and shipped
+
+- **THE OFFICIAL 2.8.2 CLIENT IS NOW A REPO ARTIFACT.** Downloaded from the
+  official CDN (`sandbox/apk/Mtp-app-blockymods-v2.8.2-armeabi-v7a-4151-engine1-
+  10078-engine2-20051-engine3-30023-google.apk`, the file `sandbox/apk/version.json`
+  still serves), md5 `59d9946d341ec1550337aaaba9465cd6` — EXACT match with §1's
+  documented value. Verified inside: `assets/resources/Media/engineVersion.json`
+  = **10078** (v2=20051, v3=30023 — all three match §1), 7 dexes, libBlockMan.so
+  24,001,148 B armeabi-v7a. Shipped on `localapi-assets` as
+  `official-bg-2.8.2-v7a-4151.apk` (the pristine-client drive needs it: hosts
+  redirect + self-CA on a v7a device — delta 13's recipe, still the next
+  on-device milestone).
+- **The g10078 bundle is now TWELVE games** (`gameserver-runtime-g10078.tar.gz`
+  v3 on localapi-assets, 77,625,396 B, 8,205 entries — was 59.3 MB/4,797):
+  | gid | scriptdir (Name) | map | source tree |
+  |---|---|---|---|
+  | g1046 | BedWarHall (起床大厅) | maps/g1046/m1046_2 | plugins g1046.1624869606359 (SOURCE, June 2021) |
+  | g1061 | BedWarSolo (起床solo) | maps/g1061/m1061_1 | plugins g1061.1624869628947 |
+  | g1062 | BedWarDuo (起床双人) | maps/g1062/m1062_1 | plugins g1062.1624869655519 |
+  | g1051 | WalkingDead (行尸走肉) | maps/g1051/m1051_1 | appres-g1051-10076 (SOURCE) |
+  | g1041 | BirdSimulator (小鸟模拟器) | maps/g1041/m1041_2 | appres-g1041-10076 |
+  | g1025 | Tycoon (我的大亨) | maps/g1025/m1025_1 | appres-g1025-10076 |
+  | g1018 | EggWar (龙蛋战争) | maps/g1018/m1018_1 | appres-g1018-10076 (July-2021 map) |
+  All wired old-style like the v2 games (engine base = the overlay 10068 base).
+  The three plugins server trees are byte-identical (diff=0) — ONE BedWar
+  script base serves the family, `ScriptMain` branches `GameType=="g1046"` ->
+  `hall.BedWarServer` (the hall: map/mode selection, CommonActivitySetting.json
+  ships in m1046_2 only), else -> `game.BedWarServer` (the room).
+- **THE PROVEN ROOM IS UNTOUCHED**: g1008 keeps scripts/BedWar (the tuned 2020
+  tree, 15-bot wave) as the default; the family scriptdirs are NEW dirs
+  (BedWarHall/BedWarSolo/BedWarDuo) — the 1.24.4 bundle (BedWar-only) honestly
+  falls back on all twelve via isGameStaged().
+- **TWO WIRING LESSONS the gates caught** (both encoded in
+  `scripts/gameserver/assemble_multigame_v3.py`, the idempotent v3 assembler):
+  1. *The game-level base must MERGE at scriptdir root.* The plugins zips keep
+     `lua/base/{EventDefine,Loader,common,game,hall}` SEPARATED from
+     `lua/server/*`, while the engine contract is the FLATTENED tree (the 2020
+     overlay proves it: hall/BaseHeader.lua sits merged at root). Without the
+     merge, hall/game BaseHeader, base.common.config.CommonActivityConfig and
+     game.config.SkillConfig fail to resolve (12 requires). merge_tree (server
+     wins file collisions), NOT per-dir copytree — cp would clobber base/hall
+     when the server tree ships its own hall/.
+  2. *One restructured-era leftover in the 2021 hall*: a lazy
+     `require "base.common.config.CommonActivityConfig"` inside a LuaTimer
+     (old layout: "base.*" = the ENGINE base, which has no common/). Satisfied
+     by placing the game base's file at `base/common/config/` (zero collisions
+     — the engine base has no common/ dir). Its server branch then needs
+     `engine_server.data.CommonActivity` (fired by m1046_2's
+     CommonActivitySetting.json — solo/duo maps don't ship it): exactly TWO
+     files wired (`engine_server/data/CommonActivity.lua` ->
+     `engine_server/util/CommonActivityReportUtil.lua`, no further requires).
+     Wiring the WHOLE 2021 engine_server tree would pull restructured
+     "engine_base.*" requires that do not resolve in this old-style layout.
+- **Game-setting dirs**: the BedWar family shares the ONLY 10078-exact game
+  settings on the CDN — the g1046-10078 appres's
+  `Scripts/Game/g1008/setting/` (id_mappings.ini + GeneralProbability*.csv)
+  at g1001_g1030/<Name>/. WalkingDead (ItemBulletClip+ItemCustom) and
+  BirdSimulator (GeneralProbability pair + ItemCustom) carry their appres
+  csvs; Tycoon/EggWar appres ship no settings (empty dirs). None of the seven
+  map zips carries id_mappings.ini (engine default mapping applies — the
+  SkyBlock §7.1 cosmetic-risk note applies to these too until on-device).
+- **GATES (all green)**: Lua 5.1 parse 1,769/1,769 new files (lpgate rebuilt:
+  Lua 5.1.5 compiled from source + a 30-line parse-only luaL_loadfile wrapper
+  — /tmp/lua_build/lpgate recipe in the worklog); require-graph 1,803 requires
+  scanned, the only 27 unresolved are the `isClient`-guarded client-branch
+  requires in shared headers (CommonHeader x7 per dir, CommonActivityConfig's
+  client branch x2 per dir) — the documented-safe class, the server never
+  executes them; C++ registration sweep (`review_g1008_api.py`, now with the
+  argv tree-args override) 1,445 calls resolved across the seven trees, the
+  only flags are the documented non-issues: WorldInfo.* x7 per BedWar dir
+  (pure-Lua global) + SceneManager.* x19 (BirdSimulator's own Lua global) +
+  2 literal-filename regex artifacts in Tycoon ("Commodity.csv"/
+  "SkillEffect.csv"). NO new shims — the BaseMain 8-entry set stands.
+- **ScriptSetting.csv**: the seven rows Enable=1 + EngineVersion=10078; the
+  BedWar-family rows retarget Name (g1046 BedWar->BedWarHall, g1061 ->
+  BedWarSolo, g1062 -> BedWarDuo) so each row loads its own scriptdir.
+  COLUMN LESSON: cols[1] is GroupDirectory, cols[2] is Name — the first run
+  wrote the names into the group column and was rebuilt from the v2 tarball.
+- **Holder**: GAMES = 12 defs (BedWar family + 4 appres games, bots 0 — only
+  the proven g1008 room pushes the 15-bot wave); hostSelfTest stages all 12
+  and asserts the v3 defs (two new checks); stageVersion -> **g10078-b3**
+  (devices staged on b2 restage). classes6.dex 342,316 B. Host suite: see the
+  session log (v3 suite wave added the def/selftest checks).
+- **NEXT**: the pristine-client on-device drive (delta 13) — v7a hardware,
+  hosts redirect + self-CA + `official-bg-2.8.2-v7a-4151.apk`; first target
+  BedWar g1008 (the proven room, bots), then a g1046 hall join (the FIRST live
+  exercise of the family wiring) and a solo/duo join (the first selectGame
+  switch through the family). Then WalkingDead/BirdSimulator/Tycoon/EggWar
+  joins, and per-game bot waves (the solo/duo maps SHIP AIConfig.csv +
+  AiPlayerConfig.csv — the g1061/g1062 rooms can carry bots once their
+  startPlayers gates are observed on-device).
