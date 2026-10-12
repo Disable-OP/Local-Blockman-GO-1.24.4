@@ -1085,13 +1085,27 @@ static void supervisor_child(void)
             lint n = sysc(__NR_read, lg, (lint)buf, (lint)sizeof(buf), 0, 0);
             sysc(__NR_close, lg, 0, 0, 0, 0);
             if (n > 0) {
+                /* v34: the needle is LSTFD:<MY-PPID>: — the shared log
+                 * carries every fleet's line; matching the pid prefix
+                 * picks OUR parent's listener only. */
+                char nd[24];
+                lint nlen = 0, w4 = 0;
+                u32 u4 = (u32)sysc(__NR_getppid, 0, 0, 0, 0, 0);
+                static const char hdr[7] = "LSTFD:";
                 lint i, j;
-                for (i = n - 7; i >= 0; i--) {
-                    if (buf[i] == 'L' && buf[i+1] == 'S' && buf[i+2] == 'T' &&
-                        buf[i+3] == 'F' && buf[i+4] == 'D' && buf[i+5] == ':') {
+                for (i = 0; i < 6; i++) nd[nlen++] = hdr[i];
+                if (u4 == 0) t3[w4++] = '0';
+                while (u4) { u32 d; u4 = udiv10(u4, &d); t3[w4++] = (char)('0' + d); }
+                while (w4) nd[nlen++] = t3[--w4];
+                nd[nlen++] = ':';
+                for (i = n - nlen; i >= 0; i--) {
+                    int hit = 1;
+                    for (j = 0; j < nlen; j++)
+                        if (buf[i + j] != nd[j]) { hit = 0; break; }
+                    if (hit) {
                         lint v = 0;
                         int any = 0;
-                        for (j = i + 6; j < n && buf[j] >= '0' &&
+                        for (j = i + nlen; j < n && buf[j] >= '0' &&
                                         buf[j] <= '9'; j++) {
                             v = v * 10 + (buf[j] - '0');
                             any = 1;
@@ -1270,7 +1284,26 @@ void bgscomp_ctor(void)
     if (r >= 0) {
         g_lfd = (int)r;
         log_num("LST:", g_lfd);
-        log_num("LSTFD:", g_lfd);   /* the child parses THIS line */
+        /* the child parses THIS line — the pid prefix makes it
+         * unambiguous with MULTIPLE :BlockmanGo processes sharing the
+         * log (the v33 fleet bug: a child grabbed ANOTHER fleet's fd
+         * number -> EBADF forever). */
+        {
+            lint q = 0, w = 0;
+            char t5[12];
+            u32 uv = (u32)g_mypid;
+            g_num[q++] = 'L'; g_num[q++] = 'S'; g_num[q++] = 'T';
+            g_num[q++] = 'F'; g_num[q++] = 'D'; g_num[q++] = ':';
+            if (uv == 0) t5[w++] = '0';
+            while (uv) { u32 d; uv = udiv10(uv, &d); t5[w++] = (char)('0' + d); }
+            while (w) g_num[q++] = t5[--w];
+            g_num[q++] = ':';
+            uv = (u32)g_lfd; w = 0;
+            while (uv) { u32 d; uv = udiv10(uv, &d); t5[w++] = (char)('0' + d); }
+            while (w) g_num[q++] = t5[--w];
+            g_num[q++] = '\n';
+            sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
+        }
         /* v24b: the supervisor is a SEPARATE PROCESS (forked pre-install,
          * woken here) — the watchdog enumerates /proc/<engine>/task which
          * will NEVER contain it: it cannot stop what serves the replies.
