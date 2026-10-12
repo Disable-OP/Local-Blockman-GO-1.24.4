@@ -3030,3 +3030,46 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
     should never fire.
 - Keep in mind for either branch: the 1.24.4/10068 line remains GREEN end-to-end
   (Bedwars with bots); the 10078 line's blocker is exclusively the TSS's punish loop.
+
+## Cron-session delta 13 (read FIRST — v40 verdict: the TSS reads MEMORY, not files; the pivot: pristine client + network redirection)
+
+- **v40 verdict (run 38253499828)**: the pristine serve never fired — **ZERO *.apk
+  opens went through the notified channel** (no A: lines in the childlog; only the
+  usual T:1/T:16/T:12 watchdog storm). The same SIGSEGV gauntlet (0x16b8a4) killed
+  the engine. Combined with the zero /proc opens across six runs: **the TSS's
+  repackage check reads its own process memory** (the apk/dexes are mmap'd by ART;
+  a direct mmap(path) of base.apk would also bypass the openat filter) — **there is
+  NO syscall-level interception point left**. The remaining layers: patching the
+  packed verifier's embedded hashes (self-verifying — the PEEKTEXT storm exists to
+  catch exactly that), or giving it a pristine APK.
+- **THE BASELINE GAVE THE ANSWER (run 38252063346)**: the ORIGINAL unpatched APK
+  survives the whole window on the SAME redroid. The TSS only fights REPACKAGING.
+- **THE PIVOT (the recommended architecture for the 10078 line)**: 
+  **pristine client + network-layer redirection — NO APK MODIFICATION AT ALL.**
+  1. Install the OFFICIAL APK (baseline-proven; the TSS never turns hostile).
+  2. Redirect the API layer in the NETWORK: the 2.8.2 client builds every Retrofit
+     base from `getMetaDataBaseUrl()` = the const cloudfront host
+     (d32gv25kv9q34j.cloudfront.net — DEAD) + BaseUrlInterceptor's failover
+     (d401m01aifavw...). Redroid is rooted: rewrite /etc/hosts (or the netd layer)
+     to point those hosts (plus staticgs/static for the CDN) at the HOST.
+  3. Run the localapi HOLDER OUTSIDE THE APP: it is plain Java (NanoHTTPD, 397
+     routes, HOST SUITE 673/673) — it runs on the CI host (or in the redroid via a
+     static binary). TLS: generate a CA + a leaf for the cloudfront hostnames and
+     install the CA into the redroid's SYSTEM store (/system/etc/security/cacerts,
+     writable as root on userdebug) — the official client then trusts our holder.
+  4. The GameServer (libgameserver, arm64 ELF) execs on the redroid from
+     /data/local/tmp (the CI is arm64 — it already runs there today from filesDir);
+     the g10078 bundle stages next to it.
+  5. The JOIN: the official hall → game/auth (our holder) → dispatch — the dispatch
+     response's dispatchUrl/gameAddr/mapUrl point at OUR holder/GameServer
+     (127.0.0.1:31108 / the host CDN) → the client's own StartMc → the engine
+     initGames to our GameServer. JoinBridge/the smali join patch become
+     unnecessary — the OFFICIAL flow runs untouched.
+  6. The C2S login token stays SHA1(secret+uid+ts) — the client computes it from
+     the auth our holder issued (the flow is client-generic).
+  - This DISSOLVES the TSS war (nothing to detect) and the 2.8.2 URL/CA/MITM work
+    is bounded engineering (the API surface is already routed 673/673).
+- The patched-APK line stays archived at wip-109 (its artifacts: the v35 probe
+  chain, the trap-skipper, the supervisor — all reusable knowledge).
+- The smali/dex-side knowledge (JoinBridge, GameServerManager, the gs-line seed)
+  remains valid for the holder's DISPATCH shapes.
