@@ -3279,6 +3279,21 @@ def main_282(args):
                         print("  [thr r%d] %s" % (rnd, tl))
         except Exception as _e:
             print("  [thr r%d] snapshot failed: %s" % (rnd, _e))
+        # v35: THE ENGINE-INTEGRATION PROBE CHAIN — the EchoesProbe
+        # markers (handlePreInit reached + env paths + nativePreInit
+        # branch + initGame gameAddr) and the app's own "Main: so on
+        # game" markers. Printed live per round: the engine's native
+        # init spam rotates these out of the ring long before the
+        # harvest step runs.
+        try:
+            _probe = adb.sh(
+                "logcat -d | grep -E 'EchoesProbe|so on game'"
+                " | tail -14", timeout=40)
+            for l in _probe.splitlines():
+                if l.strip():
+                    print("  [probe r%d] %s" % (rnd, l.strip()[-340:]))
+        except Exception:
+            pass
         screen.snap("GJ282_watch_r%d" % rnd)
         print("  [watch r%d] fired=%s takeover=%s started=%s pushed=%s "
               "echoes=%s initOnline=%s connect=%s login=%s srvLogin=%s "
@@ -3290,6 +3305,18 @@ def main_282(args):
 
     # ---- verdict (hard once btn_enter was pressed)
     print("== 282-GJ verdict ==")
+    # v35: the full EchoesProbe chain at verdict time — which chain point
+    # was the LAST one reached (preInit ENTER / env / nativePreInit CALL /
+    # initGame gameAddr / offline-exit / EMPTY-addr)?
+    try:
+        _pv = adb.sh(
+            "logcat -d | grep -E 'EchoesProbe|so on game' | tail -30",
+            timeout=60)
+        for l in _pv.splitlines():
+            if l.strip():
+                print("  [probe-final] %s" % l.strip()[-420:])
+    except Exception:
+        pass
     _jb = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
     _jblines = [l for l in _jb.splitlines() if "JoinBridge" in l]
     for l in _jblines[-12:]:

@@ -184,6 +184,11 @@ jobs:
 
       - name: Launch + 15s keep-alive
         run: |
+          # v35: the engine's native init spams logcat (GL/audio/input
+          # floods rotate the main ring before the harvest step reads it)
+          # — quadruple the ring so the engine-pid evidence survives the
+          # whole join watch.
+          adb -s localhost:5555 logcat -G 4M || true
           adb -s localhost:5555 logcat -c
           adb -s localhost:5555 shell am start -n "$PACKAGE/$ACTIVITY"
           sleep 15
@@ -268,6 +273,55 @@ jobs:
           done
           ls -la gjevidence/ || echo "no GJ282 snaps (phase may not have run)"
 
+      - name: Engine-integration harvest (v35)
+        # Delta-8's prescription: the engine process is healthy but
+        # initGame never fires / no client.log / no native thread farm.
+        # Harvest the ENGINE-SIDE evidence: the full per-pid logcat (the
+        # engine logs its own init progress), the probe chain markers
+        # (EchoesProbe / "Main: so on game"), every log-shaped file under
+        # the engine's staging trees, and the thread farm snapshot.
+        if: always()
+        run: |
+          PKG="$PACKAGE"
+          EPID=$(adb -s localhost:5555 shell pidof "$PKG:BlockmanGo" 2>/dev/null | tr -d '\r' | awk '{print $1}')
+          echo "engine pid: ${EPID:-none}"
+          echo "== [1] EchoesProbe chain markers (patched EchoesRenderer) =="
+          adb -s localhost:5555 logcat -d | grep -E "EchoesProbe|so on game|router-jni" | tail -40 || echo "(no probe lines)"
+          echo "== [2] FULL engine-pid logcat (all tags, last 500) =="
+          if [ -n "$EPID" ]; then
+            adb -s localhost:5555 logcat -d --pid="$EPID" 2>/dev/null | tail -500 > englog.txt || true
+            wc -l englog.txt || true
+            echo "-- englog head (first 60) --"
+            head -60 englog.txt || true
+            echo "-- englog tail (last 60) --"
+            tail -60 englog.txt || true
+            echo "== [2b] engine thread farm (ps -T) =="
+            adb -s localhost:5555 shell "ps -T -p $EPID | head -40" || true
+          else
+            echo "(engine process gone — full-app logcat tail instead)"
+            adb -s localhost:5555 logcat -d | tail -300 > englog.txt || true
+          fi
+          echo "== [3] engine log-file path mentions in logcat =="
+          adb -s localhost:5555 logcat -d | grep -iE "client\.log|server\.log|logdir|log file|initlog|PathUtil" | tail -25 || echo "(none)"
+          echo "== [4] SandBoxOL / BlockMan staging trees =="
+          adb -s localhost:5555 shell "find /storage/emulated/0 -maxdepth 5 \( -iname '*sandboxol*' -o -iname '*blockman*' \) 2>/dev/null" | head -60 || true
+          adb -s localhost:5555 shell "ls -laR /storage/emulated/0/SandBoxOL 2>/dev/null | head -120" || true
+          echo "== [5] app-own files tree (root view) =="
+          adb -s localhost:5555 shell "find /data/data/$PKG/files -maxdepth 3 2>/dev/null | head -80" || true
+          adb -s localhost:5555 shell "find /data/media/0 -maxdepth 4 \( -iname '*sandboxol*' -o -iname '*blockman*' \) 2>/dev/null | head -40" || true
+          echo "== [6] every *.log under those trees (name+size) =="
+          adb -s localhost:5555 shell "find /storage/emulated/0 /data/data/$PKG/files /data/media/0 -maxdepth 6 \( -name '*.log' -o -name 'client*.txt' \) 2>/dev/null | head -40" || true
+          echo "== [7] known client.log candidates: tails =="
+          for D in $(adb -s localhost:5555 shell "ls -d /storage/emulated/*/SandBoxOL/BlockMan/config /storage/emulated/*/SandboxOL/BlockMan/config /storage/emulated/*/Android/data/$PKG/files/SandBoxOL/config 2>/dev/null" | tr -d '\r'); do
+            echo "-- $D/client.log --"
+            adb -s localhost:5555 shell "tail -c 900 $D/client.log 2>/dev/null" || echo "(absent)"
+          done
+          echo "== [8] the gs server.log (did the SERVER see anything?) =="
+          for D in $(adb -s localhost:5555 shell "ls -d /storage/emulated/*/SandBoxOL/BlockMan/config 2>/dev/null" | tr -d '\r'); do
+            adb -s localhost:5555 shell "tail -c 600 $D/server.log 2>/dev/null" || true
+          done
+          adb -s localhost:5555 logcat -d -s LocalAPI:* | grep -E "C2SPacketLogin|g2r|monitor" | tail -12 || true
+
       - name: Crash scan
         if: always()
         run: |
@@ -331,6 +385,7 @@ jobs:
             boot282.png
             death282.png
             death_logcat.txt
+            englog.txt
             wraplog.txt
             /tmp/localapi_probe.json
             gjevidence/
