@@ -153,6 +153,33 @@ def write_text(path, text):
         f.write(text.encode("utf-8", "surrogateescape"))
 
 
+def resolve_lpgate(here):
+    """Locate the lpgate parse-gate binary: LPGATE env override, then the
+    session build (/tmp/lua_build — ephemeral), then an OFFLINE self-heal
+    rebuild from the repo-vendored Lua 5.1.5 sources
+    (scripts/build_lua_515.sh, no network), else None (the parse gate
+    degrades to pass-through, loudly reported by the caller)."""
+    env = os.environ.get("LPGATE")
+    if env and os.path.isfile(env):
+        return env
+    default = "/tmp/lua_build/lpgate"
+    if os.path.isfile(default):
+        return default
+    repo = os.path.dirname(os.path.dirname(here))
+    builder = os.path.join(repo, "scripts", "build_lua_515.sh")
+    if os.path.isfile(builder):
+        try:
+            r = subprocess.run(["sh", builder], capture_output=True,
+                               text=True, timeout=300)
+            if r.returncode == 0 and os.path.isfile(default):
+                print("lpgate: rebuilt from vendored sources "
+                      "(scripts/build_lua_515.sh)")
+                return default
+        except Exception:
+            pass
+    return None
+
+
 def lua_parse(lpgate, path):
     if not lpgate:
         return True, "lpgate-missing"
@@ -174,9 +201,7 @@ def main():
     if not os.path.isfile(compat_src):
         print("FATAL: %s missing" % compat_src)
         sys.exit(1)
-    lpgate = "/tmp/lua_build/lpgate"
-    if not os.path.isfile(lpgate):
-        lpgate = None
+    lpgate = resolve_lpgate(here)
 
     # optional overlay source dir for pin re-verification
     if "--overlay-src" in sys.argv:

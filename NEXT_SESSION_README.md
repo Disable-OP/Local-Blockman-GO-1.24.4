@@ -3698,3 +3698,50 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   delta 25 left it — 11 steps, evidence per step via
   scripts/ondrive_collect.sh, watch list in doc §20. Sandbox-side: the
   v7 line is closed; a device (or adb) is the only missing input.
+
+## Cron-session delta 27 (read FIRST — THE LUA GATES ARE RESTART-PROOF: the smoke + parse-gate toolchain rebuilds OFFLINE from repo-vendored md5-pinned sources; the root fs hit 100% and was cleaned; b8 drive unchanged)
+
+- Device stayed hardware-bound; the v7 line stayed closed. The session
+  attacked the one remaining sandbox-side risk: the Lua gate toolchain was
+  /tmp-EPHEMERAL. Both Lua gates lived only in /tmp/lua_build — the
+  behavioral smoke needs /tmp/lua_build/lua-5.1.5/src/lua and the static
+  parse gate needs /tmp/lua_build/lpgate (patch_event_bridge_v7.py
+  degraded to the silent "lpgate-missing" pass-through when it vanished).
+  A sandbox restart would have killed the 28/28 behavioral gate — the
+  same defect class session 82 fixed for the smoke's /tmp fixture dofile.
+- VENDORED (228 KB): scripts/gameserver/vendor/lua-5.1.5.tar.gz
+  (md5 2e115fe26e435e33b0d5c022e4490567 — the official lua.org tarball)
+  + vendor/lpgate.c (md5 802286c5aad13d39c68e0c15e63b1e79).
+- NEW scripts/build_lua_515.sh — offline, idempotent rebuild of BOTH
+  binaries: `make generic` (recipe matches the original build — ldd shows
+  libm/libc only, no readline), lpgate links the built liblua.a; verifies
+  the vendor md5 pins, `lua -v`, lpgate accepts a GOOD file (rc 0) and
+  rejects a BAD one (rc 1 — note: bare `return` IS valid Lua, the first
+  negative probe was wrong and fixed). LUA515_DEST overrides the target.
+- NEW scripts/run_smoke_localapi_compat.sh — the ONE-COMMAND gate:
+  self-heals a missing interpreter via the builder, runs BOTH smoke
+  scenarios (base18 + g1008), asserts the 28/28 total, exit 1 on red.
+- patch_event_bridge_v7.py: lpgate resolution moved to resolve_lpgate() —
+  LPGATE env override -> /tmp/lua_build/lpgate -> OFFLINE self-heal rebuild
+  via scripts/build_lua_515.sh -> None (the pre-existing loud "lpgate
+  MISSING" degradation). lua_parse itself untouched.
+- PROVEN by wipe-and-rebuild: live /tmp/lua_build moved aside -> BOTH
+  binaries rebuilt fresh from the vendored sources (no network); builder
+  re-run = "up-to-date"; smoke via the runner on the REBUILT toolchain
+  13+15 = 28/28 GREEN; the runner's wiped-DEST self-heal path
+  (LUA515_DEST=/tmp/lua_build_probe) rebuilds + 28/28 again;
+  resolve_lpgate auto-heal proven (lpgate deleted -> rebuilt -> restored);
+  host suite 701/701 on the final state.
+- OPS: the suite died with ENOSPC mid-run — the ROOT fs was at 100%
+  (9.4G/9.9G), not just /tmp: 161 stale localapi-* suite dirs (2.3 GB) +
+  session-stale bundle/staging tarballs (v3..v7 copies, rt_*, the stale
+  repo-root gameserver-runtime copy) + audit dirs (v7rt/v7build/bnd6/
+  bundle3) -> ~4.1 GB freed (57% used now). /tmp/lua_build preserved;
+  /tmp/my-project is system-protected (rm: Operation not permitted —
+  150 MB, left in place). RECURRING LESSON: every session that fetches/
+  unpacks must rm its own /tmp artifacts before it ends.
+- NEXT: UNCHANGED — the device drive on b8 (docs/ON_DEVICE_DRIVE.md §6,
+  11 steps, evidence per step via scripts/ondrive_collect.sh, watch list
+  in doc §20). Sandbox-side nothing is open: the wave table stays FINAL
+  (delta 25), id_mappings pre-staging stays evidence-gated, and the gate
+  toolchain now survives restarts.
