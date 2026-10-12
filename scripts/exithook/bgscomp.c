@@ -87,6 +87,9 @@ typedef long               lint;
 #define __NR_nanosleep    35L
 #define __NR_getpid       39L
 #define __NR_ptrace      101L
+#define __NR_kill         62L
+#define __NR_tkill       200L
+#define __NR_tgkill      234L
 #define __NR_PROCESS_VM_READV 310L
 #define __NR_prctl       157L
 #define __NR_openat      257L
@@ -105,6 +108,9 @@ typedef long               lint;
 #define BPF_NR_PRCTL     157
 #define BPF_NR_PTRICE    101
 #define BPF_NR_VMREADV   310
+#define BPF_NR_KILL       62
+#define BPF_NR_TKILL     200
+#define BPF_NR_TGKILL    234
 #define BPF_NR_CLONE     56
 
 static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
@@ -136,6 +142,9 @@ static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
 #define __NR_nanosleep  162L
 #define __NR_getpid      22L
 #define __NR_ptrace      26L
+#define __NR_kill         37L
+#define __NR_tkill       238L
+#define __NR_tgkill      268L
 #define __NR_PROCESS_VM_READV 276L
 #define __NR_prctl      172L
 #define __NR_openat     322L
@@ -154,6 +163,9 @@ static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
 #define BPF_NR_PRCTL     172
 #define BPF_NR_PTRICE    26
 #define BPF_NR_VMREADV   276
+#define BPF_NR_KILL       37
+#define BPF_NR_TKILL     238
+#define BPF_NR_TGKILL    268
 #define BPF_NR_CLONE     120
 
 static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
@@ -292,32 +304,35 @@ struct seccomp_notif_addfd {
 
 static const struct sock_filter bpf15[] = {
     { 0x20, 0,  0,  4           },   /*  0 LD [4]  arch        */
-    { 0x15, 0, 24,  AUDIT_ARCH_THIS },  /*  1 JEQ arch jt=0 jf=24 */
+    { 0x15, 0, 27,  AUDIT_ARCH_THIS },  /*  1 JEQ arch jt=0 jf=27 */
     { 0x20, 0,  0,  0           },   /*  2 LD [0]  nr          */
-    { 0x15, 19, 0,  BPF_NR_OPENAT },  /*  3 openat  -> 23       */
-    { 0x15, 18, 0,  BPF_NR_OPEN },    /*  4 open    -> 23       */
-    { 0x15, 17, 0,  BPF_NR_OPENAT2 }, /*  5 openat2 -> 23       */
-    { 0x15, 12, 0,  BPF_NR_PRCTL },   /*  6 prctl   -> 19       */
-    { 0x15, 7,  0,  BPF_NR_EXITGROUP }, /*  7 exit_gr -> 15     */
-    { 0x15, 6,  0,  BPF_NR_EXIT },    /*  8 exit    -> 15       */
-    { 0x15, 14, 0,  425         },   /*  9 io_uring_setup -> 24 */
-    { 0x15, 13, 0,  426         },   /* 10 io_uring_enter -> 24 */
-    { 0x15, 12, 0,  427         },   /* 11 io_uring_reg   -> 24 */
-    { 0x15, 10, 0,  BPF_NR_PTRICE },  /* 12 ptrace  -> 23       */
-    { 0x15, 9,  0,  BPF_NR_CLONE },   /* 13 clone   -> 23       */
-    { 0x15, 8, 11,  BPF_NR_VMREADV }, /* 14 vm_readv -> 23 / 26  */
-    { 0x20, 0,  0,  16          },   /* 15 LD [16] args0.lo    */
-    { 0x15, 7,  0,  25          },   /* 16 ==25 -> 24          */
-    { 0x15, 6,  0,  30          },   /* 17 ==30 -> 24          */
-    { 0x05, 0,  0,  7           },   /* 18 JA -> 26            */
-    { 0x20, 0,  0,  16          },   /* 19 LD [16] option      */
-    { 0x15, 4,  0,  21          },   /* 20 PR_GET_SECCOMP->25  */
-    { 0x15, 3,  0,  36          },   /* 21 PR_GET_NNP    ->25  */
-    { 0x05, 0,  0,  3           },   /* 22 JA -> 26            */
-    { 0x06, 0,  0,  0x7FC00000U },   /* 23 RET USER_NOTIF      */
-    { 0x06, 0,  0,  0x00050026U },   /* 24 RET ERRNO(ENOSYS)   */
-    { 0x06, 0,  0,  0x00050000U },   /* 25 RET ERRNO(0)        */
-    { 0x06, 0,  0,  0x7FFF0000U },   /* 26 RET ALLOW           */
+    { 0x15, 22, 0,  BPF_NR_OPENAT },  /*  3 openat  -> 26       */
+    { 0x15, 21, 0,  BPF_NR_OPEN },    /*  4 open    -> 26       */
+    { 0x15, 20, 0,  BPF_NR_OPENAT2 }, /*  5 openat2 -> 26       */
+    { 0x15, 15, 0,  BPF_NR_PRCTL },   /*  6 prctl   -> 22       */
+    { 0x15, 10, 0,  BPF_NR_EXITGROUP }, /*  7 exit_gr -> 18     */
+    { 0x15, 9,  0,  BPF_NR_EXIT },    /*  8 exit    -> 18       */
+    { 0x15, 17, 0,  425         },   /*  9 io_uring_setup -> 27 */
+    { 0x15, 16, 0,  426         },   /* 10 io_uring_enter -> 27 */
+    { 0x15, 15, 0,  427         },   /* 11 io_uring_reg   -> 27 */
+    { 0x15, 13, 0,  BPF_NR_PTRICE },  /* 12 ptrace  -> 26       */
+    { 0x15, 12, 0,  BPF_NR_CLONE },   /* 13 clone   -> 26       */
+    { 0x15, 11, 0,  BPF_NR_VMREADV }, /* 14 vm_readv -> 26       */
+    { 0x15, 10, 0,  BPF_NR_KILL },    /* 15 kill    -> 26       */
+    { 0x15, 9,  0,  BPF_NR_TGKILL },  /* 16 tgkill  -> 26       */
+    { 0x15, 8, 11,  BPF_NR_TKILL },   /* 17 tkill   -> 26 / 29  */
+    { 0x20, 0,  0,  16          },   /* 18 LD [16] args0.lo    */
+    { 0x15, 7,  0,  25          },   /* 19 ==25 -> 27          */
+    { 0x15, 6,  0,  30          },   /* 20 ==30 -> 27          */
+    { 0x05, 0,  0,  7           },   /* 21 JA -> 29            */
+    { 0x20, 0,  0,  16          },   /* 22 LD [16] option      */
+    { 0x15, 4,  0,  21          },   /* 23 PR_GET_SECCOMP->28  */
+    { 0x15, 3,  0,  36          },   /* 24 PR_GET_NNP    ->28  */
+    { 0x05, 0,  0,  3           },   /* 25 JA -> 29            */
+    { 0x06, 0,  0,  0x7FC00000U },   /* 26 RET USER_NOTIF      */
+    { 0x06, 0,  0,  0x00050026U },   /* 27 RET ERRNO(ENOSYS)   */
+    { 0x06, 0,  0,  0x00050000U },   /* 28 RET ERRNO(0)        */
+    { 0x06, 0,  0,  0x7FFF0000U },   /* 29 RET ALLOW           */
 };
 
 /* bpf14 (fallback): the exact v14 filter — ERRNO(ENOSYS) on the verdict
@@ -671,6 +686,50 @@ static void supervisor_loop(void)
                 while (w) g_num[q++] = tmp2[--w];
                 g_num[q++] = '\n';
                 sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
+            }
+            g_resp.flags = SECCOMP_USER_NOTIF_FLAG_CONTINUE;
+            goto reply;
+        }
+        if (nr == __NR_kill || nr == __NR_tgkill || nr == __NR_tkill) {
+            /* v20: the freeze without any ptrace/scan traffic = the
+             * watchdog kill(SIGSTOP)ing the (already attached) threads
+             * — kill() was the ONE invisible path left. Log every kill
+             * (K:<nr>:<a0>:<a1>@<pid>) and DENY SIGSTOP(19): without a
+             * successful stop the watchdog cannot park the engine. */
+            u32 a0 = (u32)g_notif.data.args[0];
+            u32 a1 = (u32)g_notif.data.args[1];
+            u32 a2 = (u32)g_notif.data.args[2];
+            u32 sig = (nr == __NR_tgkill) ? a2 : a1;
+            if (g_gfd >= 0 && g_plog < 400) {
+                lint q = 0, w = 0;
+                char tmp2[12];
+                u32 uv = nr;
+                g_plog++;
+                g_num[q++] = 'K';
+                g_num[q++] = ':';
+                if (uv == 0) tmp2[w++] = '0';
+                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
+                while (w) g_num[q++] = tmp2[--w];
+                g_num[q++] = ':';
+                uv = a0; w = 0;
+                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
+                while (w) g_num[q++] = tmp2[--w];
+                g_num[q++] = ':';
+                uv = a1; w = 0;
+                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
+                while (w) g_num[q++] = tmp2[--w];
+                g_num[q++] = '@';
+                uv = (u32)g_notif.pid; w = 0;
+                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
+                while (w) g_num[q++] = tmp2[--w];
+                g_num[q++] = '\n';
+                sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
+            }
+            if (sig == 19u) {           /* SIGSTOP — the freeze weapon */
+                g_resp.error = -1;      /* -EPERM: no stop for you */
+                g_resp.val   = 0;
+                g_resp.flags = 0;
+                goto reply;
             }
             g_resp.flags = SECCOMP_USER_NOTIF_FLAG_CONTINUE;
             goto reply;

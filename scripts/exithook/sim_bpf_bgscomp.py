@@ -56,7 +56,7 @@ def parse_filters(src_path):
             MACROS = {"AUDIT_ARCH_THIS": 0x40000028, "BPF_NR_OPENAT": 322,
                       "BPF_NR_OPEN": 5, "BPF_NR_OPENAT2": 437,
                       "BPF_NR_EXITGROUP": 248, "BPF_NR_EXIT": 1,
-                      "BPF_NR_PRCTL": 172, "BPF_NR_PTRICE": 26, "BPF_NR_CLONE": 120, "BPF_NR_VMREADV": 276}
+                      "BPF_NR_PRCTL": 172, "BPF_NR_PTRICE": 26, "BPF_NR_CLONE": 120, "BPF_NR_VMREADV": 276, "BPF_NR_KILL": 37, "BPF_NR_TKILL": 238, "BPF_NR_TGKILL": 268}
             if kraw in MACROS:
                 k = MACROS[kraw]
             elif kraw.startswith("0x"):
@@ -208,6 +208,9 @@ def main():
         ("clone(120) -> USER_NOTIF", run(b15, 120, 0), ("RET", RET_USER_NOTIF)),
         ("ptrace(26) -> USER_NOTIF", run(b15, 26, 0), ("RET", RET_USER_NOTIF)),
         ("process_vm_readv(276) -> USER_NOTIF", run(b15, 276, 0), ("RET", RET_USER_NOTIF)),
+        ("kill(37) -> USER_NOTIF", run(b15, 37, 0), ("RET", RET_USER_NOTIF)),
+        ("tgkill(268) -> USER_NOTIF", run(b15, 268, 0), ("RET", RET_USER_NOTIF)),
+        ("tkill(238) -> USER_NOTIF", run(b15, 238, 0), ("RET", RET_USER_NOTIF)),
         ("io_uring_setup(425) -> ERRNO(38)", run(b15, 425, 0), ("RET", RET_ERRNO | 38)),
         ("io_uring_enter(426) -> ERRNO(38)", run(b15, 426, 0), ("RET", RET_ERRNO | 38)),
         ("io_uring_register(427) -> ERRNO(38)", run(b15, 427, 0), ("RET", RET_ERRNO | 38)),

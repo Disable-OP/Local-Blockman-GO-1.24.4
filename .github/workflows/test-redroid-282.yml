@@ -273,14 +273,30 @@ jobs:
           EPID=$(adb -s localhost:5555 shell "ps -A | grep ':BlockmanGo'" | awk '{print $2}' | head -1 | tr -d '\r')
           echo "engine pid: $EPID"
           if [ -n "$EPID" ]; then
-            echo "== engine main status =="
-            adb -s localhost:5555 shell "grep -E '^(State|Tgid|Pid|PPid|TracerPid)' /proc/$EPID/status" || true
-            echo "== engine thread states =="
-            adb -s localhost:5555 shell "for T in /proc/$EPID/task/*; do echo \"\$T: \$(grep -E '^(State|TracerPid)' \$T/status | tr '\\n' ' ')\\"; done" || true
-            echo "== engine thread wchans =="
-            adb -s localhost:5555 shell "for T in /proc/$EPID/task/*; do echo -n \"task \${T##*/}: \"; cat \$T/wchan 2>/dev/null; echo; done" || true
+            adb -s localhost:5555 shell 'cat > /data/local/tmp/engdiag.sh <<"DGEOF"
+            #!/system/bin/sh
+            P=$1
+            [ -z "$P" ] && exit 0
+            echo "== main status =="
+            grep -E "^(State|Tgid|Pid|PPid|TracerPid)" /proc/$P/status 2>/dev/null
+            echo "== thread states =="
+            for T in /proc/$P/task/*; do
+              echo "$T $(grep -E "^(State|TracerPid)" $T/status 2>/dev/null | tr "\n" " ")"
+            done
+            echo "== thread wchans =="
+            for T in /proc/$P/task/*; do
+              echo -n "${T##*/}: "; cat $T/wchan 2>/dev/null; echo
+            done
             echo "== who traces the engine =="
-            adb -s localhost:5555 shell "for P in /proc/[0-9]*; do TP=\$(grep TracerPid \$P/status 2>/dev/null | awk '{print \$2}' | tr -d '\\r '); [ \"\$TP\" = \"$EPID\" ] && echo \"TRACER pid=\${P#/proc/} cmd=\$(tr -d '\\0' < \$P/cmdline)\"; done" || true
+            for D in /proc/[0-9]*; do
+              TP=$(grep TracerPid $D/status 2>/dev/null | awk "{print \$2}" | tr -d "\r ")
+              if [ "$TP" = "$P" ]; then
+                echo "TRACER pid=${D#/proc/} cmd=$(tr -d "\0" < $D/cmdline 2>/dev/null)"
+              fi
+            done
+            DGEOF'
+            adb -s localhost:5555 shell chmod 755 /data/local/tmp/engdiag.sh
+            adb -s localhost:5555 shell /data/local/tmp/engdiag.sh "$EPID" || true
           fi
           if adb -s localhost:5555 shell pidof "$PACKAGE" | grep -qE '[0-9]'; then
             echo "APP STILL ALIVE at end"
