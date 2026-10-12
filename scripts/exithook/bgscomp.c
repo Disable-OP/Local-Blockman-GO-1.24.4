@@ -358,10 +358,21 @@ struct seccomp_notif_addfd {
 /*  24  RET 0x00050000             (ERRNO(0) - syscall returns 0)      */
 /*  25  RET 0x7FFF0000             (ALLOW)                             */
 /*                                                                     */
-/* v16: io_uring (425/426/427) is ERRNO(ENOSYS): an io_uring OPENAT    */
-/* bypasses the whole filter (the open happens kernel-side inside      */
-/* io_uring_enter, invisible to the supervisor). Nothing sane in the   */
-/* engine uses io_uring; the TSS could, to read the REAL status/maps.  */
+/* v36: io_uring (425/426/427) moved from ERRNO(ENOSYS) to USER_NOTIF.  */
+/* EVIDENCE (runs 38237179615/wip-104 + 38241104113/wip-105): the TSS    */
+/* ctor SIGILLs at libBlockMan+0x169d14 inside call_constructors at the   */
+/* join-time dlopen, and the supervisor served ZERO /proc opens from it   */
+/* (no P:/s: lines in either run) — the ctor's checks do NOT go through   */
+/* the open* channel, so the status scrub can never satisfy them. The     */
+/* only REMAINING behavioral delta a packed check can observe is a        */
+/* syscall this filter denies or changes: io_uring_setup -> ENOSYS is     */
+/* the prime suspect (the engine family itself uses io_uring; an          */
+/* availability probe returning -ENOSYS in an io_uring-capable kernel is  */
+/* exactly a tamper signal). v36 lets io_uring through with a USER_NOTIF  */
+/* notification: the supervisor logs it (I:<nr>@<pid>) and CONTINUEs —    */
+/* byte-for-byte the clean-system behavior, full visibility, and the      */
+/* openat-bypass risk is accepted because this build's TSS demonstrably   */
+/* never opens /proc at all.                                              */
 /* ------------------------------------------------------------------ */
 
 static const struct sock_filter bpf15[] = {
@@ -374,9 +385,9 @@ static const struct sock_filter bpf15[] = {
     { 0x15, 16, 0,  BPF_NR_PRCTL },   /*  6 prctl   -> 23       */
     { 0x15, 11, 0,  BPF_NR_EXITGROUP }, /*  7 exit_gr -> 19     */
     { 0x15, 10, 0,  BPF_NR_EXIT },    /*  8 exit    -> 19       */
-    { 0x15, 18, 0,  425         },   /*  9 io_uring_setup -> 28 */
-    { 0x15, 17, 0,  426         },   /* 10 io_uring_enter -> 28 */
-    { 0x15, 16, 0,  427         },   /* 11 io_uring_reg   -> 28 */
+    { 0x15, 17, 0,  425         },   /*  9 io_uring_setup -> 27 (v36: NOTIFY) */
+    { 0x15, 16, 0,  426         },   /* 10 io_uring_enter -> 27 (v36: NOTIFY) */
+    { 0x15, 15, 0,  427         },   /* 11 io_uring_reg   -> 27 (v36: NOTIFY) */
     { 0x15, 14, 0,  BPF_NR_PTRICE },  /* 12 ptrace  -> 27       */
     { 0x15, 13, 0,  BPF_NR_CLONE },   /* 13 clone   -> 27       */
     { 0x15, 12, 0,  BPF_NR_VMREADV }, /* 14 vm_readv -> 27       */
@@ -819,6 +830,31 @@ static void supervisor_loop(void)
                 g_num[q++] = 'C';
                 g_num[q++] = ':';
                 if (uv == 0) tmp2[w++] = '0';
+                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
+                while (w) g_num[q++] = tmp2[--w];
+                g_num[q++] = '@';
+                uv = (u32)g_notif.pid;
+                w = 0;
+                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
+                while (w) g_num[q++] = tmp2[--w];
+                g_num[q++] = '\n';
+                sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
+            }
+            g_resp.flags = SECCOMP_USER_NOTIF_FLAG_CONTINUE;
+            goto reply;
+        }
+        /* v36: io_uring (425/426/427) — NOTIFY + log + CONTINUE. The
+         * engine family probes/uses io_uring; the clean-system behavior
+         * is "succeeds". Log it (I:<nr>@<pid>, capped) so the next run
+         * PROVES whether the ctor's detection path touches io_uring. */
+        if (nr == 425 || nr == 426 || nr == 427) {
+            if (g_gfd >= 0 && g_plog < 1500) {
+                lint q = 0, w = 0;
+                char tmp2[12];
+                u32 uv = (u32)nr;
+                g_plog++;
+                g_num[q++] = 'I';
+                g_num[q++] = ':';
                 while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
                 while (w) g_num[q++] = tmp2[--w];
                 g_num[q++] = '@';

@@ -212,9 +212,9 @@ def main():
         ("tgkill(268) -> USER_NOTIF", run(b15, 268, 0), ("RET", RET_USER_NOTIF)),
         ("tkill(238) -> USER_NOTIF", run(b15, 238, 0), ("RET", RET_USER_NOTIF)),
         ("rt_sigqueueinfo(265) -> USER_NOTIF", run(b15, 265, 0), ("RET", RET_USER_NOTIF)),
-        ("io_uring_setup(425) -> ERRNO(38)", run(b15, 425, 0), ("RET", RET_ERRNO | 38)),
-        ("io_uring_enter(426) -> ERRNO(38)", run(b15, 426, 0), ("RET", RET_ERRNO | 38)),
-        ("io_uring_register(427) -> ERRNO(38)", run(b15, 427, 0), ("RET", RET_ERRNO | 38)),
+        ("io_uring_setup(425) -> USER_NOTIF (v36)", run(b15, 425, 0), ("RET", RET_USER_NOTIF)),
+        ("io_uring_enter(426) -> USER_NOTIF (v36)", run(b15, 426, 0), ("RET", RET_USER_NOTIF)),
+        ("io_uring_register(427) -> USER_NOTIF (v36)", run(b15, 427, 0), ("RET", RET_USER_NOTIF)),
         ("x86_64 arch -> ALLOW (qemu)", run(b15, 322, 0, arch=0xC000003E),
          ("RET", RET_ALLOW)),
     ]
