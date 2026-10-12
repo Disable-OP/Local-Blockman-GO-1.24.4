@@ -86,6 +86,7 @@ typedef long               lint;
 #define __NR_clone        56L
 #define __NR_nanosleep    35L
 #define __NR_getpid       39L
+#define __NR_ptrace      101L
 #define __NR_prctl       157L
 #define __NR_openat      257L
 #define __NR_exit_group  231L
@@ -101,6 +102,8 @@ typedef long               lint;
 #define BPF_NR_EXITGROUP 231
 #define BPF_NR_EXIT      60
 #define BPF_NR_PRCTL     157
+#define BPF_NR_PTRICE    101
+#define BPF_NR_CLONE     56
 
 static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
 {
@@ -130,6 +133,7 @@ static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
 #define __NR_clone      120L
 #define __NR_nanosleep  162L
 #define __NR_getpid      22L
+#define __NR_ptrace      26L
 #define __NR_prctl      172L
 #define __NR_openat     322L
 #define __NR_exit_group 248L
@@ -145,6 +149,8 @@ static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
 #define BPF_NR_EXITGROUP 248
 #define BPF_NR_EXIT      1
 #define BPF_NR_PRCTL     172
+#define BPF_NR_PTRICE    26
+#define BPF_NR_CLONE     120
 
 static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
 {
@@ -248,29 +254,31 @@ struct seccomp_notif_addfd {
 /* args[0].lo@16. 21 instructions.                                     */
 /*                                                                     */
 /*   0  LD  [4]                    arch                                */
-/*   1  JEQ <arch> -> 2 else -> 23 (ALLOW for any other arch)          */
+/*   1  JEQ <arch> -> 2 else -> 25 (ALLOW for any other arch)          */
 /*   2  LD  [0]                    nr                                  */
-/*   3  JEQ 322  -> 20 else 4      (openat  -> NOTIFY)                 */
-/*   4  JEQ 5    -> 20 else 5      (open    -> NOTIFY)                 */
-/*   5  JEQ 437  -> 20 else 6      (openat2 -> NOTIFY)                 */
-/*   6  JEQ 172  -> 16 else 7      (prctl   -> option check)           */
-/*   7  JEQ 248  -> 12 else 8      (exit_group)                        */
-/*   8  JEQ 1    -> 12 else 9      (exit; else fall to io_uring block) */
+/*   3  JEQ 322  -> 22 else 4      (openat  -> NOTIFY)                 */
+/*   4  JEQ 5    -> 22 else 5      (open    -> NOTIFY)                 */
+/*   5  JEQ 437  -> 22 else 6      (openat2 -> NOTIFY)                 */
+/*   6  JEQ 172  -> 18 else 7      (prctl   -> option check)           */
+/*   7  JEQ 248  -> 14 else 8      (exit_group)                        */
+/*   8  JEQ 1    -> 14 else 9      (exit; else fall to io_uring block) */
 /*   9  JEQ 425  -> 21 else 10     (io_uring_setup -> ERRNO(ENOSYS))   */
 /*  10  JEQ 426  -> 21 else 11     (io_uring_enter)                    */
 /*  11  JEQ 427  -> 21 else 23     (io_uring_register)                 */
-/*  12  LD  [16]                   args[0] low word                    */
-/*  13  JEQ 25   -> 21 else 14     (verdict code -> ERRNO(ENOSYS))     */
-/*  14  JEQ 30   -> 21 else 15                                         */
-/*  15  JA -> 23                   (harmless exit code -> ALLOW)       */
-/*  16  LD  [16]                   prctl option                        */
-/*  17  JEQ 21   -> 22 else 18     (PR_GET_SECCOMP -> "return 0")      */
-/*  18  JEQ 36   -> 22 else 19     (PR_GET_NO_NEW_PRIVS -> 0)          */
-/*  19  JA -> 23                                                       */
-/*  20  RET 0x7FC00000             (SECCOMP_RET_USER_NOTIF)            */
-/*  21  RET 0x00050026             (ERRNO(ENOSYS) - verdict+io_uring)  */
-/*  22  RET 0x00050000             (ERRNO(0) - syscall returns 0)      */
-/*  23  RET 0x7FFF0000             (ALLOW)                             */
+/*  12  JEQ 26   -> 22 else 13     (ptrace  -> NOTIFY: log + CONTINUE) */
+/*  13  JEQ 120  -> 22 else 25     (clone   -> NOTIFY: log + CONTINUE) */
+/*  14  LD  [16]                   args[0] low word                    */
+/*  15  JEQ 25   -> 23 else 16     (verdict code -> ERRNO(ENOSYS))     */
+/*  16  JEQ 30   -> 23 else 17                                         */
+/*  17  JA -> 25                   (harmless exit code -> ALLOW)       */
+/*  18  LD  [16]                   prctl option                        */
+/*  19  JEQ 21   -> 24 else 20     (PR_GET_SECCOMP -> "return 0")      */
+/*  20  JEQ 36   -> 24 else 21     (PR_GET_NO_NEW_PRIVS -> 0)          */
+/*  21  JA -> 25                                                       */
+/*  22  RET 0x7FC00000             (SECCOMP_RET_USER_NOTIF)            */
+/*  23  RET 0x00050026             (ERRNO(ENOSYS) - verdict+io_uring)  */
+/*  24  RET 0x00050000             (ERRNO(0) - syscall returns 0)      */
+/*  25  RET 0x7FFF0000             (ALLOW)                             */
 /*                                                                     */
 /* v16: io_uring (425/426/427) is ERRNO(ENOSYS): an io_uring OPENAT    */
 /* bypasses the whole filter (the open happens kernel-side inside      */
@@ -280,29 +288,31 @@ struct seccomp_notif_addfd {
 
 static const struct sock_filter bpf15[] = {
     { 0x20, 0,  0,  4           },   /*  0 LD [4]  arch        */
-    { 0x15, 0, 21,  AUDIT_ARCH_THIS },  /*  1 JEQ arch jt=0 jf=21 */
+    { 0x15, 0, 23,  AUDIT_ARCH_THIS },  /*  1 JEQ arch jt=0 jf=23 */
     { 0x20, 0,  0,  0           },   /*  2 LD [0]  nr          */
-    { 0x15, 16, 0,  BPF_NR_OPENAT },  /*  3 openat  -> 20       */
-    { 0x15, 15, 0,  BPF_NR_OPEN },    /*  4 open    -> 20       */
-    { 0x15, 14, 0,  BPF_NR_OPENAT2 }, /*  5 openat2 -> 20       */
-    { 0x15, 9,  0,  BPF_NR_PRCTL },   /*  6 prctl   -> 16       */
-    { 0x15, 4,  0,  BPF_NR_EXITGROUP }, /*  7 exit_gr -> 12     */
-    { 0x15, 3,  0,  BPF_NR_EXIT },    /*  8 exit    -> 12       */
-    { 0x15, 11, 0,  425         },   /*  9 io_uring_setup -> 21 */
-    { 0x15, 10, 0,  426         },   /* 10 io_uring_enter -> 21 */
-    { 0x15, 9, 11,  427         },   /* 11 io_uring_reg   -> 21 / 23 */
-    { 0x20, 0,  0,  16          },   /* 12 LD [16] args0.lo    */
-    { 0x15, 7,  0,  25          },   /* 13 ==25 -> 21          */
-    { 0x15, 6,  0,  30          },   /* 14 ==30 -> 21          */
-    { 0x05, 0,  0,  7           },   /* 15 JA -> 23            */
-    { 0x20, 0,  0,  16          },   /* 16 LD [16] option      */
-    { 0x15, 4,  0,  21          },   /* 17 PR_GET_SECCOMP->22  */
-    { 0x15, 3,  0,  36          },   /* 18 PR_GET_NNP    ->22  */
-    { 0x05, 0,  0,  3           },   /* 19 JA -> 23            */
-    { 0x06, 0,  0,  0x7FC00000U },   /* 20 RET USER_NOTIF      */
-    { 0x06, 0,  0,  0x00050026U },   /* 21 RET ERRNO(ENOSYS)   */
-    { 0x06, 0,  0,  0x00050000U },   /* 22 RET ERRNO(0)        */
-    { 0x06, 0,  0,  0x7FFF0000U },   /* 23 RET ALLOW           */
+    { 0x15, 18, 0,  BPF_NR_OPENAT },  /*  3 openat  -> 22       */
+    { 0x15, 17, 0,  BPF_NR_OPEN },    /*  4 open    -> 22       */
+    { 0x15, 16, 0,  BPF_NR_OPENAT2 }, /*  5 openat2 -> 22       */
+    { 0x15, 11, 0,  BPF_NR_PRCTL },   /*  6 prctl   -> 18       */
+    { 0x15, 6,  0,  BPF_NR_EXITGROUP }, /*  7 exit_gr -> 14     */
+    { 0x15, 5,  0,  BPF_NR_EXIT },    /*  8 exit    -> 14       */
+    { 0x15, 13, 0,  425         },   /*  9 io_uring_setup -> 23 */
+    { 0x15, 12, 0,  426         },   /* 10 io_uring_enter -> 23 */
+    { 0x15, 11, 0,  427         },   /* 11 io_uring_reg   -> 23 */
+    { 0x15, 9,  0,  BPF_NR_PTRICE },  /* 12 ptrace  -> 22       */
+    { 0x15, 8, 11,  BPF_NR_CLONE },   /* 13 clone   -> 22 / 25  */
+    { 0x20, 0,  0,  16          },   /* 14 LD [16] args0.lo    */
+    { 0x15, 7,  0,  25          },   /* 15 ==25 -> 23          */
+    { 0x15, 6,  0,  30          },   /* 16 ==30 -> 23          */
+    { 0x05, 0,  0,  7           },   /* 17 JA -> 25            */
+    { 0x20, 0,  0,  16          },   /* 18 LD [16] option      */
+    { 0x15, 4,  0,  21          },   /* 19 PR_GET_SECCOMP->24  */
+    { 0x15, 3,  0,  36          },   /* 20 PR_GET_NNP    ->24  */
+    { 0x05, 0,  0,  3           },   /* 21 JA -> 25            */
+    { 0x06, 0,  0,  0x7FC00000U },   /* 22 RET USER_NOTIF      */
+    { 0x06, 0,  0,  0x00050026U },   /* 23 RET ERRNO(ENOSYS)   */
+    { 0x06, 0,  0,  0x00050000U },   /* 24 RET ERRNO(0)        */
+    { 0x06, 0,  0,  0x7FFF0000U },   /* 25 RET ALLOW           */
 };
 
 /* bpf14 (fallback): the exact v14 filter — ERRNO(ENOSYS) on the verdict
@@ -628,6 +638,38 @@ static void supervisor_loop(void)
         g_resp.error = 0;
         g_resp.flags = 0;
 
+        /* v17: the TSS watchdog's ptrace/fork behavior is THE missing
+         * picture (v15/v16: zero proc-file reads, the engine frozen in
+         * ptrace_stop). Notify these two, log, CONTINUE — zero behavior
+         * change, full visibility of WHO attaches WHEN with WHAT. */
+        if (nr == __NR_ptrace || nr == __NR_clone) {
+            if (g_gfd >= 0 && g_plog < 400) {
+                lint q = 0;
+                u32 uv = (u32)g_notif.data.args[0];
+                g_plog++;
+                g_num[q++] = (nr == __NR_ptrace) ? 'T' : 'C';
+                g_num[q++] = ':';
+                if (uv == 0) g_num[q++] = '0';
+                while (uv && q < (lint)sizeof(g_num) - 10) {
+                    u32 d;
+                    uv = udiv10(uv, &d);
+                    g_num[q++] = (char)('0' + d);
+                }
+                g_num[q++] = '@';
+                uv = (u32)g_notif.pid;
+                if (uv == 0) g_num[q++] = '0';
+                while (uv && q < (lint)sizeof(g_num) - 2) {
+                    u32 d;
+                    uv = udiv10(uv, &d);
+                    g_num[q++] = (char)('0' + d);
+                }
+                g_num[q++] = '\n';
+                sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
+            }
+            g_resp.flags = SECCOMP_USER_NOTIF_FLAG_CONTINUE;
+            goto reply;
+        }
+
         if (pclass == PC_STATUS) {
             lint m, fd;
             int mask = 0;
@@ -739,6 +781,7 @@ static void supervisor_loop(void)
 #endif
         }
 
+reply:
         r = sysc(__NR_ioctl, g_lfd,
                  (lint)SECCOMP_IOCTL_NOTIF_SEND, (lint)&g_resp, 0, 0);
         if (r != 0)

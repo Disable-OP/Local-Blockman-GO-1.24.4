@@ -267,6 +267,21 @@ jobs:
           adb -s localhost:5555 shell "dumpsys dropbox --print 2>/dev/null" | grep -iE "crash|anr|blockymods" | head -10 || true
           echo "== process table =="
           adb -s localhost:5555 shell "ps -A | grep blockymods" || echo "no blockymods processes"
+          # v17: the engine survives but freezes in ptrace_stop (state t)
+          # with zero proc-file notifications — identify the TRACER and
+          # dump every thread's state/wchan.
+          EPID=$(adb -s localhost:5555 shell "ps -A | grep ':BlockmanGo'" | awk '{print $2}' | head -1 | tr -d '\r')
+          echo "engine pid: $EPID"
+          if [ -n "$EPID" ]; then
+            echo "== engine main status =="
+            adb -s localhost:5555 shell "grep -E '^(State|Tgid|Pid|PPid|TracerPid)' /proc/$EPID/status" || true
+            echo "== engine thread states =="
+            adb -s localhost:5555 shell "for T in /proc/$EPID/task/*; do echo \"\$T: \$(grep -E '^(State|TracerPid)' \$T/status | tr '\\n' ' ')\\"; done" || true
+            echo "== engine thread wchans =="
+            adb -s localhost:5555 shell "for T in /proc/$EPID/task/*; do echo -n \"task \${T##*/}: \"; cat \$T/wchan 2>/dev/null; echo; done" || true
+            echo "== who traces the engine =="
+            adb -s localhost:5555 shell "for P in /proc/[0-9]*; do TP=\$(grep TracerPid \$P/status 2>/dev/null | awk '{print \$2}' | tr -d '\\r '); [ \"\$TP\" = \"$EPID\" ] && echo \"TRACER pid=\${P#/proc/} cmd=\$(tr -d '\\0' < \$P/cmdline)\"; done" || true
+          fi
           if adb -s localhost:5555 shell pidof "$PACKAGE" | grep -qE '[0-9]'; then
             echo "APP STILL ALIVE at end"
           else
