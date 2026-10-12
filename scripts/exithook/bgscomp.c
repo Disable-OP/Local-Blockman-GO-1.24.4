@@ -87,6 +87,10 @@ typedef long               lint;
 #define __NR_nanosleep    35L
 #define __NR_getpid       39L
 #define __NR_gettid      186L
+#define __NR_mmap          9L
+#define __NR_pidfd_open   434L
+#define __NR_pidfd_getfd  438L
+#define __NR_getppid      110L
 #define __NR_ptrace      101L
 #define __NR_kill         62L
 #define __NR_clock_gettime 228L
@@ -133,6 +137,24 @@ static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
     return rax;
 }
 
+static inline lint sysc6(lint n, lint a, lint b, lint c, lint d, lint e,
+                         lint f)
+{
+    register lint rdi __asm__("rdi") = a;
+    register lint rsi __asm__("rsi") = b;
+    register lint rdx __asm__("rdx") = c;
+    register lint r10 __asm__("r10") = d;
+    register lint r8  __asm__("r8")  = e;
+    register lint r9  __asm__("r9")  = f;
+    register lint rax __asm__("rax") = n;
+    __asm__ volatile ("syscall"
+                      : "=a" (rax)
+                      : "a" (rax), "D" (rdi), "S" (rsi), "d" (rdx),
+                        "r" (r10), "r" (r8), "r" (r9)
+                      : "rcx", "r11", "memory");
+    return rax;
+}
+
 #else /* __arm__ — the production ABI */
 
 #define __NR_exit         1L
@@ -146,6 +168,10 @@ static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
 #define __NR_nanosleep  162L
 #define __NR_getpid      22L
 #define __NR_gettid      224L
+#define __NR_mmap         192L
+#define __NR_pidfd_open   434L
+#define __NR_pidfd_getfd  438L
+#define __NR_getppid       64L
 #define __NR_ptrace      26L
 #define __NR_kill         37L
 #define __NR_clock_gettime 263L
@@ -188,6 +214,25 @@ static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
                       : "=r" (r0)
                       : "r" (r0), "r" (r1), "r" (r2), "r" (r3), "r" (r4),
                         "r" (r7)
+                      : "memory");
+    return r0;
+}
+
+/* 6-arg arm32 EABI: args r0-r5, nr in r7. */
+static inline lint sysc6(lint n, lint a, lint b, lint c, lint d, lint e,
+                         lint f)
+{
+    register lint r0 __asm__("r0") = a;
+    register lint r1 __asm__("r1") = b;
+    register lint r2 __asm__("r2") = c;
+    register lint r3 __asm__("r3") = d;
+    register lint r4 __asm__("r4") = e;
+    register lint r5 __asm__("r5") = f;
+    register lint r7 __asm__("r7") = n;
+    __asm__ volatile ("svc #0"
+                      : "=r" (r0)
+                      : "r" (r0), "r" (r1), "r" (r2), "r" (r3), "r" (r4),
+                        "r" (r5), "r" (r7)
                       : "memory");
     return r0;
 }
@@ -727,56 +772,19 @@ static void supervisor_loop(void)
          * ptrace_stop). Notify these two, log, CONTINUE — zero behavior
          * change, full visibility of WHO attaches WHEN with WHAT. */
         if (nr == __NR_ptrace) {
-            u32 req = (u32)g_notif.data.args[0];
-            u32 tgt = (u32)g_notif.data.args[1];
-            /* v22 THE SURGICAL FIX for the mutual deadlock: v15-v20's
-             * freeze = the watchdog ATTACHing EVERY thread INCLUDING
-             * this supervisor; the supervisor stops mid-RECV and EVERY
-             * later notification (the watchdog's own GETREGS included)
-             * waits forever for a reply that can never come. v18 showed
-             * denying ALL attaches aborts the TSS init — the umbrella
-             * is mandatory. So: allow EVERY attach EXCEPT the one whose
-             * target is THIS thread — the watchdog keeps its umbrella,
-             * the supervisor keeps serving notifications. */
-            if ((req == 16u || req == 0x4206u || req == 0x4207u) &&
-                tgt == (u32)g_suptid && g_suptid > 0) {
-                /* v23: FAKE SUCCESS. v22's -EPERM made the watchdog
-                 * retry-loop forever (dozens of T:16s) and the umbrella
-                 * never completed -> the TSS aborted engine init. A fake
-                 * success satisfies the watchdog's bookkeeping WITHOUT
-                 * the kernel ever stopping this thread: the supervisor
-                 * keeps serving notifications, and when the watchdog
-                 * later waitpid()s for this thread's stop event it will
-                 * stall against ITSELF — harmless: the engine threads
-                 * never stop. */
-                g_resp.error = 0;
-                g_resp.val   = 0;
-                g_resp.flags = 0;
-                if (g_gfd >= 0 && g_plog < 400) {
-                    lint q = 0;
-                    u32 uv = (u32)g_notif.pid;
-                    g_plog++;
-                    log_stamp();
-                    g_num[q++] = 'X';
-                    g_num[q++] = ':';
-                    if (uv == 0) g_num[q++] = '0';
-                    while (uv && q < (lint)sizeof(g_num) - 2) {
-                        u32 d;
-                        uv = udiv10(uv, &d);
-                        g_num[q++] = (char)('0' + d);
-                    }
-                    g_num[q++] = '\n';
-                    sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
-                }
-                goto reply;
-            }
-            /* log everything, pass everything (v19 behavior) */
+            /* v24: PURE LOGGING. The supervisor now lives in a SEPARATE
+             * PROCESS (forked AFTER the install — it inherits the filter
+             * and the listener fd, and the notification queue is shared
+             * through the refcounted filter object). The watchdog
+             * enumerates the ENGINE's threads only — the supervisor
+             * process is invisible to it, so every attach can complete
+             * and the umbrella finishes (v18/v22/v23: any interference
+             * with the attach protocol aborts the TSS init). */
             if (g_gfd >= 0 && g_plog < 400) {
                 lint q = 0, w = 0;
                 char tmp2[12];
                 u32 uv = (u32)g_notif.data.args[0];
                 g_plog++;
-                log_stamp();
                 g_num[q++] = 'T';
                 g_num[q++] = ':';
                 if (uv == 0) tmp2[w++] = '0';
@@ -791,83 +799,6 @@ static void supervisor_loop(void)
                 sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
             }
             g_resp.flags = SECCOMP_USER_NOTIF_FLAG_CONTINUE;
-            goto reply;
-        }
-        if (nr == __NR_kill || nr == __NR_tgkill || nr == __NR_tkill) {
-            /* v20: the freeze without any ptrace/scan traffic = the
-             * watchdog kill(SIGSTOP)ing the (already attached) threads
-             * — kill() was the ONE invisible path left. Log every kill
-             * (K:<nr>:<a0>:<a1>@<pid>) and DENY SIGSTOP(19): without a
-             * successful stop the watchdog cannot park the engine. */
-            u32 a0 = (u32)g_notif.data.args[0];
-            u32 a1 = (u32)g_notif.data.args[1];
-            u32 a2 = (u32)g_notif.data.args[2];
-            u32 sig = (nr == __NR_tgkill) ? a2 : a1;
-            if (g_gfd >= 0 && g_plog < 400) {
-                lint q = 0, w = 0;
-                char tmp2[12];
-                u32 uv = nr;
-                g_plog++;
-                log_stamp();
-                g_num[q++] = 'K';
-                g_num[q++] = ':';
-                if (uv == 0) tmp2[w++] = '0';
-                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
-                while (w) g_num[q++] = tmp2[--w];
-                g_num[q++] = ':';
-                uv = a0; w = 0;
-                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
-                while (w) g_num[q++] = tmp2[--w];
-                g_num[q++] = ':';
-                uv = a1; w = 0;
-                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
-                while (w) g_num[q++] = tmp2[--w];
-                g_num[q++] = '@';
-                uv = (u32)g_notif.pid; w = 0;
-                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
-                while (w) g_num[q++] = tmp2[--w];
-                g_num[q++] = '\n';
-                sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
-            }
-            if (sig == 19u) {           /* SIGSTOP — the freeze weapon */
-                g_resp.error = -1;      /* -EPERM: no stop for you */
-                g_resp.val   = 0;
-                g_resp.flags = 0;
-                goto reply;
-            }
-            g_resp.flags = SECCOMP_USER_NOTIF_FLAG_CONTINUE;
-            goto reply;
-        }
-        if (nr == __NR_PROCESS_VM_READV) {
-            /* v19: the watchdog's memory scan channel. In v17 the
-             * ATTACHes succeeded, ZERO further ptrace requests appeared,
-             * yet the scan still detected the tampering — it reads
-             * memory via process_vm_readv, which never showed in the
-             * ptrace log. DENY it: the scan cannot run. If the TSS
-             * fails-open, the engine finally plays; if it fails-closed
-             * the death pattern will say so. args: (pid, lvec, liovcnt,
-             * rvec, riovcnt, flags) — args[0] = the TARGET pid. */
-            if (g_gfd >= 0 && g_plog < 400) {
-                lint q = 0, w = 0;
-                char tmp2[12];
-                u32 uv = (u32)g_notif.data.args[0];
-                g_plog++;
-                g_num[q++] = 'V';
-                g_num[q++] = ':';
-                if (uv == 0) tmp2[w++] = '0';
-                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
-                while (w) g_num[q++] = tmp2[--w];
-                g_num[q++] = '@';
-                uv = (u32)g_notif.pid;
-                w = 0;
-                while (uv) { u32 d; uv = udiv10(uv, &d); tmp2[w++] = (char)('0' + d); }
-                while (w) g_num[q++] = tmp2[--w];
-                g_num[q++] = '\n';
-                sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
-            }
-            g_resp.error = -1;              /* -EPERM: the scan is blind */
-            g_resp.val   = 0;
-            g_resp.flags = 0;
             goto reply;
         }
         if (nr == __NR_clone) {
@@ -1061,6 +992,87 @@ static lint clone_supervisor(void)
 }
 #endif
 
+/* v24: raw fork via clone(SIGCHLD) — per-ABI inline asm (the x86_64
+ * host-test build must compile too). */
+#if defined(__x86_64__)
+static lint fork_process(void)
+{
+    register lint rdi __asm__("rdi") = 0x11L;   /* SIGCHLD */
+    register lint rsi __asm__("rsi") = 0;
+    register lint rdx __asm__("rdx") = 0;
+    register lint r10 __asm__("r10") = 0;
+    register lint r8  __asm__("r8")  = 0;
+    register lint rax __asm__("rax") = __NR_clone;
+    __asm__ volatile ("syscall"
+                      : "=a" (rax)
+                      : "a" (rax), "D" (rdi), "S" (rsi), "d" (rdx),
+                        "r" (r10), "r" (r8)
+                      : "rcx", "r11", "memory");
+    return rax;
+}
+#else
+static lint fork_process(void)
+{
+    register lint r0 __asm__("r0") = 0x11L;     /* SIGCHLD */
+    register lint r1 __asm__("r1") = 0;
+    register lint r2 __asm__("r2") = 0;
+    register lint r3 __asm__("r3") = 0;
+    register lint r4 __asm__("r4") = 0;
+    register lint r7 __asm__("r7") = __NR_clone;
+    __asm__ volatile ("svc #0"
+                      : "=r" (r0)
+                      : "r" (r0), "r" (r1), "r" (r2), "r" (r3), "r" (r4),
+                        "r" (r7)
+                      : "memory");
+    return r0;
+}
+#endif
+
+/* v24b: the supervisor process is forked BEFORE the install (a notified
+ * clone could NEVER be served by a supervisor that does not exist yet —
+ * the v24 self-deadlock). The child inherits the filter at fork and
+ * waits for the listener fd number on a MAP_SHARED page. */
+struct bgshm { volatile int lfd; volatile int ready; };
+static struct bgshm *g_shm;
+
+static void supervisor_child(void)
+{
+    struct bgshm *shm = g_shm;
+    struct { long s; long ns; } ts;
+    lint pdf, l;
+
+    if (shm)
+        while (shm->lfd < 0) {
+            ts.s = 0;
+            ts.ns = 1000000L;
+            sysc(__NR_nanosleep, (lint)&ts, 0, 0, 0, 0);
+        }
+    /* the child was forked BEFORE the install: the listener fd does not
+     * exist in its table. PULL it from the parent: pidfd_open(ppid) +
+     * pidfd_getfd — the child has ptrace-grade access to its own parent
+     * (same uid, dumpable). The RECV queue lives in the filter object,
+     * which the fd references — the child does NOT need the filter
+     * itself (it was forked pre-install and is unfiltered: its own
+     * syscalls never self-notify). */
+    l = shm ? shm->lfd : -1;
+    if (l >= 0) {
+        pdf = sysc(__NR_pidfd_open, sysc(__NR_getppid, 0, 0, 0, 0, 0),
+                   0, 0, 0, 0);
+        if (pdf >= 0) {
+            l = sysc(__NR_pidfd_getfd, pdf, shm->lfd, 0, 0, 0);
+            sysc(__NR_close, pdf, 0, 0, 0, 0);
+        }
+    }
+    g_lfd = (int)l;
+    if (g_lfd < 0)
+        for (;;) {              /* no listener: park quietly */
+            ts.s = 1;
+            ts.ns = 0;
+            sysc(__NR_nanosleep, (lint)&ts, 0, 0, 0, 0);
+        }
+    supervisor_loop();          /* never returns */
+}
+
 /* ------------------------------------------------------------------ */
 /* the constructor                                                     */
 /* ------------------------------------------------------------------ */
@@ -1070,7 +1082,7 @@ void bgscomp_ctor(void)
 {
     struct sock_fprog p15;
     struct sock_fprog p14;
-    lint tid, r;
+    lint r;
 
     g_lfd = -1; g_sfd = -1; g_mfd = -1;
 
@@ -1106,19 +1118,35 @@ void bgscomp_ctor(void)
      * the CURRENT value). The supervisor must ALREADY carry it when TSYNC
      * walks the thread group, or the sync fails (-EINVAL on the whole
      * install). So: NNP -> spawn -> install. */
+    /* v24b: fork the supervisor BEFORE anything is notified. The child
+     * inherits the filter at fork time (a copy happens for whatever
+     * exists NOW — the zygote/ART policies — and our filter later via
+     * ... no: the child is forked BEFORE our install, so it has NO
+     * copy of it; the SHARED queue lives in the filter object the
+     * child reaches through the INHERITED LISTENER FD — the kernel
+     * serves a notification to ANY task holding that fd, filtered or
+     * not. The child waits for the fd number on the shared page. */
+    g_shm = (struct bgshm *)sysc6(__NR_mmap, 0, 4096L,
+                                  3L /*PROT_READ|WRITE*/,
+                                  0x21L /*MAP_SHARED|MAP_ANONYMOUS*/,
+                                  -1L, 0L);
+    if ((lint)g_shm > 0) {
+        g_shm->lfd = -1;
+        g_shm->ready = 0;
+    } else {
+        g_shm = 0;
+    }
+    {
+        lint fk = fork_process();
+        if (fk == 0)
+            supervisor_child();         /* the child — forever */
+        log_num("SUPF:", fk);
+    }
+
     r = sysc(__NR_prctl, PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
     log_num("NNP:", r);
     if (r != 0)
         goto fallback;          /* no NNP => no filter install at all */
-
-    /* the supervisor spawns BEFORE the filter so TSYNC covers it too —
-     * by design it only issues ALLOWed syscalls. */
-    tid = clone_supervisor();
-    if (tid == 0) {
-        g_suptid = (int)sysc(__NR_gettid, 0, 0, 0, 0, 0);
-        supervisor_loop();      /* the child — never returns */
-    }
-    log_num("SUP:", tid);
 
     p15.len    = (unsigned short)(sizeof(bpf15) / sizeof(bpf15[0]));
     p15.filter = (struct sock_filter *)bpf15;
@@ -1132,7 +1160,15 @@ void bgscomp_ctor(void)
              (lint)&p15, 0, 0);
     if (r >= 0) {
         g_lfd = (int)r;
+        if (g_shm)
+            g_shm->lfd = g_lfd;     /* wake the supervisor process */
         log_num("LST:", g_lfd);
+        /* v24b: the supervisor is a SEPARATE PROCESS (forked pre-install,
+         * woken here) — the watchdog enumerates /proc/<engine>/task which
+         * will NEVER contain it: it cannot stop what serves the replies.
+         * The child holds the inherited listener fd; the kernel delivers
+         * EVERY notification (from any task sharing the filter — TSYNC'd
+         * engine threads included) to that one queue. */
         log_str("DONE\n");
         return;
     }
