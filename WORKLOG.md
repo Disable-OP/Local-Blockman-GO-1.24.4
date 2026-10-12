@@ -5221,3 +5221,37 @@ Stage Summary:
 - Next: UNCHANGED — the device drive on b8 (docs/ON_DEVICE_DRIVE.md §6,
   11 steps; §20 watch list). The sandbox-side gates are now
   restart-proof; a device (or adb) remains the only missing input.
+
+## Session 84 - THE RELEASE BYTES RE-VERIFIED FROM BOTH RELEASES; the v2-era repo-root runtime tarball removed (2026-10-13)
+
+- Device still hardware-bound; per delta 27's floor the session ran the
+  no-op verification pass and closed one documented trap.
+- RELEASE BYTES VERIFIED FRESH (stream-download -> md5+size -> delete;
+  nothing unpacked, no /tmp litter): 5/5 OK —
+  * localapi-assets AND wip-100: gameserver-runtime-g10078.tar.gz =
+    bundle v7 (md5 d50f53ca2aebd1b0d6edfdb9337ce5c7, 100,240,057 B exact)
+    + BlockyNexus-localapi-282.apk = the b8 harness (md5
+    07732c9f920514258e5786924a5352e4, 166,663,330 B, byte-identical
+    across the two releases);
+  * localapi-assets: official-bg-2.8.2-v7a-4151.apk (md5
+    59d9946d341ec1550337aaaba9465cd6, 155,747,472 B).
+  What a device session downloads IS the adversarially-verified v7/b8
+  state. Verifier gotcha recorded for future sessions: the asset API
+  URL serves METADATA JSON unless Accept: application/octet-stream
+  (the first pass fetched 1.5 KB JSON bodies and "failed"; sizes are
+  now cross-checked against the API's own asset size on every file).
+- THE TRAP REMOVED: the repo-root gameserver-runtime-g10078.tar.gz
+  (42.5 MB, v2-era: 3,612 entries vs v7's 10,466 — the exact file
+  delta 25's OPS note warned "always fetch the shipped bundle from the
+  release assets" about) is git-rm'ed. Reference audit before removal:
+  NOTHING executable uses the repo-root file (ondrive_collect.sh
+  matches the ON-DEVICE staged path localapi/gameserver-runtime-g10078;
+  the assemble_multigame.py + GameServerManager.java hits are
+  comments/docs). The release assets are the only runtime source of
+  truth.
+- GATES green post-removal: suite 701/701; smoke 28/28 (the
+  one-command runner from session 83).
+- Next: UNCHANGED — the device drive on b8 (docs/ON_DEVICE_DRIVE.md §6,
+  11 steps; §20 watch list). Sandbox-side remains closed (delta 25 wave
+  table FINAL; id_mappings evidence-gated; gate toolchain restart-proof
+  per delta 27).

@@ -3745,3 +3745,35 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   in doc §20). Sandbox-side nothing is open: the wave table stays FINAL
   (delta 25), id_mappings pre-staging stays evidence-gated, and the gate
   toolchain now survives restarts.
+
+## Cron-session delta 28 (read FIRST — THE SHIPPED BYTES RE-VERIFIED FRESH FROM BOTH RELEASES (5/5 OK); the documented repo-root trap (the v2-era runtime tarball) is GONE; b8 drive unchanged)
+
+- Device still hardware-bound; the session ran the no-op verification
+  floor per delta 27 and closed one documented trap.
+- RELEASE BYTES RE-VERIFIED (stream-download -> md5+size -> delete; no
+  unpack, no /tmp litter): BOTH localapi-assets AND wip-100 carry the
+  identical shipped state — gameserver-runtime-g10078.tar.gz = bundle v7
+  (md5 d50f53ca2aebd1b0d6edfdb9337ce5c7, 100,240,057 B exact) and
+  BlockyNexus-localapi-282.apk = the b8 harness (md5
+  07732c9f920514258e5786924a5352e4, 166,663,330 B, byte-identical across
+  the two releases); localapi-assets also re-proves the pristine client
+  official-bg-2.8.2-v7a-4151.apk (md5 59d9946d341ec1550337aaaba9465cd6,
+  155,747,472 B). 5/5 OK — what a device session downloads IS the
+  adversarially-verified v7/b8 state.
+  GOTCHA for future inline verifiers: the asset API URL answers with the
+  METADATA JSON unless `Accept: application/octet-stream` (the first
+  pass "verified" 1.5 KB JSON bodies; sizes are now also cross-checked
+  against the API's own asset size on every file).
+- THE REPO-ROOT TRAP REMOVED: gameserver-runtime-g10078.tar.gz (42.5 MB,
+  v2-era — 3,612 entries vs v7's 10,466; the exact file delta 25's OPS
+  note warned about) is git-rm'ed. Reference audit before removal: it
+  had NO executable user (ondrive_collect.sh's match is the ON-DEVICE
+  staged path localapi/gameserver-runtime-g10078; the assemble_multigame
+  .py and GameServerManager.java hits are comments/docs). The release
+  assets are the ONLY runtime source of truth, as the OPS notes said.
+- GATES green post-removal: suite 701/701; smoke 28/28 via the
+  one-command runner (scripts/run_smoke_localapi_compat.sh).
+- NEXT: UNCHANGED — the device drive on b8 (docs/ON_DEVICE_DRIVE.md §6,
+  11 steps, evidence per step via scripts/ondrive_collect.sh, watch list
+  in doc §20). Sandbox-side remains closed: wave table FINAL (delta 25),
+  id_mappings evidence-gated, gate toolchain restart-proof (delta 27).
