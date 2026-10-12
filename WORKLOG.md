@@ -4578,3 +4578,44 @@ resource is unavailable.
 - The debugging minefield (each invalidated a run): __aeabi_{u,ui,ul}divmod (any division in -nostdlib C), the zeroed RECV buffer, the volatile listener, AUDIT_ARCH_ARM=0x40000028, notif=80B/6.1+, TSYNC_ESRCH for TSYNC|LISTENER, NNP-per-task-at-clone, arm32 getpid=20, /data/local/tmp not app-writable (pre-create 0666), ANDROID 12's phantom process killer (disabled in the workflow), forked-child fd inheritance (the child opens its own childlog).
 - The NEXT battle: the engine-integration stall (initGame to 31108 never fires, no client.log, no native thread farm) — the engine-side log harvest is the next move; the TSS is no longer the suspect.
 - Commits 059a25b..bb78c9f (v15-v34), releases wip-95..wip-104, 10 CI runs this session. Host tooling: /tmp/a64 (armhf cross-gcc 14 + binutils + qemu-arm-static), the BPF simulator (sim_bpf_bgscomp.py, wired into the APK build as a byte-verification gate).
+
+## Session 69 - v35: the engine-integration probes + the engine-side evidence harvest (2026-10-12)
+
+- Delta-8's prescription executed: the engine process survives the TSS (wip-104) but
+  initGame to 31108 never fires, no client.log, no native thread farm. The client-side
+  chain stopped being provable at "BlockManEchoesActivity is up" — this session
+  instruments the EXACT chain points inside the engine-join Java surface.
+- **patch_preinit_probe_282.py** (new): Log.i probes (tag "EchoesProbe") inside
+  com/sandboxol/blockmango/EchoesRenderer.smali — (1) handlePreInit ENTER with the raw
+  p0..p4; (2) the env dump AFTER AbstractEngineEnv computes them (language, p0,
+  resRoot, resCache, cfg, mapRoot, mapTemp, engineResBaseUrl) — a wrong/missing dir
+  here IS the stall; (3) which nativePreInit branch fires (old-engine vs new-engine);
+  (4) handleInitGame's gameAddr (p6 — the "ip:port" string the wrapper splits; EMPTY =
+  the local-world boot) + p2/p15 for the join-attr shape; (5) the isGLValid()==false
+  offline-exit marker; (6) the gameAddr-EMPTY branch marker. Register-audited:
+  every probe register is dead at its insertion point (v2/v8/v10 before the
+  handlePreInit branch; v0..v31 written-before-read at the handleInitGame entry;
+  params >=v32 copied with move-object/from16 for the 4-bit invoke limit). Idempotent;
+  the build script now FAILS without the probes (fresh-decode safety).
+- The app's own markers discovered (no patch needed): "Main: so on game main init end."
+  (Controller$2, AFTER handlePreInit returns — its absence = nativePreInit still
+  blocked) and "Main: so on game service init." (App path), tag "Main"; StartMcActivity
+  logs "router-jni: onNewIntent".
+- **test-redroid-282.yml**: logcat -G 4M (the engine's native-init spam was rotating
+  the main ring before any harvest step read it); a dedicated Engine-integration
+  harvest step — full logcat -d --pid=<engine> (all tags, tail 500) → englog.txt on
+  the artifact, EchoesProbe/"so on game"/router-jni greps, log-file-path mentions
+  (client.log/logdir/PathUtil), the SandBoxOL/BlockMan staging trees, the *.log
+  inventory under /storage/emulated/0 + /data/data/<pkg>/files + /data/media/0,
+  client.log/server.log tails, and the ps -T thread-farm snapshot.
+- **ui_automation_test.py**: per-round + verdict-time EchoesProbe chain dumps
+  (live in the CI log, rotation-proof).
+- APK rebuilt (resumable — only classes.dex re-smaled): md5 2d91d91e75eef2bf625356fb6c40e1bc,
+  166,524,066 B → release wip-105 (id 410517964). test-redroid-282 dispatched
+  (run 38241104113).
+- NEXT: read the run. The probe chain names the stall point exactly: preInit ENTER
+  missing = the join never reaches the renderer (StartMc/Controller flow broken);
+  env dump with a wrong mapRoot = the staging-path mismatch; nativePreInit CALL with
+  no "so on game main init end" = nativePreInit still blocked (the engine's own
+  logcat tail then says where); initGame gameAddr EMPTY = the attrs never cross
+  EnterRealmsResult -> Controller; offline-exit = a redroid GL failure.

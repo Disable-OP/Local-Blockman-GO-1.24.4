@@ -2879,3 +2879,48 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 - THE NEXT BATTLE (the engine-integration stall — NOT a TSS problem): the engine's nativePreInit path stalls after Echoes starts; no client.log is ever created anywhere in SandBoxOL/BlockMan; the engine's native thread farm never appears (the ps -T snapshots show only ART + LocalApi threads). Diagnostics to add next: (1) dump the FULL logcat for the engine process's pid (all tags, last ~500 lines) at evidence time — the engine logs its own init progress; (2) dump /data/data/com.sandboxol.blockymods/files/ and the SandBoxOL/BlockMan tree (the engine's staging/logs); (3) the client.log path for the 10078 engine may differ — find it via logcat ("log file" lines) or strace the engine... (4) check whether nativePreInit is even REACHED (a probe log line from the Java side before EchoesRenderer.handlePreInit) and whether the join attrs reach the engine (JoinBridge PUSHED ✓ is the client side; the ENGINE's read path may be a different file/API for 10078).
 - THE SUPERVISOR's KNOWN LIMITS: the process_vm_readv denial may break a LEGITIMATE engine feature someday (none seen); the io_uring ENOSYS may break a future engine (none seen); the openat2 cross-process ADDFD occasionally fails on the host (o2read=-9) — the fallback replies a clean -EIO; the phantom-killer disabling and the mount survive only while the CI sets them up.
 - RELEASES: wip-104 = v34 (ad49da1a799cc656a5e3e85f26da59a7). All the intermediate wip-95..103 releases document each mechanism (their .so builds were SOMETIMES BROKEN by the division helpers — wip-102+ are clean).
+
+## Cron-session delta 9 (read FIRST — v35: the engine-integration probes SHIPPED; the harvest names the stall point)
+
+- THE ENGINE-SIDE EVIDENCE IS NOW INSTRUMENTED. The stall (delta 8): the engine process
+  is healthy end-to-end (wip-104, the out-of-process USER_NOTIF supervisor) but
+  initGame to 127.0.0.1:31108 never fires, no client.log anywhere, no native thread
+  farm. Everything client-side was provable only up to "BlockManEchoesActivity is up".
+- WHAT SHIPPED (commit ff208cf, apk wip-105 md5 2d91d91e75eef2bf625356fb6c40e1bc,
+  run 38241104113):
+  1. scripts/patch_preinit_probe_282.py — "EchoesProbe" Log.i probes inside
+     EchoesRenderer.smali at the six chain points: handlePreInit ENTER (p0..p4), the
+     AbstractEngineEnv env dump (lang/p0/resRoot/resCache/cfg/mapRoot/mapTemp/resBase —
+     the exact paths the native pre-init receives), the nativePreInit CALL branch
+     markers, handleInitGame entry (gameAddr=p6 + p2 + p15), the GL-invalid
+     offline-exit, the gameAddr-EMPTY marker. Register-audited (dead-only scratch);
+     build_signed_apk_282.sh now REQUIRES the probes.
+  2. The workflow: logcat -G 4M + a dedicated "Engine-integration harvest" step
+     (full --pid=<engine> logcat → englog.txt artifact; probe greps; log-file-path
+     mentions; SandBoxOL/BlockMan staging trees; *.log inventory; client.log/
+     server.log tails; the ps -T thread farm).
+  3. ui_automation_test.py --line 282: per-round [probe rN] + final [probe-final]
+     chain dumps (rotation-proof, live in the CI log).
+- THE DECISION TABLE for the run's probe chain (read [probe-final] bottom-up — the
+  LAST marker reached is the stall point):
+  - NO "preInit ENTER" at all → the join never reaches the renderer: StartMcActivity
+    dispatched (JoinBridge logged it) but the Controller$2 "Main" flow died earlier —
+    check "router-jni: onNewIntent" and the harvest's full app logcat for the
+    intermediate crash.
+  - "preInit ENTER" present, env dump shows a WRONG mapRoot/resRoot (not the staged
+    g10078 dirs) → the 2.8.2 AbstractEngineEnv path contract differs from the 1.24.4
+    layout the bundle satisfies — re-point GameServerManager staging or the env paths.
+  - "nativePreInit CALL (old-engine branch)" present but NO "Main: so on game main
+    init end." → nativePreInit is STILL blocked/aborted inside the native (the TSS
+    umbrella completed, the ENGINE init did not) — englog.txt's native tail is the
+    evidence; compare with the 10068-line init sequence (client.log's first lines).
+  - "initGame: gameAddr(p6)=" EMPTY or absent → the join attrs die between
+    EnterRealmsResult (JoinBridge sets them) and the wrapper — trace p6's source
+    (getResetIp/getGameAddr merge in Controller) and the attrs' read path.
+  - "initGame offline-exit (GL invalid)" → isGLValid false on the guest-GPU redroid —
+    the 10078 engine's GL path differs; check EchoesGLSurfaceView init in englog.
+- ALSO banked: "Main: so on game main init end." = handlePreInit RETURNED (the
+  armEngineGuardNow hook sits exactly there — its absence in the logs was itself the
+  v12-era evidence that nativePreInit blocks).
+- NEXT: read run 38241104113's [probe-final] + englog.txt; implement the named fix;
+  then the in-match human drive (the rN paired-capture pattern) once initGame lands.

@@ -415,3 +415,26 @@ RECV buffers, volatile listener, AUDIT_ARCH_ARM, notif sizes,
 TSYNC_ESRCH, NNP-per-task, arm32 getpid=20, /data/local/tmp
 permissions, the phantom process killer) in
 scripts/exithook/bgscomp.c comments and NEXT_SESSION_README delta 8.
+
+## 13. Addendum 7 (cron session): v35 — the engine-integration probes + the harvest (delta-8 prescription executed)
+
+The TSS war being won exposed the real frontier: the engine process is healthy but
+`initGame` never fires (no client.log, no native thread farm). The join chain was
+provable only to "BlockManEchoesActivity is up". v35 instruments the chain:
+
+- `EchoesProbe` Log.i probes (patch_preinit_probe_282.py → EchoesRenderer.smali):
+  handlePreInit ENTER (p0..p4) · the AbstractEngineEnv env dump (lang, p0, resRoot,
+  resCache, cfg, mapRoot, mapTemp, engineResBaseUrl) · the nativePreInit CALL branch
+  markers · handleInitGame entry (gameAddr p6 + p2 + p15) · the GL-invalid
+  offline-exit · the gameAddr-EMPTY marker. Register-audited; build-gated.
+- The workflow harvest (test-redroid-282.yml): `logcat -G 4M`, the full
+  `--pid=<engine>` logcat → `englog.txt` (artifact), the probe greps, log-file-path
+  mentions, the SandBoxOL/BlockMan staging trees, the `*.log` inventory, and the
+  `ps -T` thread-farm snapshot.
+- The app's own chain markers (grep-able, no patch): `Main: so on game main init end.`
+  (= handlePreInit RETURNED), `Main: so on game service init.`, `router-jni:
+  onNewIntent` (StartMcActivity).
+- apk wip-105 (md5 2d91d91e75eef2bf625356fb6c40e1bc, 166,524,066 B); run 38241104113.
+
+The decision table (last marker reached = the stall point) is in
+NEXT_SESSION_README delta 9.
