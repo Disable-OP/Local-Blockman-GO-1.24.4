@@ -124,6 +124,32 @@ void _start(void)
         log_num("", n);
     }
 
+    /* (b2) openat(/proc/self/maps) — bgscomp lines must be GONE.
+     * Run the binary from a path containing the needle (the maps carry
+     * the executable path — that is the assertion's needle). */
+    fd = sysc(__NR_openat, AT_FDCWD, (lint)"/proc/self/maps", O_RDONLY, 0, 0);
+    self_log("SELF:mpfd=");
+    log_num("", fd);
+    if (fd >= 0) {
+        lint hit = 0;
+        n = self_read(fd, buf, (lint)sizeof(buf) - 1);
+        sysc(__NR_close, fd, 0, 0, 0, 0);
+        if (n > 0) {
+            lint i2;
+            buf[n] = 0;
+            for (i2 = 0; i2 + 7 <= n; i2++) {
+                if (buf[i2] == 'b' && buf[i2+1] == 'g' && buf[i2+2] == 's' &&
+                    buf[i2+3] == 'c' && buf[i2+4] == 'o' &&
+                    buf[i2+5] == 'm' && buf[i2+6] == 'p') {
+                    hit = 1;
+                    break;
+                }
+            }
+        }
+        self_log("SELF:maps_bgscomp_hit=");
+        log_num("", hit);       /* 0 = scrubbed clean */
+    }
+
     /* (c) openat2(/proc/self/status) — also scrubbed (args[1] path) */
     {
         struct { u64 flags; u64 mode; u64 resolve; } how;

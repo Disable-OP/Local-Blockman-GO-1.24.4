@@ -85,6 +85,7 @@ typedef long               lint;
 #define __NR_ioctl        16L
 #define __NR_clone        56L
 #define __NR_nanosleep    35L
+#define __NR_getpid       39L
 #define __NR_prctl       157L
 #define __NR_openat      257L
 #define __NR_exit_group  231L
@@ -128,6 +129,7 @@ static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
 #define __NR_ioctl       54L
 #define __NR_clone      120L
 #define __NR_nanosleep  162L
+#define __NR_getpid      22L
 #define __NR_prctl      172L
 #define __NR_openat     322L
 #define __NR_exit_group 248L
@@ -226,7 +228,17 @@ struct seccomp_notif_resp {
 
 #define SECCOMP_IOCTL_NOTIF_RECV 0xC0502100u
 #define SECCOMP_IOCTL_NOTIF_SEND 0xC0182101u
+#define SECCOMP_IOCTL_NOTIF_ADDFD 0x40182103u
 #define SECCOMP_USER_NOTIF_FLAG_CONTINUE 1u
+#define SECCOMP_ADDFD_FLAG_SEND 2u
+
+struct seccomp_notif_addfd {
+    u64 id;
+    u32 flags;
+    u32 srcfd;
+    u32 newfd;
+    u32 newfd_flags;
+};
 
 /* ------------------------------------------------------------------ */
 /* THE FILTERS                                                         */
@@ -236,50 +248,61 @@ struct seccomp_notif_resp {
 /* args[0].lo@16. 21 instructions.                                     */
 /*                                                                     */
 /*   0  LD  [4]                    arch                                */
-/*   1  JEQ 0x40000028 -> 2 else -> 20 (ALLOW for any other arch)      */
+/*   1  JEQ <arch> -> 2 else -> 23 (ALLOW for any other arch)          */
 /*   2  LD  [0]                    nr                                  */
-/*   3  JEQ 322  -> 17 else 4      (openat  -> NOTIFY)                 */
-/*   4  JEQ 5    -> 17 else 5      (open    -> NOTIFY)                 */
-/*   5  JEQ 437  -> 17 else 6      (openat2 -> NOTIFY)                 */
-/*   6  JEQ 172  -> 12 else 7      (prctl   -> option check)           */
-/*   7  JEQ 248  -> 9  else 8      (exit_group)                        */
-/*   8  JEQ 1    -> 9  else 20     (exit; other nr -> ALLOW)           */
-/*   9  LD  [16]                   args[0] low word                    */
-/*   10 JEQ 25   -> 18 else 11     (verdict code -> ERRNO(ENOSYS))     */
-/*   11 JEQ 30   -> 18 else 12                                         */
-/*   12 JA -> 20                   (harmless exit code -> ALLOW)       */
-/*   13 LD  [16]                   prctl option                        */
-/*   14 JEQ 21   -> 19 else 15     (PR_GET_SECCOMP -> "return 0")      */
-/*   15 JEQ 36   -> 19 else 16     (PR_GET_NO_NEW_PRIVS -> 0)          */
-/*   16 JA -> 20                                                       */
-/*   17 RET 0x7FC00000             (SECCOMP_RET_USER_NOTIF)            */
-/*   18 RET 0x00050026             (ERRNO(ENOSYS) — verdict no-op)     */
-/*   19 RET 0x00050000             (ERRNO(0) — syscall returns 0)      */
-/*   20 RET 0x7FFF0000             (ALLOW)                             */
+/*   3  JEQ 322  -> 20 else 4      (openat  -> NOTIFY)                 */
+/*   4  JEQ 5    -> 20 else 5      (open    -> NOTIFY)                 */
+/*   5  JEQ 437  -> 20 else 6      (openat2 -> NOTIFY)                 */
+/*   6  JEQ 172  -> 16 else 7      (prctl   -> option check)           */
+/*   7  JEQ 248  -> 12 else 8      (exit_group)                        */
+/*   8  JEQ 1    -> 12 else 9      (exit; else fall to io_uring block) */
+/*   9  JEQ 425  -> 21 else 10     (io_uring_setup -> ERRNO(ENOSYS))   */
+/*  10  JEQ 426  -> 21 else 11     (io_uring_enter)                    */
+/*  11  JEQ 427  -> 21 else 23     (io_uring_register)                 */
+/*  12  LD  [16]                   args[0] low word                    */
+/*  13  JEQ 25   -> 21 else 14     (verdict code -> ERRNO(ENOSYS))     */
+/*  14  JEQ 30   -> 21 else 15                                         */
+/*  15  JA -> 23                   (harmless exit code -> ALLOW)       */
+/*  16  LD  [16]                   prctl option                        */
+/*  17  JEQ 21   -> 22 else 18     (PR_GET_SECCOMP -> "return 0")      */
+/*  18  JEQ 36   -> 22 else 19     (PR_GET_NO_NEW_PRIVS -> 0)          */
+/*  19  JA -> 23                                                       */
+/*  20  RET 0x7FC00000             (SECCOMP_RET_USER_NOTIF)            */
+/*  21  RET 0x00050026             (ERRNO(ENOSYS) - verdict+io_uring)  */
+/*  22  RET 0x00050000             (ERRNO(0) - syscall returns 0)      */
+/*  23  RET 0x7FFF0000             (ALLOW)                             */
+/*                                                                     */
+/* v16: io_uring (425/426/427) is ERRNO(ENOSYS): an io_uring OPENAT    */
+/* bypasses the whole filter (the open happens kernel-side inside      */
+/* io_uring_enter, invisible to the supervisor). Nothing sane in the   */
+/* engine uses io_uring; the TSS could, to read the REAL status/maps.  */
 /* ------------------------------------------------------------------ */
 
 static const struct sock_filter bpf15[] = {
     { 0x20, 0,  0,  4           },   /*  0 LD [4]  arch        */
-    { 0x15, 0, 18,  AUDIT_ARCH_THIS },  /*  1 JEQ arch jt=0 jf=18 */
+    { 0x15, 0, 21,  AUDIT_ARCH_THIS },  /*  1 JEQ arch jt=0 jf=21 */
     { 0x20, 0,  0,  0           },   /*  2 LD [0]  nr          */
-    { 0x15, 13, 0,  BPF_NR_OPENAT },  /*  3 openat  -> 17       */
-    { 0x15, 12, 0,  BPF_NR_OPEN },    /*  4 open    -> 17       */
-    { 0x15, 11, 0,  BPF_NR_OPENAT2 }, /*  5 openat2 -> 17       */
-    { 0x15, 6,  0,  BPF_NR_PRCTL },   /*  6 prctl   -> 13       */
-    { 0x15, 1,  0,  BPF_NR_EXITGROUP }, /*  7 exit_gr -> 9      */
-    { 0x15, 0, 11,  BPF_NR_EXIT },    /*  8 exit    -> 9 / 20   */
-    { 0x20, 0,  0,  16          },   /*  9 LD [16] args0.lo    */
-    { 0x15, 7,  0,  25          },   /* 10 ==25 -> 18          */
-    { 0x15, 6,  0,  30          },   /* 11 ==30 -> 18          */
-    { 0x05, 0,  0,  7           },   /* 12 JA -> 20            */
-    { 0x20, 0,  0,  16          },   /* 13 LD [16] option      */
-    { 0x15, 4,  0,  21          },   /* 14 PR_GET_SECCOMP->19  */
-    { 0x15, 3,  0,  36          },   /* 15 PR_GET_NNP    ->19  */
-    { 0x05, 0,  0,  3           },   /* 16 JA -> 20            */
-    { 0x06, 0,  0,  0x7FC00000U },   /* 17 RET USER_NOTIF      */
-    { 0x06, 0,  0,  0x00050026U },   /* 18 RET ERRNO(ENOSYS)   */
-    { 0x06, 0,  0,  0x00050000U },   /* 19 RET ERRNO(0)        */
-    { 0x06, 0,  0,  0x7FFF0000U },   /* 20 RET ALLOW           */
+    { 0x15, 16, 0,  BPF_NR_OPENAT },  /*  3 openat  -> 20       */
+    { 0x15, 15, 0,  BPF_NR_OPEN },    /*  4 open    -> 20       */
+    { 0x15, 14, 0,  BPF_NR_OPENAT2 }, /*  5 openat2 -> 20       */
+    { 0x15, 9,  0,  BPF_NR_PRCTL },   /*  6 prctl   -> 16       */
+    { 0x15, 4,  0,  BPF_NR_EXITGROUP }, /*  7 exit_gr -> 12     */
+    { 0x15, 3,  0,  BPF_NR_EXIT },    /*  8 exit    -> 12       */
+    { 0x15, 11, 0,  425         },   /*  9 io_uring_setup -> 21 */
+    { 0x15, 10, 0,  426         },   /* 10 io_uring_enter -> 21 */
+    { 0x15, 9, 11,  427         },   /* 11 io_uring_reg   -> 21 / 23 */
+    { 0x20, 0,  0,  16          },   /* 12 LD [16] args0.lo    */
+    { 0x15, 7,  0,  25          },   /* 13 ==25 -> 21          */
+    { 0x15, 6,  0,  30          },   /* 14 ==30 -> 21          */
+    { 0x05, 0,  0,  7           },   /* 15 JA -> 23            */
+    { 0x20, 0,  0,  16          },   /* 16 LD [16] option      */
+    { 0x15, 4,  0,  21          },   /* 17 PR_GET_SECCOMP->22  */
+    { 0x15, 3,  0,  36          },   /* 18 PR_GET_NNP    ->22  */
+    { 0x05, 0,  0,  3           },   /* 19 JA -> 23            */
+    { 0x06, 0,  0,  0x7FC00000U },   /* 20 RET USER_NOTIF      */
+    { 0x06, 0,  0,  0x00050026U },   /* 21 RET ERRNO(ENOSYS)   */
+    { 0x06, 0,  0,  0x00050000U },   /* 22 RET ERRNO(0)        */
+    { 0x06, 0,  0,  0x7FFF0000U },   /* 23 RET ALLOW           */
 };
 
 /* bpf14 (fallback): the exact v14 filter — ERRNO(ENOSYS) on the verdict
@@ -315,7 +338,11 @@ static const struct sock_filter bpf14[] = {
 
 static int g_sfd = -1;   /* pre-opened /proc/self/status (O_RDONLY)*/
 static int g_mfd = -1;   /* pre-opened /proc/self/mem    (O_RDWR)  */
+static int g_pfd = -1;   /* pre-opened /proc/self/maps  (O_RDONLY) */
+static int g_nfd = -1;   /* pre-opened /proc/self/mountinfo        */
 static int g_gfd = -1;   /* guardlog (O_APPEND)                    */
+static int g_mypid = 0;  /* our tgid — self vs forked-child notifications */
+static u32 g_plog = 0;   /* /proc-path notification log counter    */
 /* g_lfd is written by the installing (main) thread and read by the
  * supervisor thread in a tight loop — it MUST be volatile, or the
  * supervisor caches the pre-install -1 and spins on EBADF while the
@@ -324,8 +351,11 @@ static volatile int g_lfd = -1;   /* the listener fd                  */
 
 static struct seccomp_notif      g_notif;
 static struct seccomp_notif_resp g_resp;
+static struct seccomp_notif_addfd g_addfd;
 static char g_path[512];   /* the tracee's openat path (from its mem) */
 static char g_buf[4096];   /* the real status text                    */
+/* maps of the engine process runs tens of KB — one big static buffer */
+static char g_big[196608];
 static char g_num[24];     /* log scratch                             */
 
 /* ------------------------------------------------------------------ */
@@ -345,6 +375,21 @@ static void log_str(const char *s)
         sysc(__NR_write, g_gfd, (lint)s, slen(s), 0, 0);
 }
 
+/* shift-subtract divide by 10 (no libgcc in -nostdlib; gcc emits
+ * __aeabi_uidivmod for % and / — an undefined symbol in a bare .so). */
+static u32 udiv10(u32 v, u32 *rem)
+{
+    u32 q = 0, r = 0;
+    int i;
+    for (i = 31; i >= 0; i--) {
+        r = (r << 1) | ((v >> i) & 1u);
+        if (r >= 10) { r -= 10; q |= (1u << i); }
+    }
+    if (rem)
+        *rem = r;
+    return q;
+}
+
 static void log_num(const char *tag, lint v)
 {
     lint p = 0;
@@ -360,17 +405,10 @@ static void log_num(const char *tag, lint v)
     if (uv == 0) {
         tmp[t++] = '0';
     } else {
-        /* no libgcc: shift-subtract divide-by-10 (32 rounds), the
-         * remainder of the LAST round is the decimal digit. */
         while (uv) {
-            u32 q = 0, r = 0;
-            int i;
-            for (i = 31; i >= 0; i--) {
-                r = (r << 1) | ((uv >> i) & 1u);
-                if (r >= 10) { r -= 10; q |= (1u << i); }
-            }
-            tmp[t++] = (char)('0' + r);
-            uv = q;
+            u32 d;
+            uv = udiv10(uv, &d);
+            tmp[t++] = (char)('0' + d);
         }
     }
     while (t) g_num[p++] = tmp[--t];
@@ -382,25 +420,44 @@ static void log_num(const char *tag, lint v)
 /* the supervisor                                                      */
 /* ------------------------------------------------------------------ */
 
-/* does g_path[0..n) hold a NUL-terminated /proc/<x>/status path? */
-static int path_is_status(lint n)
-{
-    static const char sfx[7] = { '/', 's', 't', 'a', 't', 'u', 's' };
-    lint len = 0;
-    lint i;
+/* path classes for the notified opens (v16) */
+#define PC_NONE      0
+#define PC_STATUS    1   /* /proc/<x>/status                        */
+#define PC_MAPS      2   /* /proc/<x>/maps or /proc/<x>/task/T/smaps */
+#define PC_MOUNTINFO 3   /* /proc/<x>/mountinfo|mounts|mountstats   */
 
-    if (n <= 0 || n > (lint)sizeof(g_path))
+static int path_ends(lint len, const char *sfx, lint slen)
+{
+    lint i;
+    if (len < slen)
         return 0;
-    while (len < n && g_path[len]) len++;
-    if (len >= n)          return 0;   /* not NUL-terminated: give up  */
-    if (len < 14)          return 0;   /* min: /proc/1/status          */
-    if (g_path[0] != '/' || g_path[1] != 'p' || g_path[2] != 'r' ||
-        g_path[3] != 'o'  || g_path[4] != 'c' || g_path[5] != '/')
-        return 0;
-    for (i = 0; i < 7; i++)
-        if (g_path[len - 7 + i] != sfx[i])
+    for (i = 0; i < slen; i++)
+        if (g_path[len - slen + i] != sfx[i])
             return 0;
     return 1;
+}
+
+/* does g_path[0..n) hold a NUL-terminated /proc/<x>/<sensitive> path? */
+static int path_class(lint n)
+{
+    lint len = 0;
+
+    if (n <= 0 || n > (lint)sizeof(g_path))
+        return PC_NONE;
+    while (len < n && g_path[len]) len++;
+    if (len >= n)          return PC_NONE;  /* not NUL-terminated */
+    if (len < 12)          return PC_NONE;
+    if (g_path[0] != '/' || g_path[1] != 'p' || g_path[2] != 'r' ||
+        g_path[3] != 'o'  || g_path[4] != 'c' || g_path[5] != '/')
+        return PC_NONE;
+    if (path_ends(len, "/status", 7))
+        return PC_STATUS;
+    if (path_ends(len, "/maps", 5) || path_ends(len, "/smaps", 6))
+        return PC_MAPS;
+    if (path_ends(len, "/mountinfo", 10) || path_ends(len, "/mounts", 7) ||
+        path_ends(len, "/mountstats", 11))
+        return PC_MOUNTINFO;
+    return PC_NONE;
 }
 
 /* rewrite the VALUE digit of "Seccomp:" / "NoNewPrivs:" lines to '0'.
@@ -437,6 +494,43 @@ static int scrub_status(lint n)
     return mask;
 }
 
+/* drop every line containing the needle, in place. returns the new
+ * length. used for /proc/.../maps (hide libbgscomp) and /proc/.../
+ * mountinfo|mounts (hide the layer-2 fake-status binds). */
+static lint filter_lines(char *buf, lint n, const char *nd, lint ndlen)
+{
+    lint r = 0, w = 0, ls, i, hit;
+
+    while (r < n) {
+        ls = r;
+        while (r < n && buf[r] != '\n')
+            r++;
+        if (r < n)
+            r++;                    /* include the newline */
+        hit = 0;
+        for (i = ls; i + ndlen <= r; i++) {
+            lint j;
+            for (j = 0; j < ndlen; j++)
+                if (buf[i + j] != nd[j])
+                    break;
+            if (j == ndlen) { hit = 1; break; }
+        }
+        if (!hit) {
+            lint k;
+            for (k = ls; k < r; k++)
+                buf[w++] = buf[k];
+        }
+    }
+    return w;
+}
+
+#ifndef BGSCOMP_MAPSNEEDLE
+#define BGSCOMP_MAPSNEEDLE "bgscomp"
+#endif
+#ifndef BGSCOMP_MNTNEEDLE
+#define BGSCOMP_MNTNEEDLE "/data/local/tmp/fs_"
+#endif
+
 __attribute__((noreturn))
 static void supervisor_loop(void)
 {
@@ -457,7 +551,7 @@ static void supervisor_loop(void)
         u32 nr;
         u32 pp;
         lint n;
-        int is_status = 0;
+        int pclass = PC_NONE;
 
         /* the kernel REQUIRES a fully-zeroed RECV buffer:
          * seccomp_notify_recv() runs check_zeroed_user(buf, sizeof(unotif))
@@ -499,7 +593,34 @@ static void supervisor_loop(void)
             n = sysc(__NR_read, g_mfd, (lint)g_path,
                      (lint)sizeof(g_path) - 1, 0, 0);
             if (n > 0)
-                is_status = path_is_status(n);
+                pclass = path_class(n);
+        }
+
+        /* v16 diagnostics: EVERY /proc/* open the TSS (or the engine)
+         * makes is logged — the run's dead drops told us the TSS never
+         * opened status; this tells us what it DOES read. Capped. */
+        if (pclass != PC_NONE && g_gfd >= 0 && g_plog < 300) {
+            lint i2, st = 0, q = 0;
+            u32 uv = nr;
+            g_plog++;
+            /* assemble ONE line — concurrent writers garble multi-write
+             * lines even through O_APPEND (each write is atomic, the
+             * line is not). */
+            g_num[q++] = 'P';
+            g_num[q++] = ':';
+            if (uv == 0) g_num[q++] = '0';
+            while (uv) {
+                u32 d;
+                uv = udiv10(uv, &d);
+                g_num[q++] = (char)('0' + d);
+            }
+            g_num[q++] = ':';
+            for (i2 = 0; i2 < n && g_path[i2]; i2++)
+                if (g_path[i2] == '/') st = i2 + 1;
+            while (q < (lint)sizeof(g_num) - 2 && st < n)
+                g_num[q++] = g_path[st++];
+            g_num[q++] = '\n';
+            sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
         }
 
         g_resp.id    = g_notif.id;
@@ -507,7 +628,7 @@ static void supervisor_loop(void)
         g_resp.error = 0;
         g_resp.flags = 0;
 
-        if (is_status) {
+        if (pclass == PC_STATUS) {
             lint m, fd;
             int mask = 0;
 
@@ -529,12 +650,88 @@ static void supervisor_loop(void)
                     sysc(__NR_close, fd, 0, 0, 0, 0);
                 g_resp.error = -5;      /* -EIO: the open fails cleanly */
             }
-            /* file evidence: s<mask>:<tracee pid> */
-            g_num[0] = 's';
-            g_num[1] = (char)('0' + (mask & 3));
-            g_num[2] = ':';
-            sysc(__NR_write, g_gfd, (lint)g_num, 3, 0, 0);
-            log_num("", (lint)g_notif.pid);
+            /* file evidence: s<mask>:<tracee pid> — ONE write */
+            {
+                lint q = 0;
+                u32 uv = (u32)g_notif.pid;
+                g_num[q++] = 's';
+                g_num[q++] = (char)('0' + (mask & 3));
+                g_num[q++] = ':';
+                if (uv == 0) g_num[q++] = '0';
+                while (uv && q < (lint)sizeof(g_num) - 2) {
+                    u32 d;
+                    uv = udiv10(uv, &d);
+                    g_num[q++] = (char)('0' + d);
+                }
+                g_num[q++] = '\n';
+                sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
+            }
+        } else if (pclass == PC_MAPS || pclass == PC_MOUNTINFO) {
+            /* serve the PRE-OPENED SELF file: /proc/self/maps IS the
+             * engine's maps (the TSS's watchdog child asks for OUR pid's
+             * maps). Scrub the incriminating lines, hand back a memfd.
+             * Cross-process (forked watchdog) replies need ADDFD: the
+             * memfd exists only in OUR fd table, the child resolves the
+             * returned number in ITS OWN (pre-fork) table. */
+            lint src = (pclass == PC_MAPS) ? g_pfd : g_nfd;
+            lint m, fd, out;
+            sysc(__NR_lseek, src, 0, SEEK_SET, 0, 0);
+            m = sysc(__NR_read, src, (lint)g_big,
+                     (lint)sizeof(g_big), 0, 0);
+            out = 0;
+            if (m > 0) {
+                if (pclass == PC_MAPS)
+                    out = filter_lines(g_big, m, BGSCOMP_MAPSNEEDLE,
+                                       (lint)sizeof(BGSCOMP_MAPSNEEDLE) - 1);
+                else
+                    out = filter_lines(g_big, m, BGSCOMP_MNTNEEDLE,
+                                       (lint)sizeof(BGSCOMP_MNTNEEDLE) - 1);
+            }
+            fd = sysc(__NR_memfd_create, (lint)".bgmp", 0, 0, 0, 0);
+            if (fd >= 0 && out > 0) {
+                sysc(__NR_write, fd, (lint)g_big, out, 0, 0);
+                sysc(__NR_lseek, fd, 0, SEEK_SET, 0, 0);
+                if ((u32)g_notif.pid != (u32)g_mypid) {
+                    /* forked watchdog: inject the fd into ITS table and
+                     * complete the notification atomically. */
+                    g_addfd.id = g_notif.id;
+                    g_addfd.flags = SECCOMP_ADDFD_FLAG_SEND;
+                    g_addfd.srcfd = (u32)fd;
+                    g_addfd.newfd = 0;
+                    g_addfd.newfd_flags = 0;
+                    r = sysc(__NR_ioctl, g_lfd,
+                             (lint)SECCOMP_IOCTL_NOTIF_ADDFD,
+                             (lint)&g_addfd, 0, 0);
+                    if (r >= 0) {
+                        sysc(__NR_close, fd, 0, 0, 0, 0);
+                        continue;   /* ADDFD+SEND already replied */
+                    }
+                    log_num("ADDE:", r);
+                    /* fall through: reply the (dead-in-child) number
+                     * anyway rather than stalling — the child treats a
+                     * bad fd like a failed open. */
+                    g_resp.val = fd;
+                } else {
+                    g_resp.val = fd;    /* same fd table (self) */
+                }
+            } else {
+                if (fd >= 0)
+                    sysc(__NR_close, fd, 0, 0, 0, 0);
+                g_resp.error = -5;      /* -EIO */
+            }
+            {
+                lint q = 0;
+                u32 uv = (u32)g_notif.pid;
+                g_num[q++] = (pclass == PC_MAPS) ? 'M' : 'N';
+                g_num[q++] = ':';
+                while (uv && q < (lint)sizeof(g_num) - 2) {
+                    u32 d;
+                    uv = udiv10(uv, &d);
+                    g_num[q++] = (char)('0' + d);
+                }
+                g_num[q++] = '\n';
+                sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
+            }
         } else {
             g_resp.flags = SECCOMP_USER_NOTIF_FLAG_CONTINUE;
 #ifdef BGSCOMP_DEBUG_REPLY
@@ -617,10 +814,21 @@ void bgscomp_ctor(void)
     if (g_mfd < 0)
         g_mfd = sysc(__NR_openat, AT_FDCWD, (lint)"/proc/self/mem",
                      O_RDONLY, 0, 0);
+    /* v16: the pre-opened SELF maps/mountinfo serve every /proc/<ourpid>/
+     * maps|mountinfo notification (the TSS watchdog child asks for OUR
+     * pid's files — same inode, pre-opened before the filter existed). */
+    g_pfd = sysc(__NR_openat, AT_FDCWD, (lint)"/proc/self/maps",
+                 O_RDONLY, 0, 0);
+    g_nfd = sysc(__NR_openat, AT_FDCWD, (lint)"/proc/self/mountinfo",
+                 O_RDONLY, 0, 0);
+    g_mypid = (int)sysc(__NR_getpid, 0, 0, 0, 0, 0);
 
-    log_str("v15 ctor\n");
+    log_str("v16 ctor\n");
     log_num("SFD:", g_sfd);
     log_num("MFD:", g_mfd);
+    log_num("PFD:", g_pfd);
+    log_num("NFD:", g_nfd);
+    log_num("PID:", g_mypid);
 
     /* NNP FIRST: no_new_privs is a PER-TASK flag (inherited at clone from
      * the CURRENT value). The supervisor must ALREADY carry it when TSYNC
