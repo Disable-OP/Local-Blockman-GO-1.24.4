@@ -913,10 +913,13 @@ static void supervisor_loop(void)
                         continue;   /* ADDFD+SEND already replied */
                     }
                     log_num("ADDE:", r);
-                    /* fall through: reply the (dead-in-child) number
-                     * anyway rather than stalling — the child treats a
-                     * bad fd like a failed open. */
-                    g_resp.val = fd;
+                    /* v30: a plain val reply would resolve in the
+                     * CALLER's table — for a cross-process notification
+                     * that is a bogus fd (the host o2read=-9 case).
+                     * Reply a CLEAN failure instead. */
+                    sysc(__NR_close, fd, 0, 0, 0, 0);
+                    g_resp.val = 0;
+                    g_resp.error = -5;      /* -EIO */
                 } else {
                     g_resp.val = fd;    /* same fd table (self) */
                 }

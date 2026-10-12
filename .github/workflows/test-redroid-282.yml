@@ -242,6 +242,8 @@ jobs:
           echo "== seccomp guard file evidence =="
           adb -s localhost:5555 shell "cat /data/local/tmp/guardlog.txt 2>/dev/null" || true
           adb -s localhost:5555 shell "cat /data/user/0/com.sandboxol.blockymods/files/seccomp_guard.log 2>/dev/null" || echo "(no guard log)"
+          echo "== v24b supervisor child log =="
+          adb -s localhost:5555 shell "cat /data/local/tmp/childlog.txt 2>/dev/null" || echo "(no childlog)"
           echo "== v15 layer-2 fake-status mounts (.fs_mounted) =="
           adb -s localhost:5555 shell "cat /data/local/tmp/.fs_mounted 2>/dev/null" || echo "(no mounts)"
           echo "== bind mounts over proc status =="
