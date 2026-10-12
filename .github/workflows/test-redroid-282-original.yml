@@ -1,0 +1,120 @@
+name: test-redroid-282-original
+# THE BASELINE EXPERIMENT: install the OFFICIAL, UNPATCHED blockymods 2.8.2
+# APK (straight from the CDN — original Tencent signature, no localapi, no
+# patches, no libbgscomp) on the SAME redroid and watch what the TSS does.
+#
+# WHY: the patched line's engine always dies at the join-time dlopen —
+# SIGILL at libBlockMan+0x169d14 (a trap page), and after v38's skipper
+# rescued 37 traps it still SIGSEGVs deeper (0x16b8a4). The TSS is in a
+# punishment state. Two candidate triggers:
+#   (a) the RE-SIGNED APK (anti-repackaging) -> the APK-serve path could
+#       work (serve the pristine APK to signature-reading opens);
+#   (b) the ENVIRONMENT (redroid emulator/root/userdebug detection) ->
+#       NO APK-side fix can ever work.
+# This run decides it: if the ORIGINAL APK's engine ALSO dies on this
+# redroid (exit verdict / SIGILL / crash), the trigger is the ENVIRONMENT.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  redroid-original-282:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    env:
+      PACKAGE: com.sandboxol.blockymods
+      ACTIVITY: com.sandboxol.blockymods.view.activity.host.HostActivity
+      APK_URL: https://staticgs.sandboxol.com/sandbox/apk/Mtp-app-blockymods-v2.8.2-armeabi-v7a-4151-engine1-10078-engine2-20051-engine3-30023-google.apk
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Load binder kernel module
+        run: |
+          if ! sudo modprobe binder_linux devices="binder,hwbinder,vndbinder" 2>/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq linux-modules-extra-$(uname -r) android-tools-adb
+            sudo modprobe binder_linux devices="binder,hwbinder,vndbinder"
+          fi
+          command -v adb >/dev/null 2>&1 || { sudo apt-get update -qq; sudo apt-get install -y -qq android-tools-adb; }
+          adb version | head -1
+
+      - name: Start Redroid (arm64 native, Android 12)
+        run: |
+          docker run -d --name redroid --privileged -p 5555:5555 \
+            redroid/redroid:12.0.0-latest \
+            androidboot.redroid_width=720 \
+            androidboot.redroid_height=1280 \
+            androidboot.redroid_dpi=320 \
+            androidboot.redroid_gpu_mode=guest
+          adb connect localhost:5555
+
+      - name: Wait for Android boot
+        run: |
+          for i in $(seq 1 48); do
+            b=$(adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            [ "$b" = "1" ] && echo "boot completed" && exit 0
+            echo "waiting for boot ($i/48)"; sleep 5
+          done
+          echo "DEVICE FAILED TO BOOT"; exit 1
+
+      - name: Install the OFFICIAL 2.8.2 APK (unpatched, original signature)
+        run: |
+          echo "downloading the official APK from the CDN..."
+          curl -sSfL -o official282.apk "$APK_URL"
+          md5sum official282.apk
+          adb -s localhost:5555 install -r -t -g official282.apk
+
+      - name: Launch + boot watch (5 min, the TSS verdict window)
+        # NO exithook, NO wrap properties, NO supervisor — the pristine
+        # client on the pristine redroid. The TSS's native fate IS the
+        # experiment: exit(25/30) verdict, SIGILL trap, SIGSEGV, or
+        # survival (initGame would need a server — expect network errors,
+        # but the ENGINE PROCESS must survive).
+        run: |
+          adb -s localhost:5555 logcat -G 4M || true
+          adb -s localhost:5555 logcat -c
+          adb -s localhost:5555 shell am start -n "$PACKAGE/$ACTIVITY"
+          for i in $(seq 1 30); do
+            sleep 10
+            MAIN=$(adb -s localhost:5555 shell pidof "$PACKAGE" | tr -d '\r')
+            ENG=$(adb -s localhost:5555 shell pidof "$PACKAGE:BlockmanGo" | tr -d '\r')
+            echo "t+$((i*10))s main=[$MAIN] engine=[$ENG]"
+            if [ -z "$MAIN" ]; then
+              echo "APP PROCESS DIED at t+$((i*10))s — capturing the death"
+              break
+            fi
+          done
+          echo "== engine-death scan (the whole window) =="
+          adb -s localhost:5555 logcat -d | grep -iE "exited cleanly|has died|fatal signal|SIGILL|SIGSEGV|SIGABRT|tombstone|tersafe|tprt|TssSdk|libc.*Fatal|DEBUG *:" | head -40 || true
+          echo "== tombstones =="
+          adb -s localhost:5555 shell "ls -la /data/tombstones 2>/dev/null" || true
+          for T in /data/tombstones/tombstone_0*; do
+            [ -e "$T" ] || continue
+            echo "----- $T (head 40) -----"
+            adb -s localhost:5555 shell "head -40 $T" 2>/dev/null | head -40 || true
+          done
+          echo "== last logcat (the tail) =="
+          adb -s localhost:5555 logcat -d | tail -80 || true
+
+      - name: Pull evidence
+        if: always()
+        run: |
+          mkdir -p ev
+          adb -s localhost:5555 logcat -d > ev/original_full_logcat.txt 2>/dev/null || true
+          adb -s localhost:5555 pull /data/tombstones ev/tombstones/ 2>/dev/null || true
+          adb -s localhost:5555 exec-out screencap -p > ev/original_end.png || true
+          ls -la ev/ || true
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redroid-282-original
+          path: |
+            ev/
+          if-no-files-found: ignore
