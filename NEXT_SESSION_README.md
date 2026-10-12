@@ -2924,3 +2924,43 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   v12-era evidence that nativePreInit blocks).
 - NEXT: read run 38241104113's [probe-final] + englog.txt; implement the named fix;
   then the in-match human drive (the rN paired-capture pattern) once initGame lands.
+
+## Cron-session delta 10 (read FIRST — THE STALL ROOT-CAUSED: the TSS ctor SIGILL at the join-time dlopen; v36 removes the last observable delta)
+
+- **THE STALL'S REAL FACE (read run 38241104113/wip-105 + re-read 38237179615/wip-104)**:
+  the engine process dies ~0.8s AFTER BlockManEchoesActivity starts — `signal 0
+  (SIGILL), code 1 (ILL_ILLOPC)` at `libBlockMan.so+0x169d14` inside
+  `linker call_constructors <- do_dlopen`. The SAME pc in BOTH runs. **Delta 8's "no
+  SIGILL since v15 / the engine healthy all run" was a MISREAD** — the echoes=True x21
+  was the lingering ActivityRecord; the [death rN] tombstone was in the log all along.
+  The probes (v35) never fired because the crash is in loadSO's dlopen — which runs
+  BEFORE handlePreInit in both callers (App.smali + Controller$2).
+- **THE SCRUB IS DEAD WEIGHT FOR THIS BUILD**: the supervisor served ZERO /proc opens
+  from the TSS in both runs (no P:/s:/M:/N: lines at all — only the watchdog's
+  T:1-PEEKTEXT storm x1318, T:16-ATTACH, T:12-GETREGS, clone C: lines, then REVE:-2
+  storms after death). The ctor's detection NEVER goes through open* — every
+  status-scrub theory is unproven against this build.
+- **THE MECHANISM**: a packed ctor can only observe a syscall the filter DENIES or
+  CHANGES. v34's deltas: io_uring 425/426/427 → ENOSYS (v16), exit(25|30) → ENOSYS,
+  prctl(21/36) → fake 0 (correct for both clean/filtered), everything else notified +
+  CONTINUE (transparent). The engine family ITSELF uses io_uring — an availability
+  probe returning -ENOSYS in an io_uring-capable kernel is exactly a tamper signal.
+  **io_uring is the prime suspect.**
+- **v36 (wip-106, md5 6a5b674fb46a80b7872ed07aa98d8feb, run 38244681621)**: bpf15
+  425/426/427 → USER_NOTIF (3 jt retargets, still 31 insns); the supervisor logs
+  `I:<nr>@<pid>` and CONTINUEs — byte-for-byte clean-system behavior with full
+  visibility. The io_uring-openat bypass risk accepted: this build's TSS never opens
+  /proc at all. Simulator ALL GREEN; .so byte-verified; armhf cross-gcc re-fetched
+  (apt-get download → /tmp/a64, LD_LIBRARY_PATH=/tmp/a64/root/usr/lib/x86_64-linux-gnu
+  for libbfd).
+- **DECISION TABLE for the v36 run**: (a) NO SIGILL + nativePreInit proceeds → the
+  ctor probe was io_uring — the v35 probes then name the NEXT gate (initGame gameAddr
+  etc.); (b) SIGILL persists → un-deny process_vm_readv next (the other denied
+  syscall; already CONTINUE'd in v34's serve loop — so the residual suspects are the
+  exit-block and the prctl fakes: try removing each); (c) also watch the I: lines —
+  io_uring traffic from the ctor PROVES the channel; (d) the preinit probes may now
+  finally fire (preInit ENTER / env dump / initGame gameAddr) — the stall's next
+  layer becomes visible.
+- Selftest note: sup_selftest.c hangs at teardown in the v34 build TOO (pre-existing;
+  the harness predates the v29+ out-of-process supervisor and was last validated at
+  v15). The on-device guardlog is the real validation.
