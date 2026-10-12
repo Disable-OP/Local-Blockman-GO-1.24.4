@@ -3440,3 +3440,45 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 - The resume checklist for a fresh sandbox doing this again: apktool jar +
   smali_lib jars -> apktool d --no-res -> the 6 patch scripts (argv = tree) ->
   build_signed_apk_282.sh with TREE_282/ORIG_APK_282 env -> upload.
+
+## Cron-session delta 20 (read FIRST — the DRIVE-TLS LISTENER EXISTS: the holder answers https://d32gv25kv9q34j.cloudfront.net with the drive CA chain; SUITE 701/701; the on-device drive is now a CHECKLIST, not an engineering task)
+
+- Fresh-sandbox reproducibility proof first: the shipped b3 state re-verified
+  **696/696** with zero rebuilds in a brand-new sandbox.
+- The delta-13 drive's LAST engineering gap is closed. The pristine 2.8.2
+  client's API base is `https://d32gv25kv9q34j.cloudfront.net` (TLS, 443);
+  a hosts redirect cannot re-port. **`DriveTls.java`** boots a SECOND
+  LocalHttpd (same StateStore → all 2.8.2 routes answer identically) behind
+  nanohttpd 2.3.1 `makeSecure` when `<filesDir>/drive/server.p12` is staged
+  (`tls.port` default 443; `server.pass` default "drive"; `tls.active`
+  marker+TCP idempotence; every failure swallowed — inert without the
+  keystore, the holder boot path is untouchable). Wired in BOTH paths:
+  `LocalServer.bootOnce` (device, ships in classes6.dex — now 344,420 B,
+  the b4 seed bump) and `HostTest.main` (the rig).
+- **`scripts/gen_drive_ca.py`**: CA (10y) + leaf (825d, SANs = the full
+  redirected-host inventory incl. both cloudfront hosts + sandboxol API/CDN
+  + loopback) via the openssl CLI alone; emits `server.p12`, `chain.pem`,
+  the Android cacerts-ready `<subject_hash_old>.0`, `tls.port`. `drive/`
+  gitignored — key material never enters the repo.
+- **SUITE 701/701** — the new drive-TLS wave proves the whole chain: PKI
+  generation, `<hash>.0` emission, listener boot, a REAL TLS handshake
+  against the cloudfront SAN serving `/health` (python ssl, verify +
+  check_hostname ON), and wrong-hostname REJECTED (SAN-constrained leaf).
+- **THE DRIVE KIT** (docs/ON_DEVICE_DRIVE.md): `scripts/ondrive_setup.sh`
+  (hosts lines — static CDN stays REAL by design —, system CA install,
+  the iptables `OUTPUT dport 80 → REDIRECT 18080` hop hosts cannot do,
+  filesDir staging, end-to-end http+TLS verification) +
+  `scripts/ondrive_collect.sh` (per-step evidence tarballs: props, net
+  rules, cacerts, health probes both ports, holder state, gs_line.json,
+  bundle ls, guard log, logcat full + filtered).
+- THE DEVICE SESSION IS NOW §5–§6 OF THE RUNBOOK, in order: install harness
+  (boot holder+GameServer+TLS) → install the OFFICIAL 2.8.2 → drive:
+  (1) g1008 BedWar with the 15-bot wave, (2) the g1046 hall (first live
+  family wiring + the lazy CommonActivityConfig require), (3) g1061 solo /
+  (4) g1062 duo (first selectGame switch through the family), (5) the four
+  new games, (6) id_mappings.ini only if blocks misrender; evidence after
+  every step. Then per-game bot waves (the startPlayers gates).
+- The b4 client build (classes8.dex with the DriveTls-carrying classes6.dex)
+  is OPTIONAL for the drive (the TLS listener lives in the HARNESS, which is
+  already b3+staged) — rebuild only if on-device wants a fresh seed.
+

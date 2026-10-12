@@ -632,3 +632,64 @@ NEXT_SESSION_README delta 9.
   joins, and per-game bot waves (the solo/duo maps SHIP AIConfig.csv +
   AiPlayerConfig.csv — the g1061/g1062 rooms can carry bots once their
   startPlayers gates are observed on-device).
+
+## 15. Addendum 9 (cron session): THE DRIVE-TLS LISTENER + THE ON-DEVICE DRIVE KIT — the pristine-client drive is unblocked down to a checklist
+
+- The delta-13 drive had exactly ONE engineering gap left: the pristine 2.8.2
+  client builds its API base from `https://d32gv25kv9q34j.cloudfront.net` —
+  TLS on port 443 — while the holder only spoke plain http on 18080. A hosts
+  redirect maps hostname→IP but NOT the port, so the official client would
+  dead-end on the handshake. **The holder now answers TLS with the same
+  routing table and state.**
+- **`DriveTls.java`** (plain JVM, ships in classes6.dex, inert on non-drive
+  boots): after the normal bind, `LocalServer.bootOnce` (device path) and
+  `HostTest.main` (rig path) call `DriveTls.maybeStart(filesDir, store)`.
+  Contract (all under `<filesDir>/drive/`): `server.p12` = the PKCS#12
+  (ABSENT → one info line, feature off — the patched clients never need TLS);
+  `server.pass` = optional keystore password (default "drive"); `tls.port` =
+  listen port (default 443, root binds on-device; host rigs stage a 25xxx);
+  `tls.active` = written on success, marker + live TCP makes re-boots no-ops.
+  ANY failure is logged and swallowed — the drive degrades to plain http and
+  the holder boot path can never be destabilised. Implementation: nanohttpd
+  2.3.1's `makeSecure(SSLServerSocketFactory, null)` on a SECOND LocalHttpd
+  (same store — the 2.8.2 routes answer identically over both ports).
+- **`scripts/gen_drive_ca.py`** — the drive PKI from the openssl CLI alone:
+  CA (10y, pathlen:0) + leaf (RSA-2048, 825 days, SANs = the redirected-host
+  inventory: d32gv25kv9q34j.cloudfront.net, d401m01aifavw.cloudfront.net,
+  mods.sandboxol.com, staticgs.sandboxol.com, static.sandboxol.com,
+  game.sandboxol.com, localhost, 127.0.0.1) + `chain.pem` + `server.p12` +
+  the Android cacerts-ready `<subject_hash_old>.0` file + a convenience
+  `tls.port`. Idempotent; `--force` regenerates; `drive/` is gitignored (key
+  material never enters the repo).
+- **SUITE 701/701** (was 696): the new drive-TLS wave generates the PKI into
+  a temp dir, boots a HostTest with the drive staged, and proves the FULL
+  chain with a python ssl client (verify + check_hostname ON): handshake
+  against the cloudfront SAN serves `/health`; the android `<hash>.0` file is
+  emitted; and a WRONG hostname is REJECTED (the leaf is a real
+  SAN-constrained cert, not trust-everything). classes6.dex 342,316 → 344,420 B
+  (b4 seed bump on the next client build).
+- **THE DRIVE KIT** (`docs/ON_DEVICE_DRIVE.md` — the runbook, with the
+  architecture diagram, the 7-step drive table and a troubleshooting matrix):
+  - `scripts/ondrive_setup.sh` (device, root, idempotent): hosts lines
+    (3 cloudfront/sandboxol hosts → 127.0.0.1; the static CDN stays REAL by
+    design), system-store CA install (magisk-friendly), the missing-hop fix —
+    an iptables `OUTPUT dport 80 → REDIRECT 18080` rule (mods.sandboxol.com
+    and the engineRes base are plain http on :80; hosts cannot re-port them),
+    staging `server.p12`+`tls.port` into the harness filesDir with the right
+    owner, and end-to-end verification (http /health + TLS /health through
+    the redirected hostname with the new CA).
+  - `scripts/ondrive_collect.sh` (device): the evidence snapshot per drive
+    step — props, hosts, iptables, cacerts listing, http+TLS health probes,
+    the harness state (gs_line.json, state.json, drive dir, bundle ls, guard
+    log), `logcat -d -s LocalAPI:* GS:*` plus a full logcat — packed to
+    `/sdcard/drive/evidence-<step>.tar.gz` for `adb pull`.
+- **The two-app architecture on one rooted v7a device**: `com.disabngo.
+  blockynexus` (the b3 harness) runs the holder+GameServer+TLS;
+  `com.sandboxol.blockymods` (the OFFICIAL 2.8.2, TSS-neutral — baseline
+  run 38252063346 proved the pristine APK survives) is the driven client.
+- **NEXT**: the device session itself (docs/ON_DEVICE_DRIVE.md §5–6, in
+  order): g1008 BedWar with bots → g1046 hall (first live family wiring +
+  the lazy CommonActivityConfig require) → solo/duo (first selectGame
+  switch) → the four new games; per-game bot waves once the startPlayers
+  gates are observed. The next client build (b4) picks up classes6.dex with
+  DriveTls; staging the drive dir is what turns it on.

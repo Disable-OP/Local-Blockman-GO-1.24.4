@@ -364,6 +364,11 @@ public final class LocalServer {
             httpd = server;
             L.i("boot: local api is UP on http://127.0.0.1:" + port
                     + " (users=" + store.userCount() + ")");
+            // Pristine-client drive (delta 13): when a drive keystore is
+            // staged, the SAME routing/state answers TLS on 443 for the
+            // redirected metadata base. Inert (and silent) without the
+            // keystore; failures never break the holder boot path.
+            DriveTls.maybeStart(filesDir, store);
         } catch (Throwable t) {
             L.e("boot" + tag + " failed: " + t);
         }

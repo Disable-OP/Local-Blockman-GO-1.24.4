@@ -10,7 +10,9 @@ import json
 import os
 import random
 import re
+import shutil
 import socket
+import ssl as ssl_mod
 import subprocess
 import sys
 import tempfile
@@ -4204,7 +4206,104 @@ def main():
         except Exception:
             pass
 
-    # --- OPTIONAL end-to-end icon-pack test (opt-in: LOCALAPI_REAL_PACK=1) ---    # --- OPTIONAL end-to-end icon-pack test (opt-in: LOCALAPI_REAL_PACK=1) ---
+    # --- drive TLS: the pristine-client listener (delta 13 / DriveTls) ---
+    # The OFFICIAL 2.8.2 client talks https to the redirected metadata base.
+    # This section proves the whole chain in the sandbox: gen_drive_ca.py
+    # builds a CA + SAN leaf, the holder boots the TLS listener on a high
+    # port, and a python ssl client (hostname checking ON) completes a real
+    # handshake against the cloudfront SAN and fetches /health — plus the
+    # negative: a wrong hostname is REJECTED (the cert is not trust-everything).
+    print("== drive tls (pristine-client listener) ==")
+    p_tls = None
+    log_tls = None
+    try:
+        if shutil.which("openssl") is None:
+            check("drive tls: openssl present", False,
+                  "openssl missing — cannot exercise the drive PKI")
+        else:
+            tls_dir = tempfile.mkdtemp(prefix="localapi-drivetest-")
+            tls_port = random.randint(20000, 32000)
+            gen = subprocess.run(
+                [sys.executable, os.path.join(REPO, "scripts", "gen_drive_ca.py"),
+                 "--out", os.path.join(tls_dir, "drive"),
+                 "--tls-port", str(tls_port)],
+                capture_output=True, text=True, timeout=180)
+            check("drive ca: gen_drive_ca.py builds CA+leaf+p12",
+                  gen.returncode == 0
+                  and os.path.isfile(os.path.join(tls_dir, "drive", "server.p12"))
+                  and os.path.isfile(os.path.join(tls_dir, "drive", "ca.pem")),
+                  (gen.stderr or gen.stdout)[-300:])
+            if gen.returncode == 0:
+                # The Android-side contract: cacerts-ready file exists.
+                hash0 = [f for f in os.listdir(os.path.join(tls_dir, "drive"))
+                         if f.endswith(".0")]
+                check("drive ca: android cacerts <hash>.0 emitted",
+                      len(hash0) == 1, str(hash0))
+                p_tls, log_tls = boot_hosttest(tls_dir, PORT + 1)
+                active = os.path.join(tls_dir, "drive", "tls.active")
+                ok_active = False
+                end_t = time.time() + 30
+                while time.time() < end_t and not ok_active:
+                    ok_active = os.path.isfile(active)
+                    if not ok_active:
+                        time.sleep(0.3)
+                check("drive tls: tls.active marker appeared (listener booted)",
+                      ok_active, os.path.join(tls_dir, "drive"))
+                if ok_active:
+                    ctx = ssl_mod.SSLContext(ssl_mod.PROTOCOL_TLS_CLIENT)
+                    ctx.load_verify_locations(
+                        os.path.join(tls_dir, "drive", "ca.pem"))
+                    ctx.check_hostname = True
+                    host = "d32gv25kv9q34j.cloudfront.net"
+                    try:
+                        raw = socket.create_connection(("127.0.0.1", tls_port),
+                                                       timeout=15)
+                        s = ctx.wrap_socket(raw, server_hostname=host)
+                        s.sendall(("GET /health HTTP/1.0\r\nHost: %s\r\n\r\n"
+                                   % host).encode())
+                        body = b""
+                        while True:
+                            chunk = s.recv(65536)
+                            if not chunk:
+                                break
+                            body += chunk
+                        s.close()
+                        check("drive tls: /health over TLS with the cloudfront"
+                              " SAN (verify+hostname ON)",
+                              b'"code":1' in body and b"ok" in body,
+                              body[:120].decode(errors="replace"))
+                    except Exception as e:
+                        check("drive tls: /health over TLS with the cloudfront"
+                              " SAN (verify+hostname ON)", False,
+                              "%s: %s" % (type(e).__name__, e))
+                    raw2 = None
+                    try:
+                        raw2 = socket.create_connection(("127.0.0.1", tls_port),
+                                                        timeout=15)
+                        try:
+                            s2 = ctx.wrap_socket(
+                                raw2, server_hostname="attacker.example.com")
+                            s2.close()
+                            check("drive tls: wrong hostname rejected", False,
+                                  "handshake unexpectedly succeeded")
+                        finally:
+                            raw2.close()
+                    except ssl_mod.SSLCertVerificationError:
+                        check("drive tls: wrong hostname rejected", True, "")
+                    except Exception as e:
+                        check("drive tls: wrong hostname rejected", True,
+                              "rejected via %s" % type(e).__name__)
+    finally:
+        if p_tls is not None:
+            p_tls.terminate()
+            try:
+                p_tls.wait(timeout=5)
+            except Exception:
+                p_tls.kill()
+        if log_tls is not None:
+            log_tls.close()
+
+    # --- OPTIONAL end-to-end icon-pack test (opt-in: LOCALAPI_REAL_PACK=1) ---
     # Boots a seeded instance with the REAL release pack URL: the asset
     # thread must download the 16MB skins.tar.gz, extract all entries with
     # the tar reader, and the streaming endpoint must then serve the REAL

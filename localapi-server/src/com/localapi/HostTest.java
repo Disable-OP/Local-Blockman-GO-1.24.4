@@ -31,6 +31,10 @@ public final class HostTest {
         DressRes.ensure(store);    // suites block it; REAL_PACK e2e allows it)
         LocalHttpd httpd = new LocalHttpd(Integer.parseInt(args[1]), store);
         httpd.start(5000, false);
+        // Host rig mirrors the device boot path: with <stateDir>/drive/
+        // staged, the TLS listener boots here too and the suite drives the
+        // pristine-client drive contract end to end (DriveTls never throws).
+        DriveTls.maybeStart(new File(args[0]), store);
         System.out.println("HOSTTEST READY");
     }
 

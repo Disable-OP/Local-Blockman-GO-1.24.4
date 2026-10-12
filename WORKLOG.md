@@ -4882,3 +4882,38 @@ Stage Summary:
   v7a device) — first BedWar g1008 (bots), then the g1046 hall (first live family exercise),
   then solo/duo (first selectGame switch), then the four new games; observe the solo/duo
   startPlayers gates (their maps ship AIConfig.csv — per-game bot waves possible next).
+
+## Session 76 - the drive-TLS listener + the on-device drive kit (2026-10-13)
+
+- Fresh-sandbox re-verification FIRST: the full host suite re-run on the
+  b3 shipped state — **696/696 PASS** with zero rebuilds (the repo carries
+  its own verification; the fresh sandbox reproduced it byte-for-byte).
+- The delta-13 drive's last engineering gap CLOSED: the pristine 2.8.2
+  client's API base is `https://d32gv25kv9q34j.cloudfront.net` (TLS, 443)
+  and the holder was http-18080-only. **DriveTls.java**: a second LocalHttpd
+  (same StateStore/routing) behind nanohttpd 2.3.1 `makeSecure`, booted by
+  `LocalServer.bootOnce` + `HostTest.main` when `<filesDir>/drive/server.p12`
+  exists; `tls.port` (default 443), `server.pass` (default "drive"),
+  `tls.active` marker + live-TCP idempotence; every failure swallowed (the
+  holder boot path can never be destabilised; non-drive boots stay inert).
+  Plain JVM — runs identically on device (classes6.dex) and in the rig.
+- `scripts/gen_drive_ca.py`: the drive PKI via openssl CLI only — CA 10y +
+  leaf 825d (SANs = d32gv25kv9q34j/d401m01aifavw cloudfront + mods/staticgs/
+  static/game sandboxol + loopback) + chain.pem + server.p12 + the Android
+  cacerts `<subject_hash_old>.0` + tls.port. Idempotent; `drive/` gitignored.
+- SUITE **701/701**: new drive-TLS wave = PKI generation, `<hash>.0` emitted,
+  tls.active boot, `/health` over TLS against the cloudfront SAN with python
+  ssl (verify + hostname checking ON), and wrong-hostname REJECTED. Classes
+  rebuilt (classes6.dex 344,420 B — the b4 seed bump for the next client).
+- THE DRIVE KIT: `docs/ON_DEVICE_DRIVE.md` (architecture diagram, §5 boot,
+  §6 the 7-step drive table: g1008 bots → g1046 hall → g1061/g1062 solo/duo
+  → the four new games, troubleshooting matrix) + `scripts/ondrive_setup.sh`
+  (hosts + system CA + the iptables 80→18080 REDIRECT — the hop hosts cannot
+  do — + filesDir staging + verification, all idempotent) +
+  `scripts/ondrive_collect.sh` (per-step evidence tarballs).
+- Ship shape: the harness (com.disabngo.blockynexus, b3) serves; the
+  OFFICIAL 2.8.2 (com.sandboxol.blockymods) is driven — nothing patched, the
+  TSS stays neutral by construction.
+- Next: the device session (the kit IS the session plan); then per-game bot
+  waves (startPlayers gates), then the b4 client build if on-device wants a
+  different seed.
