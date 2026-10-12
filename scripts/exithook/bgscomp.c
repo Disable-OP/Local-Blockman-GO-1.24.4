@@ -88,6 +88,8 @@ typedef long               lint;
 #define __NR_getpid       39L
 #define __NR_ptrace      101L
 #define __NR_kill         62L
+#define __NR_clock_gettime 228L
+#define __NR_rt_sigqueueinfo 129L
 #define __NR_tkill       200L
 #define __NR_tgkill      234L
 #define __NR_PROCESS_VM_READV 310L
@@ -111,6 +113,7 @@ typedef long               lint;
 #define BPF_NR_KILL       62
 #define BPF_NR_TKILL     200
 #define BPF_NR_TGKILL    234
+#define BPF_NR_SIGQUEUE  129
 #define BPF_NR_CLONE     56
 
 static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
@@ -143,6 +146,8 @@ static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
 #define __NR_getpid      22L
 #define __NR_ptrace      26L
 #define __NR_kill         37L
+#define __NR_clock_gettime 263L
+#define __NR_rt_sigqueueinfo 265L
 #define __NR_tkill       238L
 #define __NR_tgkill      268L
 #define __NR_PROCESS_VM_READV 276L
@@ -166,6 +171,7 @@ static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
 #define BPF_NR_KILL       37
 #define BPF_NR_TKILL     238
 #define BPF_NR_TGKILL    268
+#define BPF_NR_SIGQUEUE  265
 #define BPF_NR_CLONE     120
 
 static inline lint sysc(lint n, lint a, lint b, lint c, lint d, lint e)
@@ -304,35 +310,36 @@ struct seccomp_notif_addfd {
 
 static const struct sock_filter bpf15[] = {
     { 0x20, 0,  0,  4           },   /*  0 LD [4]  arch        */
-    { 0x15, 0, 27,  AUDIT_ARCH_THIS },  /*  1 JEQ arch jt=0 jf=27 */
+    { 0x15, 0, 28,  AUDIT_ARCH_THIS },  /*  1 JEQ arch jt=0 jf=28 */
     { 0x20, 0,  0,  0           },   /*  2 LD [0]  nr          */
-    { 0x15, 22, 0,  BPF_NR_OPENAT },  /*  3 openat  -> 26       */
-    { 0x15, 21, 0,  BPF_NR_OPEN },    /*  4 open    -> 26       */
-    { 0x15, 20, 0,  BPF_NR_OPENAT2 }, /*  5 openat2 -> 26       */
-    { 0x15, 15, 0,  BPF_NR_PRCTL },   /*  6 prctl   -> 22       */
-    { 0x15, 10, 0,  BPF_NR_EXITGROUP }, /*  7 exit_gr -> 18     */
-    { 0x15, 9,  0,  BPF_NR_EXIT },    /*  8 exit    -> 18       */
-    { 0x15, 17, 0,  425         },   /*  9 io_uring_setup -> 27 */
-    { 0x15, 16, 0,  426         },   /* 10 io_uring_enter -> 27 */
-    { 0x15, 15, 0,  427         },   /* 11 io_uring_reg   -> 27 */
-    { 0x15, 13, 0,  BPF_NR_PTRICE },  /* 12 ptrace  -> 26       */
-    { 0x15, 12, 0,  BPF_NR_CLONE },   /* 13 clone   -> 26       */
-    { 0x15, 11, 0,  BPF_NR_VMREADV }, /* 14 vm_readv -> 26       */
-    { 0x15, 10, 0,  BPF_NR_KILL },    /* 15 kill    -> 26       */
-    { 0x15, 9,  0,  BPF_NR_TGKILL },  /* 16 tgkill  -> 26       */
-    { 0x15, 8, 11,  BPF_NR_TKILL },   /* 17 tkill   -> 26 / 29  */
-    { 0x20, 0,  0,  16          },   /* 18 LD [16] args0.lo    */
-    { 0x15, 7,  0,  25          },   /* 19 ==25 -> 27          */
-    { 0x15, 6,  0,  30          },   /* 20 ==30 -> 27          */
-    { 0x05, 0,  0,  7           },   /* 21 JA -> 29            */
-    { 0x20, 0,  0,  16          },   /* 22 LD [16] option      */
-    { 0x15, 4,  0,  21          },   /* 23 PR_GET_SECCOMP->28  */
-    { 0x15, 3,  0,  36          },   /* 24 PR_GET_NNP    ->28  */
-    { 0x05, 0,  0,  3           },   /* 25 JA -> 29            */
-    { 0x06, 0,  0,  0x7FC00000U },   /* 26 RET USER_NOTIF      */
-    { 0x06, 0,  0,  0x00050026U },   /* 27 RET ERRNO(ENOSYS)   */
-    { 0x06, 0,  0,  0x00050000U },   /* 28 RET ERRNO(0)        */
-    { 0x06, 0,  0,  0x7FFF0000U },   /* 29 RET ALLOW           */
+    { 0x15, 23, 0,  BPF_NR_OPENAT },  /*  3 openat  -> 27       */
+    { 0x15, 22, 0,  BPF_NR_OPEN },    /*  4 open    -> 27       */
+    { 0x15, 21, 0,  BPF_NR_OPENAT2 }, /*  5 openat2 -> 27       */
+    { 0x15, 16, 0,  BPF_NR_PRCTL },   /*  6 prctl   -> 23       */
+    { 0x15, 11, 0,  BPF_NR_EXITGROUP }, /*  7 exit_gr -> 19     */
+    { 0x15, 10, 0,  BPF_NR_EXIT },    /*  8 exit    -> 19       */
+    { 0x15, 18, 0,  425         },   /*  9 io_uring_setup -> 28 */
+    { 0x15, 17, 0,  426         },   /* 10 io_uring_enter -> 28 */
+    { 0x15, 16, 0,  427         },   /* 11 io_uring_reg   -> 28 */
+    { 0x15, 14, 0,  BPF_NR_PTRICE },  /* 12 ptrace  -> 27       */
+    { 0x15, 13, 0,  BPF_NR_CLONE },   /* 13 clone   -> 27       */
+    { 0x15, 12, 0,  BPF_NR_VMREADV }, /* 14 vm_readv -> 27       */
+    { 0x15, 11, 0,  BPF_NR_KILL },    /* 15 kill    -> 27       */
+    { 0x15, 10, 0,  BPF_NR_TGKILL },  /* 16 tgkill  -> 27       */
+    { 0x15, 9,  0,  BPF_NR_TKILL },   /* 17 tkill   -> 27       */
+    { 0x15, 8, 11,  BPF_NR_SIGQUEUE }, /* 18 sigqueue -> 27 / 30 */
+    { 0x20, 0,  0,  16          },   /* 19 LD [16] args0.lo    */
+    { 0x15, 7,  0,  25          },   /* 20 ==25 -> 28          */
+    { 0x15, 6,  0,  30          },   /* 21 ==30 -> 28          */
+    { 0x05, 0,  0,  7           },   /* 22 JA -> 30            */
+    { 0x20, 0,  0,  16          },   /* 23 LD [16] option      */
+    { 0x15, 4,  0,  21          },   /* 24 PR_GET_SECCOMP->29  */
+    { 0x15, 3,  0,  36          },   /* 25 PR_GET_NNP    ->29  */
+    { 0x05, 0,  0,  3           },   /* 26 JA -> 30            */
+    { 0x06, 0,  0,  0x7FC00000U },   /* 27 RET USER_NOTIF      */
+    { 0x06, 0,  0,  0x00050026U },   /* 28 RET ERRNO(ENOSYS)   */
+    { 0x06, 0,  0,  0x00050000U },   /* 29 RET ERRNO(0)        */
+    { 0x06, 0,  0,  0x7FFF0000U },   /* 30 RET ALLOW           */
 };
 
 /* bpf14 (fallback): the exact v14 filter — ERRNO(ENOSYS) on the verdict
@@ -403,6 +410,41 @@ static void log_str(const char *s)
 {
     if (g_gfd >= 0 && s)
         sysc(__NR_write, g_gfd, (lint)s, slen(s), 0, 0);
+}
+
+/* millis since boot (CLOCK_MONOTONIC) — stamps every guardlog line so
+ * the CI can order the TSS's attach/stop timeline against the watch
+ * rounds. clock_gettime is ALLOWed by the filter (never notified). */
+static void log_stamp(void)
+{
+    struct { long long sec; long long nsec; } ts;
+    lint q = 0, w = 0;
+    u64 ms;
+    char tmp2[16];
+
+    if (g_gfd < 0)
+        return;
+    sysc(__NR_clock_gettime, 1L /* MONOTONIC */, (lint)&ts, 0, 0, 0);
+    ms = (u64)ts.sec * 1000u + (u64)ts.nsec / 1000000u;
+    if (ms == 0) {
+        tmp2[w++] = '0';
+    }
+    while (ms) {
+        u32 d;
+        u32 lo = (u32)(ms % 10u);
+        u64 q10 = 0, r10 = 0;
+        int i;
+        for (i = 63; i >= 0; i--) {
+            r10 = (r10 << 1) | (u64)((ms >> i) & 1u);
+            if (r10 >= 10) { r10 -= 10; q10 |= ((u64)1 << i); }
+        }
+        d = (u32)r10;
+        ms = q10;
+        tmp2[w++] = (char)('0' + d);
+    }
+    while (w) g_num[q++] = tmp2[--w];
+    g_num[q++] = ' ';
+    sysc(__NR_write, g_gfd, (lint)g_num, q, 0, 0);
 }
 
 /* shift-subtract divide by 10 (no libgcc in -nostdlib; gcc emits
@@ -674,6 +716,7 @@ static void supervisor_loop(void)
                 char tmp2[12];
                 u32 uv = (u32)g_notif.data.args[0];
                 g_plog++;
+                log_stamp();
                 g_num[q++] = 'T';
                 g_num[q++] = ':';
                 if (uv == 0) tmp2[w++] = '0';
@@ -705,6 +748,7 @@ static void supervisor_loop(void)
                 char tmp2[12];
                 u32 uv = nr;
                 g_plog++;
+                log_stamp();
                 g_num[q++] = 'K';
                 g_num[q++] = ':';
                 if (uv == 0) tmp2[w++] = '0';

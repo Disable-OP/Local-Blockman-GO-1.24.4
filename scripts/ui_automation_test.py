@@ -3265,6 +3265,20 @@ def main_282(args):
         if "monitor: g2r type=151" in log or \
                 re.search(r"monitor: human \S+ entered the room", log):
             user_in = True
+        # v21: per-round thread-state snapshot of the engine process —
+        # pins the freeze moment (who is in ptrace-stop, when).
+        try:
+            epid = adb.sh("pidof %s:BlockmanGo" % pkg,
+                          timeout=15).strip()
+            if epid:
+                thr = adb.sh("ps -T -p %s | head -30" % epid,
+                             timeout=15)
+                for tl in thr.splitlines():
+                    tl = tl.strip()
+                    if tl:
+                        print("  [thr r%d] %s" % (rnd, tl))
+        except Exception as _e:
+            print("  [thr r%d] snapshot failed: %s" % (rnd, _e))
         screen.snap("GJ282_watch_r%d" % rnd)
         print("  [watch r%d] fired=%s takeover=%s started=%s pushed=%s "
               "echoes=%s initOnline=%s connect=%s login=%s srvLogin=%s "
