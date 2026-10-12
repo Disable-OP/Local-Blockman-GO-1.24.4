@@ -131,9 +131,18 @@ public final class GameServerManager {
             // four rooms, each its own scriptdir (the ScriptSetting rows
             // carry four distinct Names), complete 2020-2021 map data.
             // g1054: startPlayers 3 (map config.yml) -> wave 2 (2 < 3 so
-            // bots alone can never start it); g1056: the teammateNum gate
-            // defaults to 1 — any bot would auto-start a game with no
-            // human -> wave 0; the two halls: wave 0 like every hall.
+            // bots alone can never start it). v7 (§20) made these waves
+            // REAL: the 10078 trees are CEvents-generation (their engine
+            // dispatch needs the compat bridge) and AI-unaware — the
+            // bundle's [ai-presence] fallback materializes wave robots as
+            // real, counted players. g1056 TowerDefense: wave 0 stays —
+            // NOT because bots could auto-start a game (impossible: the
+            // wave only ever fires after a real human's USER_IN, and TD
+            // GameProcesses exist only from real joins — the delta-23
+            // fear was wrong) but because TD's teammateNum gate
+            // self-satisfies with the human alone (defaults to 1 on a
+            // direct join), so a wave adds nothing the monsters don't;
+            // the two halls: wave 0 like every hall.
             new GameDef("g1054", "SkyWarLuckyBlock", "m1054_1", 2, 4),
             new GameDef("g1058", "SkyWarLuckyBlockHall", "m1058_1", 0, 4),
             new GameDef("g1056", "TowerDefense", "m1056_1", 0, 4),
@@ -143,9 +152,12 @@ public final class GameServerManager {
             // maps.tar.gz pack (m1001_1 config.yml+AppProps bundle,
             // m1401 complete 2021 map). No start gate playable with bots:
             // g1001 is TIME-gated (WaitingPlayerTask from the first login)
-            // and its 2019 scripts are not AI-aware (engine GamePlayerAI
-            // would hit nil fields on the per-tick player loops); g1014 is
-            // an OPEN WORLD (no gate at all). Waves 0; on-device tunes.
+            // and its 2019 scripts predate the AI rows (per-tick player
+            // loops read fields the game only sets on its own flows);
+            // g1014 is an OPEN WORLD (no gate at all). Waves 0; on-device
+            // tunes. (The v7 compat bridge + ai-presence make waves
+            // MECHANICALLY possible in any room now — these two stay 0 on
+            // game-design grounds, not wiring grounds.)
             new GameDef("g1001", "HungryGame", "m1001_1", 0, 4),
             new GameDef("g1014", "JailBreak", "m1401", 0, 4),
     };
@@ -1364,7 +1376,8 @@ public final class GameServerManager {
                     "skywar lucky block wave (2 bots, 4 teams)");
             sCurrentGid = "g1056";
             check(n++, currentBotWave() == 0,
-                    "towerdefense wave 0 (teammateNum gate)");
+                    "towerdefense wave 0 (gate self-satisfies with the human;"
+                            + " monsters are the content)");
             sCurrentGid = "g1057";
             check(n++, currentBotWave() == 0,
                     "towerdefense hall wave 0");

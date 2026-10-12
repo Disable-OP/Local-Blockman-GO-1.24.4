@@ -3598,3 +3598,68 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   the official police.yml/criminal.yml data rows). g1002 SkyWar is OUT
   PERMANENTLY (zero map zips on the CDN); g1053/g1024/g1047 stay
   rejected (their sidecars are not in the pack manifest).
+
+
+## Cron-session delta 25 (read FIRST — BUNDLE v7 IS THE EVENT-LAYER REPAIR: the whole bundle was event-dead on the 10068 binary (no onScriptEvent dispatch), 18/19 rooms lacked CEvents/Events (v3 ScriptMain would die at load), and g1008's robot wave + block-policy listeners were silent decompile dropouts; the [ai-presence] fallback makes every shipped wave real; b8 shipped; suite 701/701)
+
+- The session opened as the flagged g1056 "teammateNum wave question" and
+  ended as the biggest correctness find of the line. READ doc §20 for the
+  complete chain — the short form:
+  1. The wave mechanism needs a game-side CEvents.PlayerDynamicAttrEvent
+     handler to turn robot attrs into players; ZERO staged rooms outside
+     the BedWar family have one — the shipped g1043/44/45 + g1054 waves
+     were inert, and the g1056 wave-0 reason recorded in delta 23 was
+     impossible by construction (the wave only fires after a real human's
+     USER_IN; TD processes exist only from real joins; teammateNum
+     defaults to 1 so the human alone starts the match — wave 0 stays,
+     correct-by-design).
+  2. Digging for the fix exposed the REAL problem: the 10068
+     libgameserver dispatches events ONLY through the single Lua callback
+     stored on each engine event object (`strings libgameserver.so |
+     grep -c onScriptEvent` = 0) — every 10078-generation tree registers
+     on CEvents.*/Events.* which nothing ever fires: NO room ever
+     received GameInit or a login. The bundle was event-dead.
+  3. 18/19 dirs never ship CEvents/Events at all — the v3 family's
+     ScriptMain.lua dereferences CEvents.GameInitEvent at LOAD time
+     (nil-index death); TD indexes Events.* at init.
+  4. g1008's bytecode decompile had silently dropped TWO files that
+     BedWarServer.lua requires + inits: PlayerAIListener.lua (the robot
+     chain — the flagship room's 15-bot wave was inert on the 2.8.2 line)
+     and BlockListener.lua (bed rules / team-area protection / TNT / prop
+     blocks). Restored verbatim from the June-2021 plugin sources
+     (sha256-pinned; the x1046 appres bytecode's string inventory matches,
+     every touched API verified in-tree).
+- THE FIX (all in-repo, idempotent, pcall-guarded):
+  `scripts/gameserver/localapi_compat.lua` (shipped to every scriptdir as
+  base/localapi_compat.lua + required from base/BaseMain.lua right before
+  BaseListener:init()) bridges each engine event into an IScriptEvent
+  proxy (single engine slot -> proxy with dual dot/colon
+  registerCallBack), replaces the event globals with the proxies, and
+  provides/reconciles CEvents + Events (lazy namespaces sharing the proxy
+  cache — the base68 forwarders' bare-global keys and the game trees'
+  CEvents keys become the SAME table). `patch_event_bridge_v7.py` installs
+  it and adds the sha256-pinned **[ai-presence]** fallback to the 18
+  overlay-base listeners: an unclaimed robot attr materializes as a REAL,
+  counted player (addEntityPlayerAI + sendLogin + sendReady; the room's
+  own PlayerListener builds the GamePlayer) — that is what makes the
+  g1043/44/45 (5/5/1) + g1054 (2) waves effective; AI-aware rooms and
+  wave-0 rooms never reach it. Behavioral proof:
+  `scripts/gameserver/smoke_localapi_compat.lua` (Lua 5.1.5, real bundle
+  IScriptEvent + ClassRegister-shaped fake engine) 28/28 across both
+  scenarios (fresh run + idempotent re-run both PATCH OK).
+- SHIPPED: bundle v7 (100,240,057 B / 10,466 entries, ustar, md5
+  `d50f53ca2aebd1b0d6edfdb9337ce5c7`, byte-identical round-trip) + the
+  **b8 harness** (seed g10078-b8, md5 `07732c9f920514258e5786924a5352e4`,
+  classes8.dex 347,616 B — comment-only Java: wave rationales corrected,
+  one selftest label) on localapi-assets AND wip-100 (both round-trip
+  verified). A b7-staged device restages v7 on next boot. Suite 701/701.
+- The device checklist (docs/ON_DEVICE_DRIVE.md §6) now drives b8 — same
+  11 steps, but EVERY join exercises the event bridge; the monitor-log
+  watch list (what "working" looks like per room class) is in doc §20.
+  The wave table is FINAL for this bundle: g1056 stays 0 by design,
+  g1001/g1014 stay 0 on game-design grounds (the 2019 scripts predate
+  the AI rows) — the wiring can now carry any future wave.
+- OPS note: the repo-root gameserver-runtime tarball is STALE (v2-era) —
+  always fetch the shipped bundle from the release assets and verify
+  against the documented md5 (done this session: v6 = 9af0cc69... matched,
+  then patched -> v7).

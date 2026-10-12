@@ -974,3 +974,129 @@ NEXT_SESSION_README delta 9.
   all); g1053/g1024/g1047 remain rejected on completeness (their
   sidecars were NOT in the pack's manifest — only m1001_1/m1401 carry
   the full official config sets among the previously-rejected rooms).
+
+## 20. Addendum 14 (cron session): BUNDLE v7 — THE EVENT LAYER REPAIR: the whole bundle was event-dead on this engine (the 10068 binary has no onScriptEvent dispatch), the CEvents/Events namespaces were missing from 18 of 19 rooms, and g1008's robot wave + block-policy listeners were silent decompile dropouts; the [ai-presence] fallback makes every shipped wave real; b8 shipped; suite 701/701
+
+- The device stayed hardware-bound; the session opened as the flagged
+  g1056 "teammateNum wave question" and ended as the biggest correctness
+  find of the 10078 line. Every step below is proven from the engine
+  sources (/home/z/work10068), the shipped libgameserver.so strings, and
+  a behavioral Lua smoke test — no device needed.
+- **THE AUDIT THAT FOUND IT** (the wave mechanism, end to end): the
+  monitor pushes robot attrs on the first real human's G2R_USER_IN; the
+  engine delivers them to scripts as CEvents.PlayerDynamicAttrEvent; an
+  AI-AWARE tree must register a handler that turns the attr into a real
+  player (the BedWar chain: PlayerAIListener -> AITeamManager:newAi ->
+  GamePlayerAI.new -> EngineWorld:addEntityPlayerAI + sendLogin +
+  sendReady — the script CREATES the entity and the synthetic login;
+  nothing engine-side does it). Sweeping all 19 staged scriptdirs for a
+  game-side handler found ZERO outside the BedWar family — the shipped
+  g1043/44/45 (5/5/1) and g1054 (2) waves were INERT, and delta 23's
+  g1056 reason ("bots would auto-start a game with no human") was
+  impossible by construction (the wave fires only after a human's
+  USER_IN, and TD GameProcesses exist only from real joins; TD's
+  teammateNum gate self-satisfies with the human alone — hallInfo
+  defaults to teammateNum=1, WaitPlayerStatus starts on the first tick).
+- **DEFECT 1 — THE EVENT-DEAD BUNDLE (the big one).** The 10068
+  libgameserver dispatches script events ONLY to the single Lua callback
+  stored on each engine event object (ClassRegister lua_setglobal +
+  the registerCallBack static member; `strings libgameserver.so | grep
+  -c onScriptEvent` = **0** — the 10078 engine's by-name CEvents
+  dispatch does not exist in this binary). The 10078-generation trees
+  register their handlers on CEvents.<Name>/Events.<Name> (pure-Lua
+  IScriptEvent lists; the bridge to the engine in the official 10078
+  runtime IS the global onScriptEvent — Events.lua tail — which this
+  binary never calls). Consequence: with the stock wiring NO engine
+  event ever reached ANY of the 21 rooms — GameInit never fired, logins
+  were never handled. The 1.24.4 line never noticed (its trees register
+  directly on the engine objects and it ran on device); the 10078 line
+  never booted a room before now.
+- **DEFECT 2 — THE NAMESPACE GAP.** 18 of 19 scriptdirs never ship
+  CEvents/Events at all (their plugin engine_base trees are deliberately
+  unwired); BedWarSolo/BedWarDuo/BedWarHall ScriptMain.lua line 4
+  dereferences CEvents.GameInitEvent at LOAD time (nil-index death),
+  WalkingDead's whole ScriptMain:init() chain touches CEvents at load,
+  TowerDefense indexes Events.ReceiveSumRechargeEvent at init.
+- **DEFECT 3 — THE g1008 DECOMPILE DROPOUTS.** The 10078-exact appres
+  tree was recovered by bytecode decompile (session 72); TWO files came
+  out EMPTY and are required+init'ed by BedWarServer.lua:
+  game/listener/PlayerAIListener.lua (THE ROBOT CHAIN — the 15-bot wave
+  was inert on the 2.8.2 line even in the flagship room; the 1.24.4
+  line never noticed because its runtime overlay
+  servergame-bedwar-full.tar.gz supplies the full file at boot,
+  applyOverlay=true vs the 10078 line's false) and
+  game/listener/BlockListener.lua (THE BLOCK-POLICY LAYER — bed-break
+  rules incl. the tool gate and own-bed protection, team-area
+  protection, TNT explosion tuning, prop blocks 2417/2418, sponge).
+  Both restored VERBATIM from the June-2021 plugin sources (p1046,
+  sha256-pinned in scripts/gameserver/p1046_sources/): the x1046 appres
+  bytecode's string inventory matches the p1046 source identifiers
+  exactly, and the staged tree's AITeamManager/AIManager/
+  GamePlayerControl carry every API + constant the two files touch
+  (the trees differ only in whitespace).
+- **THE FIX — `scripts/gameserver/localapi_compat.lua`** (shipped into
+  every scriptdir as base/localapi_compat.lua; required from
+  base/BaseMain.lua right before BaseListener:init() by
+  `scripts/gameserver/patch_event_bridge_v7.py`, idempotent — fresh run
+  + re-run both PATCH OK):
+  1. scans _G for engine event objects (signature: raw `__name` == the
+     global name + a registerCallBack function through the class
+     metatable), takes each engine's single dispatch slot ONCE with a
+     forwarder into a fresh IScriptEvent PROXY, then REPLACES the event
+     global with the proxy. Every later Lua registration — the base68
+     BaseListener:init() direct registrations AND the game trees'
+     CEvents.*/Events.* registrations — lands in the proxy's subscriber
+     list: the proven 1.24.4 handlers and the 10078 game handlers run in
+     registration order with the official last-subscriber return
+     semantics (TowerDefense's deliberate trailing `return false` on
+     PlayerDieEvent works). The proxy's registerCallBack accepts BOTH
+     call conventions (the engine's dot static `Event.registerCallBack(fn)`
+     AND the IScriptEvent colon method) — the plain class method would
+     silently swallow the dot form (fn lands in self).
+  2. provides CEvents/Events as lazy namespaces sharing one proxy cache
+     (an engine-named field resolves to the same proxy the global was
+     replaced with — so `BaseListener.registerCallBack(CEvents.X, fn)`
+     meets the base68 forwarders' `BaseListener.callbacks[X]` lookups;
+     any other name gets a stable IScriptEvent for custom/packet
+     events); for trees shipping their own CEvents (g1008) it repoints
+     engine-named fields to the proxies, carrying pre-registered
+     subscribers.
+  3. the **[ai-presence]** fallback (18 overlay-base dirs, sha256-pinned
+     edit of base/listener/BaseListener.lua): a robot attr no game
+     handler claims is materialized as a REAL counted player
+     (addEntityPlayerAI + sendLogin + sendReady; the room's own
+     PlayerListener then builds the GamePlayer exactly like a human's) —
+     this is what makes the g1043/44/45 + g1054 waves (and any future
+     wave) effective; AI-aware rooms never reach it; wave-0 rooms never
+     see an attr. Idempotence per robot id; pcall-guarded; the 90 s
+     unclaimed-attr kick self-cleans any robot that fails to materialize.
+- **BEHAVIORAL PROOF** (scripts/gameserver/smoke_localapi_compat.lua,
+  Lua 5.1.5, the real bundle IScriptEvent + a ClassRegister-shaped fake
+  engine): 28/28 assertions green across both scenarios — the 18-dir
+  case (proxy replacement, multi-subscriber order, last-subscriber
+  return incl. the trailing-false pattern, registry-key unification,
+  shared custom-event identity, engine-slot forwarder) and the g1008
+  case (own-CEvents repoint + pre-registered subscriber carried and
+  fired through the slot). Wave-table corrections recorded in the holder
+  comments: g1056 wave 0 is CORRECT-BY-DESIGN (not the delta-23 reason);
+  g1043/44/45 + g1054 waves are now REAL; g1001/g1014 stay 0 on
+  game-design grounds (the 2019 scripts predate the AI rows) — the
+  wiring can now carry any wave.
+- **SHIPPED**: bundle v7 (`gameserver-runtime-g10078.tar.gz`,
+  100,240,057 B / 10,466 entries, ustar, md5
+  `d50f53ca2aebd1b0d6edfdb9337ce5c7`, byte-identical round-trip) + the
+  **b8 harness APK** (seed `g10078-b8`, 166,663,330 B, md5
+  `07732c9f920514258e5786924a5352e4`, classes8.dex 347,616 B — the
+  comment-only Java changes: the GAMES-table wave rationales corrected,
+  the MonitorServer wave list extended, one selftest label) on
+  localapi-assets AND wip-100 (both round-trip md5 verified). A b7-staged
+  device restages v7 on next boot (the marker gate is the seed's
+  stageVersion). **Suite 701/701** on the b8 state.
+- **NEXT** (device-bound, docs/ON_DEVICE_DRIVE.md §6 now drives b8): the
+  11-step drive is unchanged in ORDER but every join now exercises the
+  event bridge — the monitor logs to watch: the base68 handlers still
+  log their lines (PlayerListener bookkeeping), the game handlers now
+  fire (GameInit/config), and the waved rooms show "pushed N/N robot
+  attrs" FOLLOWED BY the bots logging in through the room's own
+  PlayerListener (g1043/44/45, g1054) or the AI chain (g1008 family).
+  The per-game id_mappings note stands (only if blocks misrender).

@@ -5048,3 +5048,59 @@ Stage Summary:
   HungryGame is the first time-gated start (150 s countdown), JailBreak
   the first open world. g1002 SkyWar is out permanently (no map zips on
   the CDN); g1053/g1024/g1047 stay rejected (no sidecars in the pack).
+
+## Session 81 - BUNDLE v7: the event-layer repair — the bundle was event-dead on this engine; the wave system is now real end to end (2026-10-13)
+
+- The device stayed hardware-bound; opened as the flagged g1056
+  "teammateNum wave question" and ended as the biggest correctness find
+  of the 10078 line (doc §20 has the full chain; here: the session shape).
+- THE AUDIT: traced the wave mechanism end to end from the monitor
+  (pushRobotWave on the first real human's G2R_USER_IN) through the
+  engine (PlayerDynamicAttrEvent) to the script side — and swept all 19
+  staged scriptdirs for a game-side handler. ZERO outside the BedWar
+  family: the shipped g1043/44/45 + g1054 waves were inert; delta 23's
+  g1056 reason was impossible by construction (the wave fires only after
+  a human's USER_IN; TD processes exist only from real joins; teammateNum
+  defaults to 1 -> the human alone starts the match).
+- THREE LATENT DEFECTS surfaced while proving WHY the waves were inert:
+  (1) the 10068 libgameserver has NO onScriptEvent dispatch (strings = 0)
+  — every room's handlers were registered on CEvents.* lists nothing
+  ever fires: the ENTIRE 10078 bundle was event-dead (GameInit included);
+  (2) 18/19 dirs never ship CEvents/Events (v3 family ScriptMain dies at
+  load on CEvents.GameInitEvent; TD touches Events.* at init);
+  (3) g1008's bytecode decompile had silently dropped TWO files
+  (PlayerAIListener = the robot chain — the 15-bot wave was inert on the
+  2.8.2 line even in the flagship room; BlockListener = the block-policy
+  layer — bed rules/TNT/prop blocks), both required+init'ed by
+  BedWarServer.lua. The 1.24.4 line masked all three (its trees register
+  directly on the engine objects; its runtime overlay supplies the
+  missing files at boot).
+- THE FIX: scripts/gameserver/localapi_compat.lua (the event bridge:
+  engine-slot forwarders into IScriptEvent proxies, globals replaced,
+  CEvents/Events lazy namespaces sharing the proxy cache, g1008
+  reconcile-with-subscriber-carry; dual dot/colon registerCallBack) +
+  patch_event_bridge_v7.py (idempotent installer; the sha256-pinned
+  [ai-presence] fallback into the 18 overlay-base listeners — unclaimed
+  robot attrs materialize as real counted players via addEntityPlayerAI
+  + sendLogin + sendReady; the two g1008 dropouts restored verbatim from
+  p1046 sources, pinned copies in scripts/gameserver/p1046_sources/).
+- PROOF: behavioral smoke (scripts/gameserver/smoke_localapi_compat.lua,
+  real bundle IScriptEvent + ClassRegister-shaped fake engine events,
+  Lua 5.1.5) 28/28 across both scenarios; the full static gate re-run
+  (parse 58 files) PATCH OK fresh + idempotent; suite 701/701 on the
+  shipped state.
+- SHIPPED: bundle v7 (100,240,057 B / 10,466 entries, ustar, md5
+  d50f53ca2aebd1b0d6edfdb9337ce5c7, byte-identical round-trip) + b8
+  harness (seed g10078-b8, md5 07732c9f920514258e5786924a5352e4,
+  classes8.dex 347,616 B — comment-only Java: the wave rationales
+  corrected, one selftest label) on localapi-assets AND wip-100 (both
+  round-trip verified). A b7-staged device restages v7 on next boot.
+- Tooling lessons: the Lua 5.1.5 interpreter built next to lpgate
+  (/tmp/lua_build/lua-5.1.5/src/lua) is now the behavioral-gate tool;
+  the repo-root gameserver-runtime tarball is STALE (v2-era) — the
+  release assets are the only source of truth for the shipped bundle
+  (fetched fresh this session and verified against the documented md5).
+- Next: the device drive on b8 (docs/ON_DEVICE_DRIVE.md §6, 11 steps) —
+  every join now exercises the event bridge; the monitor-log watch list
+  is in doc §20. Sandbox-side: nothing left to stage; the wave table is
+  final for this bundle (g1056 wave 0 is correct-by-design).

@@ -42,8 +42,9 @@ covers both. `patch_urls_282.py`'s header documents the full decode.
 - Rooted armeabi-v7a device (or v7a redroid), `adb` on the PC, `su` working.
 - APKs (from the `localapi-assets` release, `scripts/fetch_release_asset.py`):
   - `official-bg-2.8.2-v7a-4151.apk` — the PRISTINE client.
-  - `BlockyNexus-localapi-282.apk` — the b7 harness (stageVersion g10078-b7;
-    12-game bundle v3 rides the staging thread).
+  - `BlockyNexus-localapi-282.apk` — the b8 harness (stageVersion g10078-b8;
+    bundle v7 rides the staging thread — the v7 event-layer repair, §20 of
+    the 10078 doc: WITHOUT it no room ever receives GameInit or a login).
 - On the PC: `openssl` (any modern build) and Python 3.
 
 ## 3. PC side — generate the drive material
@@ -88,7 +89,7 @@ adb install -r BlockyNexus-localapi-282.apk    # harness first
 adb shell monkey -p com.disabngo.blockynexus 1 # boot holder + GameServer
 sh scripts/ondrive_collect.sh                  # baseline evidence
 # verify: tls.active exists, logcat -s LocalAPI shows
-#   "drive-tls: serving https://127.0.0.1:443" and the b7 bundle stage line
+#   "drive-tls: serving https://127.0.0.1:443" and the b8 bundle stage line
 adb install -r official-bg-2.8.2-v7a-4151.apk  # the pristine client
 ```
 
@@ -97,14 +98,14 @@ adb install -r official-bg-2.8.2-v7a-4151.apk  # the pristine client
 | # | action | pass gate |
 |---|--------|-----------|
 | 1 | pristine app: login/register lands on OUR holder (the app creates a fresh account; uid appears in holder state) | `/health` + logcat shows the register/login routes hit 18080; no cloudfront DNS errors |
-| 2 | BedWar **g1008** (the proven room): enter the 15-bot room | engine boots; `logcat -s GS` shows the room wave; client renders in-game |
+| 2 | BedWar **g1008** (the proven room): enter the 15-bot room | engine boots; `logcat -s GS` shows the room wave AND the 15 bots logging in through the room's own PlayerListener (the v7-restored PlayerAIListener chain); client renders in-game |
 | 3 | **g1046 BedWarHall** join (first LIVE exercise of the 2021 family wiring + the lazy CommonActivityConfig require) | hall map m1046_2 loads; monitor log shows `hall.BedWarServer`; no `base.common.config.CommonActivityConfig` require failure |
 | 4 | solo **g1061** join via the hall (first selectGame switch through the family) | `game.BedWarServer` on m1061_1; map loads |
 | 5 | duo **g1062** join | same, m1062_1 |
 | 6 | WalkingDead / BirdSimulator / Tycoon / EggWar joins | each: first-boot + join + monitor-log review |
-| 7 | **g1043/g1044/g1045 PixelGun** rooms (the shared-scriptdir family, waves 5/5/1) | each room loads its own mapdir under the ONE PixelGunGame scriptdir |
-| 8 | **g1054 SkyWarLuckyBlock** join (FIRST of the new-style base.* wiring class — 94 base.* requires resolve under scripts/SkyWarLuckyBlock/base/); wave 2 fires (startPlayers 3) | `base.Base` loads from scriptdir/base/; monitor log shows Match.lua start after the human joins |
-| 9 | **g1058 SkyWarLuckyBlockHall** + **g1056/g1057 TowerDefense** pair (wave 0 rooms — observe the teammateNum gate from the logs before ever adding bots) | halls idle clean; g1056 starts a process as soon as the human enters (teammateNum 1) |
+| 7 | **g1043/g1044/g1045 PixelGun** rooms (the shared-scriptdir family, waves 5/5/1 — the [ai-presence] fallback materializes the wave robots as real counted players, so the startPlayers 6/6/2 gates pass with the human) | each room loads its own mapdir under the ONE PixelGunGame scriptdir; bots appear in the room (monitor log: the wave attrs land, then the bots' login lines) |
+| 8 | **g1054 SkyWarLuckyBlock** join (FIRST of the new-style base.* wiring class — 94 base.* requires resolve under scripts/SkyWarLuckyBlock/base/); wave 2 fires (startPlayers 3 — the ai-presence robots complete the gate) | `base.Base` loads from scriptdir/base/; monitor log shows Match.lua start after the human joins; 2/2 robot attrs land and the bots log in |
+| 9 | **g1058 SkyWarLuckyBlockHall** + **g1056/g1057 TowerDefense** pair (wave 0 rooms — g1056's gate self-satisfies with the human: teammateNum defaults to 1, the process starts on the first tick; monsters are the content) | halls idle clean; g1056 starts a process as soon as the human enters |
 | 10 | **g1001 HungryGame** join (FIRST time-gated start: the official config's WaitingPlayerTask runs a 150 s countdown from the human's login — wait it out or bump waitingPlayerTime in the map's config.yml); wave 0 by design (2019 scripts not AI-aware) | map m1001_1 loads (dome arena, spawn circle y=22); countdown messages; startMatch after the gate; chest loot fills from the official config pools |
 | 10 | **g1014 JailBreak** join (FIRST open-world room: no gate at all — roles police/criminal, shops, vehicles, chests, strongboxes from the 13 official ymls); wave 0 by design | map m1401 loads (initPos 148/116/319); GameTimeTask ticks; role-select UI driven by police.yml/criminal.yml data rows; no `getConfigFromYml not file` errors |
 | 11 | (if blocks misrender) per-game `id_mappings.ini` from the g1046-10078 appres pattern (docs §14) | render correct |

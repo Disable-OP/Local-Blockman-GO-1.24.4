@@ -229,9 +229,13 @@ public final class MonitorServer {
      *  the ~2.6s the wave takes to land cannot outrun the match start.
      *  Robots (ids ROBOT_UID_BASE+) never re-trigger the wave.
      *  MULTI-GAME: only games with a player-count gate get a wave — the
-     *  g1008 proven room (startPlayers 16), the g1061 solo room (8x1) and
-     *  the g1062 duo room (8x2, both config.yml-verified); the size AND the
-     *  team cycle come from the game's GameDef. */
+     *  g1008 proven room (startPlayers 16), the g1061 solo room (8x1), the
+     *  g1062 duo room (8x2, both config.yml-verified) and — since bundle
+     *  v7's event bridge + [ai-presence] fallback (§20) — the g1043/44/45
+     *  PixelGun rooms (6/6/2) and g1054 SkyWarLuckyBlock (3): their trees
+     *  are CEvents-generation + AI-unaware, and the fallback materializes
+     *  the wave robots as real, counted players through the rooms' own
+     *  PlayerListeners. The size AND the team cycle come from GameDef. */
     private static void onUserIn(String json) {
         try {
             long id = new JSONObject(json).optLong("id", 0);
