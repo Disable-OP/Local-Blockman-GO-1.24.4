@@ -1113,7 +1113,7 @@ static void supervisor_child(void)
     for (;;) {
         lint pdf = sysc(__NR_pidfd_open,
                         sysc(__NR_getppid, 0, 0, 0, 0, 0), 0, 0, 0, 0);
-        if ((++tries % 100) == 0) {
+        if ((++tries & 127) == 0) {     /* power of 2: NO division helper */
             log_num("CH8p:", pdf);
         }
         if (pdf >= 0) {
