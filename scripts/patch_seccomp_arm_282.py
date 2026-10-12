@@ -62,3 +62,33 @@ if inserted != 1:
 
 open(PATH, "w").write("\n".join(out))
 print(f"patch_seccomp_arm_282: hook inserted into {PATH}")
+
+# ---------------------------------------------------------------------------
+# v12.2: the REAL engine load path is EchoesRenderer.handlePreInit ->
+# nativePreInit (a NATIVE method that dlopens libBlockMan from C++) —
+# AbstractEngineEnv.loadSO is NOT on the join path (probe-proven in run
+# 38187611609). The arm hook goes at handlePreInit's convergence point.
+RENDERER = TREE + "/smali/com/sandboxol/blockmango/EchoesRenderer.smali"
+RENDER_OLD = """    :goto_0
+    return-void
+.end method
+
+.method private static native nativeBuyActionResult(II)V"""
+RENDER_NEW = """    :goto_0
+    # seccomp engine guard: arm after the NATIVE pre-init returns — libBlockMan
+    # was dlopened inside nativePreInit (the embedded TSS ctor checks already
+    # ran there); the verdict's exit_group(25|30) fires ~2.8s later and the
+    # filter no-ops it.
+    invoke-static {}, Lcom/localapi/LocalServer;->armEngineGuardNow()V
+
+    return-void
+.end method
+
+.method private static native nativeBuyActionResult(II)V"""
+rs = open(RENDERER).read()
+if "armEngineGuardNow" not in rs:
+    assert RENDER_OLD in rs, "EchoesRenderer convergence point not found"
+    open(RENDERER, "w").write(rs.replace(RENDER_OLD, RENDER_NEW, 1))
+    print("patch_seccomp_arm_282: renderer hook inserted")
+else:
+    print("patch_seccomp_arm_282: renderer hook already present")

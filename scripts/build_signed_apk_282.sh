@@ -55,6 +55,8 @@ fi
 # Application.onCreate — the TSS ctor detects an early filter and SIGILLs).
 grep -q "armEngineGuardNow" "$TREE/smali/com/sandboxol/center/router/moduleInfo/game/AbstractEngineEnv.smali" \
   || { echo "FATAL: engine-load guard hook missing — run scripts/patch_seccomp_arm_282.py"; exit 1; }
+grep -q "armEngineGuardNow" "$TREE/smali/com/sandboxol/blockmango/EchoesRenderer.smali" \
+  || { echo "FATAL: renderer nativePreInit guard hook missing — run scripts/patch_seccomp_arm_282.py"; exit 1; }
 [ -f "$SERVER_DEX" ] || { echo "FATAL: run scripts/build_server_dex.sh first"; exit 1; }
 
 # --- seed assets (data-only) into the tree the packer reads from ---
