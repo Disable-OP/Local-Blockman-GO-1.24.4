@@ -16,7 +16,9 @@
 @ kept for the 64-bit edge case).
 @
 @ Load: System.loadLibrary("bgscomp") — failures are caught Java-side.
-@ Raw syscalls only, no libc: prctl(__NR_prctl=172 arm32 EABI).
+@ Raw syscalls only, no libc: prctl(__NR_prctl=172), seccomp(__NR_seccomp=383).
+@ v14: the install = seccomp(2)+TSYNC (filters are PER-TASK; the delayed-arm
+@ thread must propagate the filter to the whole process).
 @ PR_SET_NO_NEW_PRIVS=38, PR_SET_SECCOMP=22, SECCOMP_MODE_FILTER=2.
 @ On ANY failure: return silently (never break the host process).
 
@@ -55,14 +57,21 @@ bgscomp_ctor:
     cmp     r5, #0
     bne     nnp_fail
 
-    @ prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &fprog)
+    @ v14: SECCOMP FILTERS ARE PER-TASK — a filter installed from this
+    @ (background-arm) thread covers ONLY that thread; the TSS verdict runs
+    @ on another thread and sails through (runs 38194682340/38192389182:
+    @ prctl returned 0 = installed, ARMED logged, verdict still exit(25)
+    @ ~1s later). The install now goes through seccomp(2) with
+    @ SECCOMP_FILTER_FLAG_TSYNC so the filter lands on EVERY thread in the
+    @ process. (prctl(PR_SET_SECCOMP) cannot carry flags.)
+    @ seccomp(SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_TSYNC, &fprog)
     adr     r4, bpf
-    mov     r7, #172
-    mov     r0, #22                 @ PR_SET_SECCOMP
-    mov     r1, #2                  @ SECCOMP_MODE_FILTER
+    mov     r7, #383                @ __NR_seccomp (arm32 EABI)
+    mov     r0, #1                  @ SECCOMP_SET_MODE_FILTER
+    mov     r1, #1                  @ SECCOMP_FILTER_FLAG_TSYNC
     mov     r2, sp                  @ &fprog
     svc     #0
-    mov     r5, r0                  @ save the raw return
+    mov     r5, r0                  @ 0 = synced; +tid = first thread that failed
     cmp     r5, #0
     bne     sc_fail
 
