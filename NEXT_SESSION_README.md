@@ -3413,3 +3413,30 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
      gates are observed; tune GameDef.bots + the wave then.
   4. If a 10078 client misrenders blocks in the new games, ship per-game
      id_mappings.ini from the g1046-10078 appres pattern (§14).
+
+## Cron-session delta 19 addendum: THE 2.8.2 CLIENT REBUILT FROM SCRATCH (fresh sandbox) — stageVersion g10078-b3 SHIPPED (wip-100 + localapi-assets)
+
+- The b2->b3 restage requires a NEW patched client (the seed rides the APK
+  asset), so the FULL 282 build pipeline was re-executed in the fresh sandbox:
+  1. Toolchain re-fetched: apktool 2.9.3 + the 9 smali/dexlib jars (maven).
+  2. APKTOOL LESSON (re-learned): plain baksmali 2.5.2 output does NOT match
+     the patch anchors — apktool emits `.locals` (registers rebased) and its
+     own .line placement; baksmali without `-l` emits `.registers 16` where
+     the anchors expect `.locals 11`, and TWO anchors ("new-engine call site",
+     "EchoesRenderer convergence point") still mismatched on .line placement
+     even with -l. RESOLUTION: apktool d --no-res -Xmx2600m COMPLETES in this
+     sandbox (~4 min) and produces the exact expected formatting — use apktool,
+     not raw baksmali, for the 282 tree.
+  3. The six patch scripts applied clean on the apktool tree (urls 17 ->
+     loopback, bootstrap hook, join bridge x3, preinit probes x6, seccomp
+     guards x2, RSA key swap).
+  4. build_signed_apk_282.sh: classes8.dex = 342,316 B (the 12-game holder),
+     gs-line.json = g10078 / 10078 / **g10078-b3** / overlay off,
+     libgameserver.so (51,166,896) + libbgscomp.so injected, zipaligned +
+     signed. Output 166,663,330 B.
+- SHIPPED: localapi-assets `BlockyNexus-localapi-282.apk` (clobbered) AND the
+  `wip-100` release (its stale b2 asset replaced; release renamed accordingly).
+  A b2-staged device now restages the 12-game bundle v3 on next boot.
+- The resume checklist for a fresh sandbox doing this again: apktool jar +
+  smali_lib jars -> apktool d --no-res -> the 6 patch scripts (argv = tree) ->
+  build_signed_apk_282.sh with TREE_282/ORIG_APK_282 env -> upload.
