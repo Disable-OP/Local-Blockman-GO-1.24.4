@@ -3482,3 +3482,32 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   is OPTIONAL for the drive (the TLS listener lives in the HARNESS, which is
   already b3+staged) — rebuild only if on-device wants a fresh seed.
 
+
+## Cron-session delta 21 (read FIRST — THE SOLO/DUO BOT WAVES ARE SHIPPED: static-prepped (8x1 / 8x2 gates, 8-team AI rows), bundle v3 re-shipped, the b4 harness built + on both releases; suite 701/701)
+
+- Delta 19's per-game bot waves needed NO device observation — everything
+  was decidable from the bundle: the 2021 gate reads the MAP's config.yml
+  (solo 8x1 = 8 seats, duo 8x2 = 16, proven g1008 16x4 → waves 7/15) and
+  the maps are 8-team (8 island colours) with AiPlayerConfig.csv covering
+  teams 1..4 only. AITeamManager.addAItoTeam silently skips a robot whose
+  team has no rows — the old 1..4 cycle would have stranded bots. Read §16
+  for the full chain.
+- `scripts/gameserver/fix_ai_teams_v3.py` (idempotent; auto-run by
+  assemble_multigame_v3.py): g1061/g1062 AiPlayerConfig.csv now carries
+  teams 5..8 (ids 117..132; 4 slots x 8 teams; solo==duo byte-identical).
+- The wave is team-aware: `GameDef.teams`, `currentBotWaveTeams()`,
+  `pushRobotWave(count, teams)`. GAMES: g1008 15x4, g1061 7x8, g1062 15x8.
+  Selftest grew the def+wave assertions; suite 701/701.
+- SHIPPED: bundle v3 re-uploaded to localapi-assets (same name, md5
+  ec8a3ec0d0ae408a4c0cdbb0dfa20aa5 — round-trip verified; safe without a
+  stageVersion bump, nothing has ever staged b3) + the **b4 harness APK**
+  (classes8.dex 345,084 B, seed g10078-b4, 166,663,330 B, md5
+  2d2fa972bb2a8b30495966e0deb4788d) on localapi-assets AND wip-100.
+- Fresh-sandbox recipe additions: /home/z/bg282 SURVIVES with both patched
+  trees (patch scripts honestly report "already patched" — use
+  TREE_282=/home/z/bg282/apktool_apk like b3 did); sync-before-md5 on big
+  copies (a truncated copy poisoned one build start this session).
+- The device checklist (docs/ON_DEVICE_DRIVE.md §5–6) is UNCHANGED — it now
+  drives b4: g1008 bots → g1046 hall → g1061 solo (first live 8-team wave)
+  → g1062 duo → the four new games. Per-game wave tuning happens from the
+  monitor logs after those joins.

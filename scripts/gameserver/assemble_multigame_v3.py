@@ -43,6 +43,9 @@ any missing source tree.
 """
 import os, shutil, subprocess, sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import fix_ai_teams_v3  # noqa: E402  (the 8-team AiPlayerConfig extension)
+
 DL   = "/home/z/dl_games"                      # downloaded zips + their extracts
 BND  = "/home/z/build_g10078/bundle/server"
 BASE68 = "/tmp/ovl/scripts/BedWar/base"        # the overlay tarball's 10068 engine base
@@ -196,6 +199,13 @@ for gid, (name, xdir, mapstem, mapname, group) in APPRES.items():
     gd, n = wire_setting_dir(group, name, f"{xdir}/Scripts/Game/{gid}/setting")
     print(f"   scripts={len(os.listdir(sd))} entries, map files="
           f"{sum(len(f) for _, _, f in os.walk(md))}, setting={n}")
+
+# ------------------------------------------------- AI teams 5..8 extension
+# The family maps are EIGHT-team (8 island colours) while their shipped
+# AiPlayerConfig.csv covers teams 1..4 only — addAItoTeam silently skips a
+# robot whose team has no config rows. Idempotent (see fix_ai_teams_v3.py).
+for r in fix_ai_teams_v3.fix_bundle(BND):
+    print("== AI-teams: " + r)
 
 # ------------------------------------------------------- ScriptSetting.csv edits
 # v2's rule (Enable=1 + EngineVersion=10078 on the served rows) plus the v3

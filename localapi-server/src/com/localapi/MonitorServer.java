@@ -228,9 +228,10 @@ public final class MonitorServer {
      *  once isPlayerEnough(startPlayers) passes — which needs the bots — so
      *  the ~2.6s the wave takes to land cannot outrun the match start.
      *  Robots (ids ROBOT_UID_BASE+) never re-trigger the wave.
-     *  MULTI-GAME: only games with a player-count gate get a wave (BedWar's
-     *  startPlayers=16); GameServerManager.currentBotWave() answers 0 for
-     *  the others (SkyBlock/PixelGunHall start with whatever humans join). */
+     *  MULTI-GAME: only games with a player-count gate get a wave — the
+     *  g1008 proven room (startPlayers 16), the g1061 solo room (8x1) and
+     *  the g1062 duo room (8x2, both config.yml-verified); the size AND the
+     *  team cycle come from the game's GameDef. */
     private static void onUserIn(String json) {
         try {
             long id = new JSONObject(json).optLong("id", 0);
@@ -243,23 +244,27 @@ public final class MonitorServer {
                     return;
                 }
                 L.i("monitor: human " + id + " entered the room — pushing "
-                        + "the robot wave (" + wave + ")");
-                pushRobotWave(wave);
+                        + "the robot wave (" + wave + ", "
+                        + GameServerManager.currentBotWaveTeams() + " teams)");
+                pushRobotWave(wave, GameServerManager.currentBotWaveTeams());
             }
         } catch (Throwable t) {
             L.e("monitor: user-in parse failed: " + t);
         }
     }
 
-    /** One wave of AI player attrs for the hosted room (the size comes from
-     *  the game's GameDef — BedWar: 15 = startPlayers(16) - the human).
+    /** One wave of AI player attrs for the hosted room (the size and the
+     *  team cycle come from the game's GameDef — g1008: 15 bots over the
+     *  4 map teams; g1061 solo: 7 over the 8 teams; g1062 duo: 15 over 8).
      *  robotId=1 selects AI group 1 in the map's AiPlayerConfig.csv
-     *  (per-team behavior rows 101+); teams cycle 1..4 (teamPlayers=4).
-     *  Synthetic platform uids ROBOT_UID_BASE+1.. never collide with real
-     *  users (10001+) and never log in via RakNet, so the login requestId
-     *  gate never sees them. reqId is a placeholder - RoomClient::
-     *  _parseUserAttr only requires the FIELD to exist for robots. */
-    private static void pushRobotWave(int count) {
+     *  (per-team behavior rows 101+; fix_ai_teams_v3.py extends the
+     *  8-team maps to teams 1..8 — without those rows AITeamManager
+     *  silently skips the robot). Synthetic platform uids ROBOT_UID_BASE+1..
+     *  never collide with real users (10001+) and never log in via RakNet,
+     *  so the login requestId gate never sees them. reqId is a placeholder
+     *  - RoomClient::_parseUserAttr only requires the FIELD to exist for
+     *  robots. */
+    private static void pushRobotWave(int count, int teams) {
         synchronized (LOCK) {
             if (sRobotsPushed) return;
             sRobotsPushed = true;
@@ -274,7 +279,7 @@ public final class MonitorServer {
                     o.put("reqId", "bots");
                     o.put("id", ROBOT_UID_BASE + i);
                     o.put("clz", 1);
-                    o.put("team", ((i - 1) % 4) + 1);
+                    o.put("team", ((i - 1) % teams) + 1);
                     o.put("rid", 1);
                     o.put("sex", 1);
                     o.put("vip", 0);
@@ -292,7 +297,8 @@ public final class MonitorServer {
                 }
             }
             L.i("monitor: pushed " + sent + "/" + COUNT
-                    + " robot attrs (isRobot=true, robotId=1, teams 1..4)");
+                    + " robot attrs (isRobot=true, robotId=1, teams 1.."
+                    + teams + ")");
         }, "LocalApiMonitorRobots");
         t.setDaemon(true);
         t.start();

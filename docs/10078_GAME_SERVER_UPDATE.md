@@ -693,3 +693,61 @@ NEXT_SESSION_README delta 9.
   switch) → the four new games; per-game bot waves once the startPlayers
   gates are observed. The next client build (b4) picks up classes6.dex with
   DriveTls; staging the drive dir is what turns it on.
+
+## 16. Addendum 10 (cron session): THE SOLO/DUO BOT WAVES — static-prepped end to end (gates, teams, AI rows, b4 shipped)
+
+- Delta 19's "tune GameDef.bots once the startPlayers gates are observed"
+  turned out to be fully decidable STATICALLY — every fact needed is in the
+  bundle:
+  - **The gates** (the 2021 tree's `WaitingPlayerTask` →
+    `PlayerManager:isPlayerEnough(GameConfig.startPlayers)`; startPlayers/
+    teamPlayers come from the MAP's own config.yml): g1061 solo = **8 × 1**
+    (8 seats), g1062 duo = **16 × 2** (16 seats) — vs the proven g1008
+    room's 16 × 4. So: solo wave = 7 bots, duo wave = 15.
+  - **The maps are EIGHT-team** — the g1061 dynamic dir ships 8 island
+    colours (blue cyan gray green pink red white yellow; the "8shengdan"
+    set) — while the shipped AiPlayerConfig.csv covers teams 1..4 ONLY (16
+    rows, 4 slots/team; solo and duo csvs are byte-identical).
+  - **Why that matters**: `PlayerAIListener.onDynamicAttrInit` turns every
+    robot attr into `AITeamManager:newAi(robotId, teamId, ...)` and
+    `addAItoTeam` picks the first UNUSED row of
+    `AIPlayerConfig:getConfigs(groupId, teamId)` — **silently skipping the
+    robot when the team has no rows**. A 1..4 team cycle would strand 7
+    solo bots on 4 islands and leave teams 5..8 brainless.
+- **`scripts/gameserver/fix_ai_teams_v3.py`** (idempotent, also auto-run by
+  `assemble_multigame_v3.py` now): extends g1061/g1062's AiPlayerConfig.csv
+  to teams 5..8 — 16 appended rows (ids 117..132), cloning team 1's
+  weight/拆床-攻击-采集-防守 pattern with existing item/dress group ids;
+  8 tab-separated fields per row exactly like the source. Both maps now
+  carry 32 AI rows = 4 slots × 8 teams.
+- **The wave is now team-aware**: `GameDef` gains `teams` (the map's real
+  team count — the wave's cycle), `GameServerManager.currentBotWaveTeams()`,
+  and `MonitorServer.pushRobotWave(count, teams)` cycles
+  `((i-1) % teams) + 1`. GAMES: g1008 15×4, **g1061 7×8, g1062 15×8**; all
+  no-gate games stay 0. Selftest asserts the new defs AND the per-game
+  wave/team values. **Suite 701/701** (unchanged count — the selftest
+  assertions grew inside the existing green check).
+- **Bundle v3 re-shipped** with the extended AI csvs (same asset name,
+  `gameserver-runtime-g10078.tar.gz` on localapi-assets, 77,091,061 B /
+  8,205 entries, md5 `ec8a3ec0d0ae408a4c0cdbb0dfa20aa5`, PAX tar like the
+  original; round-trip download re-verified by md5). Safe WITHOUT a
+  stageVersion bump because no device has ever staged b3 (the marker gate
+  is the seed's stageVersion — nothing deployed to restage away).
+- **THE b4 HARNESS APK IS BUILT AND SHIPPED** (the solo/duo waves live in
+  the holder, so they need a new dex on device): the fresh-sandbox recipe
+  re-ran clean — the persisted patched apktool trees survived
+  (/home/z/bg282/apktool_out + apktool_apk, all six patch gates honest),
+  build_signed_apk_282.sh with TREE_282=apktool_apk: classes8.dex 345,084 B
+  (the DriveTls+waves holder), gs-line seed **g10078-b4** (a b3-staged
+  device, if one ever appears, restages), 166,663,330 B signed.
+  Shipped BOTH: localapi-assets `BlockyNexus-localapi-282.apk` (clobbered)
+  and the `wip-100` release asset (replaced).
+- OPS lesson (this session): verify with `sync` before md5 after big copies
+  — the first bg282.apk copy read back truncated (67 MB) and poisoned one
+  build start; the persisted-tree discovery (patches reporting
+  "already patched") is the fresh-sandbox shortcut the addendum recipe
+  documents.
+- **NEXT** (device-bound, docs/ON_DEVICE_DRIVE.md §5–6 unchanged): the
+  pristine drive on b4 — g1008 bots → g1046 hall → g1061 solo (FIRST live
+  8-team wave: 7 bots on 8 islands with full AI rows) → g1062 duo → the
+  four new games; observe and tune from the monitor logs.

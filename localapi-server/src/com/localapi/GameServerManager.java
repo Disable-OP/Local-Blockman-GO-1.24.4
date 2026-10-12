@@ -70,11 +70,16 @@ public final class GameServerManager {
     // gid -> (scriptdir name, map id, robot-wave size, display name).
     //   name    = the scripts/<name> dir AND serverConfig "name"
     //   mapId   = serverConfig mapid; mapdir = <serverDir>/maps/<gid>/<mapId>
-    //   bots    = the room-monitor robot wave size (BedWar needs
-    //             startPlayers(16) seats filled -> 15 bots; the other games
-    //             start without a player-count gate -> NO wave)
+    //   bots    = the room-monitor robot wave size (only games whose map has
+    //             a startPlayers gate get a wave; 0 = start with humans only)
+    //   teams   = the wave's team cycle = the map's REAL team count (the
+    //             wave must land bots on every team the map ships islands
+    //             for; AITeamManager silently skips robots whose team has no
+    //             AiPlayerConfig.csv rows — fix_ai_teams_v3.py extends the
+    //             8-team solo/duo maps to teams 1..8)
     //   maxplayer stays 16 for every game (an upper bound >= any startPlayers;
-    //     BedWar's 16 = 4 teams x teamPlayers(4), the monitor wave completes
+    //     g1008: 16 = 4 teams x teamPlayers(4); g1061 solo: 8 = 8 x 1;
+    //     g1062 duo: 16 = 8 x 2 — config.yml-verified; the wave completes
     //     the seats).
     // The g10078 bundle v2 stages all five; the 1.24.4 bundle (g1008-b2)
     // stages BedWar ONLY — isGameStaged() probes the staged dirs, so the
@@ -87,8 +92,10 @@ public final class GameServerManager {
         public final String name;   // scripts/<name> + serverConfig "name"
         public final String mapId;  // serverConfig mapid
         public final int bots;      // monitor robot-wave size (0 = none)
-        GameDef(String gid, String name, String mapId, int bots) {
-            this.gid = gid; this.name = name; this.mapId = mapId; this.bots = bots;
+        public final int teams;     // wave team cycle = the map's team count
+        GameDef(String gid, String name, String mapId, int bots, int teams) {
+            this.gid = gid; this.name = name; this.mapId = mapId;
+            this.bots = bots; this.teams = teams;
         }
     }
 
@@ -97,18 +104,18 @@ public final class GameServerManager {
      *  June-2021 source trees) + WalkingDead/BirdSimulator/Tycoon/EggWar
      *  join the v2 set — TWELVE hosted rooms. */
     private static final GameDef[] GAMES = {
-            new GameDef("g1008", "BedWar", "m1008_2", 15),
-            new GameDef("g1046", "BedWarHall", "m1046_2", 0),
-            new GameDef("g1061", "BedWarSolo", "m1061_1", 0),
-            new GameDef("g1062", "BedWarDuo", "m1062_1", 0),
-            new GameDef("g1048", "SkyBlock", "m1048_1", 0),
-            new GameDef("g1049", "SkyBlockMiningArea", "m1049_2", 0),
-            new GameDef("g1050", "SkyBlockProduct", "m1050_1", 0),
-            new GameDef("g1051", "WalkingDead", "m1051_1", 0),
-            new GameDef("g1041", "BirdSimulator", "m1041_2", 0),
-            new GameDef("g1025", "Tycoon", "m1025_1", 0),
-            new GameDef("g1018", "EggWar", "m1018_1", 0),
-            new GameDef("g1042", "PixelGunHall", "m1042_1", 0),
+            new GameDef("g1008", "BedWar", "m1008_2", 15, 4),
+            new GameDef("g1046", "BedWarHall", "m1046_2", 0, 4),
+            new GameDef("g1061", "BedWarSolo", "m1061_1", 7, 8),
+            new GameDef("g1062", "BedWarDuo", "m1062_1", 15, 8),
+            new GameDef("g1048", "SkyBlock", "m1048_1", 0, 4),
+            new GameDef("g1049", "SkyBlockMiningArea", "m1049_2", 0, 4),
+            new GameDef("g1050", "SkyBlockProduct", "m1050_1", 0, 4),
+            new GameDef("g1051", "WalkingDead", "m1051_1", 0, 4),
+            new GameDef("g1041", "BirdSimulator", "m1041_2", 0, 4),
+            new GameDef("g1025", "Tycoon", "m1025_1", 0, 4),
+            new GameDef("g1018", "EggWar", "m1018_1", 0, 4),
+            new GameDef("g1042", "PixelGunHall", "m1042_1", 0, 4),
     };
 
     /** The room every fallback lands on (the proven BedWar room). */
@@ -191,6 +198,14 @@ public final class GameServerManager {
      *  (MonitorServer consults this on G2R_USER_IN). */
     public static int currentBotWave() {
         return defForOrDefault(currentGameIdOrDefault()).bots;
+    }
+
+    /** The wave's team cycle for the game the engine is currently running
+     *  (the map's REAL team count; the wave must land bots on every team the
+     *  map ships islands for — AITeamManager silently skips robots whose
+     *  team has no AiPlayerConfig.csv rows). Never < 1. */
+    public static int currentBotWaveTeams() {
+        return Math.max(1, defForOrDefault(currentGameIdOrDefault()).teams);
     }
 
     /**
@@ -1203,15 +1218,20 @@ public final class GameServerManager {
                     && defFor(null) == null && defFor("garbage") == null
                     && defForOrDefault("g9999") == defaultDef(),
                     "unknown -> null / default fallback");
-            // 1b. the v3 BedWar family + the four appres games (§14)
+            // 1b. the v3 BedWar family + the four appres games (§14); the
+            //     solo/duo waves are the config.yml gates (8x1 / 8x2) with
+            //     the 8-team cycle (the maps ship 8 island colours and
+            //     fix_ai_teams_v3.py extends their AiPlayerConfig to match)
             check(n++, defFor("g1046").name.equals("BedWarHall")
                     && defFor("g1046").mapId.equals("m1046_2")
                     && defFor("1061").name.equals("BedWarSolo")
                     && defFor("g1061").mapId.equals("m1061_1")
+                    && defFor("g1061").bots == 7 && defFor("g1061").teams == 8
                     && defFor("g1062").name.equals("BedWarDuo")
                     && defFor("g1062").mapId.equals("m1062_1")
+                    && defFor("g1062").bots == 15 && defFor("g1062").teams == 8
                     && defFor("g1046").bots == 0,
-                    "v3 BedWar family defs");
+                    "v3 BedWar family defs (solo 7x8teams, duo 15x8teams)");
             check(n++, defFor("g1051").name.equals("WalkingDead")
                     && defFor("g1051").mapId.equals("m1051_1")
                     && defFor("g1041").name.equals("BirdSimulator")
@@ -1259,12 +1279,19 @@ public final class GameServerManager {
             check(n++, selectGame("g1008").equals("g1008")
                     && pendingOrDefaultDef().gid.equals("g1008"),
                     "selectGame back to the default");
-            // 5. the game-aware robot wave
-            check(n++, currentBotWave() == 15, "wave for the default room");
+            // 5. the game-aware robot wave (size AND the team cycle)
+            check(n++, currentBotWave() == 15 && currentBotWaveTeams() == 4,
+                    "wave for the default room (15 bots, 4 teams)");
             sCurrentGid = "g1048";
             check(n++, currentBotWave() == 0, "no wave for SkyBlock");
             sCurrentGid = "g1008";
             check(n++, currentBotWave() == 15, "wave restored for BedWar");
+            sCurrentGid = "g1061";
+            check(n++, currentBotWave() == 7 && currentBotWaveTeams() == 8,
+                    "solo wave (7 bots, 8 teams)");
+            sCurrentGid = "g1062";
+            check(n++, currentBotWave() == 15 && currentBotWaveTeams() == 8,
+                    "duo wave (15 bots, 8 teams)");
             sCurrentGid = null;
             System.out.println("GS-SELFTEST OK (" + n + " assertions)");
         } catch (Throwable t) {

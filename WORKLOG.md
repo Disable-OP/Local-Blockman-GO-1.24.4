@@ -4917,3 +4917,34 @@ Stage Summary:
 - Next: the device session (the kit IS the session plan); then per-game bot
   waves (startPlayers gates), then the b4 client build if on-device wants a
   different seed.
+
+## Session 77 - the solo/duo bot waves, static-prepped + shipped (2026-10-13)
+
+- Delta 19's "observe the startPlayers gates on-device" was decidable from
+  the bundle: config.yml gates = g1061 solo 8x1, g1062 duo 8x2 (vs g1008
+  16x4); the maps are 8-team (8 island colours) while AiPlayerConfig.csv
+  covers teams 1..4 only; AITeamManager.addAItoTeam SILENTLY SKIPS a robot
+  whose team lacks config rows — the static case for the wave design is
+  airtight.
+- fix_ai_teams_v3.py (idempotent, auto-run by the assembler now): g1061/
+  g1062 AiPlayerConfig.csv extended to teams 5..8 (ids 117..132, team 1's
+  pattern, existing item/dress groups; 32 rows = 4 slots x 8 teams; solo and
+  duo stay byte-identical).
+- The wave is team-aware: GameDef.teams + currentBotWaveTeams() +
+  pushRobotWave(count, teams) cycling ((i-1)%teams)+1. GAMES: g1008 15x4,
+  g1061 7x8, g1062 15x8. Selftest asserts the defs AND the wave values.
+  Suite 701/701; classes6.dex 345,084 B.
+- Bundle v3 re-shipped with the extended csvs (localapi-assets, same name,
+  md5 ec8a3ec0d0ae408a4c0cdbb0dfa20aa5, 77,091,061 B / 8,205 entries, PAX
+  like the original; download round-trip verified). No stageVersion bump
+  needed (nothing has ever staged b3 — restage is seed-driven).
+- THE b4 HARNESS APK: built via the persisted patched trees (the fresh
+  sandbox kept /home/z/bg282 — the patch scripts honestly report
+  "already patched"), TREE_282=apktool_apk, classes8.dex 345,084 B, seed
+  g10078-b4, 166,663,330 B signed (md5 2d2fa972bb2a8b30495966e0deb4788d).
+  Shipped: localapi-assets clobber + wip-100 asset replace.
+- OPS: sync-before-md5 on big copies (a truncated 67 MB bg282.apk poisoned
+  one build start; the re-copy verified 59d9946d... and the build went
+  green). The persisted-tree shortcut is now part of the recipe knowledge.
+- Next: the device drive (unchanged checklist) — solo is now the FIRST
+  8-team live wave.
