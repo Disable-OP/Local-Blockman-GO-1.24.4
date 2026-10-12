@@ -3202,3 +3202,49 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   pristine-client on-device drive (delta 13): hosts redirect + self-CA +
   official 2.8.2 APK, dispatch -> g10078 bundle GameServer; (3) multi-game
   bundles (g1048/g1055/g1042) per the §7 recipe.
+
+## Cron-session delta 17 (read FIRST — the game-scripts review is CLEAN, the multi-game bundle is SHIPPED, and the version-gate landmine is FIXED)
+
+- **The g1008 game-scripts review (delta 16's item 1) is DONE and CLEAN.**
+  `scripts/gameserver/review_g1008_api.py` (reusable, tree-args override)
+  rebuilds the §2.4 sweep correctly: registration table from ALL THREE C++
+  sources (542 classes / 3,185 members — dev/logic/Src/LuaRegister is the MAIN
+  table: World/Entity/Block/Item/Util), `_CLASSREGISTER_AddCtor()` registers
+  `new`, `AddMember_Override` is its own macro, local-shadow detection (do not
+  sweep a file-local `World` as the C++ class). Verdict: 235 engine-class calls
+  resolve; the 9 flags = 7 WorldInfo.* (pure-Lua `WorldInfo = {}` replaces the
+  C++ global — documented §2.4 non-issue) + 2 operator-only xpcall-guarded
+  debug-console Reload calls. Property writes clean. **NO new shims** — the
+  BaseMain 8-entry set stands.
+- **The multi-game bundle (delta 16's item 3) is SHIPPED** —
+  `gameserver-runtime-g10078.tar.gz` v2 on localapi-assets (59.3 MB): SkyBlock
+  (g1048/m1048_1), SkyBlockMiningArea (g1049/m1049_2), SkyBlockProduct
+  (g1050/m1050_1), PixelGunHall (g1042/m1042_1) — all wired old-style
+  (bare requires = the 10068 bundle layout; their 10076-era appres is SOURCE
+  Lua, no unluac needed). base/ = the REAL 10068 engine base from
+  servergame-bedwar-full.tar.gz (the runtime10068 copy is TRIMMED — missing
+  Base.lua/LuaTimer/uuid/CommonActivity*). g1055/g1060: NO CDN maps exist —
+  documented skip. Gates all green: parse 615/615 new (1,018 bundle-wide),
+  require-graph clean, API sweep clean per game (docs §7.1).
+- **THE VERSION-GATE LANDMINE — would have failed the FIRST 10078 login:**
+  `C2SInitPacketHandles.cpp` gate = EXACT equality client-vs-server engine
+  version; `loadGameScriptDir` overwrites the engineVersion.json boot value
+  with the ScriptSetting ROW's EngineVersion; the 2.8.2 client reports
+  **10078** (its assets/resources/Media/engineVersion.json). The rows said
+  90007/90900. FIX shipped: every served row (g1008/g1042/g1048/g1049/g1050)
+  = 10078 (encoded in assemble_multigame.py step 5). The 10068 bundle keeps
+  90007 for its own client — bundles are mutually exclusive per install.
+- **NEXT (in order):**
+  1. Holder multi-game selection: per-game writeServerConfig
+     (scriptdir/mapdir/id/name/gtype from a gid→config table),
+     Handlers.dispatch serving the JOINED game's ids (the dispatch pins
+     BedWar today), selectGame() respawning the engine when the running
+     game differs (the 9s respawn rate-limit already exists), and a
+     STAGE_VERSION bump so devices restage the v2 bundle. Pure-Java, suite-
+     verifiable — the natural next session's first item.
+  2. The pristine-client on-device drive (delta 13): hosts redirect +
+     self-CA + official 2.8.2 APK — v7a hardware required (arm64 redroid
+     CANNOT run it); now ALSO the first live exercise of the 10078
+     version-gate fix.
+  3. Optional: SkyBlock cosmetic light-block definitions (myplugin:*_light
+     1361-1366) as a CustomBlocks csv if the spawn looks wrong on-device.

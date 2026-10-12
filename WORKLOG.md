@@ -4750,3 +4750,62 @@ resource is unavailable.
 - Commits this session: (see delta 16) — NEXT_SESSION_README delta 16 carries
   the handover; the g1008 game-scripts review + the pristine-client on-device
   drive (delta 13 architecture) are the remaining 10078 line items.
+
+## Session 73 - ENGINE-10078: the g1008 game-scripts review (clean) + the multi-game bundle shipped + the version-gate landmine (2026-10-12)
+
+- THE REMAINING LUA-PHASE ITEM from delta 16: the game-scripts review. Rebuilt the
+  §2.4 sweep as a reusable tool (scripts/gameserver/review_g1008_api.py): the C++
+  registration table now parsed from ALL THREE sources (dev/server/src,
+  dev/logic/Src/LuaRegister — the main World/Entity/Block/Item tables the first
+  pass missed — and dev/client/Src), 542 classes / 3,185 members, with the two
+  macro fixes that mattered: _CLASSREGISTER_AddCtor() takes no args (registers
+  'new') and AddMember_Override is a separate macro variant (all Override-registered
+  members were invisible before). Local-shadow detection (a 'local World' in
+  EngineWorld.lua must not be swept as the C++ class).
+- VERDICT: the g1008 game scripts (206 server + 57 base files) are API-CLEAN
+  against the dual-line binary. 235 engine-class calls resolve (110 engine_server,
+  26 engine_base, 79 game_server, 20 game_base); the 9 flagged = 7 WorldInfo.*
+  (the pure-Lua WorldInfo = {} REPLACES the C++ global — the documented §2.4
+  non-issue) + 2 debug-console-only Reload calls (Commodity.Reload/World.Reload —
+  operator-only via the debug TCP console, xpcall-guarded, gameplay never fires
+  them; no Lua definition exists, so the debug reload path prints a traceback and
+  continues). Property-write sweep: clean (all 7 hits are the same WorldInfo Lua
+  shadow). NO new shims needed — the BaseMain 8-entry shim set is necessary and
+  sufficient.
+- THE MULTI-GAME BUNDLE (delta-16 step 3, the §7 recipe) SHIPPED: the 10076-era
+  appres for g1048/g1055/g1042 turned out to be SOURCE Lua (no bytecode, no
+  unluac) and much newer than §7's inventory note claimed (10076, not
+  10063/10060/10073 — those were the OLDEST versions in the inventory listing).
+  All the shortlist games are PRE-restructure old-style scripts (bare requires)
+  -> wired with the 10068 bundle layout: scripts/<Name>/{base = the REAL 10068
+  engine base from servergame-bedwar-full.tar.gz (the runtime10068 bundle's base
+  is a TRIMMED copy — missing Base.lua/LuaTimer/uuid/CommonActivity* — the
+  overlay's is complete), <game lua/server>, ScriptMain.lua} +
+  g1031_g1060/<Name>/ game settings + maps/g<gid>/<map>/ (latest CDN zips).
+  SHIPPED: SkyBlock g1048/m1048_1 (176 files, ships its own id_mappings.ini),
+  SkyBlockMiningArea g1049/m1049_2, SkyBlockProduct g1050/m1050_1,
+  PixelGunHall g1042/m1042_1. NOT shippable: g1055/g1060 — the CDN has ZERO map
+  zips for them. Bundle v2 repacked (59,320,999 B, 4,797 entries) and uploaded
+  to localapi-assets (replacing the missing-then-broken g10078 asset).
+- THE VERSION-GATE LANDMINE (would have killed the FIRST 10078 client login):
+  the C2SLogin gate is EXACT equality packet->m_engineVersion ==
+  EngineVersionSetting::getEngineVersion() (C2SInitPacketHandles.cpp:41), and
+  loadGameScriptDir OVERWRITES the engineVersion.json boot value (10078) with
+  the matched ROW's EngineVersion — our rows said 90007/90900 while the 2.8.2
+  client reports 10078 (its assets/resources/Media/engineVersion.json —
+  AbstractEngineEnv reads exactly that). FIX: every row the 10078 line serves
+  now carries EngineVersion=10078; the 10068 line keeps its own bundle at
+  90007 (mutually exclusive per install, no client locked out). Encoded in
+  scripts/gameserver/assemble_multigame.py step 5 so a re-run cannot regress it.
+- Static verification all green: Lua 5.1 parse gate 615/615 new files (parse-only
+  luaL_loadfile binary built from /tmp/lua_build core sources; 1,018 bundle-wide),
+  require-graph gate clean (only stdlib quirks in base/util/uuid.lua remain),
+  the API review sweep per new game tree: SkyBlock/SkyBlockMiningArea/
+  SkyBlockProduct clean, PixelGunHall clean (1 filename-string regex artifact).
+- Holder-side multi-game selection (per-game writeServerConfig scriptdir/mapdir +
+  dispatch parametrization + a GsLine-mate STAGE_VERSION bump) is the NEXT item —
+  bundle-only today; the engine loads ONE scriptdir per process, so a new game
+  needs the holder to respawn it with that game's config. Exercisable only on a
+  v7a device (delta 13 architecture) — blocked in this sandbox.
+- Docs: 10078_GAME_SERVER_UPDATE.md section 7.1 (the full addendum), delta 17.
+- Commits this session: (see push) — review tool + assembler + uploader + docs.

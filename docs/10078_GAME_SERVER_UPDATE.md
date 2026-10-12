@@ -243,6 +243,65 @@ All 403 Lua files in the bundle pass a Lua 5.1 parse (luaparse gate).
   (source), (2) its latest map zip(s) from `sandbox/games/maps/`, (3) a
   ScriptSetting.csv row + hall/map wiring in the bundle — exactly the g10078 recipe.
 
+### 7.1 Addendum (cron 20261012-19): the multi-game bundle SHIPPED + the version-gate landmine
+
+- **The g10078 bundle is now MULTI-GAME** — `gameserver-runtime-g10078.tar.gz`
+  v2 on localapi-assets (59,320,999 B, 4,797 entries): the four games of the
+  §7 shortlist that actually have CDN maps, wired old-style (they are all
+  PRE-restructure scripts, bare `require "x"` — the 10068 bundle layout):
+  | gid | Name (scriptdir) | map | source |
+  |---|---|---|---|
+  | g1048 | SkyBlock (空岛生存主岛) | maps/g1048/m1048_1 (176 files, ships its own id_mappings.ini) | appres-g1048-**10076** (source Lua, no bytecode!) |
+  | g1049 | SkyBlockMiningArea (矿洞) | maps/g1049/m1049_2 | same appres |
+  | g1050 | SkyBlockProduct (自动化坑) | maps/g1050/m1050_1 | same appres |
+  | g1042 | PixelGunHall (像素射击大厅) | maps/g1042/m1042_1 | appres-g1042-10076 |
+  - Each `scripts/<Name>/` = `base/` (the REAL 10068 engine base from the
+    `servergame-bedwar-full.tar.gz` overlay — NOTE the runtime10068 bundle's
+    base is a TRIMMED copy missing Base.lua/LuaTimer/uuid/CommonActivity*;
+    the overlay's base is the complete one) + the game's `lua/server/*` +
+    its ScriptMain.lua. `g1031_g1060/<Name>/` = the appres setting csvs
+    (GeneralProbability/ItemCustom) + the map's id_mappings.ini at
+    game-setting level. checksums.md5 regenerated per map dir.
+  - **g1055/g1060 (LiftingSimulator/LSChampionShip) are NOT shippable**: the
+    CDN has ZERO map zips for them (`maps/.*m1055|m1060` = 0 hits) — plugins
+    zips exist, a server game needs a mapdir. Documented skip.
+  - The 10076 appres trees are SOURCE Lua (`72 65 71...` = "require") — no
+    unluac needed. g1055's single `engine_base.util.uuid` require would even
+    resolve against the bundle's engine_base tree.
+- **THE VERSION-GATE LANDMINE (found while wiring, would have killed the
+  FIRST 10078 client login)**: `C2SInitPacketHandles.cpp` compares
+  `packet->m_engineVersion == EngineVersionSetting::getEngineVersion()` —
+  EXACT equality — and `loadGameScriptDir` OVERWRITES the boot
+  engineVersion.json value (10078) with the matched ScriptSetting ROW's
+  EngineVersion. Our rows said 90007 (g1008, the 1.24.4-era value the custom
+  1.24.4 client reports) / 90900 (the 10068-era official rows) — while the
+  2.8.2 client reports **10078** (its `assets/resources/Media/engineVersion.json`;
+  `AbstractEngineEnv.getEngineVersion()` reads exactly that file). FIX: every
+  row the 10078 line serves (g1008/g1042/g1048/g1049/g1050) now carries
+  **EngineVersion=10078** (encoded in `scripts/gameserver/assemble_multigame.py`
+  step 5). The 10068 line keeps its own bundle (rows at 90007) — the two
+  bundles are mutually exclusive per install, so there is no client the fixed
+  rows lock out.
+- **Static verification (all green)**: Lua 5.1 parse gate 615/615 new files
+  (`/tmp/lua_build/lpgate`, parse-only luaL_loadfile; 1,018 .lua bundle-wide);
+  require-graph gate: every non-comment `require` resolves inside its
+  scriptdir (the only leftovers are `require "math"/"os"/"string"` stdlib
+  quirks in base/util/uuid.lua); the §2.4-API review sweep run per game tree
+  (`scripts/gameserver/review_g1008_api.py`, tree args override): SkyBlock /
+  SkyBlockMiningArea / SkyBlockProduct CLEAN, PixelGunHall clean (1 hit is
+  the literal filename "GunSetting.csv" — regex artifact, not a call).
+  The 10068-era scripts resolve ~100% against the same registration table,
+  as expected for their generation.
+- Known cosmetic risk: SkyBlock m1048_1's id_mappings maps 1361-1366 to
+  `myplugin:red/green/blue/cyan/magenta/yellow_light` — no server-side block
+  definitions ship for them (no CustomBlocks csv in the map zip); the engine
+  falls back to default block definitions — decorative-only, no crash path.
+- Assembly + upload tooling: `scripts/gameserver/assemble_multigame.py`
+  (idempotent, encodes the recipe + the EngineVersion rule) and
+  `scripts/upload_release_asset.py` (REST upload, uploads.github.com —
+  api.github.com 404s on the asset endpoint; PAT read from the git remote,
+  never logged).
+
 ## 8. Addendum 2: the launch-path contract + the overlay clobber risk (Java)
 
 - The on-device launch passes `scriptdir = <serverDir>/scripts/BedWar` EXPLICITLY in the
