@@ -2964,3 +2964,39 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
 - Selftest note: sup_selftest.c hangs at teardown in the v34 build TOO (pre-existing;
   the harness predates the v29+ out-of-process supervisor and was last validated at
   v15). The on-device guardlog is the real validation.
+
+## Cron-session delta 11 (read FIRST — v36 verdict: io_uring EXONERATED; v37 fakes seccomp(GET_MODE), the last unfaked probe)
+
+- **v36 verdict (run 38244681621)**: SIGILL persists at the SAME pc (libBlockMan+0x169d14)
+  and the supervisor served **ZERO I: lines** — the ctor NEVER touches io_uring. The
+  io_uring hypothesis is dead. Zero /proc opens still (no P:/s: lines) — three runs now.
+- **ELIMINATION LOGIC**: a packed check can only observe a syscall the filter denies
+  or changes. After v36 the set was: seccomp(GET_MODE) — ALLOWED (the REAL kernel
+  answers 2=filter-mode!), the exit(25|30) block, the prctl(21/36) fakes.
+  **seccomp(SECCOMP_GET_MODE) is THE standout**: it was NEVER faked (the v11 prctl
+  fake covered PR_GET_SECCOMP but left seccomp(2) answering the truth), it fits every
+  run since v10.1 (including the pre-listener plain-filter shape), and a paranoid
+  detector probing BOTH prctl(21) and seccomp(GET_MODE) would catch the
+  inconsistency (faked-0 vs real-2).
+- **v37 (wip-107, md5 e4c9b8d1d9710d79374e1511d5737b88, run 38247471065)**: bpf15 32
+  insns — seccomp (383 arm32 / 317 x86_64) joins USER_NOTIF; the supervisor fakes
+  GET_MODE(2) → the syscall RETURNS 0 (SECCOMP_MODE_DISABLED — consistent with the
+  prctl fake) and CONTINUEs everything else (SET_MODE_FILTER executes for real),
+  logging G:<arg>@<pid>. bpf14 (the listener-less fallback) gains the same fake
+  in-filter (22 insns). The simulator caught THREE offset bugs during the rewrite
+  (all the notify targets shifted when seccomp was inserted; bpf14's exit-block JA
+  had to stay pointed at ALLOW; sigqueue's fallthrough had to reach the seccomp
+  check) — 34 cases ALL GREEN, .so byte-verified.
+- **THE WORKFLOW now pulls /data/tombstones** (the full tombstone = memory-near-pc =
+  the SIGILL's RUNTIME (decrypted) bytes — the file bytes are packed, but the ctor
+  decrypts at runtime; disassemble the dump with capstone THUMB to see the tripwire).
+- **IF THE SIGILL PERSISTS (the decision tree)**: (1) read the tombstone's memory
+  near pc — the runtime bytes name the check; (2) the remaining detectables: the
+  listener fd in /proc/self/fd (readlink "anon_inode:seccomp" — ALLOWED, invisible,
+  REAL — can't be hidden while the engine must keep the listener alive; closing it
+  blocks all notified syscalls), the exit-block fork-probe (a fork+exit(25) child
+  HANGS → timeout-detect), the supervisor child's /proc visibility (comm
+  "seccomp-delayed", not in the engine's task list); (3) an alternative endgame: run
+  the ctor UNFILTERED (delay the arm past the dlopen — arm at the FIRST verdict
+  attempt instead of +4.2s; the verdict then no-ops but the ctor's checks all ran
+  clean) — v13's delayed-arm logic re-targeted at loadSO/handlePreInit return.
