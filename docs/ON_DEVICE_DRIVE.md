@@ -13,10 +13,10 @@ incl. the drive-TLS wave).
 +--------------------------------------------------------------+
 | v7a DEVICE (root)                                            |
 |                                                              |
-|  com.disabngo.blockynexus   (the PATCHED b3 harness APK)     |
-|    holder   127.0.0.1:18080  http  (397+ routes, 12 games)   |
+|  com.disabngo.blockynexus   (the PATCHED b7 harness APK)     |
+|    holder   127.0.0.1:18080  http  (397+ routes, 21 games)   |
 |    driveTLS 127.0.0.1:443    https (DriveTls, drive/server.p12)
-|    GameServer libgameserver.so (g10078 bundle v3 staged)     |
+|    GameServer libgameserver.so (g10078 bundle v6 staged)     |
 |                                                              |
 |  com.sandboxol.blockymods   (the OFFICIAL 2.8.2 APK)         |
 |    API base  https://d32gv25kv9q34j.cloudfront.net --+        |
@@ -42,7 +42,7 @@ covers both. `patch_urls_282.py`'s header documents the full decode.
 - Rooted armeabi-v7a device (or v7a redroid), `adb` on the PC, `su` working.
 - APKs (from the `localapi-assets` release, `scripts/fetch_release_asset.py`):
   - `official-bg-2.8.2-v7a-4151.apk` — the PRISTINE client.
-  - `BlockyNexus-localapi-282.apk` — the b3 harness (stageVersion g10078-b3;
+  - `BlockyNexus-localapi-282.apk` — the b7 harness (stageVersion g10078-b7;
     12-game bundle v3 rides the staging thread).
 - On the PC: `openssl` (any modern build) and Python 3.
 
@@ -88,7 +88,7 @@ adb install -r BlockyNexus-localapi-282.apk    # harness first
 adb shell monkey -p com.disabngo.blockynexus 1 # boot holder + GameServer
 sh scripts/ondrive_collect.sh                  # baseline evidence
 # verify: tls.active exists, logcat -s LocalAPI shows
-#   "drive-tls: serving https://127.0.0.1:443" and the b3 bundle stage line
+#   "drive-tls: serving https://127.0.0.1:443" and the b7 bundle stage line
 adb install -r official-bg-2.8.2-v7a-4151.apk  # the pristine client
 ```
 
@@ -105,7 +105,9 @@ adb install -r official-bg-2.8.2-v7a-4151.apk  # the pristine client
 | 7 | **g1043/g1044/g1045 PixelGun** rooms (the shared-scriptdir family, waves 5/5/1) | each room loads its own mapdir under the ONE PixelGunGame scriptdir |
 | 8 | **g1054 SkyWarLuckyBlock** join (FIRST of the new-style base.* wiring class — 94 base.* requires resolve under scripts/SkyWarLuckyBlock/base/); wave 2 fires (startPlayers 3) | `base.Base` loads from scriptdir/base/; monitor log shows Match.lua start after the human joins |
 | 9 | **g1058 SkyWarLuckyBlockHall** + **g1056/g1057 TowerDefense** pair (wave 0 rooms — observe the teammateNum gate from the logs before ever adding bots) | halls idle clean; g1056 starts a process as soon as the human enters (teammateNum 1) |
-| 10 | (if blocks misrender) per-game `id_mappings.ini` from the g1046-10078 appres pattern (docs §14) | render correct |
+| 10 | **g1001 HungryGame** join (FIRST time-gated start: the official config's WaitingPlayerTask runs a 150 s countdown from the human's login — wait it out or bump waitingPlayerTime in the map's config.yml); wave 0 by design (2019 scripts not AI-aware) | map m1001_1 loads (dome arena, spawn circle y=22); countdown messages; startMatch after the gate; chest loot fills from the official config pools |
+| 10 | **g1014 JailBreak** join (FIRST open-world room: no gate at all — roles police/criminal, shops, vehicles, chests, strongboxes from the 13 official ymls); wave 0 by design | map m1401 loads (initPos 148/116/319); GameTimeTask ticks; role-select UI driven by police.yml/criminal.yml data rows; no `getConfigFromYml not file` errors |
+| 11 | (if blocks misrender) per-game `id_mappings.ini` from the g1046-10078 appres pattern (docs §14) | render correct |
 
 After EVERY step: `sh scripts/ondrive_collect.sh <step-N>` — it snapshots
 logcat (`LocalAPI`, `GS`, `BLOCK`, engine tags), the holder state dir, the

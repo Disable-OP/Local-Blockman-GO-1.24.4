@@ -104,7 +104,8 @@ public final class GameServerManager {
      *  June-2021 source trees) + WalkingDead/BirdSimulator/Tycoon/EggWar
      *  join the v2 set — TWELVE hosted rooms. Bundle v4 (§17) adds the
      *  PixelGun room family, bundle v5 (§18) the SkyWarLuckyBlock +
-     *  TowerDefense families — NINETEEN hosted rooms. */
+     *  TowerDefense families, bundle v6 (§19) the 2019 config pass —
+     *  TWENTY-ONE hosted rooms. */
     private static final GameDef[] GAMES = {
             new GameDef("g1008", "BedWar", "m1008_2", 15, 4),
             new GameDef("g1046", "BedWarHall", "m1046_2", 0, 4),
@@ -137,6 +138,16 @@ public final class GameServerManager {
             new GameDef("g1058", "SkyWarLuckyBlockHall", "m1058_1", 0, 4),
             new GameDef("g1056", "TowerDefense", "m1056_1", 0, 4),
             new GameDef("g1057", "TowerDefenseHall", "m1057_1", 0, 4),
+            // v6: the 2019 config pass (§19) — the "config-less" games are
+            // complete via the OFFICIAL server-side sidecars found in the
+            // maps.tar.gz pack (m1001_1 config.yml+AppProps bundle,
+            // m1401 complete 2021 map). No start gate playable with bots:
+            // g1001 is TIME-gated (WaitingPlayerTask from the first login)
+            // and its 2019 scripts are not AI-aware (engine GamePlayerAI
+            // would hit nil fields on the per-tick player loops); g1014 is
+            // an OPEN WORLD (no gate at all). Waves 0; on-device tunes.
+            new GameDef("g1001", "HungryGame", "m1001_1", 0, 4),
+            new GameDef("g1014", "JailBreak", "m1401", 0, 4),
     };
 
     /** The room every fallback lands on (the proven BedWar room). */
@@ -1360,6 +1371,12 @@ public final class GameServerManager {
             sCurrentGid = "g1058";
             check(n++, currentBotWave() == 0,
                     "skywar lucky block hall wave 0");
+            sCurrentGid = "g1001";
+            check(n++, currentBotWave() == 0,
+                    "hungrygame wave 0 (time gate, 2019 scripts not AI-aware)");
+            sCurrentGid = "g1014";
+            check(n++, currentBotWave() == 0,
+                    "jailbreak wave 0 (open world, no gate)");
             sCurrentGid = null;
             System.out.println("GS-SELFTEST OK (" + n + " assertions)");
         } catch (Throwable t) {

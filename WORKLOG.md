@@ -5002,3 +5002,49 @@ Stage Summary:
 - Next: the device drive (b6) — SkyWarLuckyBlock is the first join of
   the new base/ wiring class; then the g1056 wave tuning; the 2019
   games still wait for a config pass.
+
+## Session 80 - BUNDLE v6: the 2019 config pass — the official sidecars were in the maps pack all along (2026-10-13)
+
+- The device stayed hardware-bound; took the "2019 games config pass".
+  The expected blind reconstruction NEVER HAPPENED: the 1.24.4-era
+  maps.tar.gz pack (MapAssets' pinned source of truth) carries the
+  OFFICIAL SERVER-SIDE SIDECARS per map — config.yml / the 13 game ymls /
+  AppProps.csv were real CDN keys published beside the world zips, and
+  the pack holds ready-made sidecar BUNDLE zips for m1001_1 (config.yml
+  16 KB + AppProps) and m1401 (config.yml + all 13 ymls + AppProps).
+  m1401.1621495028871.zip is the COMPLETE 2021-05 official JailBreak
+  publish (world + configs, mca byte-identical to the 2019 world pack);
+  m1001_1 = the CDN world zip g1001_1.1571834017333 + its same-publish
+  sidecar bundle (507 ms apart). games.csv ALREADY maps g1001->m1001_1
+  and g1014->m1401 — the client map durl works with zero pack changes
+  (the client only needs the sidecar bundle; chunks stream over RakNet).
+- SCHEMA PROOF: every key the 2019 GameConfigs read exists in the
+  official configs (g1001: time gates 150/20/30/480/30/10/120, 16-point
+  spawn circle y22, ffPos y115, classic food ids, 11 clzItems classes,
+  respawn goods rows; g1014: initPos/shop/weapon/score + the 13 ymls the
+  no-checkExist FileUtil.getConfigFromYml calls REQUIRE).
+- GATES -> waves: g1001 is TIME-gated (WaitingPlayerTask from first
+  login), g1014 is an OPEN WORLD (no gate) — both wave 0 (2019 scripts
+  not AI-aware; on-device tunes). Teams 4.
+- THE v4 LATENT BUG (found + fixed): assemble_multigame_v4 merged base68
+  AT ROOT, but the Linux engine hard-loads <scriptdir>/base/BaseMain.lua
+  BEFORE ScriptMain.lua (Script/ScriptManager.h) — v4's PixelGunGame had
+  NO base/, so BaseListener/BaseMain globals would never exist and
+  g1043/44/45 would die at the first on-device boot (the require-graph
+  gate cannot see a PATH load). v6 rewires PixelGunGame to base68 at
+  base/ + game tree at root; ALL 21 rooms now satisfy the contract.
+- GATES (green): parse 443/443 (lpgate rebuilt from /tmp/lua_build);
+  require-graph 129/165/239 — 0 unresolved; C++ sweep 446 resolved, 4
+  flags = the documented PixelGun BlockManager lua-defined class.
+  Suite 701/701 (2 new wave assertions); classes6.dex 347,584 B.
+- SHIPPED: bundle v6 (100,182,216 B / 10,447 entries, ustar, md5
+  9af0cc69da2487c7b55ce25c02c0011b, round-trip verified) + b7 harness
+  (seed g10078-b7, md5 3933620f73e51371115585d45a288761) on
+  localapi-assets AND wip-100. assemble_multigame_v6.py written
+  (PixelGun rewire + 2 rooms; config/world/AppProps guards).
+- OPS: /tmp filled mid-suite (test temp dirs from earlier runs) —
+  cleaned ~4 GB; the harness build reused the persisted bg282 trees.
+- Next: the device drive (b7, docs/ON_DEVICE_DRIVE.md §6 now 11 steps) —
+  HungryGame is the first time-gated start (150 s countdown), JailBreak
+  the first open world. g1002 SkyWar is out permanently (no map zips on
+  the CDN); g1053/g1024/g1047 stay rejected (no sidecars in the pack).

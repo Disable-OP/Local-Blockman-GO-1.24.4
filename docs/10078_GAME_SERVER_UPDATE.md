@@ -872,3 +872,105 @@ NEXT_SESSION_README delta 9.
   SkyWarLuckyBlock join is the new first (the base/ wiring class), the
   TowerDefense pair the second; then the g1056 wave tuning question
   (teammateNum), then the 2019 games' config.yml reconstruction pass.
+
+## 19. Addendum 13 (cron session): BUNDLE v6 — THE 2019 CONFIG PASS: the "config-less" games were never config-less (the official server-side sidecars were in the maps pack all along); TWENTY-ONE rooms; PixelGunGame's v4 latent bug fixed; b7 shipped
+
+- The device is still hardware-bound; took the static path again. The
+  "blind room-config reconstruction" the v4/v5 sweeps promised for
+  g1014 JailBreak + g1001 HungryGame turned out to be UNNECESSARY: the
+  1.24.4-era maps.tar.gz pack (the MapAssets source of truth, 47,411,314
+  B on localapi-assets) carries the OFFICIAL SERVER-SIDE SIDECARS per
+  map — `sandbox/games/maps/<mapid>.<ts>.config.yml`,
+  `.police.yml`, `.criminal.yml`, ... `.AppProps.csv` were real CDN keys
+  published BESIDE the world zips (the manifest lists 54 config.yml
+  rows), and for m1001_1/m1401 the pack even carries ready-made
+  SIDECAR BUNDLE ZIPS (`m1001_1.1571834020240.zip` = config.yml 16 KB +
+  AppProps; `m1401.1621495036065.zip` = config.yml + ALL THIRTEEN game
+  ymls + AppProps — the exact inventory GameConfig.lua reads).
+- **THE COMPLETE PICTURE**: `m1401.1621495028871.zip` (4,006,982 B,
+  2021-05-20) is the FULL official publish — world chunks + config.yml +
+  the 13 ymls + AppProps + lang + minimap in ONE zip (its mca byte sizes
+  are IDENTICAL to the 2019 g1014 world pack — same world, configs
+  added). m1001_1 has no full zip in the pack: the world is the CDN map
+  zip `g1001_1.1571834017333.zip` (3,388,725 B, 2019-10-23) and the
+  sidecar bundle `m1001_1.1571834020240.zip` (config.yml + AppProps) is
+  the SAME-PUBLISH official config (507 ms apart on the CDN; the config's
+  16-point spawn circle at y=22 matches the dome arena world). Both
+  games are ALREADY MAPPED in the pack's games.csv (g1001->m1001_1,
+  g1014->m1401) — the client's map durl (the sidecar bundle; chunks
+  stream from the engine over RakNet) works with ZERO pack changes.
+- **THE SCHEMAS MATCH THE OFFICIAL CONFIGS** (verified key-by-key
+  against the 2021-05 plugin trees): g1001 GameConfig:init reads
+  waitingPlayerTime/disableMoveTime/prepareTime/gameTime/gameOverTime/
+  ffStartTime/ffTime/initPos[]/ffPos[]/inventory[1]{RefreshTime,
+  foodNumRange,food[],equip...}/sppItems/clzItems/respawn — ALL present
+  in the official 16 KB config (initPos = a 16-point circle at y 22;
+  ffPos at y 115; loot pools = classic food ids 260/319/363/365/391/392;
+  sppItems = diamond+chain armor; clzItems = 11 classes). g1014
+  GameConfig:init reads initPos[3]/rankUpdateTime/gameTipShowTime/shop/
+  weapon/score + FileUtil.getConfigFromYml for criminal/police/chest/
+  merchant/produce/block/location/vehicle/door/damage/strongbox/rankNpc/
+  transferGate (NO checkExist — every file MUST exist; the m1401 zip
+  carries all 13 + config.yml + AppProps).
+- **THE START GATES (from the games' own code)**: g1001 is TIME-gated —
+  WaitingPlayerTask starts on the FIRST login and expires after
+  waitingPlayerTime (150 s) -> DisableMove -> prepare -> startMatch
+  (isPlayerFull short-circuits). NO player-count gate. g1014 is an OPEN
+  WORLD — no gate at all (initMatch just starts GameTimeTask; roles
+  police/criminal, shops, vehicles, jails). BOTH get wave 0: the 2019
+  scripts are NOT AI-aware (PlayerListener builds GamePlayer per RakNet
+  login; engine-spawned GamePlayerAI would hit nil fields on the
+  per-tick player loops — v.role, v.gameScore). On-device observation
+  tunes later (the AI-attr mechanism itself is engine-level and would
+  fire on the human's USER_IN).
+- **WIRING**: both trees are OLD-STYLE bare requires (like PixelGun) ->
+  the v3 recipe: the 10068 overlay base68 goes to <scriptdir>/base/ (the
+  engine's ScriptManager HARD-LOADS <scriptdir>/base/BaseMain.lua on
+  Linux BEFORE ScriptMain.lua — verified in the 10068 engine source,
+  Script/ScriptManager.h loadScript: addScriptDir(path) ->
+  Load(path+"/base/BaseMain.lua") -> Load(path+"/ScriptMain.lua")), the
+  server tree merges at root. The trees' own engine_base/engine_client/
+  engine_server dirs stay unwired (dead weight, like every v2-v5 game).
+- **THE v4 LATENT BUG (found while wiring v6, fixed in v6)**: bundle v4
+  merged base68 AT ROOT (assemble_multigame_v4.py) — but the Linux
+  engine hard-loads <scriptdir>/base/BaseMain.lua FIRST, and v4's
+  PixelGunGame has NO base/: the base load MISSES and the base68-only
+  globals (BaseListener, BaseMain, CEvents consumers) never come into
+  existence -> GameListener:init() would die on `BaseListener` nil at
+  the first on-device boot of g1043/g1044/g1045. The require-graph gate
+  could never catch it (nothing REQUIRES "base.BaseMain"; the engine
+  loads it by PATH). v6 rebuilds scripts/PixelGunGame to the same
+  contract as every other room: base68 -> base/, game tree -> root
+  (191 lua files; the at-root base68 leftovers replaced by the clean
+  layout). ALL TWENTY-ONE rooms now satisfy the engine contract.
+- **GATES (all green)**: Lua parse 443/443 across the three touched
+  scriptdirs (lpgate: Lua 5.1.5 + parse-only wrapper, rebuilt from
+  /tmp/lua_build); require-graph 129 (HungryGame) / 165 (JailBreak) /
+  239 (PixelGunGame incl. the base/ chain) — 0 unresolved, 0 guarded;
+  C++ registration sweep 446 resolved (146/135/165 per tree), 4
+  unresolved = ALL [lua-defined-member] BlockManager methods in
+  PixelGunGame — the exact documented v4 class. NO new shims.
+- **Holder**: GAMES = TWENTY-ONE defs (g1001 HungryGame m1001_1 bots 0;
+  g1014 JailBreak m1401 bots 0); selftest grew the two wave assertions.
+  **Suite 701/701**; classes6.dex 347,228 -> 347,584 B.
+- **SHIPPED**: bundle v6 (`gameserver-runtime-g10078.tar.gz`,
+  100,182,216 B / 10,447 entries, ustar, md5
+  `9af0cc69da2487c7b55ce25c02c0011b`, byte-identical round-trip) + the
+  **b7 harness APK** (seed `g10078-b7`, 166,663,330 B, md5
+  `3933620f73e51371115585d45a288761`) on localapi-assets AND wip-100
+  (both round-trip verified).
+- Tooling: `scripts/gameserver/assemble_multigame_v6.py` (idempotent;
+  the PixelGun rewire + the two rooms; world+sidecar merge with
+  config.yml/world/AppProps guards). New session tools:
+  scan_world.py / probe_spawn.py / column_blocks.py (Anvil HeightMap +
+  1.14 palette readers — used to verify the worlds against the official
+  configs).
+- **NEXT** (device-bound, checklist now drives b7): the drive order
+  gains two firsts — the HungryGame join (first TIME-gated start: the
+  150 s countdown runs from the human's login) and the JailBreak join
+  (first open world: no gate, roles/shops/vehicles). The g1056
+  teammateNum wave question and the per-game id_mappings note stand.
+  g1002 SkyWar stays out PERMANENTLY (no map zips exist on the CDN at
+  all); g1053/g1024/g1047 remain rejected on completeness (their
+  sidecars were NOT in the pack's manifest — only m1001_1/m1401 carry
+  the full official config sets among the previously-rejected rooms).

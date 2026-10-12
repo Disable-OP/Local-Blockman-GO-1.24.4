@@ -3562,3 +3562,39 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   TowerDefense pair the second; the g1056 wave tuning question
   (teammateNum from hall queue) is the new observation item. The 2019
   games (g1014/g1001/g1002...) stay unstaged until the config pass.
+
+## Cron-session delta 24 (read FIRST — BUNDLE v6 IS TWENTY-ONE ROOMS: the 2019 "config-less" games were NEVER config-less — the official server-side sidecars live in the maps.tar.gz pack; the v4 PixelGunGame latent bug is FIXED; suite 701/701; b7 shipped)
+
+- The "blind room-config reconstruction" is CANCELLED: the maps pack
+  (MapAssets' pinned 47,411,314 B asset) carries per-map OFFICIAL
+  sidecars under sandbox/games/maps/<mapid>.<ts>.{config.yml,*.yml,
+  AppProps.csv} — 54 config.yml rows in the manifest — plus ready-made
+  SIDECAR BUNDLE zips: m1001_1.1571834020240.zip (config.yml 16 KB +
+  AppProps) and m1401.1621495036065.zip (config.yml + ALL 13 JailBreak
+  ymls + AppProps). m1401.1621495028871.zip is the COMPLETE 2021-05
+  JailBreak map (world+configs; mca byte-identical to the 2019 world).
+  m1001_1's world = the CDN zip g1001_1.1571834017333 (same publish as
+  its sidecar config, 507 ms apart). games.csv already maps both gids.
+- g1001 HungryGame: TIME-gated (WaitingPlayerTask runs waitingPlayerTime
+  150 s from the FIRST login -> DisableMove -> startMatch). g1014
+  JailBreak: OPEN WORLD (no gate). Both wave 0 (2019 scripts not
+  AI-aware; PlayerListener builds GamePlayer per RakNet login only).
+- THE v4 LATENT BUG: the Linux engine hard-loads
+  <scriptdir>/base/BaseMain.lua BEFORE ScriptMain.lua (ScriptManager.h)
+  — assemble_multigame_v4's "base68 at ROOT" left PixelGunGame with NO
+  base/, so the base load MISSES and BaseListener/BaseMain never exist
+  (g1043/44/45 would die at first boot; the require-graph gate cannot
+  see a PATH load). v6 rewires PixelGunGame to base68 at base/ + the
+  game tree at root (191 lua files). All 21 rooms satisfy the contract.
+- GATES green: parse 443/443; require-graph 129/165/239 = 0 unresolved;
+  C++ sweep 446 resolved + 4 documented BlockManager lua-members.
+  SHIPPED: bundle v6 (100,182,216 B / 10,447 entries, md5 9af0cc69...,
+  round-trip verified) + b7 harness (seed g10078-b7, md5 3933620f...) on
+  localapi-assets AND wip-100. classes6.dex 347,584 B.
+- The device checklist (docs/ON_DEVICE_DRIVE.md §6) now drives b7 with
+  11 steps: HungryGame = the first TIME-gated start (150 s countdown
+  from the human's login; wait it out or tune waitingPlayerTime in the
+  map config), JailBreak = the first open world (role-select driven by
+  the official police.yml/criminal.yml data rows). g1002 SkyWar is OUT
+  PERMANENTLY (zero map zips on the CDN); g1053/g1024/g1047 stay
+  rejected (their sidecars are not in the pack manifest).
