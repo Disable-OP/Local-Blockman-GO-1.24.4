@@ -106,13 +106,15 @@ adb install -r official-bg-2.8.2-v7a-4151.apk  # the pristine client
 | 7 | **g1043/g1044/g1045 PixelGun** rooms (the shared-scriptdir family, waves 5/5/1 — the [ai-presence] fallback materializes the wave robots as real counted players, so the startPlayers 6/6/2 gates pass with the human) | each room loads its own mapdir under the ONE PixelGunGame scriptdir; bots appear in the room (monitor log: the wave attrs land, then the bots' login lines) |
 | 8 | **g1054 SkyWarLuckyBlock** join (FIRST of the new-style base.* wiring class — 94 base.* requires resolve under scripts/SkyWarLuckyBlock/base/); wave 2 fires (startPlayers 3 — the ai-presence robots complete the gate) | `base.Base` loads from scriptdir/base/; monitor log shows Match.lua start after the human joins; 2/2 robot attrs land and the bots log in |
 | 9 | **g1058 SkyWarLuckyBlockHall** + **g1056/g1057 TowerDefense** pair (wave 0 rooms — g1056's gate self-satisfies with the human: teammateNum defaults to 1, the process starts on the first tick; monsters are the content) | halls idle clean; g1056 starts a process as soon as the human enters |
-| 10 | **g1001 HungryGame** join (FIRST time-gated start: the official config's WaitingPlayerTask runs a 150 s countdown from the human's login — wait it out or bump waitingPlayerTime in the map's config.yml); wave 0 by design (2019 scripts not AI-aware) | map m1001_1 loads (dome arena, spawn circle y=22); countdown messages; startMatch after the gate; chest loot fills from the official config pools |
-| 10 | **g1014 JailBreak** join (FIRST open-world room: no gate at all — roles police/criminal, shops, vehicles, chests, strongboxes from the 13 official ymls); wave 0 by design | map m1401 loads (initPos 148/116/319); GameTimeTask ticks; role-select UI driven by police.yml/criminal.yml data rows; no `getConfigFromYml not file` errors |
+| 10a | **g1001 HungryGame** join (FIRST time-gated start: the official config's WaitingPlayerTask runs a 150 s countdown from the human's login — wait it out or bump waitingPlayerTime in the map's config.yml); wave 0 by design (2019 scripts not AI-aware) | map m1001_1 loads (dome arena, spawn circle y=22); countdown messages; startMatch after the gate; chest loot fills from the official config pools |
+| 10b | **g1014 JailBreak** join (FIRST open-world room: no gate at all — roles police/criminal, shops, vehicles, chests, strongboxes from the 13 official ymls); wave 0 by design | map m1401 loads (initPos 148/116/319); GameTimeTask ticks; role-select UI driven by police.yml/criminal.yml data rows; no `getConfigFromYml not file` errors |
 | 11 | (if blocks misrender) per-game `id_mappings.ini` from the g1046-10078 appres pattern (docs §14) | render correct |
 
 After EVERY step: `sh scripts/ondrive_collect.sh <step-N>` — it snapshots
 logcat (`LocalAPI`, `GS`, `BLOCK`, engine tags), the holder state dir, the
-gs-line/stage markers, the drive dir, and net rules into
+gs-line/stage markers, the drive dir, net rules, and the MONITOR LOGS
+(`server.log`/`client.log` from the client config dir — `resolveLogDir`'s
+candidates — plus the staged bundle's `logs/`) into
 `/sdcard/drive/evidence-step-N.tar.gz` (pull with `adb pull`).
 
 ## 7. Troubleshooting

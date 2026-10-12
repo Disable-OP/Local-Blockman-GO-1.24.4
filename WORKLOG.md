@@ -5255,3 +5255,41 @@ Stage Summary:
   11 steps; §20 watch list). Sandbox-side remains closed (delta 25 wave
   table FINAL; id_mappings evidence-gated; gate toolchain restart-proof
   per delta 27).
+
+## Session 85 - THE DEVICE KIT AUDITED PRE-DEVICE: the evidence collector's three silent defects fixed against the holder source (2026-10-13)
+
+- Device still hardware-bound; with the gates + release bytes freshly
+  verified (sessions 83/84), the session audited the device kit itself
+  (ondrive_setup.sh, ondrive_collect.sh, gen_drive_ca.py) against the
+  holder source. The kit has NEVER run on a device — a silent evidence
+  gap would only have surfaced mid-drive, burning device time.
+- SETUP SIDE CLEAN: sh -n OK; hosts/CA/iptables/staging/verify match
+  doc §4; gen_drive_ca.py SANs (7 hosts + loopback) cover the full
+  redirected inventory. No drift.
+- COLLECTOR: THREE REAL DEFECTS (all silent behind 2>/dev/null), fixed:
+  1. Bundle path wrong from birth — collector listed
+     <filesDir>/localapi/gameserver-runtime-g10078; the holder stages
+     <filesDir>/gameserver-bundle (GameServerManager.BUNDLE_DIR =
+     "gameserver-bundle", constant since commit 1441e5d). The collector
+     was written in session 76 without cross-checking the constant;
+     bundle-ls.txt would have been EMPTY on every step.
+  2. The monitor logs were never captured — server.log (the primary
+     §20 watch-list artifact) + client.log live in the CLIENT config
+     dir (GameServerManager.resolveLogDir order:
+     /storage/emulated/<id>/SandBoxOL/BlockMan/config -> the harness's
+     external files dir -> <filesDir>/gameserver-bundle/logs as last
+     resort; the bundleDir/logs hit in the source is the HOST SELFTEST's
+     synthetic dir). The collector pointed at a nonexistent
+     <filesDir>/localapi/gameserver/. All three candidates are now
+     captured (server.log + client.log + per-candidate ls).
+  3. stage-version (STAGE_VERSION_FILE, the doc §6 "stage markers")
+     now captured from the bundle root; logcat filter gained BLOCK:V
+     (the doc already claimed it).
+- DOC §6: duplicated step-10 rows (g1001 HungryGame + g1014 JailBreak)
+  disambiguated to 10a/10b (the "11 steps" count holds); the evidence
+  paragraph states the monitor-log capture explicitly.
+- GATES green: suite 701/701; smoke 28/28. The collector/setup are
+  device-side (outside the host suite) — syntax + source cross-check is
+  their gate.
+- Next: UNCHANGED — the device drive on b8 (docs/ON_DEVICE_DRIVE.md §6);
+  the kit now collects the evidence the pass gates actually read.

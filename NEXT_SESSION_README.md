@@ -3777,3 +3777,42 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   11 steps, evidence per step via scripts/ondrive_collect.sh, watch list
   in doc §20). Sandbox-side remains closed: wave table FINAL (delta 25),
   id_mappings evidence-gated, gate toolchain restart-proof (delta 27).
+
+## Cron-session delta 29 (read FIRST — THE DEVICE KIT ITSELF WAS AUDITED PRE-DEVICE: the evidence collector had THREE silent defects (wrong bundle path, the monitor logs were never captured, no stage-version marker) — all fixed against the holder source; doc §6 step numbering disambiguated; b8 drive unchanged)
+
+- Device still hardware-bound; with all gates + release bytes verified in
+  sessions 83/84, the session audited the DEVICE KIT ITSELF
+  (ondrive_setup.sh / ondrive_collect.sh / gen_drive_ca.py) against the
+  holder source — the scripts have never run on a device, so a silent
+  evidence gap would only have surfaced mid-drive.
+- SETUP SIDE CLEAN: sh -n OK; the 3 redirected hosts / CA install /
+  iptables 80->18080 / staging / verify steps all match doc §4 and
+  gen_drive_ca.py's SANs cover the full redirected inventory
+  (7 hosts + loopback) — no drift.
+- COLLECTOR: THREE REAL DEFECTS, all silent (2>/dev/null) and all fixed
+  against GameServerManager/LocalServer/DriveTls source:
+  1. WRONG BUNDLE PATH (both name and parent): the collector listed
+     <filesDir>/localapi/gameserver-runtime-g10078; the holder stages at
+     <filesDir>/gameserver-bundle (GameServerManager.BUNDLE_DIR,
+     unchanged since the early build — the collector was wrong from
+     birth). bundle-ls.txt would have been empty on EVERY step.
+  2. THE MONITOR LOGS WERE NEVER CAPTURED: server.log (the §20 watch
+     list's primary artifact) + the client's client.log live in the
+     CLIENT config dir (resolveLogDir order: /storage/emulated/<id>/
+     SandBoxOL/BlockMan/config -> the harness's external files dir ->
+     <bundle>/logs last resort); the collector pointed at a
+     nonexistent <filesDir>/localapi/gameserver/. Now all three
+     candidates are captured (server.log + client.log + per-candidate
+     listings).
+  3. MISSING STAGE MARKER + TAG: stage-version (the doc §6 evidence
+     list promises "gs-line/stage markers") is now captured from the
+     bundle root, and the logcat filter gained BLOCK:V (doc already
+     claimed it).
+- DOC §6: the duplicated step-10 rows (g1001 + g1014) are now 10a/10b
+  (11 distinct steps unchanged); the evidence paragraph now states the
+  monitor-log capture explicitly.
+- GATES green: suite 701/701; smoke 28/28. (The collector/setup scripts
+  are device-side and outside the host suite — the syntax + source
+  cross-check IS their gate.)
+- NEXT: UNCHANGED — the device drive on b8 (docs/ON_DEVICE_DRIVE.md §6).
+  The kit now collects the evidence the pass gates actually read.
