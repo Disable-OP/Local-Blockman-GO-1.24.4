@@ -138,6 +138,37 @@ jobs:
           echo "wrap selftest (via wraplog.sh) exit: $rc"
           echo "selftest wraplog: $(adb -s localhost:5555 shell cat /data/local/tmp/wraplog.txt | head -5)"
           adb -s localhost:5555 shell 'echo -n "device-side rc: "; /data/local/tmp/wrap282 /system/bin/true; echo $?'
+          # v15 layer 2 — the fake-status bind-mount daemon. The libbgscomp
+          # USER_NOTIF supervisor (layer 1, in-APK) scrubs /proc/self/status
+          # via a memfd; this layer independently bind-mounts a scrubbed
+          # copy over EVERY :BlockmanGo process's /proc/<pid>/status so the
+          # TSS ctor's check reads "Seccomp: 0 / NoNewPrivs: 0" even if the
+          # in-process install fails on-device. Root (adb root) + the
+          # shared container mount namespace make the bind visible to the
+          # app. The daemon logs each mount into .fs_mounted (evidence).
+          adb -s localhost:5555 shell "rm -f /data/local/tmp/.fs_mounted /data/local/tmp/fs_[0-9]*"
+          adb -s localhost:5555 shell 'cat > /data/local/tmp/fsloop.sh <<"FSEOF"
+          #!/system/bin/sh
+          M=/data/local/tmp/.fs_mounted
+          touch $M
+          while true; do
+            for D in /proc/[0-9]*; do
+              C=$(tr -d "\0" < $D/cmdline 2>/dev/null)
+              case "$C" in
+                *":BlockmanGo"*)
+                  P=${D#/proc/}
+                  grep -qx "$P" $M 2>/dev/null || {
+                    sed "s/^Seccomp:.*/Seccomp:\t0/; s/^NoNewPrivs:.*/NoNewPrivs:\t0/" $D/status > /data/local/tmp/fs_$P 2>/dev/null
+                    mount --bind /data/local/tmp/fs_$P $D/status 2>/dev/null && echo "$P" >> $M
+                  }
+                  ;;
+              esac
+            done
+            sleep 0.5
+          done
+          FSEOF'
+          adb -s localhost:5555 shell chmod 755 /data/local/tmp/fsloop.sh
+          adb -s localhost:5555 shell 'nohup /data/local/tmp/fsloop.sh >/dev/null 2>&1 & echo "fsloop daemon: $!"'
 
       - name: Launch + 15s keep-alive
         run: |
@@ -211,6 +242,10 @@ jobs:
           echo "== seccomp guard file evidence =="
           adb -s localhost:5555 shell "cat /data/local/tmp/guardlog.txt 2>/dev/null" || true
           adb -s localhost:5555 shell "cat /data/user/0/com.sandboxol.blockymods/files/seccomp_guard.log 2>/dev/null" || echo "(no guard log)"
+          echo "== v15 layer-2 fake-status mounts (.fs_mounted) =="
+          adb -s localhost:5555 shell "cat /data/local/tmp/.fs_mounted 2>/dev/null" || echo "(no mounts)"
+          echo "== bind mounts over proc status =="
+          adb -s localhost:5555 shell "cat /proc/mounts 2>/dev/null | grep -E 'fs_[0-9]+|/proc/[0-9]+/status'" || echo "(none)"
           echo "== wraplog.txt (which processes actually got wrapped) =="
           adb -s localhost:5555 shell cat /data/local/tmp/wraplog.txt 2>/dev/null || echo "(no wraplog)"
           cp <(adb -s localhost:5555 shell cat /data/local/tmp/wraplog.txt 2>/dev/null) wraplog.txt 2>/dev/null || adb -s localhost:5555 shell cat /data/local/tmp/wraplog.txt > wraplog.txt 2>/dev/null || true

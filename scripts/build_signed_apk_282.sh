@@ -154,6 +154,15 @@ cp -f "$GSSO" "$BUILD/libtmp/lib/armeabi-v7a/libgameserver.so"
 # loaded by LocalServer in the :BlockmanGo process; neutralizes the TSS
 # verdict (exit/exit_group 25|30 -> ERRNO(ENOSYS)) regardless of the
 # unreliable Zygote wrap property.
+# v15: the guard is now the USER_NOTIF status-scrub supervisor
+# (scripts/exithook/bgscomp.c — C source of truth, cross-compiled with
+# arm-linux-gnueabihf-gcc; bgscomp.S is the retired v14 hand-asm build).
+# The .so is committed; re-verify its embedded BPF against the C source:
+python3 "$REPO/scripts/exithook/sim_bpf_bgscomp.py" "$REPO/scripts/exithook/bgscomp.c" \
+  || { echo "FATAL: bgscomp BPF simulator mismatch"; exit 1; }
+python3 "$REPO/scripts/exithook/sim_bpf_bgscomp.py" "$REPO/scripts/exithook/bgscomp.c" \
+  --verify-so "$REPO/scripts/exithook/libbgscomp.so" \
+  || { echo "FATAL: libbgscomp.so BPF bytes do not match bgscomp.c"; exit 1; }
 cp -f "$REPO/scripts/exithook/libbgscomp.so" "$BUILD/libtmp/lib/armeabi-v7a/libbgscomp.so"
 ( cd "$BUILD/libtmp" && zip -q "$BUILD/patched-unsigned.apk" lib/armeabi-v7a/libgameserver.so lib/armeabi-v7a/libbgscomp.so )
 unzip -l "$BUILD/patched-unsigned.apk" | grep -q 'lib/armeabi-v7a/libgameserver.so' \
