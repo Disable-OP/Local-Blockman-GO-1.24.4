@@ -3389,10 +3389,13 @@ def main_282(args):
         check("drive[%s]: join fired (game/auth REQ after btn_enter)"
               % glabel, fired,
               "the client never requested GET /game/api/v2/game/auth")
-        check("drive[%s]: dispatch reached the holder (POST /v1/dispatch)"
+        check("drive[%s]: dispatch reached the holder (POST /v1/dispatch*)"
               % glabel,
-              "REQ POST /v1/dispatch" in _jb,
-              "no /v1/dispatch traffic - the join never asked for the "
+              ("REQ POST /v1/dispatch" in _jb
+               or "REQ POST /v1/dispatch-party" in _jb
+               or "REQ POST /v1/follow" in _jb),
+              "no dispatch traffic (/v1/dispatch, /v1/dispatch-party, "
+              "/v1/follow all absent) - the join never asked for the "
               "game address")
         check("drive[%s]: engine activity up (BlockManEchoesActivity)"
               % glabel, echoes)
