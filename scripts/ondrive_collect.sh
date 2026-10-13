@@ -53,9 +53,16 @@ cp "$BUNDLE"/logs/*.log "$OUT/files/" 2>/dev/null
 # Session 86: the PRISTINE client's own external dir is a candidate too —
 # the drive's client.log/server.log land under ITS package (the joiner),
 # not the harness's.
+# Session 87 (run-7 startParameter): the 2.8.2 engine's configPath is
+#   /storage/emulated/0/Android/data/<pristine>/files/Download/SandboxOL/BlockMan/config/
+# (the Download/ segment + the SandboxOL spelling) — captured now.
 for CFG in "/storage/emulated/0/SandBoxOL/BlockMan/config" \
            "/sdcard/SandBoxOL/BlockMan/config" \
            "/sdcard/Android/data/$HARNESS_PKG/files/SandBoxOL/config" \
+           "/storage/emulated/0/Android/data/com.sandboxol.blockymods/files/Download/SandboxOL/BlockMan/config" \
+           "/storage/emulated/0/Android/data/com.sandboxol.blockymods/files/Download/SandBoxOL/BlockMan/config" \
+           "/storage/emulated/0/Android/data/com.sandboxol.blockymods/files/SandboxOL/BlockMan/config" \
+           "/storage/emulated/0/Android/data/com.sandboxol.blockymods/files/SandBoxOL/BlockMan/config" \
            "/storage/emulated/0/Android/data/com.sandboxol.blockymods/files/SandBoxOL/config" \
            "/sdcard/Android/data/com.sandboxol.blockymods/files/SandBoxOL/config"; do
   [ -d "$CFG" ] || continue
@@ -63,6 +70,19 @@ for CFG in "/storage/emulated/0/SandBoxOL/BlockMan/config" \
     >> "$OUT/files/logdir.txt"
   cp "$CFG/server.log" "$OUT/files/server.log" 2>/dev/null
   cp "$CFG/client.log" "$OUT/files/client.log" 2>/dev/null
+done
+
+# Session 87: the pristine map trees (the engine's mapPath =
+# .../files/Download/SandboxOL/BlockMan/map/) + the placement proof
+# (mapExistsAndValid reads hunger_game_1 there).
+for MROOT in \
+  "/storage/emulated/0/Android/data/com.sandboxol.blockymods/files/Download/SandboxOL/BlockMan/map" \
+  "/storage/emulated/0/Android/data/com.sandboxol.blockymods/files/SandboxOL/BlockMan/map"; do
+  [ -d "$MROOT" ] || continue
+  { echo "maproot: $MROOT"; ls -la "$MROOT" 2>/dev/null; \
+    echo "--- hunger_game_1 head ---"; ls "$MROOT/hunger_game_1" 2>/dev/null | head -12; \
+    echo "--- m1008_2 head ---"; ls "$MROOT/m1008_2" 2>/dev/null | head -12; } \
+    >> "$OUT/files/pristine-map-trees.txt"
 done
 
 TAR="/sdcard/drive/evidence-$LABEL.tar.gz"

@@ -989,50 +989,104 @@ final class Handlers {
     }
 
     /**
-     * GET /game/api/v2/game/auth (+ /flow/game/auth, /v1/game-map) — mini-game
-     * session token. dispUrl points at THIS server so the client's follow-up
-     * POST /v1/dispatch (and /v1/follow, /v1/game-res) lands on the loopback
-     * API. The token is issued into real state (root.miniTokens) and validated
-     * by the dispatch handler.
+     * GET /game/api/v2/game/auth (+ /flow/game/auth) — mini-game session
+     * token. dispUrl points at THIS server so the client's follow-up
+     * GET /v1/game-map (the engine's inner join) lands on the loopback
+     * API. The token is issued into real state (root.miniTokens) and
+     * validated by the dispatch handler.
+     *
+     * Session 87: downloadUrl now carries the requested game's map bundle
+     * (the MiniGameToken.downloadUrl -> realmsResult.mapUrl feed; empty
+     * before, which starved every map download) and mapName echoes the
+     * caller's map (or the client-visible map dir name — hunger_game_1 for
+     * the g1046 hall).
      */
     private static String miniGameToken(Ctx ctx, StateStore store) {
+        String qType = ctx.query("typeId");
+        if (qType == null || qType.isEmpty()) qType = ctx.query("gameType");
+        String gid = null;
+        if (qType != null) {
+            if (qType.matches("g[0-9]+")) gid = qType;
+            else if (qType.matches("[0-9]+")) gid = "g" + qType;
+        }
+        return miniGameToken(ctx, store, null, gid, ctx.query("mapName"));
+    }
+
+    /** The token builder shared by game/auth and /v1/game-map (session 87):
+     *  mt = the caller's FRESH join token to echo (or null = issue one),
+     *  gid = the normalized game id for the map bundle, qMap = the
+     *  caller's mapName (echoed verbatim when present). */
+    private static String miniGameToken(Ctx ctx, StateStore store,
+                                        JSONObject mt, String gid,
+                                        String qMap) {
         JSONObject u = store.resolve(ctx.header("access-token"), ctx.header("userid"));
-        String mapName = ctx.query("mapName") == null ? "" : ctx.query("mapName");
-        String gameType = ctx.query("typeId") == null ? "" : ctx.query("typeId");
-        JSONObject t = store.issueMiniToken(u.optLong("userId"), gameType, mapName, 0);
+        String mapName = qMap == null ? "" : qMap;
+        if (mt == null) {
+            mt = store.issueMiniToken(u.optLong("userId"),
+                    gid == null ? "" : gid.substring(1), mapName, 0);
+        }
+        // The map bundle for the requested game (the pack entry; the
+        // g1046 hall resolves to the 2.8.2-era BedWarHall bundle whose
+        // client map dir is hunger_game_1).
+        String downloadUrl = "";
+        if (gid != null) {
+            JSONObject entry = MapAssets.entryForGame(gid);
+            if (entry != null) {
+                downloadUrl = MapAssets.durlFor(entry);
+                if (mapName.isEmpty()) {
+                    String cm = entry.optString("mapId", "");
+                    if (!cm.isEmpty()) mapName = cm;
+                }
+            }
+        }
         JSONObject out = new JSONObject();
-        out.put("token", t.optString("token"));
-        out.put("timestamp", t.optLong("timestamp"));
-        out.put("signature", t.optString("signature"));
+        out.put("token", mt.optString("token"));
+        out.put("timestamp", mt.optLong("timestamp"));
+        out.put("signature", mt.optString("signature"));
         out.put("dispUrl", LOCAL_BASE_URL);
-        out.put("downloadUrl", "");
+        out.put("downloadUrl", downloadUrl);
         out.put("mapName", mapName);
         out.put("region", 0);
         out.put("country", "");
-        // requestId: {userId -> per-issuance hex} — echoed back in Dispatch.requestIds
+        // requestId: {userId -> per-issuance hex} — echoed back in Dispatch.requestIds.
+        // Session 87: the key is the TOKEN's owner (the shahe-header form
+        // carries no access-token, so store.resolve would key the wrong
+        // user — the suite caught the mismatch).
+        long echoUid = mt.optLong("userId");
+        if (echoUid <= 0) echoUid = u.optLong("userId");
         JSONObject req = new JSONObject();
-        req.put(String.valueOf(u.optLong("userId")), t.optString("requestId"));
+        req.put(String.valueOf(echoUid), mt.optString("requestId"));
         out.put("requestId", req);
+        L.i("mini-token: game=" + gid + " mapName=" + mapName
+                + " downloadUrl=" + (downloadUrl.isEmpty() ? "-" : "set"));
         return envelope("obj", out.toString());
     }
 
     /**
-     * GET /v1/game-map — THE 2.8.2 CLIENT'S DISPATCH (session 86, run-5
-     * evidence): the pristine join flow is game/auth (token) -> GET
-     * {dispUrl}/v1/game-map -> StartMc, ~20 ms between them, and the
-     * engine's startParameter printed ip: EMPTY (the local boot) when this
-     * endpoint answered the TOKEN shape — the join dialog's Dispatch field
-     * stayed null so gameAddr became "". The 1.24.4-era alias
-     * (game-map == miniGameToken) is kept ONLY for callers that arrive
-     * without a fresh join token; a request whose user just issued a mini
-     * token (seconds ago, THIS join) gets the FULL DISPATCH shape —
-     * gaddr/gameType/mid/mname/downurl — exactly like POST /v1/dispatch,
-     * including the serving-driven selectGame + engine kick.
+     * GET /v1/game-map — THE ENGINE'S INNER JOIN (session-87 decode of the
+     * pristine 2.8.2 client). TWO consumers parse this response AS
+     * MiniGameToken (plain field names — downloadUrl/mapName/token/...):
+     *   1. the join chain's own callback (utils/w: signature+timestamp+cdns
+     *      -> the start Dispatch), and
+     *   2. EchoesGLSurfaceView.loadMiniGameToken -> GameApi.getMiniGameMap —
+     *      the ENGINE's own room join: downloadUrl feeds realmsResult.mapUrl
+     *      and mapName names the mapExistsAndValid dir, then initGame runs.
+     * The run-5/6 DISPATCH-shape bridge (gaddr/downurl keys) starved BOTH:
+     * run-7 evidence shows mapUrl[] EMPTY -> the engine fell back to its
+     * default hall map hunger_game_1 with no URL -> onDownloadMapFailure x2.
+     * This endpoint therefore ALWAYS answers the MiniGameToken shape now.
+     *
+     * Room staging side effect kept: the queried game selects what the
+     * on-device GameServer hosts (the hall flow asks g1046; the engine's
+     * inner room join names the room's game) — selectGame + kick, then a
+     * brief hold so THIS response follows the staging decision.
      */
     private static String gameMapDispatch(Ctx ctx, StateStore store) {
+        String qType = ctx.query("gameType");
+        if (qType == null || qType.isEmpty()) qType = ctx.query("typeId");
+        String qMap = ctx.query("mapName");
         String token = ctx.header("x-shahe-token");
         JSONObject mt = token == null ? null : store.findMiniToken(token);
-        boolean viaHeader = mt != null;
         if (mt == null) {
             JSONObject u = store.resolve(ctx.header("access-token"),
                     ctx.header("userid"));
@@ -1040,13 +1094,18 @@ final class Handlers {
                 mt = store.latestMiniTokenFor(u.optLong("userId"), 120_000L);
             }
         }
-        if (mt != null) {
-            L.i("game-map: serving the DISPATCH shape (shahe-header="
-                    + viaHeader + ", gameType=" + mt.optString("gameType")
-                    + ")");
-            return dispatch(ctx, store, false, mt);
+        L.i("game-map: query gameType=" + qType + " mapName=" + qMap
+                + " (freshToken=" + (mt != null) + ")");
+        String gid = null;
+        if (qType != null) {
+            if (qType.matches("g[0-9]+")) gid = qType;
+            else if (qType.matches("[0-9]+")) gid = "g" + qType;
         }
-        return miniGameToken(ctx, store);
+        if (gid != null) {
+            GameServerManager.selectGame(gid);
+            GameServerManager.kick();
+        }
+        return miniGameToken(ctx, store, mt, gid, qMap);
     }
 
     /**

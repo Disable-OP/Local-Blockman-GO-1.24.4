@@ -198,6 +198,63 @@ jobs:
           adb -s localhost:5555 shell getprop ro.product.cpu.abilist
           adb -s localhost:5555 shell pm path "$PRISTINE_PKG" | head -2
 
+      - name: Pre-place the pristine hall map + config dirs (run-7 CreateDir(17) workaround)
+        # RUN-7 DECODE (the farthest drive evidence, artifact 11845052692):
+        # the 2.8.2 engine's native PathUtil::CreateDir dies on the
+        # emulated-storage chain ("error code = [17] (EEXIST), dir =
+        # [storage/emulated/]" — run 7 logcat 19:52:19.224) so it can NEVER
+        # mkdir its own mapPath/configPath. The hall join then dies on
+        # CGame::onDownloadMapFailure x2 (map hunger_game_1, mapUrl[] EMPTY —
+        # the client's join chain copies only signature/timestamp from the
+        # auth token, so mapUrl can never arrive) and the local hall world
+        # stays a black screen forever. The engine's default hall map name
+        # is hunger_game_1 (EchoesGLSurfaceView: realmsResult.mapName==null
+        # -> "hunger_game_1"). The workflow (adb root) pre-creates BOTH
+        # trees under the PRISTINE app's own external dir and places the
+        # era-correct maps:
+        #   g1046 hall -> BedWarHall.1596795531126.zip (the official CDN's
+        #                 own g1046 map — GameTip/g1046.csv inside) as
+        #                 hunger_game_1 (the engine's expected dir name)
+        #   g1008 room -> m1008_2.1625226508247.zip (the release maps pack,
+        #                 the same id the on-device GameServer hosts)
+        # Direct layout ONLY (checksums.md5 + the 47 files at the map dir
+        # root): mapExistsAndValid counts the dir's files against the md5
+        # entries, so extra files (a nested copy, the zip itself) would
+        # break verification. Ownership is chowned to the pristine uid so
+        # the engine can write its logs/temp next to the map.
+        run: |
+          set -e
+          PKG="$PRISTINE_PKG"
+          UP=$("adb" -s localhost:5555 shell "stat -c %u /storage/emulated/0/Android/data/$PKG/files" | tr -d '\r')
+          echo "pristine uid: $UP"
+          curl -sS -o /tmp/BedWarHall.zip \
+            "https://staticgs.sandboxol.com/sandbox/games/maps/BedWarHall.1596795531126.zip"
+          echo "dc53d7665e1b691c8099f2f1479fbf9ad288c6c100dfd6afcebcaa4fcfaf7f7c  /tmp/BedWarHall.zip" | sha256sum -c -
+          curl -sSL -o /tmp/maps.tar.gz \
+            "https://github.com/Disable-OP/Local-Blockman-GO-1.24.4/releases/download/localapi-assets/maps.tar.gz"
+          echo "e86ac824030de9503f7eb2f7b3bc3248d1abfc0f84914b0c27b8976581ba5672  /tmp/maps.tar.gz" | sha256sum -c -
+          rm -rf /tmp/bwh /tmp/m1008 && mkdir -p /tmp/bwh /tmp/m1008
+          (cd /tmp/bwh && unzip -q /tmp/BedWarHall.zip)
+          # the pack is a tar.gz (no wrapping dir): extract exactly the
+          # m1008_2 bundle zip the on-device GameServer also runs
+          tar -xzf /tmp/maps.tar.gz -C /tmp/m1008 \
+            "sandbox/games/maps/m1008_2.1625226508247.zip"
+          rm -rf /tmp/m1008x && mkdir -p /tmp/m1008x
+          (cd /tmp/m1008x && unzip -q /tmp/m1008/sandbox/games/maps/m1008_2.1625226508247.zip)
+          for SPELL in SandboxOL SandBoxOL; do
+            for SEG in "Download/$SPELL" "$SPELL"; do
+              MAP="/storage/emulated/0/Android/data/$PKG/files/$SEG/BlockMan/map"
+              CFG="/storage/emulated/0/Android/data/$PKG/files/$SEG/BlockMan/config"
+              adb -s localhost:5555 shell "mkdir -p '$MAP/hunger_game_1' '$MAP/m1008_2' '$CFG'"
+              adb -s localhost:5555 push /tmp/bwh/.    "$MAP/hunger_game_1/"
+              adb -s localhost:5555 push /tmp/m1008x/. "$MAP/m1008_2/"
+              adb -s localhost:5555 shell "chown -R $UP:$UP '$MAP' '$CFG'" || true
+              adb -s localhost:5555 shell "chmod -R u+rwX '$MAP' '$CFG'" || true
+            done
+          done
+          echo "== placed map trees =="
+          adb -s localhost:5555 shell "find /storage/emulated/0/Android/data/$PKG/files/Download/SandboxOL/BlockMan -maxdepth 4 | head -20"
+
       - name: Launch the pristine client (drive step 1 - login lands on OUR holder)
         run: |
           adb -s localhost:5555 logcat -c

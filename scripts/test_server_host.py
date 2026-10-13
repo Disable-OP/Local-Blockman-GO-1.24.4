@@ -3487,35 +3487,61 @@ def main():
               and dd7.get("mid") == "maps/g1008/m1008_2"
               and dd7.get("name") == "Bed War", str(dd7)[:250])
 
-        # --- GAME-MAP DISPATCH BRIDGE (session 86, the 2.8.2 client's
-        # real join: game/auth -> GET /v1/game-map must answer the
-        # DISPATCH shape — run-5 evidence: the token shape left the join
-        # dialog's Dispatch null and the engine booted a LOCAL world) ---
+        # --- GAME-MAP TOKEN SHAPE (session 87 — SUPERSEDES the run-5/6
+        # dispatch-shape bridge): BOTH game-map consumers parse the
+        # response AS MiniGameToken (plain field names). The engine's own
+        # inner join (EchoesGLSurfaceView.loadMiniGameToken -> GameApi.
+        # getMiniGameMap) reads downloadUrl -> realmsResult.mapUrl and
+        # mapName -> the mapExistsAndValid dir; the run-7 evidence showed
+        # the dispatch-shape keys (gaddr/downurl) starve both (mapUrl[]
+        # EMPTY -> the hunger_game_1 default -> CreateDir(17) -> stuck).
+        # The endpoint now ALWAYS answers the token shape; gaddr lives
+        # only on POST /v1/dispatch. ---
         gm7 = call("GET", "/v1/game-map",
                    headers={"x-shahe-uid": str(uid7),
                             "x-shahe-token": mg7.get("token", "")},
                    base=base7)
         gd7 = gm7.get("data", {})
-        check("game-map: shahe-header form serves the DISPATCH shape",
-              gm7.get("code") == 1 and gd7.get("gaddr")
-              and gd7.get("gameType") == "g1008", str(gd7)[:200])
+        check("game-map: shahe-header form serves the MiniGameToken shape "
+              "(token + downloadUrl + mapName keys, NO gaddr)",
+              gm7.get("code") == 1 and gd7.get("token")
+              and "downloadUrl" in gd7 and "mapName" in gd7
+              and "gaddr" not in gd7, str(gd7)[:220])
+        check("game-map: token echoes the shahe caller's requestId",
+              gd7.get("requestId", {}).get(str(uid7))
+              == mg7.get("requestId", {}).get(str(uid7)),
+              str(gd7.get("requestId"))[:120])
         mt8 = call("GET", "/game/api/v2/game/auth?typeId=1008&targetId=%d"
                    "&gameVersion=1" % uid7,
                    headers={"Access-Token": tok7, "userId": str(uid7)},
                    base=base7)
-        gm8 = call("GET", "/v1/game-map",
+        gm8 = call("GET", "/v1/game-map?gameType=1008",
                    headers={"Access-Token": tok7, "userId": str(uid7)},
                    base=base7)
         gd8 = gm8.get("data", {})
-        check("game-map: fresh-token fallback (no shahe pair) still "
-              "dispatches",
-              gm8.get("code") == 1 and gd8.get("gaddr")
-              and gd8.get("gameType") == "g1008", str(gd8)[:200])
+        check("game-map: fresh-token fallback (no shahe pair) still the "
+              "token shape",
+              gm8.get("code") == 1 and gd8.get("token")
+              and "downloadUrl" in gd8 and "gaddr" not in gd8,
+              str(gd8)[:200])
+        # the engine's inner fetch names the game: the echoed mapName (or
+        # the client-visible map dir name when the map store resolves it)
+        check("game-map: gameType query normalized (g1008 map id echoed "
+              "when the map store resolves the game)",
+              gm8.get("code") == 1
+              and (gd8.get("mapName") in ("", "m1008_2", "maps/g1008/m1008_2")),
+              "mapName=%r" % gd8.get("mapName"))
         # the legacy alias: no token at all -> the miniGameToken shape
         gm9 = call("GET", "/v1/game-map", base=base7)
         check("game-map: anonymous caller keeps the token shape",
               gm9.get("code") == 1 and gm9.get("data", {}).get("token")
-              and not gm9.get("data", {}).get("gaddr"), str(gm9)[:160])
+              and "gaddr" not in gm9.get("data", {}), str(gm9)[:160])
+        # game/auth carries the map bundle for the requested game (the
+        # MiniGameToken.downloadUrl -> realmsResult.mapUrl feed; run-7:
+        # empty downloadUrl starved every map download)
+        md8 = mt8.get("data", {})
+        check("game/auth: downloadUrl key present (map bundle or empty "
+              "pre-index)", "downloadUrl" in md8, str(md8)[:200])
 
         # --- real skin catalog (skins.json capture) ---
         dl7 = call("GET", "/decoration/api/v1/decorations/11",

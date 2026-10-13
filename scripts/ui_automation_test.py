@@ -2916,8 +2916,18 @@ def g282_find_cfgdirs(adb, package):
     add_all(adb.sh(
         "ls -d /storage/emulated/*/Android/data/%s/files/SandBoxOL/config"
         " 2>/dev/null" % package, timeout=20))
+    # session 87 (run-7 startParameter): the 2.8.2 engine's own configPath
+    # is files/Download/{SandboxOL,SandBoxOL}/BlockMan/config — the dir the
+    # workflow pre-creates so client.log finally becomes capturable.
+    add_all(adb.sh(
+        "ls -d /storage/emulated/*/Android/data/%s/files/Download/"
+        "Sa*BoxOL/BlockMan/config /storage/emulated/*/Android/data/%s/"
+        "files/Sa*BoxOL/BlockMan/config 2>/dev/null" % (package, package),
+        timeout=20))
     ordered = [c for c in cands
                if c.endswith("/emulated/0/SandBoxOL/BlockMan/config")]
+    ordered += [c for c in cands if "/Download/" in c
+                and c not in ordered]
     ordered += [c for c in cands if c not in ordered]
     return ordered
 

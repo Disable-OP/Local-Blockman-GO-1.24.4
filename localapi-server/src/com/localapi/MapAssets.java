@@ -84,6 +84,25 @@ final class MapAssets {
     private static volatile Map<String, File> byKey =
             new HashMap<String, File>();
 
+    /**
+     * The 2.8.2-era official CDN maps the 1.24.4-era pack does NOT carry
+     * (session-87 run-7 decode: the 2.8.2 client's hall (g1046) wants the
+     * map dir "hunger_game_1" — the pack's g1046 bundle is m1046_2, a
+     * DIFFERENT 1.24.4-era hall; the CDN dump has no hunger_game_1 at all).
+     * The BedWarHall zip is the official CDN's own g1046 map (GameTip/
+     * g1046.csv inside) — the engine loads it fine under the name the
+     * client asks for. Keys mirror the original CDN objects
+     * (https://staticgs.sandboxol.com); sha256 pinned from the downloaded
+     * artifact (session 87).
+     */
+    private static final String CDN_BASE = "https://staticgs.sandboxol.com/";
+    /** {scriptType, cdn key, sha256, clientMapName}. */
+    private static final String[][] EXTRA_MAPS = {
+        {"g1046", "sandbox/games/maps/BedWarHall.1596795531126.zip",
+         "dc53d7665e1b691c8099f2f1479fbf9ad288c6c100dfd6afcebcaa4fcfaf7f7c",
+         "hunger_game_1"},
+    };
+
     private MapAssets() {}
 
     // ------------------------------------------------------------ lifecycle
@@ -108,7 +127,19 @@ final class MapAssets {
     static JSONObject entryForGame(String scriptType) {
         Map<String, JSONObject> g = byGame;
         if (g == null || scriptType == null) return null;
-        return g.get(scriptType);
+        JSONObject e = g.get(scriptType);
+        if (e == null && scriptType.matches("[0-9]+")) {
+            e = g.get("g" + scriptType);
+        }
+        return e;
+    }
+
+    /** The CLIENT-visible map dir name the 2.8.2 engine expects for a game
+     *  (the EXTRA_MAPS override; the pack's mapId otherwise). Run-7: the
+     *  hall (g1046) is "hunger_game_1" — the engine's own default. */
+    static String clientMapName(String scriptType) {
+        JSONObject e = entryForGame(scriptType);
+        return e == null ? null : e.optString("mapId", null);
     }
 
     /** The download URL the engine fetches the map bundle from (loopback). */
@@ -166,6 +197,12 @@ final class MapAssets {
                         L.i("maps: pack unavailable: "
                                 + t.getClass().getSimpleName());
                     }
+                    try {
+                        ensureExtraMaps(store);
+                    } catch (Throwable t) {
+                        L.i("maps: extra maps unavailable: "
+                                + t.getClass().getSimpleName());
+                    }
                 }
             }, "MapAssets");
             t.setDaemon(true);
@@ -185,6 +222,104 @@ final class MapAssets {
             verifyPack(pack);
             extractPack(store, pack);
             buildIndex(store);
+        }
+    }
+
+    /**
+     * Fetch + index the EXTRA_MAPS rows (the 2.8.2-era official CDN maps
+     * the pack lacks). Idempotent: an existing hash-matching file is kept,
+     * the byGame entry always (re-)applied so a restart re-merges the
+     * override over whatever the persisted index restored. Runs on the
+     * pack thread only — never in the boot path.
+     */
+    private static void ensureExtraMaps(StateStore store) {
+        synchronized (LOCK) {
+            boolean changed = false;
+            for (String[] row : EXTRA_MAPS) {
+                String scriptType = row[0];
+                String key = row[1];
+                String sha = row[2];
+                String clientMap = row[3];
+                try {
+                    File dir = mapsDir(store);
+                    File f = new File(dir, key);
+                    if (!f.isFile() || f.length() == 0
+                            || !sha256(f).equalsIgnoreCase(sha)) {
+                        if (f.isFile()) f.delete();
+                        f.getParentFile().mkdirs();
+                        L.i("maps: downloading extra map " + key);
+                        byte[] data = httpGet(CDN_BASE + key,
+                                PACK_CONNECT_TIMEOUT_MS, PACK_READ_TIMEOUT_MS);
+                        if (data == null || data.length == 0) {
+                            throw new IOException("extra map empty");
+                        }
+                        atomicallyWrite(f, data);
+                        if (!sha256(f).equalsIgnoreCase(sha)) {
+                            f.delete();
+                            throw new IOException("extra map sha256 mismatch");
+                        }
+                    }
+                    String zipName = key.substring(key.lastIndexOf('/') + 1);
+                    JSONObject entry = new JSONObject();
+                    entry.put("mapId", clientMap);
+                    entry.put("mapName", clientMap);
+                    entry.put("zipName", zipName);
+                    entry.put("zipKey", key);
+                    entry.put("bytes", f.length());
+                    entry.put("version", 1);
+                    entry.put("extra", true);
+                    Map<String, JSONObject> g = new HashMap<String, JSONObject>(byGame);
+                    g.put(scriptType, entry);
+                    Map<String, File> k = new HashMap<String, File>(byKey);
+                    k.put(key, f);
+                    byGame = g;
+                    byKey = k;
+                    indexed = true;
+                    changed = true;
+                    L.i("maps: extra map indexed " + scriptType + " -> "
+                            + clientMap + " (" + zipName + ", " + f.length()
+                            + " B)");
+                } catch (Throwable t) {
+                    L.e("maps: extra map " + key + " failed: " + t);
+                }
+            }
+            if (changed) {
+                try {
+                    // persist so loadIndex restarts keep the override even
+                    // before the pack thread re-applies it
+                    JSONObject idx = indexFile(store).exists()
+                            ? new JSONObject(slurp(indexFile(store)))
+                            : new JSONObject();
+                    JSONObject games = idx.optJSONObject("games");
+                    if (games == null) {
+                        games = new JSONObject();
+                        idx.put("games", games);
+                    }
+                    for (String[] row : EXTRA_MAPS) {
+                        JSONObject e = byGame.get(row[0]);
+                        if (e != null) games.put(row[0], e);
+                    }
+                    JSONArray files = idx.optJSONArray("files");
+                    if (files == null) {
+                        files = new JSONArray();
+                        idx.put("files", files);
+                    }
+                    for (String[] row : EXTRA_MAPS) {
+                        boolean have = false;
+                        for (int i = 0; i < files.length(); i++) {
+                            if (row[1].equals(files.optString(i))) {
+                                have = true;
+                                break;
+                            }
+                        }
+                        if (!have) files.put(row[1]);
+                    }
+                    atomicallyWrite(indexFile(store),
+                            idx.toString().getBytes("UTF-8"));
+                } catch (Throwable t) {
+                    L.e("maps: extra index persist failed: " + t);
+                }
+            }
         }
     }
 
