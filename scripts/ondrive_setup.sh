@@ -45,15 +45,29 @@ else
   say "cacerts: $CA_NAME already installed"
 fi
 
-# --- 3. iptables :80 -> 18080 REDIRECT ---------------------------------------
-if ! iptables -t nat -S OUTPUT 2>/dev/null | grep -q -- "--dport 80"; then
-  iptables -t nat -A OUTPUT -p tcp -d 127.0.0.1 --dport 80 \
+# --- 3. iptables :80 -> 18080 REDIRECT (BEST EFFORT, session 86) --------------
+# The holder ALSO answers :80 natively when the unprivileged-port sysctl is
+# set (LocalServer's drive :80 listener), so a missing REDIRECT target is no
+# longer fatal: the redroid's iptables 1.8.7-legacy ships WITHOUT the REDIRECT
+# extension (run-4: "unknown option --to-ports") and some devices ship nft-only.
+# Order: open the port range FIRST so the harness (booting after this script)
+# can bind :80 without root.
+if ! cat /proc/sys/net/ipv4/ip_unprivileged_port_start 2>/dev/null | grep -q '^0$'; then
+  sysctl -w net.ipv4.ip_unprivileged_port_start=0 2>/dev/null \
+    && say "sysctl: unprivileged port start -> 0 (:80 bindable by the holder)" \
+    || say "WARN: cannot set ip_unprivileged_port_start (the :80 listener may fail)"
+else
+  say "sysctl: unprivileged port start already 0"
+fi
+if iptables -t nat -S OUTPUT 2>/dev/null | grep -q -- "--dport 80"; then
+  say "iptables: dport 80 -> 18080 already present"
+elif iptables -t nat -A OUTPUT -p tcp -d 127.0.0.1 --dport 80 \
     -j REDIRECT --to-ports 18080 2>/dev/null \
-  || iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-ports 18080 \
-  || fail "iptables REDIRECT failed"
+  || iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-ports 18080 2>/dev/null \
+  || iptables -t nat -A OUTPUT -p tcp --dport 80 -j DNAT --to-destination 127.0.0.1:18080 2>/dev/null; then
   say "iptables: dport 80 -> 18080 added"
 else
-  say "iptables: already present"
+  say "WARN: no iptables REDIRECT/DNAT (the holder's native :80 listener covers the http hop)"
 fi
 
 # --- 4. stage drive/ into the harness filesDir --------------------------------

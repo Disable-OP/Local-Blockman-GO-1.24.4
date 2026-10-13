@@ -374,6 +374,24 @@ public final class LocalServer {
             // redirected metadata base. Inert (and silent) without the
             // keystore; failures never break the holder boot path.
             DriveTls.maybeStart(filesDir, store);
+            // Pristine-client drive (session 86): the :80 http hop. The
+            // redirected hosts (mods.sandboxol.com / the engineRes host)
+            // are plain http on port 80; the drive kit's iptables REDIRECT
+            // covers them where netfilter is available, but the redroid's
+            // iptables ships WITHOUT the REDIRECT target (run-4: "unknown
+            // option --to-ports" — the extension .so is absent). The holder
+            // answers :80 natively instead: same routing, same store, one
+            // extra bind. Needs the unprivileged-port sysctl (ondrive_setup
+            // sets it); failures are silent and non-fatal — environments
+            // without redirected hosts are unaffected.
+            try {
+                LocalHttpd http80 = new LocalHttpd(80, store);
+                http80.start(15000, true);
+                L.i("boot: drive :80 http listener UP");
+            } catch (Throwable t80) {
+                L.i("boot: no :80 listener (expected without the drive "
+                        + "sysctl): " + t80);
+            }
         } catch (Throwable t) {
             L.e("boot" + tag + " failed: " + t);
         }
