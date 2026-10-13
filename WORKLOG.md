@@ -5293,3 +5293,90 @@ Stage Summary:
   their gate.
 - Next: UNCHANGED — the device drive on b8 (docs/ON_DEVICE_DRIVE.md §6);
   the kit now collects the evidence the pass gates actually read.
+
+## Session 86 - THE OFFICIAL GAME ICONS + THE PRISTINE-CLIENT DRIVE ON REDROID (2026-10-13)
+
+- USER DIRECTIVES executed in order: (1) the cron (webDevReview/3600s/high)
+  created first; (2) the CDN game icons wired into the API BEFORE gameplay
+  work; (3) verify games load via REAL client logs, not guessing — Bedwars
+  first; (4) gameplay on the 10078 engine.
+- THE ICONS (complete): the user-supplied CDN dump exposed the July-2020
+  OFFICIAL icon-catalog batch (sandbox/games/images/g<gid>-<millis>, served
+  by https://staticgs.sandboxol.com). scripts/harvest_game_icons.py pulled
+  21/21 hosted rooms (all perfect squares; BED WARS/SKY BLOCK/Jail Break/
+  TD: Angry Pets art confirmed visually). Shipped as the 4th seed asset
+  (gameicons.tar.gz), GameIcons.java extracts, LocalHttpd streams
+  /localapi/games/icons/<gid>.png, GameCatalog.applyIcons rewrites
+  gameCoverPic per-boot. Suite 701 -> 710/710.
+- THE DRIVE (the delta-13 architecture EXECUTED for the first time):
+  .github/workflows/test-redroid-drive.yml automates docs/ON_DEVICE_DRIVE.md
+  §6 on the redroid arm64. Seven CI runs (progressively fixed):
+  - The harness is the 1.24.4 build (com.disabngo.blockynexus, NO TSS) —
+    the two-user co-install with the pristine client dies on signatures
+    (INSTALL_FAILED_UPDATE_INCOMPATIBLE is package-scoped). build_signed_apk.sh
+    now ships gs-line.json (g10078) + gameicons.tar.gz.
+  - RUNNER QUEUE: build-release sat queued 2h45m — the harness was built IN
+    THE SANDBOX instead (scripts/build_pack_124.py, the apktool-b-free
+    zipfile pack; the org.smali 2.5.2 jars + a per-dex baksmali pipeline —
+    22 s for all five dexes; apktool's resource pass was the >10-min step
+    the sandbox reaper kept killing). Shipped as
+    BlockyNexus-localapi-sandbox86.apk on release wip-sandbox86.
+  - run 3: the redroid netns needs the HOST kernel's netfilter modules
+    (modprobe ip_tables/iptable_nat/... in the workflow).
+  - run 4: the redroid's iptables 1.8.7-legacy ships WITHOUT the REDIRECT
+    target ("unknown option --to-ports") — LocalServer.bootOnce now binds a
+    SECOND LocalHttpd on :80 natively (the sysctl
+    net.ipv4.ip_unprivileged_port_start=0 set by ondrive_setup.sh); the
+    iptables rule is best-effort.
+  - run 5 (the farthest ever): hosts+CA+TLS+holder+bundle v7 staged
+    (stage-version g10078-b8) + the g1008 room HEART-BEATING (server.log
+    "sendHeartBeat to room, player count 0, game_id: g1008") + the pristine
+    client rendered the hall + the card tapped + the engine STARTED
+    (BlockManEchoesActivity displayed +970ms). The gap: game/auth ->
+    GET /v1/game-map -> engine, and game-map answered the 1.24.4-era
+    MiniGameToken alias — FIXED: /v1/game-map now serves the FULL DISPATCH
+    shape when the caller owns a fresh mini token (<=120 s; via the x-shahe
+    pair or StateStore.latestMiniTokenFor), dispatch() gained a preToken
+    overload. ALSO: the auth baseline is captured BEFORE the btn_enter
+    press (the join fires game/auth + game-map within ~20 ms — the old
+    post-press baseline made "join fired" a false negative).
+  - run 6: fired=True + game-map dispatch shape + engine up (gameType 1046)
+    — and the FULL engine startParameter captured: ip EMPTY, port 0, mapUrl
+    empty, resUrl = the holder, ISDELAYCONNECT: 1. The hall flow boots the
+    engine world LOCALLY by design and joins rooms later.
+  - run 7 (WATCH_SECONDS=600, 40 rounds): same state — the engine's local
+    world never connected; NO client.log anywhere; no map fetch hit the
+    holder; the engine's configPath is Download/SandboxOL/BlockMan/config
+    (the collect candidates missed it until now — fixed in the next pass).
+- THE 2.8.2 JOIN DECODE (baksmali of the pristine client, all 7 dexes,
+  /home/z/p282): hall join = HostViewModel.realmsResult (EnterRealmsResult)
+  -> x/x$a (the engine-1 gate) -> GameApi.getMiniGameMap ->
+  GET /v1/game-map?mapName&gameType (RETURNS MiniGameToken — NOT Dispatch!)
+  -> w.onSuccess builds Dispatch{signature,timestamp,cdns} ->
+  x$a.a(d,false) -> gameAddr = x.f.getGameAddr() (x.f = realmsResult; the
+  realmsResult arrives via the Messenger from the detail page). MiniGameToken
+  has NO gAddr field — the addr rides x.f/realmsResult.gameAddr. POST
+  /v1/dispatch (newMiniGameDispatcher) has NO caller in the client's join
+  path — the 1.24.4-style dispatch verdict does not apply to the 2.8.2 hall
+  card join.
+- NEXT (evidence-based, in order):
+  1. The engine's LOCAL hall world: capture the client.log from the ENGINE's
+     own configPath (Download/SandboxOL/BlockMan/config) + watch the
+     engine's inner-API requests (POST / = the engine's WebService hitting
+     the holder; the gameServerInner endpoints already serve
+     user/details/simple-info/props/pay). The hall world's room join runs
+     INSIDE the engine — the holder's inner config (blockymodsRewardAddr/
+     gameDataServiceAddr -> the holder) is what points the hall's rooms at
+     127.0.0.1:31108.
+  2. The map: mapUrl was empty — find the engine's actual map fetch
+     (resUrl + the map path, or the client's GameResManager) and why
+     nothing hit MapAssets. The holder serves the maps pack ✓.
+  3. THEN the realmsResult.gameAddr: the detail page's Messenger event —
+     find what fills it on the real backend (the room assignment) and
+     mirror it holder-side.
+- Sandbox artifacts: /home/z/p282 (the pristine client's baksmali tree),
+  /home/z/bg-base.apk + /home/z/pristine282.apk (the APKs), /home/z/.ghtok
+  (the PAT, mode 600), build/ (the toolchain + dexout). Clean before
+  ending if disk pressure returns (the session-83 lesson).
+- Gates at end of session: suite 710/710; smoke 28/28; commits
+  78eeb6b..HEAD pushed; the drive runs 3-7 on the repo Actions.
