@@ -119,6 +119,33 @@ def check(name, cond, detail=""):
 class Adb:
     def __init__(self, serial):
         self.serial = serial
+        # session 86: the TWO-APP drive runs the harness as user 0 and the
+        # pristine client as a secondary Android user (same package name on
+        # both installs is impossible as one user). am/pm commands for the
+        # driven app get the --user prefix; dump/input/logcat are global.
+        self.user = 0
+
+    def ampfx(self):
+        return "--user %d " % self.user if self.user else ""
+
+    def user_uid(self):
+        return 100000 * self.user
+
+    def user_alive(self, package):
+        """Liveness of THIS user's process only (pidof pkg matches every
+        user's process of the package - the harness main process would
+        mask the pristine client's death)."""
+        out = self.sh("ps -A -o PID,UID,NAME 2>/dev/null | grep -w %s"
+                      % package, timeout=25)
+        if self.user == 0:
+            return bool(out.strip())
+        floor = self.user_uid()
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) >= 2 and parts[1].isdigit() \
+                    and int(parts[1]) >= floor and int(parts[1]) < floor + 100000:
+                return True
+        return False
 
     def sh(self, cmd, timeout=30):
         r = subprocess.run(["adb", "-s", self.serial, "shell", cmd],
@@ -2895,32 +2922,43 @@ def g282_find_cfgdirs(adb, package):
     return ordered
 
 
-def g282_alive_recover(adb, screen, package, activity, stage):
+def g282_alive_recover(adb, screen, package, activity, stage,
+                       user=None):
     """282-line alive-or-recover. relaunch_and_wait's main-screen probe
     is 1.24.4-id-hardcoded (rgBottom/rb_1/flHomePage) and would burn two
     full cycles on this client before reporting failure - the recovery
     here waits on the 2.8.2 hall ids instead. Returns True when the app
-    is alive at return (recovered or never died)."""
-    if adb.pid(package):
+    is alive at return (recovered or never died). user: when set, am
+    commands carry --user and liveness is user-scoped (the two-app
+    drive: pidof matches every user's process of the package)."""
+    pfx = "--user %d " % user if user else ""
+
+    def _alive():
+        if user:
+            adb.user = user
+            return adb.user_alive(package)
+        return adb.pid(package)
+
+    if _alive():
         return True
     print("  [evidence] process died at stage: %s - relaunching" % stage)
     for cycle in range(2):
-        adb.sh("am force-stop %s" % package)
+        adb.sh("am %sforce-stop %s" % (pfx, package))
         time.sleep(3)
         for attempt in range(3):
-            out = adb.sh("am start -n %s/%s" % (package, activity),
+            out = adb.sh("am start %s-n %s/%s" % (pfx, package, activity),
                          timeout=45)
             print("  [am start #%d] %s" % (attempt + 1,
                                            (out or "").strip()[:160]))
             deadline = time.time() + 30
             while time.time() < deadline:
-                if adb.pid(package):
+                if _alive():
                     break
                 time.sleep(2)
-            if adb.pid(package):
+            if _alive():
                 break
             time.sleep(3)
-        if adb.pid(package):
+        if _alive():
             time.sleep(8)
             dismiss_permission_dialogs(screen)
             g282_dismiss_overlays(adb, screen, stage)
@@ -2955,22 +2993,36 @@ def g282_read_log(adb, package, dirs, fname, nbytes=32768):
 
 
 def main_282(args):
-    """The 2.8.2 line: attach -> hall -> Bedwars card -> btn_enter ->
-    join evidence. Exit 0 = pass, 1 = fail (finish())."""
+    """The 2.8.2 line: attach -> hall -> game card -> btn_enter ->
+    join evidence. Exit 0 = pass, 1 = fail (finish()).
+    Session 86 --drive mode: the PRISTINE 2.8.2 client (no JoinBridge in
+    it) driven by the holder's dispatch; --user N drives a secondary
+    Android user (the two-app drive); --card-regex/--game-label pick the
+    hall card (per-game joins, ON_DEVICE_DRIVE §6 steps 2..10)."""
     try:
         sys.stdout.reconfigure(line_buffering=True)
     except Exception:
         pass
     adb = Adb(args.serial)
+    adb.user = int(getattr(args, "user", 0) or 0)
     screen = Screen(adb)
     pkg, act = args.package, args.activity
+    card_re = (re.compile(args.card_regex, re.I)
+               if getattr(args, "card_regex", None) else _G282_BED_RE)
+    glabel = getattr(args, "game_label", None) or "Bedwars"
+    drive = bool(getattr(args, "drive", False))
     print("== PHASE 282-GJ: real UI join on the 2.8.2 client "
-          "(blockymods, engine 10078) ==")
+          "(blockymods, engine 10078) user=%d drive=%s game=%s =="
+          % (adb.user, drive, glabel))
 
     # ---- attach to the live app (idempotent am start; NO pm clear)
-    adb.sh("am start -n %s/%s" % (pkg, act))
+    adb.sh("am start %s-n %s/%s" % (adb.ampfx(), pkg, act))
     time.sleep(8)
-    if not assert_alive(adb, pkg, "282 attach"):
+    if adb.user and not adb.user_alive(pkg):
+        fail("282: %s process (user %d) died within 8s of attach"
+             % (pkg, adb.user))
+        finish()
+    elif not adb.user and not assert_alive(adb, pkg, "282 attach"):
         finish()
     dismiss_permission_dialogs(screen)
     g282_dismiss_overlays(adb, screen, "attach")
@@ -2982,11 +3034,14 @@ def main_282(args):
     if not hall:
         # one honest relaunch cycle before failing
         print("  [probe] 282: hall not reached - relaunching once")
-        adb.sh("am force-stop %s" % pkg)
+        adb.sh("am %sforce-stop %s" % (adb.ampfx(), pkg))
         time.sleep(3)
-        adb.sh("am start -n %s/%s" % (pkg, act))
+        adb.sh("am start %s-n %s/%s" % (adb.ampfx(), pkg, act))
         time.sleep(15)
-        if not assert_alive(adb, pkg, "282 relaunch"):
+        if adb.user and not adb.user_alive(pkg):
+            fail("282: relaunch dead (user %d)" % adb.user)
+            finish()
+        elif not adb.user and not assert_alive(adb, pkg, "282 relaunch"):
             finish()
         dismiss_permission_dialogs(screen)
         g282_dismiss_overlays(adb, screen, "relaunch")
@@ -3045,7 +3100,7 @@ def main_282(args):
 
     cards = collect_cards()
     scrolls = 0
-    while not any(_G282_BED_RE.search(nm.text) for _, nm in cards) \
+    while not any(card_re.search(nm.text) for _, nm in cards) \
             and scrolls < 4:
         adb.sh("input swipe 360 900 360 300 300", timeout=20)
         time.sleep(3)
@@ -3057,21 +3112,22 @@ def main_282(args):
     print("  [282] card candidates after %d scrolls: %s"
           % (scrolls, [nm.text[:16] for _, nm in cards[:8]]))
     card = next(((p, nm) for p, nm in cards
-                 if _G282_BED_RE.search(nm.text)), None)
+                 if card_re.search(nm.text)), None)
     if card is None:
         screen.snap("GJ282_nocard")
         debug_dump(screen, "GJ282-nocard")
-        fail("282: no Bedwars card in the hall feed (hosted-only "
-             "JoinBridge joins g1046/g1008 only)")
+        fail("282: no %r card in the hall feed (card-regex %r; hosted-only "
+             "joins)" % (glabel, args.card_regex or "bed\\s*war"))
         finish()
     bed_pic, bed_nm = card
-    ok("282: Bedwars hall card found (%r)" % bed_nm.text.strip())
+    ok("282: %s hall card found (%r)" % (glabel, bed_nm.text.strip()))
     if not screen.tap_node(bed_pic):
-        fail("282: Bedwars card tap failed (no bounds)")
+        fail("282: %s card tap failed (no bounds)" % glabel)
         finish()
     screen.snap("GJ282_card")
     time.sleep(8)  # the detail sheet renders over fl_game_details
-    g282_alive_recover(adb, screen, pkg, act, "282-gamedetail")
+    _rec_user = adb.user if adb.user else None
+    g282_alive_recover(adb, screen, pkg, act, "282-gamedetail", user=_rec_user)
     screen.snap("GJ282_detail")
 
     # ---- v9: re-arm the wrap properties + dump the state right before the
@@ -3141,7 +3197,7 @@ def main_282(args):
         rnd += 1
         time.sleep(10)
         if not g282_alive_recover(adb, screen, pkg, act,
-                                  "282-watch-r%d" % rnd):
+                                  "282-watch-r%d" % rnd, user=_rec_user):
             screen.snap("GJ282_watch_r%d" % rnd)
             continue
         # the first-time 'click fast enter game' guide overlay
@@ -3304,7 +3360,8 @@ def main_282(args):
             dirs = g282_find_cfgdirs(adb, pkg)
 
     # ---- verdict (hard once btn_enter was pressed)
-    print("== 282-GJ verdict ==")
+    print("== 282-GJ verdict (%s, user=%d, drive=%s) =="
+          % (glabel, adb.user, drive))
     # v35: the full EchoesProbe chain at verdict time — which chain point
     # was the LAST one reached (preInit ENTER / env / nativePreInit CALL /
     # initGame gameAddr / offline-exit / EMPTY-addr)?
@@ -3318,31 +3375,74 @@ def main_282(args):
     except Exception:
         pass
     _jb = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
-    _jblines = [l for l in _jb.splitlines() if "JoinBridge" in l]
+    _jblines = [l for l in _jb.splitlines()
+                if ("JoinBridge" in l or "dispatch" in l.lower())]
     for l in _jblines[-12:]:
         print("  [jb-full] %s" % l[-500:])
-    check("282: join fired from the dialog (auth-token REQ or "
-          "JoinBridge takeover)", fired,
-          "the client never requested GET /game/api/v2/game/auth after "
-          "btn_enter")
-    check("282: JoinBridge took the join ONLINE", takeover,
-          "the bridge either never ran or fell back (gaddr null / "
-          "hosted-only mismatch)")
-    check("282: join attrs pushed (/v1/joinbridge PUSHED)", pushed or
-          (fired and "REQ POST /v1/joinbridge" in adb.raw(
-              "logcat", "-d", "-s", "LocalAPI", timeout=60)),
-          "no /v1/joinbridge traffic")
-    check("282: StartMc.startGame dispatched (online)", started)
-    check("282: engine activity up (BlockManEchoesActivity)", echoes)
-    check("282: client initGame ONLINE (ip 127.0.0.1 port 31108 "
-          "gameType g1008)", init_online)
-    check("282: client connected to the GameServer (emConnectSuc)",
-          connect)
-    check("282: client login accepted (login succ)", login_ok)
-    check("282: server saw the C2S login (server.log C2SPacketLogin)",
-          server_login)
-    check("282: the human entered the room (monitor g2r type=151 / "
-          "'human ... entered the room')", user_in)
+    if drive:
+        # THE PRISTINE DRIVE (delta-13 architecture, session 86): the
+        # client carries NO JoinBridge — the holder's dispatch steers the
+        # official join flow onto the local GameServer. The verdict chain
+        # is the ORIGINAL flow: game auth -> /v1/dispatch (gAddr) ->
+        # StartMc online -> engine initGame 127.0.0.1:31108 -> C2S login
+        # -> monitor g2r.
+        check("drive[%s]: join fired (game/auth REQ after btn_enter)"
+              % glabel, fired,
+              "the client never requested GET /game/api/v2/game/auth")
+        check("drive[%s]: dispatch reached the holder (POST /v1/dispatch)"
+              % glabel,
+              "REQ POST /v1/dispatch" in _jb,
+              "no /v1/dispatch traffic - the join never asked for the "
+              "game address")
+        check("drive[%s]: engine activity up (BlockManEchoesActivity)"
+              % glabel, echoes)
+        check("drive[%s]: client initGame ONLINE (ip 127.0.0.1 port "
+              "31108)" % glabel, init_online)
+        check("drive[%s]: client connected to the GameServer "
+              "(emConnectSuc)" % glabel, connect)
+        check("drive[%s]: client login accepted (login succ)" % glabel,
+              login_ok)
+        check("drive[%s]: server saw the C2S login (server.log "
+              "C2SPacketLogin)" % glabel, server_login)
+        check("drive[%s]: the human entered the room (monitor g2r "
+              "type=151 / 'human ... entered the room')" % glabel, user_in)
+        # BOT EVIDENCE (report, not gate — the per-game bot behavior is
+        # gated after the first live logs set the exact markers; §6 step
+        # 2's '15 bots logging in' is read from the SAME monitor log)
+        _srv = g282_read_log(adb, pkg, dirs, "server.log", 65536)
+        _botmarkers = [m for m in ("addEntityPlayerAI", "PlayerAI",
+                                   "robot", "GamePlayerAI", "ai-presence")
+                       if m in _srv or m in _jb]
+        ok("drive[%s]: bot-evidence markers in server logs: %s"
+           % (glabel, _botmarkers or "(none yet — reading the monitor "
+              "log next device session sets the exact gate)"))
+        _cl = g282_read_log(adb, pkg, dirs, "client.log", 4096)
+        print("  [client.log tail] %s" % _cl[-600:])
+        _sl = g282_read_log(adb, pkg, dirs, "server.log", 4096)
+        print("  [server.log tail] %s" % _sl[-600:])
+    else:
+        check("282: join fired from the dialog (auth-token REQ or "
+              "JoinBridge takeover)", fired,
+              "the client never requested GET /game/api/v2/game/auth after "
+              "btn_enter")
+        check("282: JoinBridge took the join ONLINE", takeover,
+              "the bridge either never ran or fell back (gaddr null / "
+              "hosted-only mismatch)")
+        check("282: join attrs pushed (/v1/joinbridge PUSHED)", pushed or
+              (fired and "REQ POST /v1/joinbridge" in adb.raw(
+                  "logcat", "-d", "-s", "LocalAPI", timeout=60)),
+              "no /v1/joinbridge traffic")
+        check("282: StartMc.startGame dispatched (online)", started)
+        check("282: engine activity up (BlockManEchoesActivity)", echoes)
+        check("282: client initGame ONLINE (ip 127.0.0.1 port 31108 "
+              "gameType g1008)", init_online)
+        check("282: client connected to the GameServer (emConnectSuc)",
+              connect)
+        check("282: client login accepted (login succ)", login_ok)
+        check("282: server saw the C2S login (server.log C2SPacketLogin)",
+              server_login)
+        check("282: the human entered the room (monitor g2r type=151 / "
+              "'human ... entered the room')", user_in)
     finish()
 
 
@@ -3372,8 +3472,23 @@ def main():
                     choices=["auto", "classic", "282"],
                     help="classic = the 1.24.4 blockynexus phases A-D+GJ; "
                          "282 = the 2.8.2 blockymods UI join phase "
-                         "(attach -> hall -> Bedwars card -> btn_enter -> "
+                         "(attach -> hall -> game card -> btn_enter -> "
                          "join evidence). auto picks by package.")
+    # session 86: the two-app PRISTINE drive (ON_DEVICE_DRIVE §6)
+    ap.add_argument("--user", type=int, default=0,
+                    help="Android user id to drive (0 = default; the "
+                         "two-app drive installs the pristine client as a "
+                         "secondary user alongside the harness)")
+    ap.add_argument("--card-regex", default=None,
+                    help="hall-card name regex for the join (default: the "
+                         "Bedwars regex). e.g. 'sky\\\\s*block' for SkyBlock")
+    ap.add_argument("--game-label", default=None,
+                    help="human label for the verdict lines (e.g. 'SkyBlock "
+                         "g1048')")
+    ap.add_argument("--drive", action="store_true",
+                    help="pristine-client verdict chain (game auth -> "
+                         "/v1/dispatch -> engine initGame -> C2S login -> "
+                         "g2r) instead of the harness JoinBridge chain")
     args = ap.parse_args()
     if args.line == "auto":
         args.line = ("282" if args.package == "com.sandboxol.blockymods"

@@ -1,0 +1,266 @@
+name: test-redroid-drive
+# THE PRISTINE-CLIENT DRIVE — ON_DEVICE_DRIVE.md §6 automated on the redroid
+# (session 86; the delta-13 architecture finally executed end to end).
+#
+# WHAT RUNS WHERE (doc §1):
+#   harness  com.disabngo.blockynexus (BlockyNexus-localapi.apk, the 1.24.4
+#            custom build + gs-line.json -> the g10078 engine line):
+#              holder 127.0.0.1:18080 (397+ routes, the game icons, dispatch)
+#              driveTLS 127.0.0.1:443 (DriveTls, drive/server.p12)
+#              GameServer libgameserver.so (the g10078 bundle v7 staged from
+#              the release at boot; the v7 event-layer repair inside)
+#   pristine com.sandboxol.blockymods (official-bg-2.8.2-v7a-4151.apk,
+#            UNMODIFIED — nothing for the TSS to detect; run 38252063346
+#            proved it survives 300s on this same redroid).
+#   /etc/hosts: the 3 API hosts -> 127.0.0.1; CA in the SYSTEM store;
+#   iptables :80 -> 18080; static hosts stay REAL (CDN still serves
+#   appres/maps — by design).
+#   The holder's dispatch steers the pristine client's join onto
+#   127.0.0.1:31108 (gameType g1008 first; per-game via selectGame).
+#
+# THE DRIVE (per docs/ON_DEVICE_DRIVE.md §6, one join per game spec):
+#   step 1 = the pristine client's login lands on OUR holder (the hall
+#            renders — no hall without the holder answering).
+#   step 2+ = per-game UI joins (card -> detail -> btn_enter) with the
+#            drive verdict chain: game/auth REQ -> /v1/dispatch ->
+#            BlockManEchoesActivity -> client.log initGame 127.0.0.1:31108
+#            -> emConnectSuc -> login succ -> server.log C2SPacketLogin ->
+#            monitor g2r type=151 (the human in the room; bots read from
+#            the same monitor log as evidence).
+#
+# PREREQ: the harness asset must carry gs-line.json (session 86 build) so
+# its GameServerManager stages the g10078 bundle. The build-release run for
+# commit 78eeb6b+ (or any later) is the first eligible asset.
+
+on:
+  workflow_dispatch:
+    inputs:
+      harness_asset:
+        description: 'Release asset name of the 1.24.4 harness APK'
+        default: 'BlockyNexus-localapi.apk'
+      games:
+        description: 'Comma list of card_regex::label pairs (hall-card match)'
+        default: 'bed\s*war::Bedwars (g1008)'
+
+permissions:
+  contents: read
+
+jobs:
+  redroid-pristine-drive:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 50
+    env:
+      HARNESS_PKG: com.disabngo.blockynexus
+      HARNESS_ACT: com.disabngo.blockynexus.view.activity.start.StartActivity
+      PRISTINE_PKG: com.sandboxol.blockymods
+      PRISTINE_ACT: com.sandboxol.blockymods.view.activity.host.HostActivity
+      GAMES: ${{ github.event.inputs.games || 'bed\s*war::Bedwars (g1008)' }}
+      HARNESS_ASSET: ${{ github.event.inputs.harness_asset || 'BlockyNexus-localapi.apk' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Fetch the harness + pristine APKs from releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/fetch_release_asset.py "$HARNESS_ASSET" harness.apk
+          python3 scripts/fetch_release_asset.py official-bg-2.8.2-v7a-4151.apk pristine282.apk
+          ls -la harness.apk pristine282.apk
+
+      - name: Load binder kernel module
+        run: |
+          if ! sudo modprobe binder_linux devices="binder,hwbinder,vndbinder" 2>/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq linux-modules-extra-$(uname -r) android-tools-adb
+            sudo modprobe binder_linux devices="binder,hwbinder,vndbinder"
+          fi
+          command -v adb >/dev/null 2>&1 || { sudo apt-get update -qq; sudo apt-get install -y -qq android-tools-adb; }
+          adb version | head -1
+
+      - name: Start Redroid (arm64 native, Android 12)
+        run: |
+          docker run -d --name redroid --privileged -p 5555:5555 \
+            redroid/redroid:12.0.0-latest \
+            androidboot.redroid_width=720 \
+            androidboot.redroid_height=1280 \
+            androidboot.redroid_dpi=320 \
+            androidboot.redroid_gpu_mode=guest
+          adb connect localhost:5555
+
+      - name: Wait for Android boot
+        run: |
+          for i in $(seq 1 48); do
+            b=$(adb -s localhost:5555 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            [ "$b" = "1" ] && echo "boot completed" && exit 0
+            echo "waiting for boot ($i/48)"; sleep 5
+          done
+          echo "DEVICE FAILED TO BOOT"; exit 1
+
+      - name: Root adb (the drive kit needs a real root shell)
+        run: |
+          adb -s localhost:5555 root || true
+          sleep 3
+          adb -s localhost:5555 wait-for-device
+          adb -s localhost:5555 shell id
+          # phantom process killer off (the GameServer spawns engine children)
+          adb -s localhost:5555 shell settings put global settings_enable_monitor_phantom_procs false || true
+          adb -s localhost:5555 shell device_config put activity_manager max_phantom_processes 2147483647 || true
+          adb -s localhost:5555 shell setprop persist.device_config.runtime_native.usap_pool_enabled false || true
+
+      - name: Generate the drive material + install the harness
+        # ORDER MATTERS: install the harness FIRST (its filesDir must exist
+        # with the app uid) -> stage drive/ (the p12 is read at BOOT) ->
+        # launch.
+        run: |
+          python3 scripts/gen_drive_ca.py --force
+          ls -la drive/
+          adb -s localhost:5555 install -r -t -g harness.apk
+          adb -s localhost:5555 push drive /sdcard/drive
+          adb -s localhost:5555 push scripts/ondrive_setup.sh /sdcard/drive/ondrive_setup.sh
+          adb -s localhost:5555 push scripts/ondrive_collect.sh /sdcard/drive/ondrive_collect.sh
+          adb -s localhost:5555 shell chmod 644 /sdcard/drive/*.sh 2>/dev/null || true
+          adb -s localhost:5555 shell "sh /sdcard/drive/ondrive_setup.sh"
+
+      - name: Boot the harness (holder + driveTLS + GameServer staging)
+        run: |
+          adb -s localhost:5555 logcat -G 4M || true
+          adb -s localhost:5555 logcat -c
+          adb -s localhost:5555 shell am start -n "$HARNESS_PKG/$HARNESS_ACT"
+          sleep 15
+          if ! adb -s localhost:5555 shell pidof "$HARNESS_PKG" | grep -qE '[0-9]'; then
+            echo "HARNESS DIED within 15s"; adb -s localhost:5555 logcat -d | tail -120; exit 1
+          fi
+          echo "harness alive: $(adb -s localhost:5555 shell pidof "$HARNESS_PKG")"
+          adb -s localhost:5555 exec-out screencap -p > harness-boot.png || true
+
+      - name: Holder + driveTLS probe (the drive's network contract)
+        run: |
+          adb -s localhost:5555 forward tcp:18090 tcp:18080
+          CODE=000
+          for i in 1 2 3 4 5 6 7 8; do
+            CODE=$(curl -s -o /tmp/holder_probe.json -w "%{http_code}" \
+              "http://127.0.0.1:18090/health" || true)
+            [ "$CODE" = "200" ] && break
+            echo "probe $i: http=$CODE (holder may still be binding)"; sleep 5
+          done
+          echo "holder probe: http=$CODE"; head -c 300 /tmp/holder_probe.json || true
+          [ "$CODE" = "200" ] || { echo "FATAL: holder never answered"; \
+            adb -s localhost:5555 logcat -d -s LocalAPI:* | tail -80; exit 1; }
+          echo "== drive-tls lines =="
+          adb -s localhost:5555 logcat -d -s LocalAPI:* | grep -iE "drive-tls|gs: |stageVersion|staging|gameicons" | tail -25 || true
+
+      - name: Wait for the GameServer (the g10078 bundle stages at boot)
+        # The bundle is a 100 MB release download on first boot; the gs
+        # engine launch is the marker. Hard-fail: a drive without a
+        # GameServer is pointless.
+        run: |
+          ok=0
+          for i in $(seq 1 60); do
+            LOG=$(adb -s localhost:5555 logcat -d -s LocalAPI:* 2>/dev/null)
+            if echo "$LOG" | grep -q "gs: launched pid="; then ok=1; break; fi
+            if [ $((i % 6)) -eq 0 ]; then
+              echo "-- staging progress ($i) --"
+              echo "$LOG" | grep -iE "gs: |stage|download|bundle" | tail -6
+            fi
+            sleep 10
+          done
+          adb -s localhost:5555 logcat -d -s LocalAPI:* | grep -iE "gs: |stage|gameicons" | tail -30 || true
+          [ "$ok" = "1" ] || { echo "FATAL: GameServer never launched"; exit 1; }
+          echo "== gs process =="
+          adb -s localhost:5555 shell "ps -A | grep -i gameserver" || true
+          echo "== RakNet 31108 (0x7994) =="
+          adb -s localhost:5555 shell "cat /proc/net/udp /proc/net/udp6 2>/dev/null" | grep -i '7994' || echo "(no udp socket visible)"
+
+      - name: Re-verify the drive hops (TLS through the redirected host)
+        run: |
+          adb -s localhost:5555 shell "sh /sdcard/drive/ondrive_setup.sh" || true
+
+      - name: Install the PRISTINE 2.8.2 client
+        run: |
+          adb -s localhost:5555 install -r -t -g pristine282.apk
+          adb -s localhost:5555 shell appops set "$PRISTINE_PKG" LEGACY_STORAGE allow || true
+          adb -s localhost:5555 shell appops set "$PRISTINE_PKG" MANAGE_EXTERNAL_STORAGE allow || true
+          adb -s localhost:5555 shell pm grant "$PRISTINE_PKG" android.permission.WRITE_EXTERNAL_STORAGE 2>/dev/null || true
+          adb -s localhost:5555 shell getprop ro.product.cpu.abilist
+          adb -s localhost:5555 shell pm path "$PRISTINE_PKG" | head -2
+
+      - name: Launch the pristine client (drive step 1: login lands on OUR holder)
+        run: |
+          adb -s localhost:5555 logcat -c
+          adb -s localhost:5555 shell am start -n "$PRISTINE_PKG/$PRISTINE_ACT"
+          sleep 20
+          if ! adb -s localhost:5555 shell pidof "$PRISTINE_PKG" | grep -qE '[0-9]'; then
+            echo "PRISTINE CLIENT DIED within 20s (TSS must NOT fire on the official APK — capture everything)"
+            adb -s localhost:5555 logcat -d | tail -200
+            exit 1
+          fi
+          echo "pristine alive: $(adb -s localhost:5555 shell pidof "$PRISTINE_PKG")"
+          echo "== the holder saw the client's auth traffic =="
+          adb -s localhost:5555 logcat -d -s LocalAPI:* | grep -E "REQ " | tail -20 || true
+          adb -s localhost:5555 exec-out screencap -p > pristine-boot.png || true
+
+      - name: THE DRIVE — per-game joins (ON_DEVICE_DRIVE §6)
+        # One automation run per game spec "card_regex::label". Each run:
+        # attach (idempotent) -> hall -> find the card -> detail ->
+        # btn_enter -> the drive verdict chain (auth -> dispatch -> engine
+        # -> C2S login -> g2r). The loop continues on a game's failure so
+        # one red game never hides the others' evidence; the artifacts +
+        # the per-run exit lines are the report.
+        run: |
+          rc_total=0
+          IFS=',' read -ra SPECS <<< "$GAMES"
+          for SPEC in "${SPECS[@]}"; do
+            [ -z "$SPEC" ] && continue
+            RE="${SPEC%%::*}"
+            LABEL="${SPEC#*::}"
+            [ "$LABEL" = "$RE" ] && LABEL="$RE"
+            echo "===== DRIVE GAME: label='$LABEL' regex='$RE' ====="
+            set +e
+            python3 scripts/ui_automation_test.py \
+              --serial localhost:5555 \
+              --package "$PRISTINE_PKG" \
+              --activity "$PRISTINE_ACT" \
+              --line 282 --drive \
+              --card-regex "$RE" --game-label "$LABEL"
+            rc=$?
+            set -e
+            echo "===== DRIVE RESULT: $LABEL rc=$rc ====="
+            [ $rc -ne 0 ] && rc_total=1
+            adb -s localhost:5555 shell "sh /sdcard/drive/ondrive_collect.sh game-$(echo "$LABEL" | tr -c 'A-Za-z0-9' '-')" || true
+          done
+          exit $rc_total
+
+      - name: Evidence harvest (the §6 collector + the engine-side probe)
+        if: always()
+        run: |
+          adb -s localhost:5555 shell "sh /sdcard/drive/ondrive_collect.sh final" || true
+          mkdir -p gjevidence
+          adb -s localhost:5555 shell "ls /sdcard/drive/" | tr -d '\r' | while read -r f; do
+            case "$f" in evidence-*)
+              adb -s localhost:5555 pull "/sdcard/drive/$f" gjevidence/ 2>/dev/null || true ;;
+            esac
+          done
+          PKG="$PRISTINE_PKG"
+          echo "== pristine config/log dirs =="
+          adb -s localhost:5555 shell "find /storage/emulated/0 -maxdepth 6 \( -iname '*sandboxol*' -o -iname '*blockman*' \) 2>/dev/null" | head -40 || true
+          echo "== every *.log under those trees =="
+          adb -s localhost:5555 shell "find /storage/emulated/0 /data/data/$PKG/files /data/media/0 -maxdepth 7 -name '*.log' 2>/dev/null | head -30" || true
+          echo "== LocalAPI REQ/RES tail (the holder's view of the join) =="
+          adb -s localhost:5555 logcat -d -s LocalAPI:* | grep -E "REQ (GET /game/api/v2/game/auth|POST /v1/dispatch|POST /game|GET /game/api/v2/game/data)|gs: |monitor" | tail -40 || true
+          echo "== FATAL scan =="
+          adb -s localhost:5555 logcat -d | grep -E "FATAL EXCEPTION|fatal signal" | head -10 || echo "no fatals"
+          ls -la gjevidence/ || true
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redroid-pristine-drive
+          path: |
+            harness-boot.png
+            pristine-boot.png
+            gjevidence/
+            /tmp/holder_probe.json
+          if-no-files-found: ignore

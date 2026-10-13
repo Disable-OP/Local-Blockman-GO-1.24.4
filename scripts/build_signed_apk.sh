@@ -75,12 +75,19 @@ SERVER_DEX="$REPO/localapi-server/build/classes6.dex"
 # --- seed assets (data-only, never icon bytes) ---
 # localapi/skins.json       — real skin catalog capture (1.6 MB)
 # localapi/ScriptSetting.csv — the client's own game list w/ real ids (4 KB)
-# The server copies them into its files dir at boot; icons are streamed
-# from the downloaded pack, NOT shipped here.
+# localapi/gs-line.json     — THE ENGINE LINE (session 86): this harness is
+#                             the PRISTINE-CLIENT DRIVE holder — its
+#                             GameServerManager must stage the g10078 bundle
+#                             (engine 10078), not the 1.24.4 client's 10068
+#                             defaults. Same seed asset the 282 harness ships.
+# localapi/gameicons.tar.gz — the official CDN game icons (session 86; the
+#                             catalog's gameCoverPic rewrite streams them)
+# The server copies them into its files dir at boot.
 echo "== seed assets =="
 SEEDS="$BUILD/apktool_out/assets/localapi"
 mkdir -p "$SEEDS"
-for pair in "skin.json:skins.json" "ScriptSetting.csv:ScriptSetting.csv"; do
+for pair in "skin.json:skins.json" "ScriptSetting.csv:ScriptSetting.csv" \
+            "localapi-server/assets/localapi/gameicons.tar.gz:gameicons.tar.gz"; do
   src="${pair%%:*}"; dst="${pair##*:}"
   if [ -f "$REPO/$src" ]; then
     cp -f "$REPO/$src" "$SEEDS/$dst"
@@ -88,6 +95,17 @@ for pair in "skin.json:skins.json" "ScriptSetting.csv:ScriptSetting.csv"; do
     echo "WARNING: seed $REPO/$src missing — ${dst} not shipped" >&2
   fi
 done
+# THE ENGINE LINE: this harness stages and serves the 2.8.2 line's
+# multiplayer games (docs/ON_DEVICE_DRIVE.md §1 — the drive holder).
+cat > "$SEEDS/gs-line.json" <<'EOF'
+{
+  "line": "g10078",
+  "clientEngineVersion": 10078,
+  "stageVersion": "g10078-b8",
+  "applyOverlay": false
+}
+EOF
+echo "gs-line.json: g10078 / engine 10078 / overlay off"
 
 # --- rebuild ---
 echo "== apktool b =="

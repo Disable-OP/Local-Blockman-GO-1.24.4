@@ -50,9 +50,14 @@ cp "$BUNDLE"/logs/*.log "$OUT/files/" 2>/dev/null
 # CLIENT config dir (GameServerManager.resolveLogDir order): the external
 # storage root first, the harness's own external dir as fallback, the staged
 # bundle's logs/ as last resort. Capture every candidate that exists.
+# Session 86: the PRISTINE client's own external dir is a candidate too —
+# the drive's client.log/server.log land under ITS package (the joiner),
+# not the harness's.
 for CFG in "/storage/emulated/0/SandBoxOL/BlockMan/config" \
            "/sdcard/SandBoxOL/BlockMan/config" \
-           "/sdcard/Android/data/$HARNESS_PKG/files/SandBoxOL/config"; do
+           "/sdcard/Android/data/$HARNESS_PKG/files/SandBoxOL/config" \
+           "/storage/emulated/0/Android/data/com.sandboxol.blockymods/files/SandBoxOL/config" \
+           "/sdcard/Android/data/com.sandboxol.blockymods/files/SandBoxOL/config"; do
   [ -d "$CFG" ] || continue
   { echo "logdir-candidate: $CFG"; ls -la "$CFG" 2>/dev/null; } \
     >> "$OUT/files/logdir.txt"
