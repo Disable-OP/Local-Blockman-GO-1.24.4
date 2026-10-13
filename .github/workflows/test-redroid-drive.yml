@@ -220,6 +220,12 @@ jobs:
         # -> C2S login -> g2r). The loop continues on a game's failure so
         # one red game never hides the others' evidence; the artifacts +
         # the per-run exit lines are the report.
+        # WATCH_SECONDS=600 (run-6 lesson): the hall boots the engine world
+        # LOCALLY (isDelayConnect: 1) and only then downloads the map from
+        # the holder's MapAssets and joins rooms via the engine's inner
+        # API — the old 300 s window starved that chain.
+        env:
+          WATCH_SECONDS: '600'
         run: |
           rc_total=0
           IFS=',' read -ra SPECS <<< "$GAMES"
@@ -261,6 +267,11 @@ jobs:
           adb -s localhost:5555 shell "find /storage/emulated/0 /data/data/$PKG/files /data/media/0 -maxdepth 7 -name '*.log' 2>/dev/null | head -30" || true
           echo "== LocalAPI REQ/RES tail (the holder's view of the join) =="
           adb -s localhost:5555 logcat -d -s LocalAPI:* | grep -E "REQ (GET /game/api/v2/game/auth|POST /v1/dispatch|POST /game|GET /game/api/v2/game/data)|gs: |monitor" | tail -40 || true
+          echo "== the engine's map download (ASSET lines) + inner requests =="
+          adb -s localhost:5555 logcat -d -s LocalAPI:* | grep -E "ASSET |REQ POST /|game-map|gs-inner" | tail -30 || true
+          echo "== the client's Download/map staging trees =="
+          adb -s localhost:5555 shell "find /storage/emulated/0/Android/data/$PKG/files/Download -maxdepth 6 2>/dev/null | head -30" || true
+          adb -s localhost:5555 shell "ls -la /storage/emulated/0/Android/data/$PKG/files/Download/SandboxOL/BlockMan/map 2>/dev/null" || true
           echo "== FATAL scan =="
           adb -s localhost:5555 logcat -d | grep -E "FATAL EXCEPTION|fatal signal" | head -10 || echo "no fatals"
           ls -la gjevidence/ || true

@@ -3194,7 +3194,12 @@ def main_282(args):
     echoes = False
     init_online = connect = login_ok = False
     server_login = user_in = False
-    watch_deadline = time.time() + 300
+    # session 86 run-6: the hall flow boots the engine world LOCALLY
+    # (isDelayConnect: 1) and only then downloads the map from resUrl
+    # (the holder's MapAssets) and joins rooms via the engine's inner
+    # API — 300 s starved that chain; WATCH_SECONDS overrides.
+    watch_deadline = time.time() + int(os.environ.get(
+        "WATCH_SECONDS", "300"))
     rnd = 0
     while time.time() < watch_deadline and not (login_ok and user_in):
         rnd += 1
