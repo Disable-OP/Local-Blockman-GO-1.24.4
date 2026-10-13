@@ -81,11 +81,16 @@ public class LocalHttpd extends NanoHTTPD {
         // Official map/skin-resource assets (MapAssets/DressRes): the engine
         // and the dress updater download zips/csv/yml from the original CDN
         // object-key paths — served here from the local pack store.
-        if ("GET".equals(verb) && uri != null
-                && (uri.startsWith("/sandbox/games/maps/")
-                    || uri.startsWith("/sandbox/games/plugins/")
-                    || uri.startsWith("/sandbox/dresses/dress-resources/"))) {
-            return serveAsset(uri);
+        // RUN-11 EVIDENCE (38482545272): the engine's HttpDownloader HEADs
+        // the map zip FIRST (content-length + range probe) — HEAD fell
+        // through to the generic route ("UNMAPPED HEAD ... generic ok") and
+        // answered the 35-byte JSON envelope; downloadByRange then assembled
+        // a 35-byte "zip" and died on "the final file corrupted" (errCode 6)
+        // for EVERY map join (Bedwars hall + Skyblock alike). HEAD answers
+        // the real length; ranged GETs answer 206 + Content-Range.
+        if (uri != null && isAssetUri(uri)) {
+            if ("HEAD".equals(verb)) return headAsset(uri);
+            if ("GET".equals(verb)) return serveAsset(uri, session);
         }
 
         final byte[] rawBody = readBody(session);
@@ -167,14 +172,78 @@ public class LocalHttpd extends NanoHTTPD {
         return (j > i) ? "code=" + json.substring(i, j) : "code=?";
     }
 
+    /** The CDN-object-key asset families the engine fetches directly. */
+    private static boolean isAssetUri(String uri) {
+        return uri.startsWith("/sandbox/games/maps/")
+                || uri.startsWith("/sandbox/games/plugins/")
+                || uri.startsWith("/sandbox/dresses/dress-resources/");
+    }
+
+    /**
+     * HEAD /sandbox/... — the engine's HttpDownloader probes the asset
+     * length + range support here before the ranged GET (run-11 lesson).
+     * NanoHTTPD 2.3.1 prints the manual Content-Length header verbatim
+     * (sendContentLengthHeaderIfNotAlreadyPresent) and sendBody breaks
+     * immediately on the empty stream — a clean header-only answer.
+     */
+    private Response headAsset(String uri) {
+        byte[] data = uri.startsWith("/sandbox/dresses/dress-resources/")
+                ? DressRes.packBytes(store)
+                : MapAssets.fileBytes(store, uri.substring(1));
+        if (data == null) {
+            L.i("ASSET HEAD miss " + uri);
+            return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "");
+        }
+        Response r = newFixedLengthResponse(Response.Status.OK,
+                assetMime(uri), "");
+        setFixedContentLength(r, data.length);
+        r.addHeader("Accept-Ranges", "bytes");
+        L.i("ASSET HEAD " + uri + " " + data.length + "b");
+        return r;
+    }
+
+    /**
+     * NanoHTTPD 2.3.1 prints "Content-Length: <pending>" UNCONDITIONALLY in
+     * sendContentLengthHeaderIfNotAlreadyPresent — adding a manual
+     * Content-Length header would print the line TWICE (identical values;
+     * the engine's HttpDownloader parses this header on its range probe,
+     * run-11). Setting the Response's private contentLength field makes
+     * pending itself the real length: one clean header, empty body
+     * (sendBody breaks immediately on the empty stream). Falls back to the
+     * manual header (duplicate, identical — client-tolerated) on any
+     * reflection failure.
+     */
+    private static void setFixedContentLength(Response r, long len) {
+        try {
+            java.lang.reflect.Field f = Response.class
+                    .getDeclaredField("contentLength");
+            f.setAccessible(true);
+            f.setLong(r, len);
+        } catch (Throwable t) {
+            r.addHeader("Content-Length", String.valueOf(len));
+        }
+    }
+
+    private static String assetMime(String uri) {
+        String lower = uri.toLowerCase(java.util.Locale.US);
+        if (lower.endsWith(".zip")) return "application/zip";
+        if (lower.endsWith(".csv")) return "text/csv";
+        if (lower.endsWith(".yml") || lower.endsWith(".yaml")) return "text/yaml";
+        if (lower.endsWith(".md5") || lower.endsWith(".ini")
+                || lower.endsWith(".txt")) return "text/plain";
+        return "application/octet-stream";
+    }
+
     /**
      * GET /sandbox/games/maps/<key> and /sandbox/dresses/dress-resources/<key>
      * — official map + decorate assets served from the local packs (packs are
      * sha256/md5-verified against the release manifests, so bytes served are
      * the bytes on GitHub). key is the original CDN object key minus the
      * leading slash; dress-resource requests resolve to the decorate pack.
+     * Honors single-range requests (the engine's downloadByRange: 206 +
+     * Content-Range + the slice) — run-11 lesson.
      */
-    private Response serveAsset(String uri) {
+    private Response serveAsset(String uri, IHTTPSession session) {
         byte[] data = uri.startsWith("/sandbox/dresses/dress-resources/")
                 ? DressRes.packBytes(store)
                 : MapAssets.fileBytes(store, uri.substring(1));
@@ -182,19 +251,29 @@ public class LocalHttpd extends NanoHTTPD {
             L.i("ASSET miss " + uri);
             return respond("{\"code\":0,\"message\":\"asset not available\"}");
         }
-        String lower = uri.toLowerCase(java.util.Locale.US);
-        String mime;
-        if (lower.endsWith(".zip")) {
-            mime = "application/zip";
-        } else if (lower.endsWith(".csv")) {
-            mime = "text/csv";
-        } else if (lower.endsWith(".yml") || lower.endsWith(".yaml")) {
-            mime = "text/yaml";
-        } else if (lower.endsWith(".md5") || lower.endsWith(".ini")
-                || lower.endsWith(".txt")) {
-            mime = "text/plain";
-        } else {
-            mime = "application/octet-stream";
+        String mime = assetMime(uri);
+        String range = session.getHeaders().get("range");
+        if (range != null && range.startsWith("bytes=")) {
+            long[] slice = parseByteRange(range, data.length);
+            if (slice == null) {
+                Response bad = newFixedLengthResponse(
+                        Response.Status.RANGE_NOT_SATISFIABLE, "text/plain", "");
+                bad.addHeader("Content-Range", "bytes */" + data.length);
+                L.i("ASSET " + uri + " range unsatisfiable: " + range);
+                return bad;
+            }
+            int start = (int) slice[0], end = (int) slice[1];
+            InputStream in = new ByteArrayInputStream(
+                    data, start, end - start + 1);
+            Response r = newFixedLengthResponse(Response.Status.PARTIAL_CONTENT,
+                    mime, in, end - start + 1L);
+            r.addHeader("Content-Range", "bytes " + start + "-" + end
+                    + "/" + data.length);
+            r.addHeader("Accept-Ranges", "bytes");
+            r.addHeader("Access-Control-Allow-Origin", "*");
+            L.i("ASSET " + uri + " " + (end - start + 1) + "b range ["
+                    + start + "-" + end + "] of " + data.length);
+            return r;
         }
         InputStream in = new ByteArrayInputStream(data);
         Response r = newFixedLengthResponse(Response.Status.OK, mime, in, data.length);
@@ -202,6 +281,27 @@ public class LocalHttpd extends NanoHTTPD {
         r.addHeader("Cache-Control", "max-age=86400");
         L.i("ASSET " + uri + " " + data.length + "b " + mime);
         return r;
+    }
+
+    /**
+     * "bytes=start-end" | "bytes=start-" -> {start, end} clamped to
+     * [0, len-1], or null when unsatisfiable. Suffix ranges ("bytes=-N")
+     * are not used by the engine's downloader — answered unsatisfiable.
+     */
+    private static long[] parseByteRange(String range, long len) {
+        try {
+            String spec = range.substring("bytes=".length()).trim();
+            int dash = spec.indexOf('-');
+            if (dash <= 0) return null;           // suffix or malformed
+            long start = Long.parseLong(spec.substring(0, dash).trim());
+            String endPart = spec.substring(dash + 1).trim();
+            long end = endPart.isEmpty() ? len - 1 : Long.parseLong(endPart);
+            if (end >= len) end = len - 1;
+            if (start < 0 || start > end || start >= len) return null;
+            return new long[]{start, end};
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     /** GET /localapi/skins/icons/<id>.png — one skin icon's bytes. */
