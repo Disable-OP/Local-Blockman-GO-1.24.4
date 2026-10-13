@@ -1863,8 +1863,13 @@ def main():
         print("== Phase 5e: spot checks (game-map, ranking variants, VIP v4, password v2) ==")
         gm = call("GET", "/v1/game-map?typeId=%s&targetId=%d&gameVersion=1" % (gid, uid1),
                   headers={"Access-Token": tok1, "userId": str(uid1)})
-        check("v1/game-map issues token", gm.get("code") == 1
-              and str(gm.get("data", {}).get("token", "")).startswith("mg-"), str(gm)[:120])
+        # session 86: the game-map bridge answers the DISPATCH shape when
+        # the caller owns a fresh mini token (the 2.8.2 client's real join
+        # flow); the legacy token shape remains for token-less callers
+        check("v1/game-map issues token (or dispatches for a fresh-join user)",
+              gm.get("code") == 1
+              and (str(gm.get("data", {}).get("token", "")).startswith("mg-")
+                   or gm.get("data", {}).get("gaddr")), str(gm)[:120])
         rv = [("active", "week", False), ("clan", "overall", False),
               ("gDiamond", "week", True), ("gold", "overall", True)]
         for rt, wk, reg in rv:
@@ -3481,6 +3486,36 @@ def main():
               dp7.get("code") == 1 and dd7.get("gameType") == "g1008"
               and dd7.get("mid") == "maps/g1008/m1008_2"
               and dd7.get("name") == "Bed War", str(dd7)[:250])
+
+        # --- GAME-MAP DISPATCH BRIDGE (session 86, the 2.8.2 client's
+        # real join: game/auth -> GET /v1/game-map must answer the
+        # DISPATCH shape — run-5 evidence: the token shape left the join
+        # dialog's Dispatch null and the engine booted a LOCAL world) ---
+        gm7 = call("GET", "/v1/game-map",
+                   headers={"x-shahe-uid": str(uid7),
+                            "x-shahe-token": mg7.get("token", "")},
+                   base=base7)
+        gd7 = gm7.get("data", {})
+        check("game-map: shahe-header form serves the DISPATCH shape",
+              gm7.get("code") == 1 and gd7.get("gaddr")
+              and gd7.get("gameType") == "g1008", str(gd7)[:200])
+        mt8 = call("GET", "/game/api/v2/game/auth?typeId=1008&targetId=%d"
+                   "&gameVersion=1" % uid7,
+                   headers={"Access-Token": tok7, "userId": str(uid7)},
+                   base=base7)
+        gm8 = call("GET", "/v1/game-map",
+                   headers={"Access-Token": tok7, "userId": str(uid7)},
+                   base=base7)
+        gd8 = gm8.get("data", {})
+        check("game-map: fresh-token fallback (no shahe pair) still "
+              "dispatches",
+              gm8.get("code") == 1 and gd8.get("gaddr")
+              and gd8.get("gameType") == "g1008", str(gd8)[:200])
+        # the legacy alias: no token at all -> the miniGameToken shape
+        gm9 = call("GET", "/v1/game-map", base=base7)
+        check("game-map: anonymous caller keeps the token shape",
+              gm9.get("code") == 1 and gm9.get("data", {}).get("token")
+              and not gm9.get("data", {}).get("gaddr"), str(gm9)[:160])
 
         # --- real skin catalog (skins.json capture) ---
         dl7 = call("GET", "/decoration/api/v1/decorations/11",

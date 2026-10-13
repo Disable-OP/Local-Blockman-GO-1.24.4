@@ -111,7 +111,7 @@ final class Handlers {
         if ("appreciation".equals(name)) return appreciation(ctx, store);
         if ("miniGameToken".equals(name)) return miniGameToken(ctx, store);
         if ("followGameAuth".equals(name)) return miniGameToken(ctx, store);
-        if ("miniGameMap".equals(name)) return miniGameToken(ctx, store);
+        if ("miniGameMap".equals(name)) return gameMapDispatch(ctx, store);
         if ("gameResInfo".equals(name)) return gameResInfo(ctx, store);
         if ("dressCheckResource".equals(name)) return dressCheckResource(ctx, store);
         if ("dressResCheck".equals(name)) return dressResCheck(ctx, store);
@@ -1017,6 +1017,39 @@ final class Handlers {
     }
 
     /**
+     * GET /v1/game-map — THE 2.8.2 CLIENT'S DISPATCH (session 86, run-5
+     * evidence): the pristine join flow is game/auth (token) -> GET
+     * {dispUrl}/v1/game-map -> StartMc, ~20 ms between them, and the
+     * engine's startParameter printed ip: EMPTY (the local boot) when this
+     * endpoint answered the TOKEN shape — the join dialog's Dispatch field
+     * stayed null so gameAddr became "". The 1.24.4-era alias
+     * (game-map == miniGameToken) is kept ONLY for callers that arrive
+     * without a fresh join token; a request whose user just issued a mini
+     * token (seconds ago, THIS join) gets the FULL DISPATCH shape —
+     * gaddr/gameType/mid/mname/downurl — exactly like POST /v1/dispatch,
+     * including the serving-driven selectGame + engine kick.
+     */
+    private static String gameMapDispatch(Ctx ctx, StateStore store) {
+        String token = ctx.header("x-shahe-token");
+        JSONObject mt = token == null ? null : store.findMiniToken(token);
+        boolean viaHeader = mt != null;
+        if (mt == null) {
+            JSONObject u = store.resolve(ctx.header("access-token"),
+                    ctx.header("userid"));
+            if (u != null) {
+                mt = store.latestMiniTokenFor(u.optLong("userId"), 120_000L);
+            }
+        }
+        if (mt != null) {
+            L.i("game-map: serving the DISPATCH shape (shahe-header="
+                    + viaHeader + ", gameType=" + mt.optString("gameType")
+                    + ")");
+            return dispatch(ctx, store, false, mt);
+        }
+        return miniGameToken(ctx, store);
+    }
+
+    /**
      * POST /v1/dispatch + /v1/follow — the game-join bridge. The client builds
      * a Retrofit against the token's dispUrl (this server) and calls this with
      * x-shahe-uid / x-shahe-token headers. Returns the Dispatch model the
@@ -1621,17 +1654,28 @@ final class Handlers {
     }
 
     private static String dispatch(Ctx ctx, StateStore store, boolean follow) {
+        return dispatch(ctx, store, follow, null);
+    }
+
+    private static String dispatch(Ctx ctx, StateStore store, boolean follow,
+                                   JSONObject preToken) {
         // Fail-fast token check (moved above the boot wait: an invalid
         // dispatch must not boot/switch the engine — the same fail envelope
-        // as before, just without the side effects).
-        String token = ctx.header("x-shahe-token");
-        String uidHdr = ctx.header("x-shahe-uid");
-        JSONObject mt = store.findMiniToken(token);
-        if (mt == null || uidHdr == null
-                || parseLong(uidHdr, -1) != mt.optLong("userId")) {
-            L.i("dispatch rejected: token=" + (token == null ? "null" : "present")
-                    + " uid=" + uidHdr);
-            return fail("invalid dispatch token");
+        // as before, just without the side effects). preToken (session 86):
+        // the /v1/game-map bridge already resolved the caller's FRESH mini
+        // token (the 2.8.2 client omits the x-shahe pair on game-map) —
+        // trusted as-is; the header path still validates for real.
+        JSONObject mt = preToken;
+        if (mt == null) {
+            String token = ctx.header("x-shahe-token");
+            String uidHdr = ctx.header("x-shahe-uid");
+            mt = store.findMiniToken(token);
+            if (mt == null || uidHdr == null
+                    || parseLong(uidHdr, -1) != mt.optLong("userId")) {
+                L.i("dispatch rejected: token=" + (token == null ? "null" : "present")
+                        + " uid=" + uidHdr);
+                return fail("invalid dispatch token");
+            }
         }
         JSONObject form = body(ctx);
         long uid = mt.optLong("userId");

@@ -442,6 +442,32 @@ public final class StateStore {
         return mt == null ? null : mt.optJSONObject(token);
     }
 
+    /**
+     * The user's most recent mini token within maxAge ms (session 86: the
+     * 2.8.2 client joins through GET /v1/game-map and may omit the
+     * x-shahe pair — the token game/auth issued SECONDS EARLIER for this
+     * same join identifies the game. Null when nothing is fresh.)
+     */
+    public synchronized JSONObject latestMiniTokenFor(long userId,
+                                                      long maxAgeMs) {
+        JSONObject mt = root.optJSONObject("miniTokens");
+        if (mt == null || mt.length() == 0) return null;
+        long now = System.currentTimeMillis();
+        JSONObject best = null;
+        JSONArray names = mt.names();
+        for (int i = 0; names != null && i < names.length(); i++) {
+            JSONObject t = mt.optJSONObject(names.optString(i));
+            if (t == null || t.optLong("userId") != userId) continue;
+            long ts = t.optLong("timestamp") * 1000L; // issued in seconds
+            if (now - ts > maxAgeMs) continue;
+            if (best == null || t.optLong("timestamp")
+                    > best.optLong("timestamp")) {
+                best = t;
+            }
+        }
+        return best;
+    }
+
     // ------------------------------------------------------------ file storage
 
     /**

@@ -3148,6 +3148,11 @@ def main_282(args):
           % " ".join(str(_wstate).split())[:400])
 
     # ---- press the start control: btn_enter (gamedetail_bottom_view)
+    # RUN-5 LESSON: the join fires game/auth + /v1/game-map within ~20 ms
+    # of the tap — the auth baseline MUST be captured BEFORE the press or
+    # the delta stays 0 forever (the run-5 'join fired' false-negative).
+    _auth0 = adb.raw("logcat", "-d", "-s", "LocalAPI",
+                     timeout=60).count("REQ GET /game/api/v2/game/auth")
     _idre = re.compile(r"(btn_enter|iv_enter|btnEnter)", re.I)
     pressed = None
     for n in screen.dump():
@@ -3182,8 +3187,6 @@ def main_282(args):
     else:
         print("  [probe] 282: config dirs not found YET (re-probed "
               "each round)")
-    _auth0 = adb.raw("logcat", "-d", "-s", "LocalAPI",
-                     timeout=60).count("REQ GET /game/api/v2/game/auth")
 
     # ---- join watch: every channel, a screenshot per round
     fired = False          # the join left the dialog (takeover or auth)
@@ -3389,14 +3392,15 @@ def main_282(args):
         check("drive[%s]: join fired (game/auth REQ after btn_enter)"
               % glabel, fired,
               "the client never requested GET /game/api/v2/game/auth")
-        check("drive[%s]: dispatch reached the holder (POST /v1/dispatch*)"
-              % glabel,
-              ("REQ POST /v1/dispatch" in _jb
+        check("drive[%s]: dispatch reached the holder (/v1/game-map or "
+              "POST /v1/dispatch*)" % glabel,
+              ("REQ GET /v1/game-map" in _jb
+               or "REQ POST /v1/dispatch" in _jb
                or "REQ POST /v1/dispatch-party" in _jb
                or "REQ POST /v1/follow" in _jb),
-              "no dispatch traffic (/v1/dispatch, /v1/dispatch-party, "
-              "/v1/follow all absent) - the join never asked for the "
-              "game address")
+              "no dispatch traffic (/v1/game-map, /v1/dispatch, "
+              "/v1/dispatch-party, /v1/follow all absent) - the join "
+              "never asked for the game address")
         check("drive[%s]: engine activity up (BlockManEchoesActivity)"
               % glabel, echoes)
         check("drive[%s]: client initGame ONLINE (ip 127.0.0.1 port "
