@@ -3816,3 +3816,49 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   cross-check IS their gate.)
 - NEXT: UNCHANGED — the device drive on b8 (docs/ON_DEVICE_DRIVE.md §6).
   The kit now collects the evidence the pass gates actually read.
+
+## Cron-session delta 30 (read FIRST — THE OFFICIAL GAME ICONS ARE IN; THE PRISTINE-CLIENT DRIVE IS EXECUTABLE; the device is no longer the missing input — the redroid drive workflow is)
+
+- THE ICONS (user directive, executed FIRST): the user-supplied CDN dump
+  (urls_cdn_ms.txt, 91,755 keys, README_CDN_ms_timestamp_urls.txt next to
+  it) exposed the July-2020 OFFICIAL icon-catalog batch —
+  sandbox/games/images/g<gid>-<millis>.webp uploaded sequentially per game
+  (g1001..g1058, each 326x326) + g1061/g1062's own 700x700 pngs, ALL still
+  served by https://staticgs.sandboxol.com. scripts/harvest_game_icons.py
+  harvested 21/21 hosted rooms (batch-window preference, squareness pick
+  via PIL, PNG normalize; provenance in scripts/gameicons_manifest.json —
+  source key/url/sha256 per game). SHIPPED as assets/localapi/gameicons.tar.gz
+  (deterministic ustar, 4.87 MB): GameIcons.java stages+extracts it,
+  LocalHttpd streams GET /localapi/games/icons/<gid>.png (numeric form OK,
+  GAMEICON log tag), GameCatalog.applyIcons rewrites every hosted game's
+  gameCoverPic per-boot (idempotent) — the hall renders the real art
+  (visually confirmed: BED WARS / SKY BLOCK / Jail Break / TD: Angry Pets).
+  Both harness builds ship the pack as a seed asset. Suite 701 -> 707/707.
+- THE DRIVE IS NOW A WORKFLOW: .github/workflows/test-redroid-drive.yml
+  executes docs/ON_DEVICE_DRIVE.md §6 on the redroid arm64 end to end —
+  gen_drive_ca -> harness install -> ondrive_setup.sh (adb root; redroid
+  needs no su) -> holder 18080 + driveTLS :443 probes -> the GameServer
+  staging wait (hard gate on "gs: launched pid="; the 100 MB bundle v7
+  downloads at boot) -> the PRISTINE 2.8.2 client install/launch -> PER-GAME
+  UI JOINS via the workflow input (comma list of card_regex::label pairs;
+  default 'bed\s*war::Bedwars (g1008)') -> ondrive_collect.sh evidence per
+  game. The verdict chain (--drive in ui_automation_test.py) reads REAL
+  logs: game/auth REQ -> POST /v1/dispatch* -> BlockManEchoesActivity ->
+  client.log initGame 127.0.0.1:31108 -> emConnectSuc -> login succ ->
+  server.log C2SPacketLogin -> monitor g2r type=151 (bots = evidence from
+  the same monitor log; gate after the first live logs set the markers).
+- THE HARNESS IS THE 1.24.4 BUILD (com.disabngo.blockynexus) — NOT the b8
+  blockymods one: harness and pristine share the blockymods package with
+  DIFFERENT signatures, and pm refuses the co-install EVEN ACROSS ANDROID
+  USERS (the two-user trick dies on INSTALL_FAILED_UPDATE_INCOMPATIBLE).
+  The 1.24.4 harness is the doc §1 architecture verbatim; build_signed_apk.sh
+  now ships gs-line.json (g10078/engine 10078 — its GameServerManager stages
+  the g10078 bundle, not the 10068 defaults) + gameicons.tar.gz. The FIRST
+  eligible asset is the build-release run for 78eeb6b or later (release
+  wip-<run_number>, asset BlockyNexus-localapi.apk).
+- NEXT (in order): dispatch test-redroid-drive (Bedwars g1008) -> READ THE
+  EVIDENCE (client.log/server.log/monitor — fix wrong behavior, no
+  guessing) -> SkyBlock g1048 ('sky\s*block') -> the rest of §6 steps 3..10b
+  -> gate the per-game bot behavior from the live monitor logs. The exithook
+  steps are NOT needed on this line (the pristine client is unmodified; the
+  1.24.4 harness has no TSS).

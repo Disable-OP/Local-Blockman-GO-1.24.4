@@ -186,7 +186,7 @@ jobs:
           adb -s localhost:5555 shell getprop ro.product.cpu.abilist
           adb -s localhost:5555 shell pm path "$PRISTINE_PKG" | head -2
 
-      - name: Launch the pristine client (drive step 1: login lands on OUR holder)
+      - name: Launch the pristine client (drive step 1 - login lands on OUR holder)
         run: |
           adb -s localhost:5555 logcat -c
           adb -s localhost:5555 shell am start -n "$PRISTINE_PKG/$PRISTINE_ACT"
