@@ -24,6 +24,13 @@ public final class HostTest {
                     "gs-selftest-bundle"));
         }
         StateStore store = new StateStore(new File(args[0]));
+        // The game-icons pack: the device path copies the APK asset into the
+        // files dir then extracts (LocalServer.startIfNeeded -> GameIcons
+        // .install); the host rig mirrors the extract step — the suite drops
+        // gameicons.tar.gz into <stateDir>/localapi/ exactly where the device
+        // copy lands. Runs BEFORE GameCatalog.ensure so the catalog's
+        // applyIcons pass sees the extracted files.
+        GameIcons.ensureExtracted(new File(args[0]));
         GameCatalog.ensure(store);
         GameCatalog.drift(store);
         Skins.ensure(store);

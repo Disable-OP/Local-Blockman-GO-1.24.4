@@ -69,6 +69,15 @@ public class LocalHttpd extends NanoHTTPD {
             return serveSkinIcon(uri.substring("/localapi/skins/icons/".length()));
         }
 
+        // Game icons: the REAL official art for the hosted rooms (extracted
+        // from the in-APK gameicons seed pack). Served before the Retrofit
+        // routing — the hall's image loader hits this URL directly (the
+        // catalog's gameCoverPic fields are rewritten to it).
+        if ("GET".equals(verb) && uri != null
+                && uri.startsWith("/localapi/games/icons/")) {
+            return serveGameIcon(uri.substring("/localapi/games/icons/".length()));
+        }
+
         // Official map/skin-resource assets (MapAssets/DressRes): the engine
         // and the dress updater download zips/csv/yml from the original CDN
         // object-key paths — served here from the local pack store.
@@ -214,6 +223,22 @@ public class LocalHttpd extends NanoHTTPD {
         r.addHeader("Access-Control-Allow-Origin", "*");
         r.addHeader("Cache-Control", "max-age=86400");
         L.i("SKINICON " + id + " " + data.length + "b " + mime);
+        return r;
+    }
+
+    /** GET /localapi/games/icons/<gid>.png — one game's official icon bytes. */
+    private Response serveGameIcon(String name) {
+        byte[] data = GameIcons.bytes(store, name);
+        if (data == null) {
+            L.i("GAMEICON miss " + name);
+            return respond("{\"code\":0,\"message\":\"icon not available\"}");
+        }
+        String mime = Skins.sniffMime(data);
+        InputStream in = new ByteArrayInputStream(data);
+        Response r = newFixedLengthResponse(Response.Status.OK, mime, in, data.length);
+        r.addHeader("Access-Control-Allow-Origin", "*");
+        r.addHeader("Cache-Control", "max-age=86400");
+        L.i("GAMEICON " + name + " " + data.length + "b " + mime);
         return r;
     }
 

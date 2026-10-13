@@ -159,6 +159,11 @@ public final class LocalServer {
         // GameServerManager falls back to its proven g1008/10068 defaults.
         copySeedAsset(app, "localapi/gs-line.json",
                 new File(new File(filesDir, "localapi"), "gs_line.json"));
+        // The official game icons (the July-2020 CDN icon-catalog batch,
+        // 21 hosted rooms): seed asset -> files dir -> extracted PNGs. The
+        // catalog's gameCoverPic rewrite (GameCatalog.applyIcons) only
+        // points at the streaming route when the icon file really exists.
+        GameIcons.install(app, filesDir);
         start(filesDir, PORT);
         bootGameServerOnce();
     }

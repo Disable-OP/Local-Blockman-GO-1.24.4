@@ -3411,6 +3411,22 @@ def main():
               encoding="utf-8") as f:
         f.write("\n".join(games_rows) + "\n")
 
+    # --- game icons seed pack (the REAL official art, session 86) ---
+    # The device path: APK asset assets/localapi/gameicons.tar.gz ->
+    # <files>/localapi/gameicons.tar.gz -> extracted <files>/localapi/
+    # gameicons/<gid>.png. The host rig drops the SAME committed pack file
+    # exactly where LocalServer's copy lands.
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    icon_pack_src = os.path.join(repo_root, "localapi-server", "assets",
+                                 "localapi", "gameicons.tar.gz")
+    icon_pack_bytes = None
+    if os.path.isfile(icon_pack_src):
+        with open(icon_pack_src, "rb") as f:
+            icon_pack_bytes = f.read()
+        with open(os.path.join(dir_g, "localapi", "gameicons.tar.gz"),
+                  "wb") as f:
+            f.write(icon_pack_bytes)
+
     port7 = random.randint(20000, 32000)
     while port7 in (PORT, port2, port3, port4, port5, port6):
         port7 = random.randint(20000, 32000)
@@ -3511,6 +3527,57 @@ def main():
         check("icons: garbage id -> clean miss (no crash)",
               isinstance(unknown, dict) and unknown.get("code") != 1,
               str(unknown)[:120])
+
+        # --- GAME icons (the official CDN art, GameIcons/GameCatalog) ---
+        print("== Wave seeds: game icons (official CDN art) ==")
+        if icon_pack_bytes is not None:
+            # the pack was extracted by HostTest BEFORE GameCatalog.ensure —
+            # the seeded Bed War row must already point at the local route
+            check("gameicons: pack extracted to the store dir",
+                  os.path.isfile(os.path.join(dir_g, "localapi", "gameicons",
+                                              "g1008.png")),
+                  str(os.listdir(os.path.join(dir_g, "localapi", "gameicons"))
+                      if os.path.isdir(os.path.join(dir_g, "localapi",
+                                                    "gameicons")) else "absent")[:160])
+            check("gameicons: catalog gameCoverPic rewritten to the local route",
+                  bed.get("gameCoverPic")
+                  == "http://127.0.0.1:18080/localapi/games/icons/g1008.png",
+                  str(bed.get("gameCoverPic")))
+            # exact bytes round-trip: extract the g1008 member from the pack
+            # and stream it back through the route
+            import io as _io
+            import tarfile as _tf
+            want_png = None
+            with _tf.open(fileobj=_io.BytesIO(icon_pack_bytes),
+                          mode="r:gz") as tf:
+                for m in tf.getmembers():
+                    if m.name == "g1008.png":
+                        want_png = tf.extractfile(m).read()
+                        break
+            got_icon = raw_get("http://127.0.0.1:%d/localapi/games/icons/"
+                               "g1008.png" % port7)
+            check("gameicons: g1008 streams the exact official bytes",
+                  want_png is not None and got_icon == want_png
+                  and len(want_png) > 1000,
+                  "%s bytes" % len(got_icon))
+            num_form = raw_get("http://127.0.0.1:%d/localapi/games/icons/"
+                               "1008.png" % port7)
+            check("gameicons: numeric id form resolves to the same bytes",
+                  num_form == want_png, "%s bytes" % len(num_form))
+            gmiss = call("GET", "/localapi/games/icons/g9999.png", base=base7)
+            check("gameicons: unknown gid -> clean envelope miss",
+                  isinstance(gmiss, dict) and gmiss.get("code") != 1,
+                  str(gmiss)[:120])
+            gdet2 = call("GET", "/game/api/v2/games/1008?appVersion=4003",
+                         base=base7)
+            check("gameicons: detail response carries the local cover",
+                  gdet2.get("code") == 1
+                  and gdet2.get("data", {}).get("gameCoverPic")
+                  == "http://127.0.0.1:18080/localapi/games/icons/g1008.png",
+                  str(gdet2.get("data", {}).get("gameCoverPic"))[:160])
+        else:
+            check("gameicons: committed pack present in repo", False,
+                  icon_pack_src)
     finally:
         proc_g.terminate()
         try:

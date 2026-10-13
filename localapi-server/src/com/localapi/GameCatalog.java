@@ -105,6 +105,11 @@ final class GameCatalog {
         if (!root.has("nextRoomId")) root.put("nextRoomId", 90001);
         if (!root.has("gamePurchases")) root.put("gamePurchases", new JSONArray());
         if (ensurePremium(root)) dirty = true;
+        // The official game icons (GameIcons: the July-2020 CDN icon-catalog
+        // batch harvested into the APK seed pack): point every hosted game's
+        // gameCoverPic at the local streaming route. Runs on every boot,
+        // idempotent (local-URL stamp), only fires when the icon file exists.
+        if (applyIcons(root, store)) dirty = true;
         if (dirty) {
             L.i("catalog generated: " + root.optJSONArray("games").length()
                     + " games, " + root.optJSONArray("categories").length()
@@ -558,6 +563,40 @@ final class GameCatalog {
     }
 
     // -------------------------------------------------------------- queries
+
+    /**
+     * The game-icon pass: every game whose scriptType resolves to an
+     * extracted icon (<files>/localapi/gameicons/<gid>.png, GameIcons)
+     * gets gameCoverPic = the local streaming URL. Idempotent — a stored
+     * local URL is kept as-is; non-empty foreign URLs (none seeded today)
+     * are LEFT ALONE so a future real-capture catalog stays authoritative.
+     * Returns true when anything changed.
+     */
+    private static boolean applyIcons(JSONObject root, StateStore store) {
+        JSONArray gs = root.optJSONArray("games");
+        if (gs == null) return false;
+        boolean dirty = false;
+        int hits = 0;
+        for (int i = 0; i < gs.length(); i++) {
+            JSONObject g = gs.optJSONObject(i);
+            if (g == null) continue;
+            String script = g.optString("scriptType", "");
+            if (script.isEmpty()) continue;
+            if (!GameIcons.has(store, script)) continue;
+            String cur = g.optString("gameCoverPic", "");
+            String want = GameIcons.localUrl(script);
+            if (!want.equals(cur)) {
+                g.put("gameCoverPic", want);
+                dirty = true;
+            }
+            hits++;
+        }
+        if (dirty) {
+            L.i("gameicons: " + hits + " hosted games point at the local "
+                    + "icon route");
+        }
+        return dirty;
+    }
 
     static JSONArray games(StateStore store) {
         return store.root().optJSONArray("games");

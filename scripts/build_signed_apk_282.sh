@@ -67,7 +67,8 @@ grep -q "EchoesProbe" "$TREE/smali/com/sandboxol/blockmango/EchoesRenderer.smali
 echo "== seed assets =="
 SEEDS="$TREE/assets/localapi"
 mkdir -p "$SEEDS"
-for pair in "skin.json:skins.json" "ScriptSetting.csv:ScriptSetting.csv"; do
+for pair in "skin.json:skins.json" "ScriptSetting.csv:ScriptSetting.csv" \
+            "localapi-server/assets/localapi/gameicons.tar.gz:gameicons.tar.gz"; do
   src="${pair%%:*}"; dst="${pair##*:}"
   if [ -f "$REPO/$src" ]; then cp -f "$REPO/$src" "$SEEDS/$dst";
   else echo "WARNING: seed $REPO/$src missing — ${dst} not shipped" >&2; fi
@@ -109,7 +110,7 @@ import sys, zipfile, os
 orig, dst, dexdir, server_dex, seeds = sys.argv[1:6]
 DEXES = {"classes.dex", "classes2.dex", "classes3.dex", "classes4.dex",
          "classes5.dex", "classes6.dex", "classes7.dex", "classes8.dex"}
-SEED_FILES = ["skins.json", "ScriptSetting.csv", "gs-line.json"]
+SEED_FILES = ["skins.json", "ScriptSetting.csv", "gs-line.json", "gameicons.tar.gz"]
 tmp = dst + ".tmp"
 with open(server_dex, "rb") as f:
     server_payload = f.read()
