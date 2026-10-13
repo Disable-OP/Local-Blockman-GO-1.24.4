@@ -77,6 +77,9 @@ final class GameCatalog {
         // applied to any catalog missing them — fresh seeds AND stores from
         // earlier versions (idempotent, checked per game).
         if (ensureHalls(root)) dirty = true;
+        // the real-game feed pins (run-10 lesson) live in the same
+        // idempotent per-boot pass family (ensureRealPins is called from
+        // ensureHalls so every seed/migration path gets it too).
         // migration: pre-ScriptSetting catalogs (fake ids/names, engine-1
         // flag wrong) regenerate from the seed; fresh boots without a seed
         // keep their generated catalog. The version marker is ONLY set when
@@ -268,6 +271,65 @@ final class GameCatalog {
         }
         if (dirty) {
             L.i("catalog: hall traits applied (isLobby + realPlayGameList)");
+        }
+        if (ensureRealPins(games)) dirty = true;
+        return dirty;
+    }
+
+    /**
+     * PIN THE REAL GAMES UNDER THE TOP HALL (the drive feed order).
+     * Run-10 lesson (38478884394): the hall feed sorts by metric and the
+     * 42 generated filler titles INTERLEAVE with the 21 real ScriptSetting
+     * games, so a drive spec whose card sits mid-feed never reaches page 1
+     * (the uiautomator swipes never scrolled the feed — 4 swipes, the same
+     * 8 visible cards). Every real game (scriptType g1xxx) gets ALL FOUR
+     * sort metrics just below the top-pinned Bedwars hall (PIN_METRIC),
+     * ordered: g1048 (Sky Block — the drive's #2 spec per the session
+     * mandate "Bedwars first, then Skyblock, then the rest") first, then
+     * the remaining gids ascending. The fillers keep their low metrics and
+     * sort last in every list. createTime stays ~1 h below the pin time so
+     * the "new" sort still reads Bedwars first. Idempotent (realPinned).
+     */
+    private static boolean ensureRealPins(JSONArray games) {
+        if (games == null) return false;
+        java.util.List<JSONObject> reals = new java.util.ArrayList<JSONObject>();
+        for (int i = 0; i < games.length(); i++) {
+            JSONObject g = games.optJSONObject(i);
+            if (g == null) continue;
+            String s = g.optString("scriptType", "");
+            if (s.matches("g1[0-9]{3}") && !PINNED_HALL_SCRIPT.equals(s)) {
+                reals.add(g);
+            }
+        }
+        java.util.Collections.sort(reals, new java.util.Comparator<JSONObject>() {
+            public int compare(JSONObject a, JSONObject b) {
+                String sa = a.optString("scriptType", "");
+                String sb = b.optString("scriptType", "");
+                boolean aSky = "g1048".equals(sa);
+                boolean bSky = "g1048".equals(sb);
+                if (aSky != bSky) return aSky ? -1 : 1;
+                return sa.compareTo(sb);
+            }
+        });
+        boolean dirty = false;
+        long now = System.currentTimeMillis();
+        int seq = 0;
+        int pinned = 0;
+        for (JSONObject g : reals) {
+            if (g.optBoolean("realPinned")) { seq++; continue; }
+            long m = PIN_METRIC - 2000L - seq * 10L;
+            g.put("complexNum", m);
+            g.put("onlineNumber", m);
+            g.put("praiseNumber", m);
+            g.put("createTime", now - 3_600_000L - seq * 60_000L);
+            g.put("realPinned", true);
+            dirty = true;
+            pinned++;
+            seq++;
+        }
+        if (pinned > 0) {
+            L.i("catalog: pinned " + pinned + " real games under the top hall"
+                    + " (drive feed order: g1048 first, then gid ascending)");
         }
         return dirty;
     }

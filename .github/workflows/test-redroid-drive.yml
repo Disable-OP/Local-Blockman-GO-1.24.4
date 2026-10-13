@@ -255,6 +255,18 @@ jobs:
               adb -s localhost:5555 shell "chmod -R 777 '$MAP' '$CFG'" || true
             done
           done
+          # RUN-10 LESSON (38478884394): the LEAF chown is not enough.
+          # Every dir the mkdir -p created ABOVE the leaves (files/Download,
+          # files/SandboxOL, .../BlockMan) is root:ext_data_rw 2770 and the
+          # app uid's path walk dies at the first root-owned intermediate —
+          # the engine's stat of the map root failed ("mapExistsAndValid
+          # root dir is missing") and its self-heal mkdir failed ("create
+          # dir fail") even though the leaf dirs were u0_a71 777 (the run-10
+          # pristine-map-trees.txt shows both states side by side). Fix the
+          # whole created chain from files/ down (idempotent; the leaves are
+          # included; || true keeps a missing segment non-fatal).
+          adb -s localhost:5555 shell "chown -R $UP:$UP '/storage/emulated/0/Android/data/$PKG/files/Download' '/storage/emulated/0/Android/data/$PKG/files/SandboxOL' '/storage/emulated/0/Android/data/$PKG/files/SandBoxOL'" || true
+          adb -s localhost:5555 shell "chmod -R 777 '/storage/emulated/0/Android/data/$PKG/files/Download' '/storage/emulated/0/Android/data/$PKG/files/SandboxOL' '/storage/emulated/0/Android/data/$PKG/files/SandBoxOL'" || true
           echo "== placed map trees =="
           adb -s localhost:5555 shell "find /storage/emulated/0/Android/data/$PKG/files/Download/SandboxOL/BlockMan -maxdepth 4 | head -20"
 
