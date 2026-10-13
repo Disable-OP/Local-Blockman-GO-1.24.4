@@ -76,6 +76,16 @@ jobs:
             sudo apt-get install -y -qq linux-modules-extra-$(uname -r) android-tools-adb
             sudo modprobe binder_linux devices="binder,hwbinder,vndbinder"
           fi
+          # THE DRIVE'S iptables REDIRECT (docs/ON_DEVICE_DRIVE.md §4 step 3):
+          # the redroid container's netns needs the host kernel's netfilter
+          # modules (the container cannot modprobe). run-3 lesson: without
+          # ip_tables/iptable_nat, Android's iptables -t nat fails and the
+          # whole drive dies at ondrive_setup step 3.
+          for M in ip_tables iptable_nat nf_nat nf_conntrack x_tables \
+                   nf_defrag_ipv4 nfnetlink; do
+            sudo modprobe $M 2>/dev/null && echo "modprobe $M ok" \
+              || echo "modprobe $M unavailable (may be builtin)"
+          done
           command -v adb >/dev/null 2>&1 || { sudo apt-get update -qq; sudo apt-get install -y -qq android-tools-adb; }
           adb version | head -1
 
@@ -121,6 +131,8 @@ jobs:
           adb -s localhost:5555 push scripts/ondrive_setup.sh /sdcard/drive/ondrive_setup.sh
           adb -s localhost:5555 push scripts/ondrive_collect.sh /sdcard/drive/ondrive_collect.sh
           adb -s localhost:5555 shell chmod 644 /sdcard/drive/*.sh 2>/dev/null || true
+          echo "== on-device iptables probe (the real failure names itself) =="
+          adb -s localhost:5555 shell "iptables -t nat -L OUTPUT 2>&1 | head -4" || true
           adb -s localhost:5555 shell "sh /sdcard/drive/ondrive_setup.sh"
 
       - name: Boot the harness (holder + driveTLS + GameServer staging)

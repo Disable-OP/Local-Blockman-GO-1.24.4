@@ -8,7 +8,7 @@ OUT="/sdcard/drive/evidence-$LABEL"
 HARNESS_PKG="com.disabngo.blockynexus"
 FILES_DIR="/data/data/$HARNESS_PKG/files"
 
-rm -rf "$OUT"; mkdir -p "$OUT" || { echo "[collect] cannot mkdir $OUT"; exit 1; }
+rm -rf "$OUT"; mkdir -p "$OUT/files" || { echo "[collect] cannot mkdir $OUT"; exit 1; }
 say() { echo "[collect] $*"; }
 
 # device identity + network rules
