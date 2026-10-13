@@ -225,7 +225,10 @@ jobs:
         run: |
           set -e
           PKG="$PRISTINE_PKG"
-          UP=$("adb" -s localhost:5555 shell "stat -c %u /storage/emulated/0/Android/data/$PKG/files" | tr -d '\r')
+          # the app's external files dir may not exist before the FIRST
+          # launch (run 9: stat returned empty -> the chowns no-op'd) —
+          # the DATA dir always exists right after pm install
+          UP=$("adb" -s localhost:5555 shell "stat -c %u /data/data/$PKG" | tr -d '\r')
           echo "pristine uid: $UP"
           curl -sS -o /tmp/BedWarHall.zip \
             "https://staticgs.sandboxol.com/sandbox/games/maps/BedWarHall.1596795531126.zip"
@@ -249,7 +252,7 @@ jobs:
               adb -s localhost:5555 push /tmp/bwh/.    "$MAP/hunger_game_1/"
               adb -s localhost:5555 push /tmp/m1008x/. "$MAP/m1008_2/"
               adb -s localhost:5555 shell "chown -R $UP:$UP '$MAP' '$CFG'" || true
-              adb -s localhost:5555 shell "chmod -R u+rwX '$MAP' '$CFG'" || true
+              adb -s localhost:5555 shell "chmod -R 777 '$MAP' '$CFG'" || true
             done
           done
           echo "== placed map trees =="
