@@ -5380,3 +5380,55 @@ Stage Summary:
   ending if disk pressure returns (the session-83 lesson).
 - Gates at end of session: suite 710/710; smoke 28/28; commits
   78eeb6b..HEAD pushed; the drive runs 3-7 on the repo Actions.
+
+## Session 87 - THE HALL-MAP FIX: the 2.8.2 join chain decoded from the run-7 evidence (2026-10-14)
+
+- THE EVIDENCE FIRST: pulled the run-7 artifact (11845052692) and read the
+  600 s watch's logcat-full against the holder's logcat — no guessing.
+- THE JOIN CHAIN (all decoded in /home/z/p282 this session):
+  card tap -> detail Messenger realmsResult (mapName NULL) -> HostViewModel.
+  enterGame -> x (EnterGameHelper) -> T.a -> B (EnterGameHelperV2) ->
+  GET /game/api/v2/game/auth?typeId=1046 (MiniGameToken) -> y.onSuccess ->
+  e!=null branch copies ONLY signature+timestamp into the start Dispatch ->
+  /v1/game-map (w: sig/ts/cdns only) -> startGame -> EchoesGLSurfaceView:
+  mapName==null -> the DEFAULT hall map "hunger_game_1" -> mapExistsAndValid
+  (dir missing) -> PathUtil::CreateDir error 17 (EEXIST at
+  [storage/emulated/] — the native helper can NEVER mkdir the chain) ->
+  MapManager::startDownload url= EMPTY -> onDownloadMapFailure x2 -> stuck.
+  gameType 1046 IS the 2.8.2 BedWars card (the BED WAR HALL world; the
+  g1008 match comes later inside the engine).
+- THE ENGINE'S INNER JOIN FOUND: EchoesGLSurfaceView.loadMiniGameToken ->
+  GameApi.getMiniGameMap -> GET /v1/game-map parsed AS MiniGameToken —
+  downloadUrl -> realmsResult.mapUrl, mapName -> the mapExistsAndValid dir
+  -> initGame. This is the 10078 gameplay path for every inside-engine
+  room join (the Bedwars match included).
+- HOLDER: /v1/game-map answers the MiniGameToken shape ALWAYS now (the
+  run-5/6 dispatch-shape bridge starved both consumers — reverted);
+  downloadUrl + mapName filled from the map store (MapAssets.entryForGame,
+  now normalizing "1048"->"g1048"); game/auth fills downloadUrl too (was
+  hard empty); the requestId echo keys the TOKEN's owner (suite-caught).
+- MAPS: MapAssets.EXTRA_MAPS adds the 2.8.2-era official CDN map the pack
+  lacks — g1046 -> BedWarHall.1596795531126.zip (the CDN's own g1046 hall
+  map, GameTip/g1046.csv inside; sha256 pinned dc53d766...; downloaded to
+  the pack dir on the pack thread, indexed under the client map dir
+  hunger_game_1, persisted into index.json). The pack's m1046_2 stays for
+  the 1.24.4 line.
+- DRIVE: test-redroid-drive pre-places the pristine's map+config trees via
+  adb root (the holder can never write another app's Android/data):
+  hunger_game_1 (CDN zip) + m1008_2 (release pack zip), direct layout only
+  (mapExistsAndValid counts files vs checksums.md5), chowned to the
+  pristine uid, BOTH spellings x with/without the Download segment. The
+  config dirs pre-created = client.log finally capturable (the same
+  CreateDir(17) bug blocked it). ondrive_collect + g282_find_cfgdirs
+  learned the Download/ paths.
+- Sandbox artifacts made/kept: /tmp/drive7 (the run-7 evidence),
+  /tmp/BedWarHall.zip + /tmp/maps.tar.gz + /tmp/mapsx (the manifests) —
+  /tmp cleaned at session end per the recurring lesson.
+- Gates at end of session: suite 713/713 (the game-map contract tests
+  rewritten: token shape + requestId echo + downloadUrl presence); smoke
+  28/28; commit 6fe8d43 pushed.
+- NEXT (evidence-based): dispatch test-redroid-drive (run 8, Bedwars
+  g1008 card) -> read the placement proof + client.log + the engine's
+  mapExistsAndValid verdict; if the hall world loads, the next chain is
+  the engine's inner game-map (the holder now logs the query) -> the
+  room join g1008 -> the RakNet connect -> the C2S login -> bots.

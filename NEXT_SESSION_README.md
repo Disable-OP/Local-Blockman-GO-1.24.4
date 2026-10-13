@@ -3862,3 +3862,42 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   -> gate the per-game bot behavior from the live monitor logs. The exithook
   steps are NOT needed on this line (the pristine client is unmodified; the
   1.24.4 harness has no TSS).
+
+## Cron-session delta 31 (read FIRST — THE HALL-MAP FIX: the run-7 evidence decoded; /v1/game-map serves the MiniGameToken shape again; the workflow pre-places the pristine's maps; dispatch the drive run 8)
+
+- THE RUN-7 ARTIFACT DECODED (the 600 s watch, artifact 11845052692):
+  the engine's startParameter has configPath/mapPath under
+  <ext>/Android/data/com.sandboxol.blockymods/files/Download/SandboxOL/
+  BlockMan/{config,map}; the hall join wants map hunger_game_1 (the
+  engine's DEFAULT when realmsResult.mapName==null — EchoesGLSurfaceView);
+  PathUtil::CreateDir error 17 (EEXIST at [storage/emulated/]) means the
+  native engine can NEVER mkdir its own trees — the map AND client.log
+  can only exist if something pre-creates them; the client's join chain
+  drops MiniGameToken.downloadUrl at every level, so mapUrl[] was EMPTY.
+  gameType 1046 = the 2.8.2 BedWars card = the BED WAR HALL world.
+- THE ENGINE'S INNER JOIN (THE 10078 GAMEPLAY PATH):
+  EchoesGLSurfaceView.loadMiniGameToken -> GET /v1/game-map parsed AS
+  MiniGameToken (plain keys: downloadUrl/mapName/token/signature/dispUrl)
+  -> realmsResult rewritten -> initGame -> map download -> connect. The
+  run-5/6 DISPATCH-shape bridge starved it (gaddr/downurl keys map to
+  NOTHING in MiniGameToken) — reverted; the dispatch shape stays on
+  POST /v1/dispatch (the 1.24.4-era callers + the workflow verdict).
+- HOLDER (6fe8d43): /v1/game-map = the MiniGameToken shape ALWAYS, with
+  downloadUrl (the requested game's map bundle) + mapName (echoed, or the
+  client map dir name); game/auth fills downloadUrl; the requestId echo
+  keys the token's owner; the query is logged (gameType/mapName — the
+  engine's inner fetch will name its game there). MapAssets.EXTRA_MAPS:
+  g1046 -> BedWarHall.1596795531126.zip (the official CDN's own g1046
+  hall map, sha256-pinned, fetched on the pack thread, indexed under
+  hunger_game_1). Suite 713/713; smoke 28/28.
+- DRIVE: test-redroid-drive pre-places the pristine's map+config trees
+  via adb root — hunger_game_1 (CDN zip) + m1008_2 (release pack), direct
+  layout only (checksums.md5 count), chowned to the pristine uid, both
+  spellings x both Download segments. ondrive_collect + the automation's
+  config-dir discovery know the Download/ paths (client.log capturable).
+- NEXT (in order): dispatch test-redroid-drive (Bedwars card, WATCH 600s)
+  -> read the placement proof + client.log (initGame/mapExistsAndValid) +
+  the holder's game-map query log -> if the hall world LOADS, the next
+  chain is the engine's inner game-map (room staging) -> the g1008 room
+  join -> the RakNet connect -> the C2S login -> the bots gate. No new
+  games/maps this iteration (the user mandate stands).
