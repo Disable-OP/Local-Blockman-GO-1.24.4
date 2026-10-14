@@ -4068,3 +4068,52 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   gate (the monitor-log bot markers) and §6 steps 3..10b (Bedwars ->
   Skyblock -> the rest; no new games/maps).
 - GATES: suite 713/713 + smoke 28/28 on ca6d2ea.
+
+## Cron-session delta 37 (read FIRST — RUN 25: Bedwars honestly in-game AGAIN + the bot markers landed; Skyblock = the send-coalescing lost the login chain to one client parse error; the per-packet datagram fix shipped; run 26 tests)
+
+- READ WORKLOG's CRON SESSION 5 ADDENDUM. The one-line state: Bedwars
+  repeated its honest in-game verdict on the NEW harness (sandbox92) and
+  the bot-evidence markers landed; Skyblock exposed a NEW crash layer —
+  the GameServer's send-buffer coalescing glued the login chain behind a
+  packet the client's parser desyncs on, and ONE dropped datagram ate
+  LoginResult+UserIn -> the null-state SIGSEGV. The fix (one app packet
+  per datagram) is built + shipped; run 26 (38551343606, 29a14b2,
+  sandbox92) tests it.
+- THE DESYNC IS UNIVERSAL BUT USUALLY BENIGN: every boot logs the
+  tolerated "unknown packet id: 0" at the same post-accept position
+  (runs 24 Bedwars/Skyblock + 25 Bedwars ALL recovered). The crash needs
+  TWO conditions: (a) the desync lands on bytes that hard-throw
+  (run 25: the skinColor floats' continuation bytes -> "Failed to read
+  Integer: integer overflow"), AND (b) the login-critical packets are
+  GLUED into the same datagram BEHIND the throw point. Run 25's Skyblock
+  hit both; run 24's Skyblock hit neither (its login packets rode
+  separate datagrams and it got all the way to the 4 MB r.0.0.mca world
+  load before the boneCount crash).
+- THE SERVER BYTES ARE NOT THE BUG: the run-25 dump parses byte-perfect
+  per OUR schema (UserAttr entityId 6 / the skinColor floats / scale —
+  all match the server's logged values). Do NOT chase a schema fix; the
+  per-packet flush bounds the damage instead, and the surviving boots
+  prove the per-packet desync is recoverable.
+- THE MAP IS NOT THE BUG: the official m1048_1 zip carries 6 r.*.mca
+  regions (verified fresh from the pack); the pre-placement pushes them.
+- RUN 26 decisive reads (in order): (1) the Skyblock client.log shows
+  recv S2CPacketLoginResult + S2CPacketUserIn + "Blockman teleport" +
+  the anvil load (the login chain SURVIVED the login-window packets);
+  (2) no fresh tombstone during EITHER watch (the honest gate); (3) if
+  a tombstone still appears: the [fdprobe] lines NOW fire (the retry
+  fix) — read them FIRST, they name the engine's real lookup paths.
+- IF RUN 26 IS GREEN: §6 step 2's 15-bot gate (the monitor-log bot
+  markers — the Bedwars markers ALREADY landed in runs 24+25), then
+  §6 steps 3..10b IN ORDER (Bedwars -> Skyblock -> the rest; no new
+  games/maps — the mandate stands). The URL-res chain
+  (/system/etc/hosts + the holder's /files/upload proxy) is still
+  UNEXERCISED (zero /files/upload REQ lines — run 25 died before the
+  anim stage); the ENGINERES REQ lines are a bonus read on run 26.
+- LOGISTICS (do not rebuild the harness for C++ changes): the harness
+  APK has NO libgameserver.so — the holder downloads
+  libgameserver-arm64.so from the localapi-assets release per run
+  (GameServerManager.findBinary fallback). A C++ fix = push ->
+  build-gameserver (paths scripts/gameserver/**) -> dispatch the drive;
+  NO dex-swap, NO new sandbox APK. The dex-swap path is ONLY for the
+  Java (classes6.dex) changes.
+- GATES: suite 713/713 + smoke 28/28 on 29a14b2.

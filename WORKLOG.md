@@ -5827,3 +5827,63 @@ Stage Summary:
     Skyblock. Decisive reads: the ENGINERES REQ lines (the fetches
     landing), no boneCount, the Skyblock watch WITHOUT a fresh
     tombstone (the honest gate), then the 15-bot gate (§6 step 2).
+
+- CRON SESSION 5 ADDENDUM (the run-25 decode + the send-coalescing fix +
+  run 26, commit 29a14b2):
+  * RUN 25 (38542201687, ca6d2ea, sandbox92) — BEDWARS HONESTLY IN-GAME
+    AGAIN (the second honest Bedwars; on the NEW harness): the join
+    fired, the dispatch reached the holder, echoes up the whole watch,
+    the server saw the C2S login + the human in the room, the bot
+    evidence markers ['addEntityPlayerAI','PlayerAI','robot'] landed,
+    ZERO fresh tombstones. The §6 step-2 bot markers are LIVE.
+  * SKYBLOCK — a NEW crash mode, the honesty gate caught it: the client
+    threw "packet decode error: Failed to read Integer: integer
+    overflow" on the FIRST post-accept datagram and LOST the login
+    chain. THE DECODE: the server bytes are byte-perfect per our schema
+    (the dump parses cleanly as [UserAttr 0x44: entityId 6 zigzag 0x0c +
+    face..shoes zigzag 0x02 x5 + 13 zero fields + the skinColor floats
+    1.0/0.882/0.765/1.0 + defaultIdle 0 + empty vectors/strings +
+    scale 1.0][SyncWorldTime 0x34][the Lua-common ServerInfo blob
+    0x50]); the SAME desync exists in EVERY boot (the tolerated
+    "unknown packet id: 0" — runs 24 Bedwars/Skyblock + 25 Bedwars all
+    recovered from it), but RaknetSession COALESCES up to 450 B per
+    channel between flush ticks, and run 25's Skyblock variant hit the
+    float continuation bytes (a hard throw) WITH S2CPacketLoginResult +
+    S2CPacketUserIn glued into the SAME datagram. The client dropped
+    the whole datagram: no login succ / userIn / "Blockman teleport"
+    (run 24's Skyblock had ALL of them + the 4 MB r.0.0.mca load), the
+    null local-player state SIGSEGV'd MainTickThread ~3 s in
+    (tombstone_00, fault addr 0x4), the rebirth loop re-crashed per
+    round. THE MAP IS FINE: the official m1048_1 zip carries 6 r.*.mca
+    regions (verified fresh from the pack) — the missing-anvil theory
+    is dead. The g1048 server stayed healthy + ticking the whole time.
+  * THE FIX (patch_sources.py, commit 29a14b2): RaknetSession::
+    sendPacket flush(channel) right after the buffered write — ONE app
+    packet per datagram; a client parse failure can then cost at most
+    THAT packet, never the login chain queued behind it (loopback:
+    per-packet sends are free; RakNet reliability untouched). The
+    residual per-packet desync degrades to the tolerated
+    "unknown packet id" skip — exactly the shape every surviving boot
+    already recovers from.
+  * THE AUTOMATION FIX (29a14b2): the fd probe latched _fd_probed=True
+    BEFORE the pidof and silently no-oped forever when the rebirth loop
+    was between processes (run 25's Skyblock watch printed ZERO
+    [fdprobe] lines despite the per-round tombstone); it now retries
+    pidof 3x in-round, latches only on a real probe, and the tomb-head
+    name scans the diff lines for a tombstone filename (run 25 read
+    "total 1076" and skipped the head).
+  * GATES: suite 713/713 + smoke 28/28 on 29a14b2.
+  * LOGISTICS DECODED: the harness APK carries NO libgameserver.so —
+    GameServerManager.findBinary() falls back to downloading
+    libgameserver-arm64.so from the localapi-assets release on every
+    fresh CI run -> a C++-only fix needs NO harness rebuild. build-
+    gameserver #42 (29a14b2) rebuilt + clobbered the release asset
+    (51,170,992 bytes, 2026-10-14T10:35:34Z) and the drive picks the
+    new binary up automatically.
+  * RUN 26 DISPATCHED (38551343606, head 29a14b2, harness sandbox92
+    UNCHANGED): Bedwars + Skyblock. Decisive reads: the Skyblock boot
+    WITHOUT the login-chain loss (the per-packet datagrams —
+    LoginResult/UserIn/teleport must appear in client.log), the
+    Skyblock watch WITHOUT a fresh tombstone (the honest gate), then
+    the 15-bot gate (§6 step 2) and §6 steps 3..10b (Bedwars ->
+    Skyblock -> the rest; no new games/maps — the mandate stands).
