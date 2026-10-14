@@ -41,6 +41,18 @@ on:
       games:
         description: 'Comma list of card_regex::label pairs (hall-card match)'
         default: 'bed\s*war::Bedwars (g1008)'
+  # CRON-SESSION-6: the cron session PAT has NO actions:write (the
+  # /dispatches endpoint 403s "Must have admin rights"), so the drive is
+  # now ALSO push-triggered on the engine-line paths + this file. A push
+  # that carries a scripts/gameserver/** change means build-gameserver
+  # runs too - the wait step below holds the drive until that build's
+  # asset lands (the drive fetches libgameserver-arm64.so per run).
+  push:
+    branches:
+      - main
+    paths:
+      - "scripts/gameserver/**"
+      - ".github/workflows/test-redroid-drive.yml"
 
 permissions:
   contents: read
@@ -48,18 +60,44 @@ permissions:
 jobs:
   redroid-pristine-drive:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 50
+    timeout-minutes: 100
     env:
       HARNESS_PKG: com.disabngo.blockynexus
       HARNESS_ACT: com.disabngo.blockynexus.view.activity.start.StartActivity
       PRISTINE_PKG: com.sandboxol.blockymods
       PRISTINE_ACT: com.sandboxol.blockymods.view.activity.host.HostActivity
-      GAMES: ${{ github.event.inputs.games || 'bed\s*war::Bedwars (g1008)' }}
-      HARNESS_ASSET: ${{ github.event.inputs.harness_asset || 'BlockyNexus-localapi.apk' }}
+      GAMES: ${{ github.event.inputs.games || 'bed\s*war::Bedwars (g1008),sky\s*block::Skyblock (g1048)' }}
+      HARNESS_ASSET: ${{ github.event.inputs.harness_asset || 'BlockyNexus-localapi-sandbox92.apk' }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
+
+      - name: Wait for the gameserver build of this sha (if any)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHA="${{ github.sha }}"
+          # A scripts/gameserver/** push also fires build-gameserver; the
+          # drive must run against ITS asset (libgameserver-arm64.so is
+          # clobbered per build). A workflow/docs-only push has no build
+          # run and proceeds immediately.
+          for i in $(seq 1 55); do
+            RUNS=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow=build-gameserver \
+              --commit "$SHA" --json status,conclusion --limit 1 2>/dev/null || echo "[]")
+            if [ -z "$RUNS" ] || [ "$RUNS" = "[]" ]; then
+              echo "no gameserver build for $SHA - proceeding"
+              exit 0
+            fi
+            STATE=$(echo "$RUNS" | python3 -c 'import json,sys;r=json.load(sys.stdin)[0];print(r["status"]+":"+str(r["conclusion"]))')
+            echo "build state: $STATE (round $i)"
+            case "$STATE" in
+              completed:success) echo "build landed - proceeding"; exit 0;;
+              completed:*) echo "build FAILED - aborting the drive"; exit 1;;
+            esac
+            sleep 100
+          done
+          echo "timed out waiting for the gameserver build"; exit 1
 
       - name: Fetch the harness + pristine APKs from releases
         env:
