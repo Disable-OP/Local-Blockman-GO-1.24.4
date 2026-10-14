@@ -6256,3 +6256,71 @@ Stage Summary:
   the only debugger); (2) the zombied 4fee856 runs burn runner minutes
   until ~23:12Z = harmless; (3) the GameInfo fix = still ONE packet per
   iteration — the live evidence FIRST, no speculative wire changes.
+
+---
+
+## Cron session 7 addendum — THE RUN-30/31 DECODE: the per-run-lib mystery CLOSED (the harness bundles the lib and the PM stages it — every drive since run 24 tested the SAME pre-fix binary); the wait-race + the harvest pull bug fixed; the lib-staging step shipped
+
+Work Log:
+- RUN 30 (38611409966, 28605a5): the drive = failed; the evidence = SPARSE
+  (733 KB: the lib-md5 + the boot pngs, ZERO logs). TWO bugs found:
+  (1) THE 4fee856 HARVEST EDIT = BROKE THE PULL LOOP: `ls /sdcard/drive/`
+  -> `ls -la` — the permission-prefixed lines NEVER match `case evidence-*`
+  -> nothing pulled. FIXED (bare ls back).
+  (2) THE WAIT-FOR-BUILD = PASSED WHILE BUILD #47 WAS STILL COMPILING (the
+  drive = at the joins ~18:05Z; the build = done 18:13:22Z; the asset =
+  clobbered 18:10:15Z) — the silent `|| echo "[]"` fallback = treats a
+  failing gh call as "no build - proceeding". The holder then staged the
+  PREVIOUS asset. FIXED: the gh failures + the missing builds = FATAL when
+  the push touched scripts/gameserver/** (NEED_BUILD = the push-diff grep);
+  the --workflow filter = the FILENAME form (build-gameserver.yml).
+- RUN 31 (38618899132, 5d24dc0 = the fixes): the wait = correctly skipped
+  (NEED_BUILD=0); the FULL evidence = back (6.5 MB, the per-window stashes).
+  THE DECODE:
+  * THE STAGED LIB MD5 = STILL 074218d4e3d9b7cf4fad6f3a549cdee7
+    (51,166,896 B) — even with the wait skipped and the asset = #47's
+    (591e426b..., 51,203,760 B) since 18:10:15Z. NOT the wait race.
+  * THE SOURCE = THE HARNESS APK ITSELF: sandbox92.apk bundles
+    lib/arm64-v8a/libgameserver.so = 51,166,896 B = THE EXACT staged size
+    (the PM extracts it to /data/app/.../lib/arm64/ = the harvest path).
+    The bundled lib = built 09:24:26Z (the sandbox92 build) = BEFORE the
+    UserAttr fix (#44/#45 = 14:21-15:43Z) = PRE-ALL-PROTOCOL-FIXES.
+  * CONSEQUENCE: runs 24-31 = ALL tested the SAME pre-fix binary. The
+    'encoder insert = inert' mystery (session 6 addendum 2) = MOOT — the
+    insert was never in the running binary. The GameInfo gate = never
+    tested. The UserAttr fix = never tested. The 'throw moved' (run 29) =
+    content variation, not a build change.
+  * RUN 31's WIRE: ZERO protocol parse errors for the FIRST time (the
+    'Failed to read' lines = Android KernelCpu noise, NOT the parser);
+    only the tolerated 'unknown packet id: 0' (x3 boots) — the UserAttr
+    desync landed on SOFT bytes this run = a QUIET misalignment (the same
+    pre-fix shape, no throw) — and the SKYBLOCK TOMBSTONE = STILL THERE
+    (tombstone_00 in evidence-game-Skyblock) = the ~20s wall = UNCHANGED.
+    The Bedwars window = no tombstone (the line = alive).
+- THE FIX (00cfd75, workflow-only => no build, the drive runs immediately):
+  a NEW step BETWEEN the harness install and the boot: fetch the CURRENT
+  localapi-assets libgameserver-arm64.so, overwrite the staged
+  /data/app/.../lib/arm64/libgameserver.so (root adb; chmod 755 +
+  chown system:system + restorecon), md5 BOTH sides into
+  evidence-lib-stage.md5 (pushed to /sdcard/drive/ = the harvest picks it
+  up). THE GAME-SERVER = NOW = the instrumented build (#47) = the FIRST
+  VALID post-fix wire test = run 32 (38624695619).
+- THE RUN-32 DECISION TREE (unchanged, now on a VALID binary):
+  1. evidence-lib-stage.md5: the staged md5 = 591e426b (the #47 asset) =>
+     the staging = worked; anything else => the fetch/copy = broken.
+  2. server.log: "RUN-27 UserAttr10078 shape ENABLED, encoders=%d" —
+     present => the gate fires; absent (with the md5 = #47) => the gate =
+     wrong (log m_engineVersion next).
+  3. The wire: the Skyblock client.log = the UserAttr = the 0x00 between
+     suitsId and scale (no desync) => THE WALL TEST — the Skyblock
+     tombstone should be GONE; the Bedwars line = stays honest-green.
+  4. If the wall FALLS => the 15-bot gate (§6 step 2) then §6 steps 3..10b
+     (Bedwars -> Skyblock -> the rest; NO new games/maps).
+
+Stage Summary:
+- The per-run-lib mechanism = DECODED and FIXED at the drive level (no
+  harness rebuild needed — the staged lib = replaceable per run via root).
+- The run-30 evidence gap + the wait race = both fixed (the harvest =
+  whole again; the stale-lib stage = impossible for gameserver pushes).
+- Run 32 = the first VALID test of the UserAttr vector<String> fix + the
+  instrumented #47 binary. The wall test = the read.
