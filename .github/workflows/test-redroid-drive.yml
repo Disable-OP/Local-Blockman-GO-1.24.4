@@ -340,12 +340,23 @@ jobs:
         # g1046 appres) into assets/resources/Media/, strip META-INF,
         # zipalign + debug-sign. The TSS risk = covered by the launch
         # step's 20 s alive check (it names the tamper verdict loudly).
+        # RUN-34 NOTE: this step failed on the arm runner (the logs =
+        # PAT-blocked) — setup-java pins the JRE + the step now echos
+        # every stage so the next failure names itself.
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Rebuild the pristine (pack + sign)
         run: |
+          echo "java: $(java -version 2>&1 | head -1)"
           curl -sSfL -o /tmp/uber-apk-signer.jar \
             https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar
+          ls -la /tmp/uber-apk-signer.jar
           curl -sS -o /tmp/appres-g1046.zip \
             "https://staticgs.sandboxol.com/sandbox/games/app-game-engine-resources/appres-g1046-10078.1625198960711.zip"
           echo "a9b2dd94151f72b39e24d278889ca35d63a64c005c4841a8eac7f60ac4752677  /tmp/appres-g1046.zip" | sha256sum -c -
+          ls -la harness.apk pristine282.apk
           python3 - <<'PYEOF'
           import zipfile, os, hashlib
           ORIG, HARNESS, G1046 = 'pristine282.apk', 'harness.apk', '/tmp/appres-g1046.zip'
@@ -377,9 +388,11 @@ jobs:
           print('packed pristine-patched.apk', os.path.getsize('pristine-patched.apk'),
                 'md5', hashlib.md5(open('pristine-patched.apk','rb').read()).hexdigest())
           PYEOF
+          ls -la pristine-patched.apk
           java -jar /tmp/uber-apk-signer.jar --apks pristine-patched.apk --out .
           SIGNED=$(ls pristine-patched-*igned*.apk | head -1)
           echo "signed: $SIGNED"
+          [ -n "$SIGNED" ] || { echo "FATAL: no signed apk"; exit 1; }
           mv -f "$SIGNED" pristine282.apk
           md5sum pristine282.apk | tee evidence-pristine-build.md5
           unzip -l pristine282.apk | grep -c "SkyBlockMain.json" \
