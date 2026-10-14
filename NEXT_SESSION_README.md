@@ -4320,3 +4320,55 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   next packet -> the SAME ctor disassembly (pid() thunk -> vtable ->
   ctor -> offsets; the pid-68 template = WORKLOG session 6). The +17s
   "unknown packet id: 0" source = the first candidate either way.
+
+## Cron-session delta 42 (read FIRST — the run-30 cycle RE-FIRED after an ndk-build runner hang; the pid-15 static route = mapped and BLOCKED; the binder object layout = decoded; the decision tree unchanged and riding the fresh cycle)
+
+- READ WORKLOG cron session 7 + session 6 addendum 2 first. One-line state:
+  build #46 (4fee856) hung at ndk-build past its 120-min timeout (a dead
+  runner; GitHub's force-kill = the 6h limit ~23:12Z, the drive zombied at
+  wait-for-build) -> a comment-only push (28605a5, identical binary
+  content) RE-FIRED the cycle: build-gameserver 38611409823 +
+  test-redroid-drive 38611409966. THE EVIDENCE = the release asset
+  gjevidence-run-38611409966.tar.gz on wip-sandbox86 (the run id = the
+  drive run above; the cron PAT = no artifact/log read, releases = read).
+- THE DECISION TREE (unchanged from session 6 addendum 2, now riding
+  28605a5's run):
+  1. Download gjevidence-run-38611409966.tar.gz (curl -u
+     "x-access-token:$TOKEN" the release asset; the token = in .git/config,
+     BASIC auth only).
+  2. lib-md5.txt: the staged libgameserver md5 vs the 28605a5 build asset's
+     md5 (fetch the asset from the release, md5 it) — a mismatch = the
+     harness fetch = broken (fix GameServerManager's findBinary/cache).
+  3. server.log: the "RUN-27 UserAttr10078 shape ENABLED, encoders=%d"
+     line — present + the wire still old = the encode path is NOT the
+     static encoder list (disassemble the new lib's callEncoders);
+     present + the wire clean (the 0x00 between suitsId and scale) = the
+     WALL TEST (the Skyblock watch without the ~20s tombstone);
+     absent = the gate wrong (next push: log m_engineVersion at the login
+     site — WITH the full hunk rehearsal + gates discipline).
+  4. The Bedwars 0x0f-start throw (the GameInfo parse) = the next fix
+     target — but ONLY from the live evidence (see the pid-15 note below).
+- THE PID-15 STATIC ROUTE = BLOCKED (session 7, do NOT re-attempt with
+  the same method): pid-15 = TWO ICF-folded sibling classes (vtable
+  address points 0x15fed08/0x1637e84, folded pid() thunk 0x79f58f at
+  SLOT 7); the derived ctor 0x799a44 = tiny multi-inheritance (base =
+  0xb80b2c = a mid-function secondary entry into an ICF-FOLDED MONSTER
+  ctor with a pid dispatch and a ~0x3f0 frame; the binder instances =
+  runtime-built (no static field-offset table; the __func instance =
+  12 bytes [vptr, free-fn, DATA-MEMBER-PTR=the field offset] — proven
+  from clone() 0x61b850). The toolchain (calibrated on pid-68, all four
+  ref-sites re-found) = /home/z/my-project/tool-results/pid15/ — the one
+  missing piece = a flow-following disassembler. The LIVE client.log
+  parse errors = the cheaper decisive input (the project's own method).
+- THE GAMEINFO BAG FACTS (for the evidence decode): the client's pid-15
+  type set = {String x2 instantiations, vector<int> x2,
+  vector<CoinMapping>, uchar} — no Vector3i / no vector<String>, but
+  EMPTY vectors/strings = wire-identical bytes, so run-26's byte-exact
+  unknown-0/16 count predictions STAND; the GameInfo tail story = still
+  open, decide from the run's throw bytes (the 0x0f-start buffer hex).
+- OPERATIONAL NOTES: (1) if build 38611409823 hangs past ~100 min, re-fire
+  with a comment-only push again (the same trick as 28605a5) and note the
+  pattern; (2) docs-only pushes trigger NOTHING (paths filter) — safe;
+  (3) scripts/gameserver/** pushes trigger build+drive automatically =
+  the self-driving calibration loop; (4) the ~23:12Z 6h reaper kills the
+  zombied 4fee856 runs — ignore them.

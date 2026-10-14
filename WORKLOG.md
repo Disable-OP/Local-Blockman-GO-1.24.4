@@ -6161,3 +6161,98 @@ Stage Summary:
 - The UserAttr fix = in the binary but INERT on the wire — the two log
   lines + the lib md5 = the next run's decoders. The Bedwars throw =
   MOVED (the GameInfo = the new suspect); the ~20s wall = still standing.
+
+---
+
+## Cron session 7 (2026-10-15 ~01:30 local / 17:3x UTC) — run-30 cycle re-fired after an ndk-build runner hang; the pid-15 static route mapped and BLOCKED (the merged ctor); the binder object layout decoded
+
+Work Log:
+- Environment: repo at 4fee856 = origin/main, tree clean; the cron verified
+  active (this session = cron-triggered, trace web-cron-review-202610150130).
+  The cron TOOL again = unavailable in this request context (the same as
+  session 6) — the cron itself = live, nothing to re-create.
+- THE RUN-30 CYCLE (4fee856 = build #46 + the first fully self-driving
+  drive): the drive run 38604709174 = correctly held at wait-for-build;
+  build #46 (38604709073) = HUNG at ndk-build (step 10) — no progress past
+  ~75 min (the normal FULL build = ~70 min) and NO run-status updates for
+  2h+; the 120-min job timeout = NOT enforced (the runner = dead; GitHub's
+  force-kill = the 6h hard limit, ~23:12Z). The drive = zombied at its wait
+  step (its own 100-min timeout also unenforced — same dead-runner class).
+- THE RE-TRIGGER (28605a5): a comment-only patch_sources.py push (zero
+  behavior delta, IDENTICAL binary content) fired the fresh cycle:
+  build-gameserver 38611409823 + test-redroid-drive 38611409966 (both for
+  28605a5). The stale 4fee856 runs = left to the 6h reaper. The run-30
+  instrumentation (the enable10078Shape "shape ENABLED, encoders=%d"
+  server.log line + the staged-libgameserver md5 harvest into
+  gjevidence/lib-md5.txt) rides THIS cycle's asset.
+- THE PID-15 (GameInfo) CALIBRATION ATTEMPT (the decision tree's step 4,
+  executed while the cycle ran; scripts in
+  /home/z/my-project/tool-results/pid15/):
+  * TOOLCHAIN BUILT + CALIBRATED on the known pid-68: capstone Thumb-2 +
+    a Python ELF32 section parser + the vptr-store scanner (ldr-lit ->
+    add rX,pc -> [adds #k] -> str). The three fixes that made it work:
+    (1) md.skipdata = True — capstone disasm STOPS at the first invalid
+    byte otherwise (literal pools); (2) the movw/movt + absolute-literal
+    paths; (3) strict register-clobber invalidation (mov/ldr/bl/pop).
+    ALL FOUR pid-68 vtable ref-sites re-found = the calibration GREEN:
+    ctors 0x63f038 + 0x63f090, dtors 0x63f230 (D2) + 0x63f9c8 (D0).
+    Lazy generator iteration = REQUIRED (materializing 6.1M instructions
+    OOM-killed the 4 GB sandbox once).
+  * pid-15 = TWO SIBLING classes (ICF-folded): vtable address points
+    0x15fed08 + 0x1637e84 (.data.rel.ro), the SAME folded pid() thunk
+    0x79f58f ("movs r0,#15; bx lr"), pid() at SLOT 7 (not slot 2 — a
+    different virtual layout; the original 6-slot vtable scanner was
+    BLIND to them for exactly this reason). vtable slot layout =
+    12 slots with ~9 folded siblings.
+  * THE pid-15a CTOR = a tiny MULTI-INHERITANCE derived ctor @0x799a44:
+    bl 0xb80b2c (the primary base) + bl 0x78dd9c (a sub-object ctor at
+    this+0x7c — NOT a field registrar; some settings-like object) + two
+    vptr stores (primary 0x15fed08 @this+0, secondary @this+0x7c =
+    vtable+0x140). NO addMember run in the derived ctor.
+  * THE PRIMARY BASE = a secondary-ENTRY merged monster: 0xb80b2c = a
+    legitimate DIRECT-CALL target mid-function (the BL hand-decoded:
+    S/I1/I2 bits verified), whose disasm = interleaved basic blocks of a
+    ~0x3f0-frame function with a PID DISPATCH at the top (cmp r3,#4 /
+    #0x1e / #0xe4...) = the ICF-folded ctor of MANY S2CPacket<N> classes;
+    the field registration = inside, table-driven. Static extraction =
+    BLOCKED: the adr-referenced table region = high-entropy (obfuscated
+    or unrelocated); .ARM.exidx = NO entries past ~0xb12128 (the whole
+    0xb8xxxx region = unwound-less; ~4 MB of .text has no unwind info).
+  * THE BINDER STRUCTURE DECODED (the real yield): the client's per-field
+    decoders = std::__ndk1::__function::__func<__bind<void(*)(
+    RakNet::BitStream*, const S2CPacket<pid>*), T S2CPacket<pid>::*, _1,
+    _2, T&>>; the INSTANCE = 12 bytes [vptr, free-fn-ptr, DATA-MEMBER-PTR
+    = the field byte offset] — proven from the clone() at 0x61b850
+    (operator new(0xc) + stm {vptr, fn, memptr}). The CoinMapping
+    binder's __func vtable = 0x15daf88 (typeinfo @0x15dafac -> mangled
+    name 0x141ccf0; the sibling binder vtables = 0x15dafd4/0x15db044/
+    0x15db068/0x15db0bc). ALL instances = runtime-built (a whole-binary
+    search = zero static wins; the typeinfo name pointers = relocated —
+    no absolute refs in .data.rel.ro).
+  * CONSEQUENCE: the client's GameInfo schema = NOT statically
+    extractable with this toolchain. The LIVE evidence (the run's
+    client.log parse errors = the project's stated calibration method)
+    = the decisive input. The pid-15 bag type set = {String x2
+    instantiations, vector<int> x2, vector<CoinMapping>, uchar} — NO
+    Vector3i, NO vector<String>, but empty vectors/strings = wire-
+    identical bytes, so this does NOT contradict run-26's byte-exact
+    unknown-0/16 count predictions (both remain consistent).
+- Docs: this session 7 + NEXT_SESSION delta 42.
+
+Stage Summary:
+- The run-30 instrumentation cycle = RE-FIRED (28605a5 -> build
+  38611409823 + drive 38611409966); the decision tree = UNCHANGED and
+  rides this cycle: (1) lib-md5.txt vs the build asset; (2) the
+  "UserAttr10078 shape ENABLED, encoders=%d" line; (3) the wire bytes
+  (the 0x00 between suitsId and scale); (4) the Skyblock ~20s wall;
+  (5) the GameInfo 0x0f-start Bedwars throw.
+- The pid-15 static route = mapped and BLOCKED (the ICF merged ctor +
+  runtime-built binders); the disassembly toolchain = built, calibrated
+  on pid-68, reusable — the one missing piece = a flow-following
+  disassembler (or the live evidence beats it outright).
+- Known risks: (1) the ndk-build hang = possibly a GH runner incident —
+  if build 38611409823 ALSO hangs past ~100 min, re-fire again and note
+  the pattern (the job-log endpoint = PAT-blocked; local rehearsal =
+  the only debugger); (2) the zombied 4fee856 runs burn runner minutes
+  until ~23:12Z = harmless; (3) the GameInfo fix = still ONE packet per
+  iteration — the live evidence FIRST, no speculative wire changes.
