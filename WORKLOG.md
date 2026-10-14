@@ -5611,3 +5611,35 @@ Stage Summary:
      prove the connect; the client.log gates could downgrade to WARN).
   4. THEN the bots gate (the monitor-log bot markers are already
      appearing: addEntityPlayerAI/PlayerAI/robot) + the rest of §6.
+
+- CRON SESSION 3 ADDENDUM (the run-19 docs order executed, commit 8c01aaa):
+  * CAPTURE CONSISTENCY: the automation now stashes client.log + server.log
+    into /sdcard/drive/stash/ BEFORE the watch, MID-watch (every 3 rounds)
+    and AFTER it (g282_stash_logs, best-effort, never fatal);
+    ondrive_collect.sh copies the stash into every evidence tar
+    (files/stash/); the workflow additionally runs a pre-<label> collect
+    before each join. The end-of-run rotation race (runs 14/16 got
+    client.log, others did not) can no longer lose the capture.
+  * CARD RE-ENTRY: the watch loop's re-tap block gained the r>=6 branch —
+    when the join has NOT fired and NO start control is on screen (the
+    detail page had closed/moved on; run 19's Bedwars spec died exactly
+    there), it re-runs the WHOLE card->detail->press flow: re-find the
+    hall card (collect_cards + the spec regex, bounded 3 swipes), tap it,
+    dismiss overlays, press btn_enter. Each re-entry re-runs the client's
+    enter flow.
+  * GATE DOWNGRADE: check_soft() — the three client.log verdict gates
+    (initGame ONLINE / emConnectSuc / login succ) are WARN-only now; the
+    server-side gates (C2SPacketLogin + the monitor g2r type=151) stay
+    the hard authority. The verdict prints [WARN] lines for the client.log
+    copies without failing the run.
+  * AUDIT NOTE: a tool-display quirk showed ui_automation_test.py:3450 as
+    a syntax error; od -c proved the file bytes are the valid list
+    comprehension "[m for m in ..." (py_compile + ast.parse green) — no
+    repo defect; the bot-evidence line is intact.
+  * GATES: suite 713/713 + smoke 28/28 on the final state.
+  * RUN 20 DISPATCHED (id 38518243375, head 8c01aaa, harness sandbox91 —
+    no Java change so no rebuild): games="bed\s*war::Bedwars (g1008),
+    sky\s*block::Skyblock (g1048)" (the user's verification order). The
+    decisive reads: the stash captures in the evidence tars, a green
+    Bedwars join through the re-entry path, Skyblock repeating run 19's
+    server-side chain.

@@ -3951,3 +3951,40 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   (g1048; NO 10078 appres exists on the CDN — the join may tolerate the
   shipped resources or need the m1048_1 map's own; the evidence tells) ->
   the rest of §6 steps 3..10b. No new games/maps (the mandate stands).
+
+## Cron-session delta 33 (read FIRST — the run-19 docs order EXECUTED: the capture-timing stash, the card re-entry, the client.log gates downgraded to WARN; run 20 dispatched)
+
+- READ WORKLOG's CRON SESSION 3 ADDENDUM (this session's details). The
+  one-line state: every join-chain layer works in real logs (Bedwars
+  runs 13/15 connect+login; Skyblock run 19 connect+login+room+bots);
+  this session landed the three STABILITY fixes the run-19 close-out
+  ordered, and run 20 (id 38518243375, head 8c01aaa, harness sandbox91)
+  is the stability verdict.
+- THE THREE FIXES (commit 8c01aaa, workflow/automation-side only):
+  1. CAPTURE-TIMING: g282_stash_logs() — client.log/server.log from
+     every candidate config dir copied into /sdcard/drive/stash/
+     BEFORE the watch, MID-watch (every 3 rounds) and AFTER it;
+     ondrive_collect.sh includes the stash in every evidence tar
+     (files/stash/); the workflow sweeps a pre-<label> collect before
+     each join. The end-of-run rotation race is dead.
+  2. CARD RE-ENTRY: when !fired at r>=6 and NO btn_enter is on screen
+     (the detail page closed — run 19's Bedwars flake), the watch loop
+     re-runs the WHOLE card->detail->press flow (bounded 3 swipes).
+  3. GATE DOWNGRADE: check_soft() — the client.log verdict gates
+     (initGame ONLINE/emConnectSuc/login succ) print [WARN] and no
+     longer fail the run; the server-side C2SPacketLogin + g2r
+     type=151 gates stay the hard authority.
+- AUDIT NOTE: a tool-display quirk showed ui_automation_test.py:3450
+  as a syntax error; od -c proved the bytes are the valid "[m for m
+  in ..." comprehension (py_compile + ast.parse green). No repo defect.
+- GATES: suite 713/713 + smoke 28/28 on the final state.
+- NEXT (in order): read run 20's evidence FIRST (the stash captures +
+  the per-game verdicts; the Bedwars join must clear via the re-entry
+  path if the detail page closed) -> if green: the g1008 sub-game room
+  join INSIDE the hall (§6 step 2's 15-bot gate, the monitor-log bot
+  markers addEntityPlayerAI/PlayerAI/robot are already appearing) ->
+  the rest of §6 steps 3..10b (the per-game verification, the user's
+  order: Bedwars -> Skyblock -> the rest). If run 20 still flakes,
+  read WHICH layer flaked from the stash (the captures now survive the
+  rotation) — the mechanism list stays closed; this is stability
+  engineering. No new games/maps (the mandate stands).
