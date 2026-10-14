@@ -544,6 +544,31 @@ jobs:
           adb -s localhost:5555 shell "ls '$MEDIA/Actor' | head -8"
           echo "== placed map trees =="
           adb -s localhost:5555 shell "find /storage/emulated/0/Android/data/$PKG/files/Download/SandboxOL/BlockMan -maxdepth 4 | head -20"
+          # RUN-32 DECODE (38624695619): the Skyblock boot died at 3 s
+          # uptime (SIGSEGV MainTickThread, pc libBlockMan.so+0x88e970,
+          # fault 0x0) right after "GUIWindowManager::LoadWindowFromJSON:
+          # SkyBlockMain.json not exist!" — the pristine 2.8.2 APK ships
+          # ZERO SkyBlock* UI windows (verified: assets grep = 0 hits;
+          # the 4151-era harness base ships 23 SkyBlock* UI jsons; the
+          # 2.8.2 predates the SkyBlock UI). The g1048 appres zip does NOT
+          # carry them either (only Scripts/Sound/appres). The null main
+          # window = the crash. The same-boot Bedwars tolerated the
+          # g1048_striation.effect + g1008_boy.actor misses (alive through
+          # the whole watch) = ONLY the missing main UI window = fatal.
+          # FIX: place the 4151-era SkyBlock UI json set from the harness
+          # base APK into the pristine's app_resources/Media/GUI/UI/ (the
+          # rootPath Media subtree = the run-22-decoded search root).
+          rm -rf /tmp/sbui && mkdir -p /tmp/sbui/out
+          unzip -o -q harness.apk 'assets/resources/Media/GUI/UI/SkyBlock*' -d /tmp/sbui
+          cp /tmp/sbui/assets/resources/Media/GUI/UI/SkyBlock*.json /tmp/sbui/out/
+          echo "SkyBlock UI files extracted: $(ls /tmp/sbui/out | wc -l)"
+          [ "$(ls /tmp/sbui/out | wc -l)" -ge 20 ] || { echo "SkyBlock UI extraction incomplete"; exit 1; }
+          adb -s localhost:5555 shell "mkdir -p '$MEDIA/GUI/UI'"
+          adb -s localhost:5555 push /tmp/sbui/out/. "$MEDIA/GUI/UI/"
+          adb -s localhost:5555 shell "chown -R $UP:$UP '$MEDIA/GUI'" || true
+          adb -s localhost:5555 shell "chmod -R 777 '$MEDIA/GUI'" || true
+          echo "== SkyBlock UI placed =="
+          adb -s localhost:5555 shell "ls '$MEDIA/GUI/UI' | head -5; ls '$MEDIA/GUI/UI' | wc -l"
 
       - name: Launch the pristine client (drive step 1 - login lands on OUR holder)
         run: |
