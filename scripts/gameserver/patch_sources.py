@@ -610,3 +610,13 @@ patch(_CP_C, [
 ])
 
 print('all patches applied')
+
+# RUN-30 CYCLE NOTE (cron session 7): the run-30 cycle (4fee856 = build #46)
+# hung at ndk-build past the 120-min job timeout (a dead runner; GitHub kills
+# it at the 6h hard limit). This comment-only push re-fires the build+drive
+# cycle with IDENTICAL binary content: the run-30 instrumentation (the
+# enable10078Shape 'shape ENABLED, encoders=%d' server.log line + the staged
+# libgameserver md5 harvest) is unchanged and = the decision-tree proof set.
+# Decision tree after this run: lib-md5 vs build #47's asset; the shape line
+# present/absent; the wire bytes old/clean; the Skyblock ~20s wall; the
+# GameInfo (pid-15) suspect = the Bedwars 0x0f-start throw.
