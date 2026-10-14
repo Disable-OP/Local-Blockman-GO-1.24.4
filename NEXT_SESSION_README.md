@@ -4049,3 +4049,22 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   -> the rest of §6 steps 3..10b (Bedwars -> Skyblock -> the rest, no
   new games/maps). If it STILL crashes: read [fdprobe] first, place
   the named file at the named path, one run per iteration.
+
+## Cron-session delta 36 (read FIRST — BEDWARS HONESTLY IN-GAME (run 24 rc=0, zero tombstones); the boneCount = the parse of the FAILED URL-res fetch; the LIVE content-addressed store found on staticgs (md5-verified); the holder now proxies it; sandbox92 built; run 25 tests)
+
+- READ WORKLOG's CRON SESSION 4 ADDENDUM 3. The one-line state: the
+  honesty gate proved Bedwars in-game (the whole watch, zero crashes)
+  and caught Skyblock's rebirth crash loop; the crash = the engine
+  parsing the buffer of a FAILED content-addressed fetch (the
+  hardcoded zombie resUrl); the SAME store is LIVE on
+  staticgs.sandboxol.com/files/upload/<md5>; the holder now proxies it
+  (+ the /system/etc/hosts + route_localnet fixes so the fetches land).
+- THE RES CHAIN (all decoded this session): the avatar template
+  Media/Actor/boy.actor -> the sub-actor g1008_boy.actor (placed) ->
+  the world content (the g1048 actors, placed) -> the hash-named
+  URL-res fetches (Media_res_config.txt) -> NOW SERVED by the holder.
+- RUN 25 (ca6d2ea, sandbox92) decisive reads: the ENGINERES REQ lines,
+  no boneCount, no fresh tombstone in EITHER watch, then the 15-bot
+  gate (the monitor-log bot markers) and §6 steps 3..10b (Bedwars ->
+  Skyblock -> the rest; no new games/maps).
+- GATES: suite 713/713 + smoke 28/28 on ca6d2ea.

@@ -5790,3 +5790,40 @@ Stage Summary:
     [fdprobe] lines naming the engine's actual resource-open paths,
     (c) the bots gate next (§6 step 2's 15-bot read) once the client
     survives.
+
+- CRON SESSION 4 ADDENDUM 3 (the run-24 decode + the URL-RES CDN store +
+  sandbox92, commit ca6d2ea):
+  * RUN 24 (38536039296, a70f84c + sandbox92... no — sandbox91) — the
+    honesty gate WORKED: Bedwars rc=0 with ZERO fresh tombstones (THE
+    USER'S #1 GAME SURVIVED ITS WHOLE WATCH IN-GAME — the first honest
+    in-game Bedwars!) and Skyblock failed HARD on the rebirth crash
+    loop (a fresh tombstone every round — exactly what the gate exists
+    to catch). The Media/Actor template-dir copy did NOT clear the
+    sub-actor error (still logged once) but the boots got MUCH deeper:
+    'recv S2CPacketLoginResult, login succ' + 'S2CPacketUserIn' + the
+    teleport to the spawn + the anvil terrain load + the initGame
+    stats — the crash moved to the WORLD-CONTENT parse.
+  * THE BONECOUNT DECODE COMPLETED: every 'boneCount too large'
+    (0x61737365='asse') follows 'Failed to download the resource
+    83af67749d7ffd133fe307d48af54af4. HTTP status code: 0' — the parse
+    of the FAILED fetch's buffer. The fetch = the engine's URL-RES
+    store: Media_res_config.txt maps names to md5 (2081 entries),
+    the fetch = <resUrl><md5>, and resUrl is the HARDCODED zombie
+    d401m01aifavw.cloudfront.net/files/upload/ (InitMetaDataTask.smali
+    const-string). THE LIVE STORE FOUND: staticgs.sandboxol.com/files/
+    upload/<md5> — md5-VERIFIED (the response bytes' md5 == the name;
+    gun_07_stand01.anim = 200/2656b).
+  * WHY THE FETCHES NEVER REACHED THE HOLDER: the drive wrote
+    /etc/hosts but bionic reads /system/etc/hosts (the shell's ping
+    check passed — the shell resolver reads /etc/hosts); the DNAT
+    fallback died on route_localnet (the martian 127.0.0.1 drop).
+  * FIXES (ca6d2ea): (1) LocalHttpd /files/upload/<md5> route BEFORE
+    the generic /files/<id> — proxies staticgs with a disk cache
+    (serveEngineRes/fetchEngineRes); (2) ondrive_setup.sh mirrors the
+    hosts into /system/etc/hosts + route_localnet=1 on every iface.
+  * GATES: suite 713/713 + smoke 28/28. HARNESS REBUILT (the dex-swap
+    pipeline): BlockyNexus-localapi-sandbox92.apk on wip-sandbox86.
+  * RUN 25 DISPATCHED (head ca6d2ea, harness sandbox92): Bedwars +
+    Skyblock. Decisive reads: the ENGINERES REQ lines (the fetches
+    landing), no boneCount, the Skyblock watch WITHOUT a fresh
+    tombstone (the honest gate), then the 15-bot gate (§6 step 2).
