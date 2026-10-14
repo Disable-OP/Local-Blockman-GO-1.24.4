@@ -404,4 +404,70 @@ patch(_RK, [
      "\t\treturn dataSize;"),
 ])
 
+# ---------------------------------------------------------------------------
+# 7. RUN-26 DECODE (38551343606): S2CPacketGameInfo's m_coinMapping TAIL is
+#    a 10078-client schema drift - the client reads the count byte as the
+#    next packet id.
+#
+#    BYTE-PROVEN TWICE. Our 1.24.4-era S2CPacketGameInfo appends
+#    m_coinMapping (vector<CoinMapping>) after m_selectableActions; the
+#    2.8.2 (engine 10078) client's GameInfo schema ENDS at
+#    m_selectableActions, so its parser reads OUR coinMapping count byte
+#    as the next packet's id:
+#      - the g1046 hall (CoinManager empty, count 0x00) -> the tolerated
+#        "unknown packet id: 0" logged in EVERY boot (runs 24/25/26);
+#      - the g1048 Skyblock room (the coin economy room, 16 coins) ->
+#        "unknown packet id: 16" (run 26's client.log line 127).
+#    The GameInfo fields the client knows all parse fine (the field is
+#    LAST), but the framing error means the 10078 client can never read
+#    a clean GameInfo datagram - and the SAME drift class on other
+#    packets costs real tail content. Strip the tail for 10078 clients:
+#    the login packet carries m_engineVersion, so the send site gates the
+#    new includeCoinMapping parameter (pre-10078 clients keep the field;
+#    their schema still has it).
+_SH_H = os.path.join(ROOT, 'extract/dev/server/src/Network/ServerPacketSender.h')
+patch(_SH_H, [
+    ("\t\tString gameType, int32_t defaultIdle, vector<i32>::type selectableActions, i32 vip);",
+     "\t\tString gameType, int32_t defaultIdle, vector<i32>::type selectableActions, i32 vip, bool includeCoinMapping = true);"),
+])
+
+_SH_C = os.path.join(ROOT, 'extract/dev/server/src/Network/ServerPacketSender1.cpp')
+patch(_SH_C, [
+    ("void ServerPacketSender::sendGameInfo(ui64 rakssid, int runtimeID, const Vector3i& spawnPos, \n"
+     "\tconst vector<String>::type& recipes, bool isTimeStopped, int32_t sex, String gameType, int32_t defaultIdle, vector<i32>::type selectableActions, i32 vip)\n"
+     "{",
+     "void ServerPacketSender::sendGameInfo(ui64 rakssid, int runtimeID, const Vector3i& spawnPos, \n"
+     "\tconst vector<String>::type& recipes, bool isTimeStopped, int32_t sex, String gameType, int32_t defaultIdle, vector<i32>::type selectableActions, i32 vip, bool includeCoinMapping)\n"
+     "{"),
+    ("\tLORD::map<int, int>::type coinMapping = CoinManager::Instance()->m_coinMapping;\n"
+     "\tfor (LORD::map<int, int>::type::iterator it = coinMapping.begin(); it != coinMapping.end(); ++it)\n"
+     "\t{\n"
+     "\t\tpacket->m_coinMapping.push_back({ it->first, it->second });\n"
+     "\t}",
+     "\t// RUN-26 DECODE: the 10078 client's GameInfo schema has NO\n"
+     "\t// m_coinMapping - it reads our count byte as the next packet id\n"
+     "\t// (\"unknown packet id: 0/16\"). Skip the tail for those clients.\n"
+     "\tif (includeCoinMapping)\n"
+     "\t{\n"
+     "\t\tLORD::map<int, int>::type coinMapping = CoinManager::Instance()->m_coinMapping;\n"
+     "\t\tfor (LORD::map<int, int>::type::iterator it = coinMapping.begin(); it != coinMapping.end(); ++it)\n"
+     "\t\t{\n"
+     "\t\t\tpacket->m_coinMapping.push_back({ it->first, it->second });\n"
+     "\t\t}\n"
+     "\t}"),
+])
+
+_CI = os.path.join(ROOT, 'extract/dev/server/src/Network/C2SPacketHandles/C2SInitPacketHandles.cpp')
+patch(_CI, [
+    ("\t\tsender->sendGameInfo(clientPeer->getRakssid(), pPlayer->entityId, adjustPos,\n"
+     "\t\t\tCraftingManager::Instance()->getRecipeNameList(), pworld->getWorldInfo().isTimeStopped(), pPlayer->m_sex, Server::Instance()->getGameType(), pPlayer->m_defaultIdle, attrInfo.unlockedSelectableActions, pPlayer->m_vip);",
+     "\t\tsender->sendGameInfo(clientPeer->getRakssid(), pPlayer->entityId, adjustPos,\n"
+     "\t\t\tCraftingManager::Instance()->getRecipeNameList(), pworld->getWorldInfo().isTimeStopped(), pPlayer->m_sex, Server::Instance()->getGameType(), pPlayer->m_defaultIdle, attrInfo.unlockedSelectableActions, pPlayer->m_vip,\n"
+     "\t\t\t// RUN-26 DECODE: the 10078 client ends GameInfo at\n"
+     "\t\t\t// selectableActions - our coinMapping tail reads as a bogus\n"
+     "\t\t\t// packet id (0 for the hall, 16 for Skyblock). Pre-10078\n"
+     "\t\t\t// clients keep the field.\n"
+     "\t\t\tpacket->m_engineVersion < 10078);"),
+])
+
 print('all patches applied')
