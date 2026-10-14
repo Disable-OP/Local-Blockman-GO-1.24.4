@@ -85,6 +85,15 @@ for MROOT in \
     >> "$OUT/files/pristine-map-trees.txt"
 done
 
+# The automation's log STASH (the capture-timing fix): client.log/
+# server.log copied WHILE the engine still had them (BEFORE the watch,
+# MID-watch every 3 rounds, AFTER it) — include it in every evidence tar
+# so an end-of-run rotation can never lose the capture again.
+if [ -d /sdcard/drive/stash ]; then
+  mkdir -p "$OUT/files/stash"
+  cp -r /sdcard/drive/stash/. "$OUT/files/stash/" 2>/dev/null
+fi
+
 TAR="/sdcard/drive/evidence-$LABEL.tar.gz"
 tar -czf "$TAR" -C "$(dirname "$OUT")" "$(basename "$OUT")" 2>/dev/null
 say "evidence: $TAR ($(du -k "$TAR" 2>/dev/null | cut -f1) KB) — adb pull it"

@@ -116,6 +116,22 @@ def check(name, cond, detail=""):
         fail("%s  %s" % (name, detail))
 
 
+def check_soft(name, cond, detail=""):
+    """WARN-only gate: EVIDENCE, not a verdict failure. The client.log
+    copies (initGame ONLINE / emConnectSuc / login succ) read the
+    engine's own config-dir log whose CAPTURE timing is intermittent
+    (the collector's end-of-run pull raced the engine's rotation — runs
+    14/16 captured client.log, other runs did not, with the SAME chain
+    proven server-side). The server-side gates (C2SPacketLogin + the
+    monitor g2r type=151) prove the same connect chain from the
+    authority, so the client.log copies downgrade to WARN (the run-19
+    docs order, item 3)."""
+    if cond:
+        ok("%s" % name)
+    else:
+        print("  [WARN] %s  %s" % (name, detail))
+
+
 class Adb:
     def __init__(self, serial):
         self.serial = serial
@@ -3002,6 +3018,38 @@ def g282_read_log(adb, package, dirs, fname, nbytes=32768):
     return "\n".join(texts)
 
 
+def g282_stash_logs(adb, package, tag):
+    """CAPTURE-TIMING FIX (the run-19 docs order, item 1): copy
+    client.log + server.log from EVERY candidate config dir into
+    /sdcard/drive/stash/ WHILE the engine still has them — the
+    collector's end-of-run pull raced the engine's rotation/clear
+    (runs 14/16 captured client.log, other runs did not, same chain).
+    Called BEFORE the watch, MID-watch (every 3 rounds) and AFTER it;
+    ondrive_collect.sh includes the stash in every evidence tar.
+    Cheap, idempotent, best-effort — never fatal."""
+    try:
+        dirs = g282_find_cfgdirs(adb, package)
+        stashed = []
+        for d in dirs:
+            for fn in ("client.log", "server.log"):
+                out = adb.sh(
+                    "if [ -s '%s/%s' ]; then mkdir -p /sdcard/drive/stash"
+                    " && cp '%s/%s' '/sdcard/drive/stash/%s.%s'"
+                    " && echo stashed; fi"
+                    % (d, fn, d, fn, d.replace("/", "_"), fn),
+                    timeout=25)
+                if out and "stashed" in out:
+                    stashed.append(d + "/" + fn)
+        if stashed:
+            ok("282: log stash[%s] captured %s"
+               % (tag, ", ".join(stashed)))
+        else:
+            print("  [probe] 282: log stash[%s] found no engine logs yet"
+                  % tag)
+    except Exception as e:
+        print("  [probe] 282: log stash[%s] failed: %s" % (tag, e))
+
+
 def main_282(args):
     """The 2.8.2 line: attach -> hall -> game card -> btn_enter ->
     join evidence. Exit 0 = pass, 1 = fail (finish()).
@@ -3210,6 +3258,9 @@ def main_282(args):
     # API — 300 s starved that chain; WATCH_SECONDS overrides.
     watch_deadline = time.time() + int(os.environ.get(
         "WATCH_SECONDS", "300"))
+    # CAPTURE-TIMING FIX: stash the engine's logs BEFORE the watch (the
+    # mid-watch + post-watch stashes run inside/after the loop below).
+    g282_stash_logs(adb, pkg, "pre")
     rnd = 0
     while time.time() < watch_deadline and not (login_ok and user_in):
         rnd += 1
@@ -3241,6 +3292,46 @@ def main_282(args):
                       "control (r%d)" % rnd)
                 screen.tap_node(_again)
                 time.sleep(3)
+            elif rnd >= 6:
+                # RUN-19 DECODE (38514053368): the re-tap found NO start
+                # control — the detail page had CLOSED/moved on (the
+                # Bedwars spec's join never fired and the button was
+                # gone). Re-run the WHOLE card->detail->press flow: find
+                # the hall card again (the feed may have scrolled), tap
+                # it, wait for the detail sheet, press the start control
+                # — each re-entry re-runs the client's enter flow.
+                print("  [282] join not fired and no start control - "
+                      "re-entering the card flow (r%d)" % rnd)
+                _rcard = next(((p, nm) for p, nm in collect_cards()
+                               if card_re.search(nm.text)), None)
+                _rscrolled = 0
+                while _rcard is None and _rscrolled < 3:
+                    adb.sh("input swipe 360 900 360 300 300", timeout=20)
+                    time.sleep(3)
+                    _rscrolled += 1
+                    _rcard = next(((p, nm) for p, nm in collect_cards()
+                                   if card_re.search(nm.text)), None)
+                if _rcard is not None:
+                    screen.tap_node(_rcard[0])
+                    time.sleep(8)
+                    g282_dismiss_overlays(adb, screen,
+                                          "rejoin-r%d" % rnd)
+                    _btn2 = screen.find(ids=["btn_enter", "iv_enter",
+                                             "btnEnter"])
+                    if _btn2 and _btn2.center:
+                        screen.tap_node(_btn2)
+                        print("  [282] re-entered the card + pressed the "
+                              "start control (r%d)" % rnd)
+                        time.sleep(3)
+                    else:
+                        print("  [282] re-entered the card but the start "
+                              "control is not up yet (r%d)" % rnd)
+                else:
+                    print("  [282] re-entry found no %r card either "
+                          "(r%d)" % (glabel, rnd))
+        if rnd % 3 == 0:
+            # CAPTURE-TIMING FIX: the MID-watch stash (every 3 rounds)
+            g282_stash_logs(adb, pkg, "r%d" % rnd)
         log = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
         if log.count("REQ GET /game/api/v2/game/auth") > _auth0:
             fired = True
@@ -3392,7 +3483,8 @@ def main_282(args):
         if not dirs:
             dirs = g282_find_cfgdirs(adb, pkg)
 
-    # ---- verdict (hard once btn_enter was pressed)
+    # ---- post-watch stash (the capture-timing fix) + verdict
+    g282_stash_logs(adb, pkg, "post")
     print("== 282-GJ verdict (%s, user=%d, drive=%s) =="
           % (glabel, adb.user, drive))
     # v35: the full EchoesProbe chain at verdict time — which chain point
@@ -3433,12 +3525,16 @@ def main_282(args):
               "never asked for the game address")
         check("drive[%s]: engine activity up (BlockManEchoesActivity)"
               % glabel, echoes)
-        check("drive[%s]: client initGame ONLINE (ip 127.0.0.1 port "
-              "31108)" % glabel, init_online)
-        check("drive[%s]: client connected to the GameServer "
-              "(emConnectSuc)" % glabel, connect)
-        check("drive[%s]: client login accepted (login succ)" % glabel,
-              login_ok)
+        # RUN-19 DOCS ORDER (item 3): the client.log gates downgrade to
+        # WARN — the SAME connect chain is proven server-side below
+        # (C2SPacketLogin + the monitor g2r type=151 are the authority);
+        # the client.log capture stays an intermittent timing race.
+        check_soft("drive[%s]: client initGame ONLINE (ip 127.0.0.1 port "
+                   "31108)" % glabel, init_online)
+        check_soft("drive[%s]: client connected to the GameServer "
+                   "(emConnectSuc)" % glabel, connect)
+        check_soft("drive[%s]: client login accepted (login succ)"
+                   % glabel, login_ok)
         check("drive[%s]: server saw the C2S login (server.log "
               "C2SPacketLogin)" % glabel, server_login)
         check("drive[%s]: the human entered the room (monitor g2r "

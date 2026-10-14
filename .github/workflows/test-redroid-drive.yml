@@ -390,6 +390,11 @@ jobs:
             [ "$LABEL" = "$RE" ] && LABEL="$RE"
             echo "===== DRIVE GAME: label='$LABEL' regex='$RE' ====="
             set +e
+            # CAPTURE-TIMING FIX (run-19 docs order): the logdir sweep runs
+            # BEFORE the watch too (the automation stashes pre/mid/post
+            # itself) — the pre- state pins what the engine had on disk
+            # before this join touches it.
+            adb -s localhost:5555 shell "sh /sdcard/drive/ondrive_collect.sh pre-$(echo "$LABEL" | tr -c 'A-Za-z0-9' '-')" || true
             python3 scripts/ui_automation_test.py \
               --serial localhost:5555 \
               --package "$PRISTINE_PKG" \
