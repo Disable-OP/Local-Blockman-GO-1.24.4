@@ -3226,6 +3226,21 @@ def main_282(args):
             print("  [282] enter-game guide overlay up - tapping ml_enter")
             screen.tap_node(_guide)
             time.sleep(3)
+        # RUN-18 DECODE (38510578098): the detail's enter flow ABORTS on a
+        # single failed HTTP call — "checkClothesResError: Interface Error!"
+        # -> "enter_game_timeout (10002)" — the dress-res check hit a dead
+        # keep-alive connection (the boot dress download was still
+        # occupying the TLS listener) and the join died silently, no
+        # game/auth ever fired. The detail page stays up, so RE-TAP the
+        # start control every few rounds while the join has not fired.
+        if not fired and rnd in (3, 6, 9, 12, 15, 18, 21, 24, 27, 30,
+                                 33, 36, 39, 42, 45, 48, 51, 54, 57, 60):
+            _again = screen.find(ids=["btn_enter", "iv_enter", "btnEnter"])
+            if _again and _again.center:
+                print("  [282] join not fired - re-tapping the start "
+                      "control (r%d)" % rnd)
+                screen.tap_node(_again)
+                time.sleep(3)
         log = adb.raw("logcat", "-d", "-s", "LocalAPI", timeout=60)
         if log.count("REQ GET /game/api/v2/game/auth") > _auth0:
             fired = True
