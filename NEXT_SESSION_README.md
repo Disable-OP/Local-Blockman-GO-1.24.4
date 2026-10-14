@@ -4372,3 +4372,54 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   (3) scripts/gameserver/** pushes trigger build+drive automatically =
   the self-driving calibration loop; (4) the ~23:12Z 6h reaper kills the
   zombied 4fee856 runs — ignore them.
+
+## Cron-session delta 43 (read FIRST — THE PER-RUN-LIB MYSTERY CLOSED: the harness APK bundles libgameserver.so and the PM stages it; runs 24-31 = ALL the same pre-fix binary; the lib-staging step shipped; run 32 = the first VALID post-fix wire test)
+
+- READ WORKLOG cron session 7 + the session-7 addendum first. The one-line
+  state: the run-30/31 evidence + the md5 chain PROVED that the harness
+  (sandbox92.apk) bundles libgameserver.so in lib/arm64-v8a/ (51,166,896 B,
+  md5 074218d4, built 09:24Z = pre-#45), the PM extracts it to
+  /data/app/.../lib/arm64/ and the holder stages THAT every run — the
+  "per-run download" never reached the wire, so the UserAttr vector<String>
+  fix + the GameInfo gate were NEVER wire-tested (the run-29 'inert
+  insert' verdict = MOOT). FIXED (00cfd75): the drive now OVERWRITES the
+  staged lib with the current localapi-assets asset between the harness
+  install and the boot (root adb, the md5 = logged into
+  evidence-lib-stage.md5). Run 32 = 38624695619 (00cfd75) = the first
+  VALID post-fix wire test.
+- ALSO FIXED this session (5d24dc0): (1) the wait-for-build silently
+  passed on a failing gh call while build #47 compiled (the holder staged
+  #45's lib on run 30) — gh failures/missing builds = FATAL for
+  gameserver-touching pushes (NEED_BUILD = the push-diff grep);
+  (2) the 4fee856 harvest edit (ls -> ls -la) broke the evidence pull
+  (case 'evidence-*' never matched) — bare ls restored; run 31's evidence
+  = whole again (6.5 MB, the per-window stashes).
+- RUN-31's OWN WIRE FACTS (the pre-fix binary, keep for the comparison):
+  ZERO protocol parse errors (the first run ever — the desync landed on
+  soft bytes = a QUIET misalignment: the client parses WRONG but does not
+  throw), only the tolerated 'unknown packet id: 0' x3 boots, and the
+  SKYBLOCK ~20s tombstone = STILL THERE. The Bedwars window = no
+  tombstone. The 'Failed to read' greps that match = Android KernelCpu
+  reader noise (filter it).
+- RUN-32 READS (the decision tree, now on a VALID binary):
+  1. evidence-lib-stage.md5: the staged md5 = 591e426b4f71979e42f5a27dc259f5cd
+     (the #47 asset, 51,203,760 B) => the staging worked; anything else =>
+     the fetch/copy = broken (fix the step, not the harness).
+  2. server.log: "RUN-27 UserAttr10078 shape ENABLED, encoders=%d" —
+     present = the gate fires; absent (md5 = #47) = the gate wrong =>
+     next push logs m_engineVersion at the login site (WITH the hunk
+     rehearsal + the gates).
+  3. The Skyblock client.log: the UserAttr datagram parses CLEAN (the
+     0x00 between suitsId and scale) => THE WALL TEST = the Skyblock
+     tombstone should be GONE; then the 15-bot gate (§6 step 2) and
+     §6 steps 3..10b (Bedwars -> Skyblock -> the rest; NO new games/maps).
+  4. The Bedwars line = must stay honest-green (4x + the bot markers).
+- THE PID-15 (GameInfo) STATIC ROUTE = BLOCKED (session 7: the ICF-folded
+  merged ctor + runtime-built binders; the toolchain =
+  /home/z/my-project/tool-results/pid15/, calibrated on pid-68) — the
+  GameInfo fix rides the LIVE evidence only (the run-32 wire = clean
+  first, THEN the remaining drift points name themselves).
+- OPERATIONAL: the cron PAT = .git/config (BASIC auth); the job logs =
+  admin-blocked (debug = local rehearsal); docs-only pushes trigger
+  nothing; scripts/gameserver/** pushes = build + drive (the
+  wait-for-build = now race-proof); the zombie 4fee856 runs = dead.
