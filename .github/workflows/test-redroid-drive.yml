@@ -393,14 +393,40 @@ jobs:
           PYEOF
           ls -la pristine-patched.apk
 
-      - name: Rebuild sign (zipalign + debug-sign)
+      - name: Rebuild sign (zipalign + debug-sign, jarsigner fallback)
+        # RUN-36: the uber-apk-signer = NEVER proven on the CI arm runner
+        # (the 282 builds = local). The fallback = jarsigner (the JDK
+        # tool, always present) = v1-only signing — the 2.8.2 = targetSdk
+        # 28 = v1 accepted on the android 12. The log = pushed to the
+        # device evidence = readable without the PAT.
         run: |
-          java -jar /tmp/uber-apk-signer.jar --apks pristine-patched.apk --out .
-          SIGNED=$(ls pristine-patched-*igned*.apk | head -1)
+          RC=0
+          java -jar /tmp/uber-apk-signer.jar --apks pristine-patched.apk --out . \
+            > /tmp/sign.log 2>&1 || RC=$?
+          tail -25 /tmp/sign.log || true
+          if [ $RC -ne 0 ] || [ ! -e "$(ls pristine-patched-*igned*.apk 2>/dev/null | head -1)" ]; then
+            echo "== uber failed rc=$RC - the jarsigner v1 fallback =="
+            KS=~/.android/debug.keystore
+            if [ ! -f "$KS" ]; then
+              mkdir -p ~/.android
+              keytool -genkeypair -keystore "$KS" -alias androiddebugkey \
+                -storepass android -keypass android \
+                -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA \
+                -keysize 2048 -validity 10000 >/dev/null 2>&1
+            fi
+            cp -f pristine-patched.apk pristine-patched-v1signed.apk
+            jarsigner -keystore "$KS" -storepass android -keypass android \
+              pristine-patched-v1signed.apk androiddebugkey > /tmp/js.log 2>&1 \
+              || { tail -30 /tmp/js.log; exit 1; }
+            tail -5 /tmp/js.log
+            mv -f pristine-patched-v1signed.apk pristine-patched-v1signed-signed.apk
+          fi
+          SIGNED=$(ls pristine-patched-*igned*.apk 2>/dev/null | grep -v "patched.apk$" | head -1)
           echo "signed: $SIGNED"
           [ -n "$SIGNED" ] || { echo "FATAL: no signed apk"; exit 1; }
           mv -f "$SIGNED" pristine282.apk
           md5sum pristine282.apk | tee evidence-pristine-build.md5
+          adb -s localhost:5555 push /tmp/sign.log /sdcard/drive/evidence-rebuild-sign.log 2>/dev/null || true
 
       - name: Rebuild verify (the SkyBlock UI inside)
         run: |
