@@ -531,6 +531,10 @@ patch(_SH, [
      "\t{\n"
      "\t\tSerializer::write(obj->cosmeticDress, stream);\n"
      "\t});\n"
+     "\t// RUN-29 POSTMORTEM: prove the shape flip in server.log - the\n"
+     "\t// run-29 wire carried the OLD UserAttr bytes with this gate proven\n"
+     "\t// reached, so the next run names the list size and the insert.\n"
+     "\tLordLogInfo(\"RUN-27 UserAttr10078 shape ENABLED, encoders=%d\", (int)encoders.size());\n"
      "}\n"
      "_SERIALIZE_MEMBER(real32, scale)"),
 ])

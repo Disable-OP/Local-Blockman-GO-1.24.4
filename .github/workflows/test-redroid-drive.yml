@@ -562,7 +562,15 @@ jobs:
         run: |
           adb -s localhost:5555 shell "sh /sdcard/drive/ondrive_collect.sh final" || true
           mkdir -p gjevidence
-          adb -s localhost:5555 shell "ls /sdcard/drive/" | tr -d '\r' | while read -r f; do
+          # RUN-29 POSTMORTEM: which libgameserver binary did this run
+          # actually stage? The md5 names the build-gameserver run.
+          adb -s localhost:5555 shell "find /data/data/com.disabngo.blockynexus /data/app -name 'libgameserver*' 2>/dev/null" | tr -d '\r' | while read -r f; do
+            [ -n "$f" ] || continue
+            echo "== $f"
+            adb -s localhost:5555 shell "md5sum '$f' 2>/dev/null; ls -la '$f' 2>/dev/null" | tr -d '\r'
+          done | tee gjevidence/lib-md5.txt || true
+          adb -s localhost:5556 shell "find /data -name 'libgameserver*' 2>/dev/null" >> gjevidence/lib-md5.txt 2>/dev/null || true
+          adb -s localhost:5555 shell "ls -la /sdcard/drive/" | tr -d '\r' | while read -r f; do
             case "$f" in evidence-*)
               adb -s localhost:5555 pull "/sdcard/drive/$f" gjevidence/ 2>/dev/null || true ;;
             esac
