@@ -82,10 +82,32 @@ jobs:
           # drive must run against ITS asset (libgameserver-arm64.so is
           # clobbered per build). A workflow/docs-only push has no build
           # run and proceeds immediately.
+          # RUN-30 POSTMORTEM: the silent `|| echo "[]"` fallback let a
+          # FAILING gh call pass as "no build" while the build was still
+          # compiling - the holder then staged the PREVIOUS build's lib
+          # (md5 074218d4... = build #45 instead of #47) and the whole
+          # run tested a stale binary. gh failures are now FATAL when
+          # this push touched scripts/gameserver/** (a build MUST exist);
+          # docs/workflow-only pushes proceed with no build.
+          if git diff --name-only HEAD~1 HEAD 2>/dev/null | grep -q '^scripts/gameserver/'; then
+            NEED_BUILD=1
+          else
+            NEED_BUILD=0
+          fi
+          echo "NEED_BUILD=$NEED_BUILD"
           for i in $(seq 1 55); do
-            RUNS=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow=build-gameserver \
-              --commit "$SHA" --json status,conclusion --limit 1 2>/dev/null || echo "[]")
+            if ! RUNS=$(gh run list --repo "$GITHUB_REPOSITORY" \
+                 --workflow=build-gameserver.yml --commit "$SHA" \
+                 --json status,conclusion --limit 1 2>/dev/null); then
+              if [ "$NEED_BUILD" = "1" ]; then
+                echo "gh run list FAILED and this push touched scripts/gameserver - aborting (the drive would stage a stale lib)"; exit 1
+              fi
+              echo "gh run list failed on a no-build push - proceeding"; exit 0
+            fi
             if [ -z "$RUNS" ] || [ "$RUNS" = "[]" ]; then
+              if [ "$NEED_BUILD" = "1" ]; then
+                echo "no gameserver build run for $SHA but this push touched scripts/gameserver - aborting"; exit 1
+              fi
               echo "no gameserver build for $SHA - proceeding"
               exit 0
             fi
@@ -570,7 +592,10 @@ jobs:
             adb -s localhost:5555 shell "md5sum '$f' 2>/dev/null; ls -la '$f' 2>/dev/null" | tr -d '\r'
           done | tee gjevidence/lib-md5.txt || true
           adb -s localhost:5556 shell "find /data -name 'libgameserver*' 2>/dev/null" >> gjevidence/lib-md5.txt 2>/dev/null || true
-          adb -s localhost:5555 shell "ls -la /sdcard/drive/" | tr -d '\r' | while read -r f; do
+          # RUN-30 POSTMORTEM: the 4fee856 edit switched this ls to -la,
+          # whose permission-prefixed lines NEVER match `evidence-*` - the
+          # run-30 tarball shipped without a single log. Bare ls = back.
+          adb -s localhost:5555 shell "ls /sdcard/drive/" | tr -d '\r' | while read -r f; do
             case "$f" in evidence-*)
               adb -s localhost:5555 pull "/sdcard/drive/$f" gjevidence/ 2>/dev/null || true ;;
             esac
