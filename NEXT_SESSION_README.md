@@ -3901,3 +3901,53 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   chain is the engine's inner game-map (room staging) -> the g1008 room
   join -> the RakNet connect -> the C2S login -> the bots gate. No new
   games/maps this iteration (the user mandate stands).
+
+## Cron-session delta 32 (read FIRST — THE CONNECT IS WON: RakNet up, emConnectSuc, C2S login, the human in the room; the last gap is the engine's client-resource cache; run 16 tests the res-cache pre-placement)
+
+- READ WORKLOG SESSION 88 FIRST (the six-run decode chain runs 10-15).
+  The one-line state: the 2.8.2 pristine client's Bedwars hall join now
+  passes EVERY gate up to the engine's own world content — connect to
+  127.0.0.1:31108, ID_CONNECTION_REQUEST_ACCEPTED, emConnectSuc, the game
+  info packet, the user attrs, the C2S login in server.log, the monitor
+  g2r type=151, the robot markers — and dies ONLY on the missing
+  g1008_boy.actor (the engine's client resources).
+- THE RESOURCE TRUTH: the APK ships the OTHER g1008 actors but NOT
+  g1008_boy/girl.actor; they live only in appres-g1046-10078.
+  1625198960711.zip (29 MB, sha256 a9b2dd94..., the CDN's only 10078-era
+  appres). The hall-card join NEVER calls the Java res chain
+  (app-engine/check-update + /v1/game-res are wired correctly now — the
+  exact List<AppEngineResourceUpdateResult> contract, verified live —
+  but that path is the PARTY-join flow only). The engine's own resources
+  ride the NATIVE resUrl flow (the startParameter's resUrl =
+  http://d401m01aifavw.cloudfront.net/files/upload/) whose cache is
+  getDir("resourcesv2") = /data/user/0/com.sandboxol.blockymods/
+  app_resourcesv2/.
+- RUN 16 (dispatched, 1018ae2 + harness sandbox91) pre-places the appres
+  package into app_resourcesv2 (Scripts/ + appres/ + checksums.md5 at the
+  root). READ ITS EVIDENCE FIRST: if the actor loads, the hall world
+  renders and the remaining client.log gates (initGame ONLINE/
+  emConnectSuc/login) should all pass; if the engine still says
+  "sub Actor file not found", the native cache layout differs — compare
+  the engine's not-found paths against the placed tree (the collector
+  now captures client.log; also snapshot `ls -R` of app_resourcesv2 via
+  a workflow one-liner if needed).
+- THE TOOLCHAIN THIS SESSION BUILT (all fresh-sandbox reproducible):
+  * The harness pipeline WITHOUT apktool: download the previous harness
+    asset, swap classes6.dex (python zipfile), sign with uber-apk-signer
+    (v1+v2+v3 debug, /home/z/tools/uber-apk-signer.jar), upload via
+    scripts/upload_release_asset.py — 8 min end to end. The assets live
+    on release wip-sandbox86 (sandbox88..sandbox91).
+  * The smali toolchain: /home/z/tools/smali_lib (baksmali/dexlib2/util/
+    smali 2.5.2 + deps from Maven Central); baksmali the pristine's 7
+    dexes into /tmp/p282 for any client-side question.
+  * The host suite needs NO javac (ecj via scripts/build_server_dex.sh,
+    self-fetching into .javatools/).
+- THE STANDING GATES: suite (expect 713 or 712 with the environmental
+  watchdog flake — it reproduces on the stashed baseline) + smoke 28/28
+  before every push; every fix lands with the run-number + the evidence
+  line in the commit message.
+- NEXT (in order): run 16 evidence -> the hall world render -> the g1008
+  room join inside the hall (the 15-bot gate, monitor log) -> Skyblock
+  (g1048; NO 10078 appres exists on the CDN — the join may tolerate the
+  shipped resources or need the m1048_1 map's own; the evidence tells) ->
+  the rest of §6 steps 3..10b. No new games/maps (the mandate stands).

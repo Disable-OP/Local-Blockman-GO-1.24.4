@@ -5432,3 +5432,121 @@ Stage Summary:
   mapExistsAndValid verdict; if the hall world loads, the next chain is
   the engine's inner game-map (the holder now logs the query) -> the
   room join g1008 -> the RakNet connect -> the C2S login -> bots.
+
+## Session 88 - THE CONNECT: RakNet up, emConnectSuc, C2S login, the human in the room — five join blockers decoded from real evidence (2026-10-14)
+
+- THE USER MANDATE (unchanged): no new games/maps; verify all games load
+  via REAL client logs (Bedwars first, then Skyblock); the icons work was
+  already complete (session 86, 21/21, re-verified intact this session).
+- SIX DRIVE RUNS dispatched and decoded (runs 10-15 + 16 in flight),
+  each blocker read from REAL evidence, never guessed:
+  * RUN 10 (38478884394): the bae2ea5 leaf chown WORKED (u0_a71 777 on the
+    map/config leaves) but the engine STILL said "root dir is missing" —
+    the INTERMEDIATE dirs (files/Download, files/SandboxOL, .../BlockMan)
+    were root:ext_data_rw 2770 (the mkdir -p had created them as root) and
+    the app uid's path walk died at the first root-owned intermediate.
+    FIX: chown -R + chmod -R 777 over the WHOLE created chain (510c230).
+    ALSO: the "Sky Block" card sat at feed position 41/60 (the 42 generated
+    filler titles interleave with the real games in every metric sort) and
+    the uiautomator swipes never scrolled the feed. FIX:
+    GameCatalog.ensureRealPins — every real game (g1xxx) gets all four sort
+    metrics just below the top hall, g1048 (Sky Block) FIRST then gid
+    ascending; fillers last. Verified live: Bedwars -> Sky Block -> g1001...
+  * RUN 11 (38482545272): the engine TRAVERSED the map tree, then
+    "mapExistsAndValid map is missing: .../hunger_game_1/BedWarHall.
+    1596795531126.zip" — it wants the ZIP ITSELF at <mapdir>/<mapReal>.zip
+    (the official client keeps the zip next to the extracted files) — and
+    its self-heal download died "the final file corrupted" (errCode 6):
+    the HttpDownloader's HEAD range-probe hit the generic route
+    ("UNMAPPED HEAD -> generic ok", the 35-byte JSON envelope) and
+    downloadByRange assembled a 35-byte "zip". FIXES (2c7716c): HEAD +
+    Range for the asset routes (one clean Content-Length via the Response
+    field reflection — NanoHTTPD prints the header unconditionally so a
+    manual header would print it twice; ranged GETs answer 206 +
+    Content-Range) + the workflow pushes the zips next to the extracted
+    files. Live-verified: HEAD 200 len=336839 (once), 206 ranges, full GET
+    sha256 = the pinned official zip.
+  * RUN 12 (38487378638): HEAD + ranges WORKED (4-way ranged download,
+    all 206s) — and the token chain for Skyblock was proven correct
+    (mapName=m1048_1, mapNameReal=m1048_1.1625218507296). NEW DECODE: the
+    NESTED map layout — mapExistsAndValid walks
+    <maproot>/<mapName>/<mapReal>/ with checksums.md5 INSIDE the mapReal
+    dir and the zip NEXT to it; the direct layout (sessions 87-11) was
+    wrong from birth (every earlier run died before the layout check).
+    ALSO: the download path can NEVER self-heal (the extraction needs the
+    same PathUtil::CreateDir the run-7 quirk denies on emulated storage).
+    FIX (8b9003e): the placement creates the NESTED layout for
+    hunger_game_1 + m1008_2 + m1048_1 (Skyblock pre-placed too).
+  * RUN 13 (38491584321): mapExistsAndValid PASSED. THE ENGINE BOOTED,
+    CONNECTED AND LOGGED IN: "begin to connect to game server
+    [127.0.0.1:31108]" -> raknet setup suc ->
+    ID_CONNECTION_REQUEST_ACCEPTED -> _ClientNetwork_handleConnectEvent_
+    emConnectSuc -> "receive game info packet" -> "recv user attr info" —
+    then SIGSEGV (null deref, libBlockMan.so MainTickThread) on
+    "sub Actor file not found [g1008_boy.actor]". THE APPRES DECODE
+    (baksmali of the pristine 2.8.2, all 7 dexes): the join's client
+    resources (the appres) ride GET /game/api/v1/games/app-engine/
+    check-update -> /v1/game-res -> GameResNewUpdater, gated by the
+    SERVER's latestResVersions.gresVersion vs the APK's SHIPPED baseline
+    assets/resources/game_res_version.json (g1046=41279502,
+    g1018=41271296) — our catalog said 1, "server behind", no fetch.
+    The CDN shipped exactly ONE 10078-era appres:
+    appres-g1046-10078.1625198960711.zip (29 MB: g1008_boy/girl/skin.actor,
+    the r.0.-1.mca terrain the engine asked for, the effects).
+    FIXES (d0f2391): MapAssets.EXTRA_APP_RES (sha256-pinned CDN fetch),
+    /v1/game-res answers the appres durl/resVersion/size, check-update
+    leaves list-[]-land, GameCatalog.ensureResVersions bumps gresVersion.
+  * RUN 14 (38496299857): client.log + server.log FINALLY CAPTURED (the
+    collector reaches the config dirs). Same chain, same missing actor,
+    still no appres fetch. WIRE-CONTRACT DECODE round 2: check-update
+    returns HttpResponse<List<AppEngineResourceUpdateResult>>
+    {needUpdate, resVersion, resourceType, updates:[{cdns, fileCount,
+    fileSize, hash, type, url}]}; i.smali strips the "MAP" entries and
+    downloads the needUpdate=true GAME ones. FIX (7a38828): the exact
+    LIST wire shape with a GAME entry (md5 0843b2ff..., fileCount 1862);
+    the appres CDN fetch skips under localapi.mapPackUrl (the 29 MB fetch
+    per hermetic suite boot starved the suite -> timeout; the single
+    watchdog flake reproduces on the stashed baseline — environmental).
+  * RUN 15 (38500267535): engine up [ok], C2S login [ok], the human in
+    the room [ok], bot markers [ok] — and STILL no appres fetch. DECODE:
+    the hall-card join NEVER calls the Java res chain (k.smali/
+    getGameResource is the party-join path) — the client resources ride
+    the NATIVE engine's resUrl flow (the startParameter's resUrl =
+    http://d401m01aifavw.cloudfront.net/files/upload/) whose cache is
+    getDir("resourcesv2") = /data/user/0/<pkg>/app_resourcesv2/. The APK
+    itself ships the OTHER g1008 actors (arrow/chest/grenade) but NOT
+    g1008_boy/girl. FIX (1018ae2): the workflow pre-places the official
+    appres package into app_resourcesv2 (Scripts/ + appres/ +
+    checksums.md5 at the root) — run 16 tests it.
+- THE GAME ICONS (the user's priority item): verified COMPLETE —
+  21/21 hosted rooms, assets/localapi/gameicons.tar.gz, provenance
+  scripts/gameicons_manifest.json, CDN https://staticgs.sandboxol.com;
+  the catalog rewrites gameCoverPic per boot (the run-13 dispatch JSON
+  even shows gameCoverPic=.../localapi/games/icons/g1046.png rendering
+  in the client's own state).
+- GATES: suite 711-713 (the single watchdog flake reproduces on the
+  stashed baseline — environmental) + smoke 28/28 at every step; six
+  commits pushed (510c230, 2c7716c, 8b9003e, d0f2391, 7a38828, 1018ae2);
+  six harness assets shipped to release wip-sandbox86
+  (sandbox88..sandbox91 — the classes6.dex zip-surgery + uber-apk-signer
+  debug signing pipeline, 8 min end to end).
+- SANDBOX STATE: /tmp/p282 (the pristine's baksmali tree, 7 dexes),
+  /tmp/pristine282.apk, /tmp/appres1046.zip, /tmp/maps_pack.tar.gz,
+  /tmp/BedWarHall.zip, /tmp/run{9..15}_ev (the evidence trees),
+  /home/z/.ghtok (the PAT, 600), /home/z/tools/smali_lib (the smali
+  2.5.2 jars). The repo at /home/z/my-project/Local-Blockman-GO-1.24.4.
+- NEXT (evidence-based, in order):
+  1. Read run 16's evidence: does the engine find g1008_boy.actor with
+     the pre-placed res cache? If yes, the hall world should RENDER and
+     the gates (initGame ONLINE/emConnectSuc/login) read client.log.
+  2. If the res cache layout is wrong, read the engine's ACTUAL cache
+     layout: the native downloader's install path — check the
+     app_resourcesv2 tree the engine touches (strace is unavailable;
+     compare the engine's file-not-found paths vs the placed tree).
+  3. THEN the room join chain: the g1008 sub-game inside the hall (the
+     §6 step 2 gate: the 15-bot room), the monitor-log bot gates.
+  4. THEN Skyblock (g1048) with the same pre-placement pattern IF its
+     10078 appres ever existed (it did NOT on the CDN — the g1048 join
+     may need the m1048_1 map's own resources or tolerate the shipped
+     ones; the evidence will tell).
+  5. The remaining games per §6 steps 3..10b.
