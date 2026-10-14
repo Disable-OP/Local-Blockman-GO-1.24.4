@@ -4024,3 +4024,28 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   If both games join: §6 step 2's 15-bot gate (the monitor-log bot
   markers) -> the rest of §6 steps 3..10b (Bedwars -> Skyblock -> the
   rest; no new games/maps — the mandate stands).
+
+## Cron-session delta 35 (read FIRST — RUN 23 WAS THE FIRST GREEN VERDICT AND AN ILLUSION: both boots crashed 1 s post-join, the watch flags are ever-seen; the template decode Media/Actor/boy.actor -> the sub-actor g1008_boy.actor; the honesty tombstone gate + the fd probe landed; run 24 tests it)
+
+- READ WORKLOG's CRON SESSION 4 ADDENDUM 2. The one-line state: the
+  join chain is FULLY proven (auth -> dispatch -> engine -> RakNet ->
+  C2S login -> the room, both games, real server logs), but the client
+  SIGSEGVs ~1 s after entering (the avatar sub-actor), and run 23's
+  green verdict masked it because the watch flags read logcat HISTORY.
+- THE TEMPLATE CHAIN: Media/Actor/boy.actor (shipped, bare name) ->
+  references g1008_boy.actor -> the sub-actor resolves in the
+  TEMPLATE's dir (Media/Actor/) -> absent everywhere -> null ctor
+  deref. The placement now also copies g1008_boy/girl/skin/skin2.actor
+  into app_resources/Media/Actor/.
+- THE HONESTY GATE: a fresh /data/tombstones entry during the watch =
+  a HARD verdict fail + the tombstone head + the FD PROBE (3x3s open-
+  fd snapshots during the rebirth loop = the engine's real lookup
+  paths). If run 24 still crashes, the [fdprobe] lines name the exact
+  paths to place next (the candidates queue: app_resources/ root, the
+  map dir, the cache v2 — now all measurable, no more guessing).
+- GATES: suite 713/713 + smoke 28/28 on a70f84c.
+- NEXT (in order): run 24 evidence -> if the client SURVIVES (no fresh
+  tombstone): the 15-bot gate (§6 step 2, the monitor-log bot markers)
+  -> the rest of §6 steps 3..10b (Bedwars -> Skyblock -> the rest, no
+  new games/maps). If it STILL crashes: read [fdprobe] first, place
+  the named file at the named path, one run per iteration.

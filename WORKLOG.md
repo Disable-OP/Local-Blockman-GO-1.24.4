@@ -5753,3 +5753,40 @@ Stage Summary:
     (c) the Skyblock boot WITHOUT the actor error (the avatar loads
     from app_resources/Media), (d) NO boneCount (stays fixed), (e) if
     anything still crashes — the tombstone names it.
+
+- CRON SESSION 4 ADDENDUM 2 (the run-23 decode + the honesty gate +
+  the template-dir fix, commit a70f84c):
+  * RUN 23 (38530968032, 692adcc) — the FIRST fully-green VERDICT run
+    (both games rc=0, the joins fired, the servers logged the C2S login
+    + the user attrs + the round reports) — and the honest-evidence
+    review DECODED THE ILLUSION: the watch flags are ever-seen
+    (logcat -d history) so a post-join crash stays invisible. BOTH
+    boots still SIGSEGV'd ~1 s after 'sub Actor file not found
+    [g1008_boy.actor]' (two fresh tombstones, MainTickThread, the
+    null-return deref in a template-ctor chain — the crash site:
+    sub_BB3750 calls sub_C74F70 which returned NULL and the ctor
+    dereferenced it). The Media/ placement did NOT satisfy the lookup.
+  * THE TEMPLATE DECODE (the lib strings + the APK layout): the avatar
+    template is Media/Actor/boy.actor — a BARE name shipped in the APK
+    (the EntityRenderPlayer literals 'boy.actor'/'girl.actor' beside
+    '%s/%s'; 610 templates live in Media/Actor/). The template
+    references SUB-ACTOR files (g1008_boy.actor) that resolve in the
+    TEMPLATE's dir (Media/Actor/) — absent there in every run (the
+    APK ships Media/Actor/boy.actor but NOT g1008_boy.actor). FIX:
+    the placement copies the g1008 avatar set (boy/girl/skin/skin2)
+    into app_resources/Media/Actor/ too.
+  * THE HONESTY GATE (the user's mandate: in-game PROVEN by the client
+    logs): the watch snapshots /data/tombstones before the loop; ANY
+    new tombstone during the watch = the client died in-game = a HARD
+    verdict fail. On detection: the tombstone head (the process +
+    signal) printed + the FD PROBE (3x3s /proc/<pid>/fd snapshots
+    filtered on .actor/.mca/.effect/.pak/.zip/.mesh/resources) — the
+    ClientPeer::rebirth loop re-opens the engine's resources every
+    cycle, so the open-file list names the EXACT lookup paths.
+  * GATES: suite 713/713 + smoke 28/28 on a70f84c.
+  * RUN 24 DISPATCHED (head a70f84c, harness sandbox91): Bedwars +
+    Skyblock. The decisive reads: (a) NO fresh tombstone during either
+    watch (the honest in-game gate), (b) if a crash remains — the
+    [fdprobe] lines naming the engine's actual resource-open paths,
+    (c) the bots gate next (§6 step 2's 15-bot read) once the client
+    survives.
