@@ -217,6 +217,21 @@ jobs:
                 echo -1000 > /proc/$pid/oom_score_adj 2>/dev/null
               done
             fi
+            # RUN-20 DECODE (38518243375): the HARNESS pid was protected
+            # but the libgameserver CHILD was not — AMS re-computes the
+            # child's own adj (a bare native child has no activity/
+            # service records, so it goes CACHED when the pristine is
+            # foreground) and the gs was DEAD before the Bedwars join
+            # (gsproc=none every round; the Skyblock half only worked
+            # because the join-time respawn re-launched it). Protect the
+            # child's pid too — the fork-inheritance covers only the
+            # adj AT fork time, not later AMS recomputes.
+            G=$(ps -A -o PID,NAME 2>/dev/null | grep -w libgameserver.so | awk '{print $1}')
+            if [ -n "$G" ]; then
+              for pid in $G; do
+                echo -1000 > /proc/$pid/oom_score_adj 2>/dev/null
+              done
+            fi
             sleep 2
           done
           EOF
@@ -349,6 +364,56 @@ jobs:
           adb -s localhost:5555 shell "chmod -R 777 '$RES'" || true
           echo "== placed res cache =="
           adb -s localhost:5555 shell "ls '$RES' | head -5; ls '$RES/Scripts/Game/g1008/res/actor' 2>/dev/null | head -4"
+          # RUN-20 DECODE (38518243375): the SKYBLOCK room crashed the
+          # engine at the room entry — the client.log spammed "boneCount
+          # too large: 1634956133" (0x61737365 = "asse" — a garbage file
+          # parsed as a skeleton) right after "recv user attr info" and
+          # the tombstone followed; ClientPeer::rebirth re-crashed in a
+          # loop. THE DECODE: the m1048_1 map's config.yml references
+          # dozens of g1048_*.actor ITEM actors (fountains etc.) that
+          # exist NOWHERE in the placed tree (the CDN's only 10078 appres
+          # is the g1046 hall one) — the engine's fallback parsed garbage.
+          # THE CDN HAS THE G1048 APPRES after all (the urls_cdn_ms.txt
+          # composite naming hid it: appres-g1048-10076 — engine 10076,
+          # two versions before 10078; the same 1007x family): 662
+          # g1048-only files (Scripts/Game/g1048 actors + Sound +
+          # appres/g1048.json), ZERO overlap with the g1046-10078 package
+          # except checksums.md5 — a clean overlay merge.
+          curl -sS -o /tmp/appres-g1048.zip \
+            "https://staticgs.sandboxol.com/sandbox/games/app-game-engine-resources/appres-g1048-10076.1622266820645.zip"
+          echo "ed1d198405ed29371f5f6df4f01f27c48c1f1780ec15ec6c58f66973e69c9f05  /tmp/appres-g1048.zip" | sha256sum -c -
+          rm -rf /tmp/appres1048x && mkdir -p /tmp/appres1048x
+          (cd /tmp/appres1048x && unzip -q /tmp/appres-g1048.zip)
+          # Overlay WITHOUT the g1048 checksums.md5 (the root file stays
+          # the g1046 one; a merged union is pushed below).
+          rm /tmp/appres1048x/checksums.md5
+          adb -s localhost:5555 push /tmp/appres1048x/. "$RES/"
+          # The merged checksums.md5: the g1046 entries + every g1048
+          # path (union by path; the only conflicting path is the
+          # checksums file itself — dropped from the g1048 side).
+          python3 - <<'PYEOF'
+          import zipfile
+          def entries(p):
+              out = {}
+              for line in zipfile.ZipFile(p).read('checksums.md5').decode('utf-8', 'replace').splitlines():
+                  line = line.strip()
+                  if not line or '*' not in line:
+                      continue
+                  h, path = line.split('*', 1)
+                  out[path.strip()] = h.strip()
+              return out
+          m = entries('/tmp/appres20.zip')
+          m.update(entries('/tmp/appres-g1048.zip'))
+          with open('/tmp/checksums_merged.md5', 'w') as f:
+              for path in sorted(m):
+                  f.write('%s *%s\n' % (m[path], path))
+          print('merged checksums entries:', len(m))
+          PYEOF
+          adb -s localhost:5555 push /tmp/checksums_merged.md5 "$RES/checksums.md5"
+          adb -s localhost:5555 shell "chown -R $UP:$UP '$RES'" || true
+          adb -s localhost:5555 shell "chmod -R 777 '$RES'" || true
+          echo "== g1048 actors now placed =="
+          adb -s localhost:5555 shell "ls '$RES/Scripts/Game/g1048/res/actor' 2>/dev/null | head -6; ls '$RES/Scripts/Game' 2>/dev/null"
           echo "== placed map trees =="
           adb -s localhost:5555 shell "find /storage/emulated/0/Android/data/$PKG/files/Download/SandboxOL/BlockMan -maxdepth 4 | head -20"
 

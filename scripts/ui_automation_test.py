@@ -3250,8 +3250,15 @@ def main_282(args):
     fired = False          # the join left the dialog (takeover or auth)
     takeover = started = pushed = False
     echoes = False
+    echoes_seen = False    # RUN-20: ANY round saw the Echoes activity —
+                           # the verdict reads the run's history, not the
+                           # final instant (the crash aftermath flips the
+                           # instant probe off after a green chain)
     init_online = connect = login_ok = False
     server_login = user_in = False
+    _back_guard = 0        # rounds suppressing the generic positive tap
+                           # after a re-entry BACK (the hall exit dialog's
+                           # confirm must never be tapped by accident)
     # session 86 run-6: the hall flow boots the engine world LOCALLY
     # (isDelayConnect: 1) and only then downloads the map from resUrl
     # (the holder's MapAssets) and joins rooms via the engine's inner
@@ -3327,8 +3334,54 @@ def main_282(args):
                         print("  [282] re-entered the card but the start "
                               "control is not up yet (r%d)" % rnd)
                 else:
-                    print("  [282] re-entry found no %r card either "
-                          "(r%d)" % (glabel, rnd))
+                    # RUN-20 DECODE (38518243368/38518243375): the
+                    # re-entry found NEITHER the start control NOR any
+                    # hall card — the screen was stuck on an unknown
+                    # surface after the failed enter flow (run 20's
+                    # Bedwars: neither btn_enter nor tv_game_name cards
+                    # for 600 s). NAME the surface (debug dump), then ONE
+                    # bounded BACK to leave it, then re-check the hall +
+                    # the card once. The BACK risk (the hall exit dialog)
+                    # is bounded: the BACK only fires when NO hall cards
+                    # are visible (not the hall feed), and the generic
+                    # positive taps are suppressed for 3 rounds after.
+                    print("  [282] re-entry: naming the stuck surface + "
+                          "one BACK (r%d)" % rnd)
+                    debug_dump(screen, "rejoin-r%d" % rnd)
+                    screen.snap("GJ282_rejoin_r%d" % rnd)
+                    adb.sh("input keyevent BACK", timeout=15)
+                    _back_guard = 3
+                    time.sleep(4)
+                    if screen.wait_for(
+                            ids=["srl_home", "ll_container",
+                                 "rg_navigation"], timeout=30, poll=3):
+                        _rcard2 = next(((p, nm) for p, nm in
+                                        collect_cards()
+                                        if card_re.search(nm.text)), None)
+                        if _rcard2 is not None:
+                            screen.tap_node(_rcard2[0])
+                            time.sleep(8)
+                            g282_dismiss_overlays(adb, screen,
+                                                  "rejoin2-r%d" % rnd)
+                            _btn2 = screen.find(ids=["btn_enter",
+                                                     "iv_enter",
+                                                     "btnEnter"])
+                            if _btn2 and _btn2.center:
+                                screen.tap_node(_btn2)
+                                print("  [282] re-entered after BACK + "
+                                      "pressed the start control (r%d)"
+                                      % rnd)
+                                time.sleep(3)
+                            else:
+                                print("  [282] re-entered after BACK but "
+                                      "the start control is not up (r%d)"
+                                      % rnd)
+                        else:
+                            print("  [282] after BACK the hall is up but "
+                                  "no %r card (r%d)" % (glabel, rnd))
+                    else:
+                        print("  [282] after BACK the hall is still not "
+                              "up (r%d)" % rnd)
         if rnd % 3 == 0:
             # CAPTURE-TIMING FIX: the MID-watch stash (every 3 rounds)
             g282_stash_logs(adb, pkg, "r%d" % rnd)
@@ -3417,11 +3470,15 @@ def main_282(args):
                     print("  [raw r%d] %s" % (rnd, l.strip()[-240:]))
         # the press flow can park on a modal (NotWifiDialog on the no-wifi
         # redroid network, TwoButtonDialog res-load prompts): press the
-        # positive button family generically
+        # positive button family generically — SUPPRESSED right after a
+        # re-entry BACK (the hall exit dialog's confirm must never be
+        # tapped by accident)
+        if _back_guard > 0:
+            _back_guard -= 1
         _btn = screen.find(texts=["OK", "Ok", "Continue", "CONTINUE",
                                   "Load now", "Load", "Enter", "Yes",
                                   "Confirm", "Download", "Start"])
-        if _btn and _btn.center and _btn.center[1] > 200 \
+        if _back_guard <= 0 and _btn and _btn.center and _btn.center[1] > 200 \
                 and _btn.clickable:
             print("  [282] dialog positive button %r tapped"
                   % (_btn.text,))
@@ -3430,6 +3487,8 @@ def main_282(args):
         echoes = "BlockManEchoesActivity" in adb.sh(
             "dumpsys activity activities | grep -i BlockManEchoes",
             timeout=30)
+        if echoes:
+            echoes_seen = True
         client = g282_read_log(adb, pkg, dirs, "client.log")
         server = g282_read_log(adb, pkg, dirs, "server.log")
         if re.search(r"initGame::??.*ip\[127\.0\.0\.1\].*port\[31108\]",
@@ -3523,8 +3582,13 @@ def main_282(args):
               "no dispatch traffic (/v1/game-map, /v1/dispatch, "
               "/v1/dispatch-party, /v1/follow all absent) - the join "
               "never asked for the game address")
-        check("drive[%s]: engine activity up (BlockManEchoesActivity)"
-              % glabel, echoes)
+        # RUN-20 (38518243375): the Skyblock chain was FULLY green at r1
+        # (fired/echoes/srvLogin/userIn all True) and the Echoes activity
+        # was gone by r2 (the engine's room-entry crash aftermath) — the
+        # verdict reads the run's HISTORY (echoes_seen), not the final
+        # instant probe.
+        check("drive[%s]: engine activity up during the watch "
+              "(BlockManEchoesActivity)" % glabel, echoes_seen)
         # RUN-19 DOCS ORDER (item 3): the client.log gates downgrade to
         # WARN — the SAME connect chain is proven server-side below
         # (C2SPacketLogin + the monitor g2r type=151 are the authority);

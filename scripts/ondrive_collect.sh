@@ -37,6 +37,18 @@ fi
 logcat -d -s LocalAPI:V GS:V BLOCK:V > "$OUT/logcat-holder.txt" 2>/dev/null
 logcat -d > "$OUT/logcat-full.txt" 2>/dev/null
 
+# RUN-20 DECODE: the Skyblock room crash (boneCount too large / tombstone)
+# left the engine dead but the tombstone was NEVER captured — the crash
+# frames (which file the model loader had open) are the decoder for the
+# model-parse family. Pull the newest tombstones (root adb reads them).
+if [ -d /data/tombstones ]; then
+  mkdir -p "$OUT/tombstones"
+  ls -la /data/tombstones > "$OUT/tombstones/listing.txt" 2>/dev/null
+  for T in $(ls -t /data/tombstones/tombstone_* 2>/dev/null | head -2); do
+    cp "$T" "$OUT/tombstones/" 2>/dev/null
+  done
+fi
+
 # GameServer monitor/state dumps are inside filesDir (root).
 # Staged bundle: GameServerManager.BUNDLE_DIR = filesDir/gameserver-bundle
 # (NOT localapi/gameserver-runtime-* — that path never existed).
