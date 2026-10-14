@@ -439,6 +439,26 @@ jobs:
           adb -s localhost:5555 shell "chmod -R 777 '/data/user/0/$PKG/app_resources'" || true
           echo "== Media actors now placed =="
           adb -s localhost:5555 shell "ls '$MEDIA/Scripts/Game/g1008/res/actor' 2>/dev/null | head -8; ls '$MEDIA/Scripts/Game' 2>/dev/null"
+          # RUN-23 DECODE (38530968032 — the FIRST fully-green VERDICT run,
+          # but honest-evidence review shows both boots still crashed ~1 s
+          # after 'sub Actor file not found [g1008_boy.actor]' (two fresh
+          # tombstones, SIGSEGV MainTickThread): the green watches read the
+          # logcat HISTORY (fired/srvLogin/userIn are ever-seen flags).
+          # The template system: the avatar template is Media/Actor/boy.actor
+          # (BARE name, shipped in the APK) — the EntityRenderPlayer strings
+          # ('boy.actor'/'girl.actor' beside '%s/%s'); the template
+          # references SUB-ACTOR files (g1008_boy.actor) that resolve in the
+          # TEMPLATE's dir (Media/Actor/) — absent there in every run (the
+          # APK ships boy.actor but NOT g1008_boy.actor in Media/Actor/).
+          # FIX: copy the g1008 avatar actor set into $MEDIA/Actor/ too.
+          adb -s localhost:5555 shell "mkdir -p '$MEDIA/Actor'"
+          for A in g1008_boy.actor g1008_girl.actor g1008_skin.actor g1008_skin2.actor; do
+            adb -s localhost:5555 shell "cp '$MEDIA/Scripts/Game/g1008/res/actor/$A' '$MEDIA/Actor/$A' 2>/dev/null" || true
+          done
+          adb -s localhost:5555 shell "chown -R $UP:$UP '$MEDIA/Actor'" || true
+          adb -s localhost:5555 shell "chmod -R 777 '$MEDIA/Actor'" || true
+          echo "== Media/Actor avatar set =="
+          adb -s localhost:5555 shell "ls '$MEDIA/Actor' | head -8"
           echo "== placed map trees =="
           adb -s localhost:5555 shell "find /storage/emulated/0/Android/data/$PKG/files/Download/SandboxOL/BlockMan -maxdepth 4 | head -20"
 

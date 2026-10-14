@@ -3256,6 +3256,19 @@ def main_282(args):
                            # instant probe off after a green chain)
     init_online = connect = login_ok = False
     server_login = user_in = False
+    # RUN-23 DECODE (38530968032): the first fully-green VERDICT run was a
+    # HISTORY ILLUSION — both boots crashed ~1 s after the join (two fresh
+    # tombstones, SIGSEGV MainTickThread) while the ever-seen watch flags
+    # (fired/srvLogin/userIn read from 'logcat -d') stayed green. The
+    # honest in-game gate: snapshot the tombstone dir BEFORE the watch;
+    # ANY new tombstone during the watch = the client died in-game -> a
+    # HARD verdict fail + the fd-probe evidence (the engine re-opens its
+    # resources every ClientPeer::rebirth cycle - the open-file list names
+    # exactly which actor/map files it manages to open).
+    fresh_crash = False
+    _fd_probed = False
+    _tom_base = adb.sh("ls -la /data/tombstones 2>/dev/null", timeout=20)
+    print("  [tomb-base] %s" % (_tom_base.strip().replace("\n", " | ")[-400:] or "empty"))
     _back_guard = 0        # rounds suppressing the generic positive tap
                            # after a re-entry BACK (the hall exit dialog's
                            # confirm must never be tapped by accident)
@@ -3279,6 +3292,44 @@ def main_282(args):
         # the first-time 'click fast enter game' guide overlay
         # (dialog_enter_game_guide) swallows the btn_enter tap — tap its
         # own highlighted region (ml_enter) when it is up
+        _tom_now = adb.sh("ls -la /data/tombstones 2>/dev/null", timeout=20)
+        if _tom_now != _tom_base and _tom_now.strip():
+            _tom_new = [l for l in _tom_now.splitlines()
+                        if l not in (_tom_base or "")]
+            print("  [TOMBSTONE r%d] NEW tombstone activity during the "
+                  "watch (the client died in-game):" % rnd)
+            for l in _tom_new[:3]:
+                print("    %s" % l.strip()[-200:])
+            _tom_name = _tom_new[0].split()[-1] if _tom_new else ""
+            if _tom_name and "tombstone" in _tom_name:
+                _th = adb.sh("head -14 /data/tombstones/%s 2>/dev/null"
+                             % _tom_name, timeout=20)
+                for l in _th.splitlines()[:14]:
+                    print("    [tomb-head] %s" % l.strip()[:150])
+            fresh_crash = True
+            if not _fd_probed:
+                # THE FD PROBE: the rebirth loop re-opens the engine's
+                # resources each cycle - snapshot the open fds while it
+                # loops (the .actor/.mca/.effect paths = the lookup truth)
+                _fd_probed = True
+                _epid = adb.sh("pidof %s:BlockmanGo" % pkg,
+                               timeout=15).strip()
+                _epid = _epid.split()[0] if _epid else ""
+                if _epid:
+                    for _fi in range(3):
+                        _fds = adb.sh(
+                            "ls -l /proc/%s/fd 2>/dev/null | grep -oE "
+                            "'-> .*' | sort -u" % _epid, timeout=20)
+                        _fds = [l for l in _fds.splitlines()
+                                if any(k in l for k in
+                                       (".actor", ".mca", ".effect",
+                                        ".pak", ".zip", "resources",
+                                        ".mesh", ".png"))]
+                        print("  [fdprobe r%d] pid=%s open res fds (%d):"
+                              % (rnd, _epid, len(_fds)))
+                        for l in _fds[:40]:
+                            print("    %s" % l.strip()[-180:])
+                        time.sleep(3)
         _guide = screen.find(ids=["ml_enter"])
         if _guide and _guide.center:
             print("  [282] enter-game guide overlay up - tapping ml_enter")
@@ -3625,6 +3676,18 @@ def main_282(args):
               "C2SPacketLogin)" % glabel, server_login)
         check("drive[%s]: the human entered the room (monitor g2r "
               "type=151 / 'human ... entered the room')" % glabel, user_in)
+        # RUN-23 HARD GATE (the honest in-game verdict): a tombstone born
+        # DURING the watch = the client died after the join — the ever-seen
+        # flags above read logcat history and would mask it (run 23's
+        # 'success' had both boots SIGSEGV at the avatar 1 s after the
+        # join). The user's mandate: in-game PROVEN by the client logs,
+        # not a joined-then-died room.
+        check("drive[%s]: client stayed alive in-game (no fresh tombstone "
+              "during the watch)" % glabel, not fresh_crash,
+              "a NEW /data/tombstones entry appeared during the watch - "
+              "the engine crashed after the join (see the [TOMBSTONE]/"
+              "[fdprobe] lines: they name the process and the last "
+              "resources it managed to open)")
         # BOT EVIDENCE (report, not gate — the per-game bot behavior is
         # gated after the first live logs set the exact markers; §6 step
         # 2's '15 bots logging in' is read from the SAME monitor log)
