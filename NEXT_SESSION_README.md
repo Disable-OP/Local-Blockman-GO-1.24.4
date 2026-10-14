@@ -4117,3 +4117,47 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   NO dex-swap, NO new sandbox APK. The dex-swap path is ONLY for the
   Java (classes6.dex) changes.
 - GATES: suite 713/713 + smoke 28/28 on 29a14b2.
+
+## Cron-session delta 38 (read FIRST — RUN 26: the per-packet fix VERIFIED (the login chain survived, Bedwars 3x honest); Skyblock still dies at the ~20s validation wall; the GameInfo coinMapping tail = BYTE-PROVEN 10078 schema drift, gated off; run 27 tests)
+
+- READ WORKLOG's CRON SESSION 5 ADDENDUM 2. The one-line state: the
+  coalescing fix landed exactly as designed (the login chain survived,
+  the crash moved from 3 s to 20 s), and the client's parse desync is
+  now UNDERSTOOD as a schema-drift CLASS with its first member
+  byte-proven (GameInfo's m_coinMapping tail) — gated off for 10078
+  clients; run 27 (38565408998, 96ec546, sandbox92) tests it.
+- THE DRIFT CLASS = THE LENS: our server = the 1.24.4-era (10068) wire
+  schemas; the pristine = 2.8.2 (engine 10078). Every packet whose
+  schema drifted between 10068 and 10078 makes the client's parser
+  mis-frame OUR tail: with per-packet datagrams, EVERY remaining
+  "unknown packet id: N" line in client.log = exactly ONE drifted
+  packet, and N = its first orphaned tail byte. The hunt is now
+  enumerable from client.log alone.
+- MEMBER #1 (FIXED): S2CPacketGameInfo (pid 15) — our m_coinMapping
+  tail reads as a bogus pid (the hall: count 0x00 -> "unknown packet
+  id: 0" EVERY boot; Skyblock: 16 coins -> "unknown packet id: 16").
+  The 10078 client's GameInfo ends at m_selectableActions. The fix =
+  includeCoinMapping gated on packet->m_engineVersion < 10078 (the
+  login packet carries it; fail-safe keeps the field).
+- THE ~20 s WALL (the remaining Skyblock killer): the client's own
+  MainTick phase — the hall TIMES OUT through it ("MainTick user data
+  validation timeout", logged, survived); Skyblock rebirths and dies at
+  the SAME pc 0xbb37aa every run. The server sends ONLY heartbeats
+  there. HYPOTHESIS: a drifted packet in the login/entity sync window
+  costs the client real content (its tail dropped), and the ~20 s
+  validation finds the hole. Member #1's strip may already clear it;
+  if not, the next "unknown packet id: N" line names the next member.
+- RUN 27 decisive reads (in order): (1) ZERO "unknown packet id" in the
+  login window of BOTH boots (the clean GameInfo); (2) the Skyblock
+  watch WITHOUT a fresh tombstone; (3) if still dying: the FIRST
+  remaining "unknown packet id: N" + the client.log's LAST lines before
+  the rebirth = the next member's identity. Fix ONE packet per
+  iteration (the same m_engineVersion-gated tail strip pattern).
+- THE METHOD (for the next members): (a) read our schema in the
+  extracted sources (patch_sources.py comments + dev/*/Src/Network/
+  protocol/S2CPackets*.h); (b) compute our wire bytes; (c) the client's
+  error id N = our byte at the client's schema end — the drift point;
+  (d) strip/gate the tail. The register ranges (25-50-75-100-125-150)
+  + the enum live in dev/logic/Src/Network/protocol/DataPacket.h.
+- GATES: suite 711/713 (the single environmental watchdog flake) +
+  smoke 28/28 on 96ec546.

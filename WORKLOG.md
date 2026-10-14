@@ -5887,3 +5887,49 @@ Stage Summary:
     Skyblock watch WITHOUT a fresh tombstone (the honest gate), then
     the 15-bot gate (§6 step 2) and §6 steps 3..10b (Bedwars ->
     Skyblock -> the rest; no new games/maps — the mandate stands).
+
+- CRON SESSION 5 ADDENDUM 2 (the run-26 decode + the GameInfo schema-drift
+  fix + run 27, commit 96ec546):
+  * RUN 26 (38551343606, 29a14b2) — THE PER-PACKET FIX VERIFIED: the
+    g1048 login chain SURVIVED (client.log: "unknown packet id: 16"
+    tolerated, then recv S2CPacketLoginResult + login succ +
+    S2CPacketUserIn + "Blockman teleport to (4,61,-16)" + the 4 MB
+    r.0.0.mca load — the full run-24-depth boot restored). BEDWARS = the
+    THIRD honest in-game verdict (zero tombstones; the bot markers
+    ['robot'] + addEntityPlayerAI/PlayerAI in the g1048 evidence). The
+    fd probe FIRED ([fdprobe r2] pid=20919 x3 — 0 res fds; the rebirth
+    gap remains an fd-name blind spot).
+  * SKYBLOCK STILL DIES at the SAME MainTickThread pc 0xbb37aa (null
+    deref addr 0x4), now at uptime 20 s — the crash moved past the login
+    into the ~20 s post-init phase. The HALL hits the SAME wall and
+    TIMES OUT gracefully ("MainTick user data  validation timeout" at
+    +21 s — logged, survived, the loading page closed); Skyblock enters
+    the ClientPeer::rebirth loop and dies. The server sends ONLY
+    heartbeats in the crash window — the client's own tick.
+  * THE BYTE-PROVEN SCHEMA DRIFT (root cause #2): our 1.24.4-era
+    S2CPacketGameInfo appends m_coinMapping after m_selectableActions;
+    the 10078 client's GameInfo schema ENDS at selectableActions and
+    reads our count byte as the next packet id — the hall (CoinManager
+    empty, count 0x00) logs the tolerated "unknown packet id: 0" in
+    EVERY boot (runs 24/25/26), Skyblock (the coin economy room, 16
+    coins) logged "unknown packet id: 16" (run 26 client.log line 127).
+    Two independent byte predictions, both exact.
+  * THE FIX (96ec546, patch #7): sendGameInfo gains includeCoinMapping
+    (default true); the C2SInit send site passes
+    packet->m_engineVersion < 10078 (the login packet carries it;
+    fail-safe: an unreadable version keeps the field). Pre-10078 clients
+    keep the mapping; the 10078 client reads a CLEAN GameInfo datagram.
+    THE MEASUREMENT UPGRADE: with per-packet datagrams EVERY remaining
+    "unknown packet id: N" line = one drifted packet with its tail byte
+    N — the drift class is now enumerable from client.log alone.
+  * GATES: suite 711/713 (the single documented environmental watchdog
+    flake — 3 runs: 709+2 / timeout / 711+1, reproduces on the stashed
+    baseline) + smoke 28/28. build-gameserver #43 (96ec546) rebuilt +
+    clobbered the release asset (the ServerPacketSender.h change =
+    a wide TU rebuild, ~68 min).
+  * RUN 27 DISPATCHED (38565408998, head 96ec546, harness sandbox92):
+    Bedwars + Skyblock. Decisive reads: ZERO "unknown packet id" in the
+    login window (the clean GameInfo); if Skyblock still hits the ~20 s
+    wall, the FIRST remaining "unknown packet id: N" line names the next
+    drifted packet — fix it the same way (strip the 10078-unknown tail
+    behind an m_engineVersion gate), one packet per iteration.
