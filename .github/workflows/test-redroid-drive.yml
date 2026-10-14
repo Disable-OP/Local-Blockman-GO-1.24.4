@@ -414,6 +414,31 @@ jobs:
           adb -s localhost:5555 shell "chmod -R 777 '$RES'" || true
           echo "== g1048 actors now placed =="
           adb -s localhost:5555 shell "ls '$RES/Scripts/Game/g1048/res/actor' 2>/dev/null | head -6; ls '$RES/Scripts/Game' 2>/dev/null"
+          # RUN-22 DECODE (38524560805): the placed actor was NEVER found —
+          # 'sub Actor file not found [g1008_boy.actor]' at the avatar load
+          # in EVERY boot that reached it (the g1048 boots of runs 16/20/22;
+          # the old 'the actor is fixed' note was a misread of run 16).
+          # PROOF the engine never searches app_resourcesv2: the placed
+          # g1048_striation.effect (inside the pushed g1048 appres) still
+          # logged 'Effect file isn't exist', while reddot.effect (a MAP
+          # file) was FOUND — the search roots are the APK assets +
+          # app_resources/ + the map dir, NOT the v2 cache. The engine's
+          # resource ids are 'Media/'-prefixed (the lib's Setting literals
+          # are 'Media/Setting/ItemGun.csv' etc.; the APK's own actors live
+          # at assets/resources/Media/Scripts/Game/g1008/res/actor/ —
+          # INCLUDING g1008_boy/girl.actor, the delta-32 claim was wrong).
+          # FIX: mirror the appres trees under app_resources/Media/ (the
+          # rootPath's Media subtree) so the engine's ids resolve from the
+          # filesystem the same way they resolve from the APK.
+          MEDIA="/data/user/0/$PKG/app_resources/Media"
+          adb -s localhost:5555 shell "mkdir -p '$MEDIA'"
+          adb -s localhost:5555 push /tmp/appresx/. "$MEDIA/"
+          adb -s localhost:5555 push /tmp/appres1048x/. "$MEDIA/"
+          adb -s localhost:5555 push /tmp/checksums_merged.md5 "$MEDIA/checksums.md5"
+          adb -s localhost:5555 shell "chown -R $UP:$UP '/data/user/0/$PKG/app_resources'" || true
+          adb -s localhost:5555 shell "chmod -R 777 '/data/user/0/$PKG/app_resources'" || true
+          echo "== Media actors now placed =="
+          adb -s localhost:5555 shell "ls '$MEDIA/Scripts/Game/g1008/res/actor' 2>/dev/null | head -8; ls '$MEDIA/Scripts/Game' 2>/dev/null"
           echo "== placed map trees =="
           adb -s localhost:5555 shell "find /storage/emulated/0/Android/data/$PKG/files/Download/SandboxOL/BlockMan -maxdepth 4 | head -20"
 

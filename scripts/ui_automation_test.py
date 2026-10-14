@@ -3309,6 +3309,28 @@ def main_282(args):
                 # — each re-entry re-runs the client's enter flow.
                 print("  [282] join not fired and no start control - "
                       "re-entering the card flow (r%d)" % rnd)
+                if rnd == 6:
+                    # RUN-22 DECODE (38524560805): the FIRST game's enter
+                    # flow dies on the dress-res check at EVERY press —
+                    # "start check dress res" logs once and NEVER
+                    # completes (the boot dress download's keep-alive TLS
+                    # connection went stale during the hall-navigation
+                    # idle gap; the pristine reuses the dead pooled
+                    # socket with no timeout and the check hangs forever;
+                    # no game/auth REQ ever fires — runs 18-22 Bedwars
+                    # all died exactly here). The second game only ever
+                    # joined because the per-game flow relaunches the
+                    # process (a fresh pool). Force a FULL relaunch at
+                    # the first re-entry: the fresh process gets a fresh
+                    # TLS pool and the dress check succeeds.
+                    print("  [282] r6 re-entry: force-relaunching the "
+                          "pristine (fresh TLS pool for the dress-res "
+                          "check)")
+                    adb.sh("am force-stop %s" % pkg, timeout=20)
+                    time.sleep(3)
+                    g282_alive_recover(adb, screen, pkg, act,
+                                       "rejoin-r%d-relaunch" % rnd)
+                    time.sleep(5)
                 _rcard = next(((p, nm) for p, nm in collect_cards()
                                if card_re.search(nm.text)), None)
                 _rscrolled = 0
