@@ -347,7 +347,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - name: Rebuild the pristine (pack + sign)
+      - name: Rebuild tools (fetch signer + appres)
         run: |
           echo "java: $(java -version 2>&1 | head -1)"
           curl -sSfL -o /tmp/uber-apk-signer.jar \
@@ -357,6 +357,9 @@ jobs:
             "https://staticgs.sandboxol.com/sandbox/games/app-game-engine-resources/appres-g1046-10078.1625198960711.zip"
           echo "a9b2dd94151f72b39e24d278889ca35d63a64c005c4841a8eac7f60ac4752677  /tmp/appres-g1046.zip" | sha256sum -c -
           ls -la harness.apk pristine282.apk
+
+      - name: Rebuild pack (the SkyBlock UI + the avatar actors)
+        run: |
           python3 - <<'PYEOF'
           import zipfile, os, hashlib
           ORIG, HARNESS, G1046 = 'pristine282.apk', 'harness.apk', '/tmp/appres-g1046.zip'
@@ -389,14 +392,22 @@ jobs:
                 'md5', hashlib.md5(open('pristine-patched.apk','rb').read()).hexdigest())
           PYEOF
           ls -la pristine-patched.apk
+
+      - name: Rebuild sign (zipalign + debug-sign)
+        run: |
           java -jar /tmp/uber-apk-signer.jar --apks pristine-patched.apk --out .
           SIGNED=$(ls pristine-patched-*igned*.apk | head -1)
           echo "signed: $SIGNED"
           [ -n "$SIGNED" ] || { echo "FATAL: no signed apk"; exit 1; }
           mv -f "$SIGNED" pristine282.apk
           md5sum pristine282.apk | tee evidence-pristine-build.md5
+
+      - name: Rebuild verify (the SkyBlock UI inside)
+        run: |
           unzip -l pristine282.apk | grep -c "SkyBlockMain.json" \
             || { echo "FATAL: SkyBlockMain.json missing from the rebuilt pristine"; exit 1; }
+          unzip -l pristine282.apk | grep -c "Media/Actor/g1008_boy.actor" \
+            || { echo "FATAL: g1008_boy.actor missing"; exit 1; }
 
       - name: Install the PRISTINE 2.8.2 client
         run: |
