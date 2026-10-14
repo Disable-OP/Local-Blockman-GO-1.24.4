@@ -5643,3 +5643,53 @@ Stage Summary:
     decisive reads: the stash captures in the evidence tars, a green
     Bedwars join through the re-entry path, Skyblock repeating run 19's
     server-side chain.
+
+- CRON SESSION 3 ADDENDUM 2 (the run-20 decode + the room-entry crash fix,
+  commit 022c06c):
+  * RUN 20 (38518243375, 8c01aaa) — the session's three stability fixes
+    all PROVEN in the evidence: the stash captured client.log AND
+    server.log (the capture-timing race is dead); the pre-collect +
+    per-game collects ran; the re-tap/re-entry block fired every 3
+    rounds. The verdicts: Skyblock rc=1 on the Echoes instant probe ONLY
+    (the chain was FULLY GREEN at watch r1); Bedwars rc=1 on the dead
+    join (no game/auth ever).
+  * THE SKYBLOCK ROOM-ENTRY CRASH (the engine's own words): initGame OK
+    (1055 ms) -> the .anim misses tolerated -> 06:04:42 "unknown packet
+    id: 0" + "recv user attr info" -> "boneCount too large: 1634956133"
+    x800 + tombstone 06:04:43 + ClientPeer::rebirth re-crash loop; the
+    gs heart-beated alone (player count 0) until ~06:09. DECODE:
+    1634956133 = 0x61737365 = "asse" — garbage parsed as a skeleton.
+    ROOT: the m1048_1 map's config.yml itemActor rows (fountains,
+    christmas tree, ...) reference g1048_*.actor files that existed
+    NOWHERE — the CDN's only known 10078 appres was the g1046 hall one.
+  * THE G1048 APPRES FOUND (the user's urls_cdn_ms.txt paid off): the
+    composite naming (10050-10059_appres-g1048-*.zip) + the newer
+    appres-g1048-10075/10076(-low) rows. appres-g1048-10076.
+    1622266820645.zip (7.7 MB, sha256 ed1d1984...) fetched and MERGED:
+    662 g1048-only files (the map's fountain actors + Sound +
+    appres/g1048.json), zero byte-overlap with g1046-10078 except
+    checksums.md5 -> overlay-merge + a union checksums.md5 pushed last
+    (the engine lua stays 10078). g1048_boy/girl.avatar actors do NOT
+    exist in any appres — the avatar is the common g1008 set (placed).
+  * THE BEDWARS HALF: gsproc=none EVERY round — the oomguard protected
+    the harness pid but AMS re-computes the libgameserver CHILD's own
+    adj (a bare native child goes CACHED when the pristine is
+    foreground) and the gs died before the press; the dress-res check
+    then died on the swallowed NPE (the run-18 pattern) so no game/auth
+    -> no join-time respawn trigger. FIX: the guard writes -1000 to the
+    gs pid too; the re-entry now NAMES the stuck surface (debug_dump +
+    snap) and does ONE bounded BACK (the generic positive taps
+    suppressed 3 rounds after — the hall exit dialog's confirm must
+    never be tapped by accident).
+  * VERDICT SEMANTICS: the Echoes gate reads echoes_seen (ANY round saw
+    the activity) — run 20's Skyblock chain was green at r1 and the
+    crash aftermath flipped the instant probe; the verdict reads the
+    run's history.
+  * COLLECTOR: /data/tombstones capture added (the newest 2) — the
+    model-crash decoder for any remaining crash.
+  * GATES: suite 713/713 + smoke 28/28 on the final state.
+  * RUN 21 DISPATCHED (id 38523406284, head 022c06c, harness sandbox91):
+    Bedwars + Skyblock (the user's order). The decisive reads: a LIVE gs
+    through the Bedwars watch, the Skyblock room WITHOUT the boneCount
+    crash, and — if any crash remains — the tombstone naming the exact
+    file.
