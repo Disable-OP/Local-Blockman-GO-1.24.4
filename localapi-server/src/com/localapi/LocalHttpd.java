@@ -56,6 +56,22 @@ public class LocalHttpd extends NanoHTTPD {
 
         // Uploaded files are served back at /files/<id> (the URL returned by
         // the upload handlers). Plain GET, served before the Retrofit routing.
+        // RUN-24 DECODE (38536039296): the ENGINE's URL-res fetches ALSO hit
+        // /files/upload/<md5> — the resUrl is the HARDCODED zombie
+        // d401m01aifavw.cloudfront.net/files/upload/ (InitMetaDataTask.smali
+        // const-string), which the drive hosts map to 127.0.0.1:80. The
+        // content-addressed store (Media_res_config.txt name=md5) is LIVE on
+        // staticgs.sandboxol.com/files/upload/<md5> (md5-verified: the
+        // response bytes' md5 == the requested name). The engine's
+        // boneCount-too-large crash loop was the parse of the FAILED download
+        // ("HTTP status code: 0" — the engine's own HTTP stack never reached
+        // the holder: the /system/etc/hosts entries were missing on the
+        // redroid and the DNAT-to-loopback fell to route_localnet). Proxy
+        // through to the live CDN with a disk cache — MUST be matched BEFORE
+        // the generic /files/<id> route below.
+        if (uri != null && uri.startsWith("/files/upload/")) {
+            return serveEngineRes(uri.substring("/files/upload/".length()));
+        }
         if ("GET".equals(verb) && uri != null && uri.startsWith("/files/")) {
             return serveStoredFile(uri.substring("/files/".length()));
         }
@@ -341,6 +357,70 @@ public class LocalHttpd extends NanoHTTPD {
         r.addHeader("Cache-Control", "max-age=86400");
         L.i("GAMEICON " + name + " " + data.length + "b " + mime);
         return r;
+    }
+
+    /** GET /files/upload/<md5> — the engine's content-addressed URL-res
+     * store, proxied from the LIVE CDN (staticgs.sandboxol.com; the
+     * hardcoded resUrl distribution is dead). Cached under
+     * <store>/engine_res/<md5>. The 2.8.2 pristine's engine parses the
+     * FAILED download's buffer when this 404s (boneCount garbage) — the
+     * route must answer real bytes or nothing at all. */
+    private Response serveEngineRes(String hash) {
+        if (hash == null || !hash.matches("[0-9a-fA-F]{32}")) {
+            return respond("{\"code\":0,\"message\":\"bad engine res hash\"}");
+        }
+        byte[] data = null;
+        try {
+            java.io.File dir = new java.io.File(store.baseDir(), "engine_res");
+            java.io.File f = new java.io.File(dir, hash);
+            if (f.isFile() && f.length() > 0) {
+                data = java.nio.file.Files.readAllBytes(f.toPath());
+            } else {
+                data = fetchEngineRes(hash);
+                if (data != null && data.length > 0) {
+                    //noinspection ResultOfMethodCallIgnored
+                    dir.mkdirs();
+                    java.nio.file.Files.write(f.toPath(), data);
+                }
+            }
+        } catch (Throwable t) {
+            L.i("ENGINERES cache/fetch failed " + hash + ": " + t);
+        }
+        if (data == null || data.length == 0) {
+            L.i("ENGINERES miss " + hash);
+            return respond("{\"code\":0,\"message\":\"engine res unavailable\"}");
+        }
+        String mime = Skins.sniffMime(data);
+        if (mime == null || mime.isEmpty()) mime = "application/octet-stream";
+        InputStream in = new ByteArrayInputStream(data);
+        Response r = newFixedLengthResponse(Response.Status.OK, mime, in, data.length);
+        r.addHeader("Access-Control-Allow-Origin", "*");
+        L.i("ENGINERES " + hash + " " + data.length + "b " + mime);
+        return r;
+    }
+
+    /** One content-addressed engine res from the LIVE CDN. */
+    private static byte[] fetchEngineRes(String hash) {
+        try {
+            javax.net.ssl.HttpsURLConnection c = (javax.net.ssl.HttpsURLConnection)
+                    new java.net.URL("https://staticgs.sandboxol.com/files/upload/" + hash)
+                            .openConnection();
+            c.setConnectTimeout(8000);
+            c.setReadTimeout(20000);
+            int code = c.getResponseCode();
+            if (code != 200) return null;
+            java.io.InputStream in = c.getInputStream();
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                out.write(buf, 0, n);
+            }
+            in.close();
+            return out.toByteArray();
+        } catch (Throwable t) {
+            return null;
+        }
     }
 
     /** GET /files/<id> — serve an uploaded file's bytes with its stored type. */

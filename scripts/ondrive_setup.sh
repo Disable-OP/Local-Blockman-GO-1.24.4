@@ -30,6 +30,33 @@ if ! grep -q "d32gv25kv9q34j.cloudfront.net" /etc/hosts 2>/dev/null; then
 else
   say "hosts: already present"
 fi
+# RUN-24 DECODE (38536039296): /etc/hosts alone is NOT what the app
+# processes resolve against on this redroid — bionic reads
+# /system/etc/hosts, and the docker-style /etc/hosts bind-mount the
+# image ships is invisible to the engine's own HTTP stack (its fetches
+# of d401m01aifavw.cloudfront.net NEVER reached the holder: "HTTP
+# status code: 0", zero /files/upload REQ lines in the LocalAPI log —
+# the shell's ping check passed because the SHELL resolver reads
+# /etc/hosts). Mirror the entries into /system/etc/hosts.
+if ! grep -q "d32gv25kv9q34j.cloudfront.net" /system/etc/hosts 2>/dev/null; then
+  mount -o rw,remount / 2>/dev/null || mount -o rw,remount /system 2>/dev/null || true
+  {
+    echo "# blockynexus drive (ondrive_setup.sh system hosts)"
+    for h in $HOSTS_DROP; do echo "127.0.0.1 $h"; done
+  } >> /system/etc/hosts 2>/dev/null || fail "cannot write /system/etc/hosts"
+  say "system hosts: 3 lines appended"
+else
+  say "system hosts: already present"
+fi
+# The DNAT fallback (any :80 -> 127.0.0.1:18080) is a no-op without
+# route_localnet: the kernel drops the martian 127.0.0.1-destined
+# packet from a non-loopback interface and the fetcher sees status 0.
+sysctl -w net.ipv4.conf.all.route_localnet=1 >/dev/null 2>&1 || true
+sysctl -w net.ipv4.conf.default.route_localnet=1 >/dev/null 2>&1 || true
+for IF in $(ls /proc/sys/net/ipv4/conf/ 2>/dev/null); do
+  sysctl -w "net.ipv4.conf.$IF.route_localnet=1" >/dev/null 2>&1 || true
+done
+say "route_localnet: enabled (the DNAT fallback now works)"
 ping -c 1 -W 1 d32gv25kv9q34j.cloudfront.net 2>/dev/null | head -n 1 | \
   grep -q "127.0.0.1" || fail "hosts redirect not effective (netd cache? reboot)"
 
