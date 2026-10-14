@@ -4462,3 +4462,35 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   shape-ENABLED line (the encoder-list proof), the zero-unknown-pid
   window (the GameInfo gate proof), the m_isAlive heartbeats (the
   in-game liveness).
+
+## Cron-session delta 45 (read FIRST — the Skyblock 3s SIGSEGV ROOT CAUSE = the missing SkyBlock UI windows (2.8.2 predates them); the UI placement fix shipped; run 33 = the wall test)
+
+- READ delta 44 first. The REFINED run-32 decode (delta 44 blamed the
+  whole g1048 appres — the truth = narrower):
+  * The g1048 appres = ALREADY placed (the run-20/22 blocks: the CDN zip
+    appres-g1048-10076 into app_resourcesv2 + the Media/ mirror) — the
+    missing g1048_striation.effect + g1008_boy.actor errors = STILL
+    logged (the appres carries the effect at
+    Scripts/Game/g1048/res/effect/ = a different lookup root) — BUT THE
+    BEDWARS BOOT TOLERATED ALL OF THEM, ALIVE THROUGH THE WHOLE WATCH.
+  * The Skyblock-ONLY fatal = "GUIWindowManager::LoadWindowFromJSON:
+    SkyBlockMain.json not exist!" — verified by the APK asset greps:
+    the pristine 2.8.2 ships ZERO SkyBlock* UI windows (1 SkyBlock file
+    total = a portal actor), the 4151-era harness base ships 23
+    SkyBlock*.json UI windows (SkyBlockMain 125852 B + the shop/rank/
+    task/privilege sets), and the g1048 appres zip carries NONE (only
+    Scripts/Sound/appres). The null main window = the SIGSEGV (pc
+    libBlockMan.so+0x88e970, fault 0x0, 3 s uptime).
+- THE FIX (5f927e8, workflow-only): the pre-place step now unzips the
+  harness base APK's assets/resources/Media/GUI/UI/SkyBlock*.json
+  (23 files, the count = asserted >= 20) into the pristine's
+  app_resources/Media/GUI/UI/ (the rootPath Media subtree = the
+  run-22-decoded search root) before any join.
+- RUN 33 = 38630139870 (5f927e8) = the Skyblock wall test with the clean
+  wire + the UI. THE EXPECTED READ: the Skyblock = the login chain +
+  the world load + NO 'SkyBlockMain.json not exist!' + NO tombstone =
+  the wall test PASSED => the 15-bot gate (§6 step 2) => §6 steps 3..10b.
+- IF THE SKYBLOCK STILL DIES: read the client.log tail — the ERROR lines
+  name the next missing file (the same tolerated-class vs fatal-class
+  analysis: a missing UI window = fatal; the effect/actor/font misses =
+  tolerated, proven by the Bedwars).
