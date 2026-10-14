@@ -55,7 +55,7 @@ on:
       - ".github/workflows/test-redroid-drive.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   redroid-pristine-drive:
@@ -594,3 +594,15 @@ jobs:
             gjevidence/
             /tmp/holder_probe.json
           if-no-files-found: ignore
+
+      - name: Attach evidence to the release (the cron PAT cannot download the action artifacts)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAR="gjevidence-run-${{ github.run_id }}.tar.gz"
+          tar -czf "$TAR" gjevidence/ harness-boot.png pristine-boot.png /tmp/holder_probe.json 2>/dev/null || tar -czf "$TAR" gjevidence/ || true
+          ls -la "$TAR" || true
+          gh release upload wip-sandbox86 "$TAR" --clobber --repo "$GITHUB_REPOSITORY" \
+            || gh release create wip-sandbox86 "$TAR" --title "BlockyNexus localapi wip-sandbox86" --notes "drive evidence" --repo "$GITHUB_REPOSITORY" \
+            || echo "release attach failed (non-fatal)"
