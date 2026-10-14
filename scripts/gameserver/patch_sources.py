@@ -365,4 +365,43 @@ _CM_C = '#include "Network/ConnectorManager.h"\n#include "Log/Log.h"\n#include "
 _write_new(os.path.join(SERVER, 'Network/ConnectorManager.h'), _CM_H, 'ENGINE-10078')
 _write_new(os.path.join(SERVER, 'Network/ConnectorManager.cpp'), _CM_C, 'ENGINE-10078')
 
+# ---------------------------------------------------------------------------
+# 6. RUN-25 DECODE (38542201687): the send-buffer coalescing took the login
+#    chain DOWN with one bad parse.
+#
+#    The 2.8.2 client threw "packet decode error: Failed to read Integer:
+#    integer overflow" on the FIRST post-accept datagram of the g1048
+#    (Skyblock) join. That datagram was a COALESCED BATCH (RaknetSession
+#    glues up to MAX_MESSAGE_SIZE bytes per channel between flush ticks):
+#    [S2CPacketUserAttr 0x44][S2CPacketSyncWorldTime 0x34][the Lua-common
+#    ServerInfo blob 0x50 ...] — byte-perfect per OUR schema, but the
+#    client's parse desynced (the same desync that logs the tolerated
+#    "unknown packet id: 0" in EVERY boot — run 24 Bedwars/Skyblock +
+#    run 25 Bedwars all recovered from it) and the hard variant DROPPED
+#    THE WHOLE DATAGRAM — with S2CPacketLoginResult + S2CPacketUserIn
+#    glued BEHIND the desync point. The client never logged login
+#    succ / userIn / the spawn teleport, kept a null local-player state,
+#    and MainTickThread SIGSEGV'd ~3 s in (tombstone_00, fault addr 0x4).
+#    Run 24's identical server code survived because the same desync
+#    landed on a 0x00 byte and the login packets rode SEPARATE datagrams.
+#
+#    THE FIX: one application packet per datagram. flush(channel) right
+#    after the buffered write — a client parse failure can then cost at
+#    most THAT packet, never the login chain queued behind it. The
+#    batching is a WAN optimization; this server runs on loopback where
+#    per-packet sends are free. RakNet reliability is untouched (same
+#    channel/priority/reliability flags; flush() is the existing path).
+_RK = os.path.join(ROOT, 'extract/dev/logic/Src/Network/RaknetSession.h')
+patch(_RK, [
+    ("\t\tbuffer.Write(serializedData);\n"
+     "\t\treturn dataSize;",
+     "\t\tbuffer.Write(serializedData);\n"
+     "\t\t// RUN-25 DECODE: flush per packet - the client's parser drops the\n"
+     "\t\t// WHOLE datagram on a decode error, so coalescing let one desync\n"
+     "\t\t// take the glued login chain (LoginResult/UserIn) down with it.\n"
+     "\t\t// One packet per datagram bounds the damage to that packet only.\n"
+     "\t\tflush(channel);\n"
+     "\t\treturn dataSize;"),
+])
+
 print('all patches applied')

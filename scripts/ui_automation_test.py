@@ -3300,7 +3300,12 @@ def main_282(args):
                   "watch (the client died in-game):" % rnd)
             for l in _tom_new[:3]:
                 print("    %s" % l.strip()[-200:])
-            _tom_name = _tom_new[0].split()[-1] if _tom_new else ""
+            _tom_name = ""
+            for _tl in _tom_new:
+                _tp = _tl.strip().split()
+                if _tp and "tombstone" in _tp[-1]:
+                    _tom_name = _tp[-1]
+                    break
             if _tom_name and "tombstone" in _tom_name:
                 _th = adb.sh("head -14 /data/tombstones/%s 2>/dev/null"
                              % _tom_name, timeout=20)
@@ -3311,11 +3316,23 @@ def main_282(args):
                 # THE FD PROBE: the rebirth loop re-opens the engine's
                 # resources each cycle - snapshot the open fds while it
                 # loops (the .actor/.mca/.effect paths = the lookup truth)
-                _fd_probed = True
-                _epid = adb.sh("pidof %s:BlockmanGo" % pkg,
-                               timeout=15).strip()
-                _epid = _epid.split()[0] if _epid else ""
+                # RUN-25 DECODE (38542201687): the probe latched
+                # _fd_probed=True BEFORE the pidof and silently no-oped
+                # forever when the rebirth loop was BETWEEN processes
+                # (pidof empty at that instant - the run-25 Skyblock
+                # watch printed zero [fdprobe] lines despite the
+                # per-round tombstone). Retry within the round, and
+                # keep _fd_probed False until a probe actually ran.
+                _epid = ""
+                for _pw in range(3):
+                    _epid = adb.sh("pidof %s:BlockmanGo" % pkg,
+                                   timeout=15).strip()
+                    _epid = _epid.split()[0] if _epid else ""
+                    if _epid:
+                        break
+                    time.sleep(2)
                 if _epid:
+                    _fd_probed = True
                     for _fi in range(3):
                         _fds = adb.sh(
                             "ls -l /proc/%s/fd 2>/dev/null | grep -oE "
@@ -3330,6 +3347,10 @@ def main_282(args):
                         for l in _fds[:40]:
                             print("    %s" % l.strip()[-180:])
                         time.sleep(3)
+                else:
+                    print("  [fdprobe r%d] engine pid not up yet "
+                          "(rebirth gap) - will retry next tombstone "
+                          "round" % rnd)
         _guide = screen.find(ids=["ml_enter"])
         if _guide and _guide.center:
             print("  [282] enter-game guide overlay up - tapping ml_enter")
