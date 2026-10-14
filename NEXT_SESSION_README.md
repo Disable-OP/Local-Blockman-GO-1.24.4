@@ -4423,3 +4423,42 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   admin-blocked (debug = local rehearsal); docs-only pushes trigger
   nothing; scripts/gameserver/** pushes = build + drive (the
   wait-for-build = now race-proof); the zombie 4fee856 runs = dead.
+
+## Cron-session delta 44 (read FIRST — RUN 32 = THE 10078 PROTOCOL CALIBRATION WON: the wire = fully clean end to end; the ~20s wall = GONE; the Skyblock death = the g1048 appres placement gap = the next (mechanical) fix)
+
+- READ WORKLOG cron session 7 + addendum + addendum 2 first. The one-line
+  state: run 32 (38624695619) = ran the INSTRUMENTED #47 lib (the stage =
+  md5-verified both sides) and the wire came back FULLY CLEAN:
+  "RUN-27 UserAttr10078 shape ENABLED, encoders=29" x4 windows, ZERO
+  protocol parse errors, ZERO unknown-pid lines (the coinMapping gate =
+  working). BEDWARS = in-game + alive through the whole watch + zero
+  tombstones. SKYBLOCK = the ~20s validation wall = GONE (the login
+  chain COMPLETE: game info + user attr + GameStatus + DBDataReady +
+  login succ + UserIn + the teleport + the 4.2 MB world load) — the
+  death = MOVED to the resource class at 3 s uptime (pc
+  libBlockMan.so+0x88e970): "sub Actor file not found [g1008_boy.actor]"
+  + "Effect file isn't exist. [g1048_striation.effect]" +
+  "SkyBlockMain.json not exist!" = THE g1048 APPRES = NEVER STAGED FOR
+  THE PRISTINE CLIENT.
+- THE NEXT SESSION'S SINGLE FIX (one change + re-run):
+  1. The drive's Skyblock pre-join staging = mirror the g1048 appres
+     into the PRISTINE's app_resources (/data/user/0/
+     com.sandboxol.blockymods/app_resources/Media/ + the v2 tree):
+     fetch appres-g1048-10078-*.zip (the same CDN/localapi-assets shape
+     the holder used for g1046 at boot), push the Media/ trees, AND copy
+     the g1008_boy.actor set (the avatar template = requested by name in
+     the Skyblock window too) into Media/Actor/.
+  2. Push workflow-only (no rebuild; the lib stage = re-verified per run
+     via evidence-lib-stage.md5).
+  3. EXPECTED: the Skyblock = the login chain + the world + NO tombstone
+     = the wall test PASSED => the 15-bot gate (§6 step 2) => §6 steps
+     3..10b (Bedwars -> Skyblock -> the rest; NO new games/maps).
+- IF THE SKYBLOCK STILL DIES: the tombstone's pc + the 3 s uptime + the
+  client.log tail = the fingerprint; the resource gaps = named by the
+  'not found / isn't exist' ERROR lines (the same grep pattern this
+  session used). The protocol = NOT the suspect anymore.
+- THE PROOF INSTRUMENTS NOW IN PLACE (do not re-derive):
+  evidence-lib-stage.md5 (the staged-lib identity per run), the
+  shape-ENABLED line (the encoder-list proof), the zero-unknown-pid
+  window (the GameInfo gate proof), the m_isAlive heartbeats (the
+  in-game liveness).
