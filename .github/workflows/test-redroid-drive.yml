@@ -195,6 +195,29 @@ jobs:
           adb -s localhost:5555 shell "iptables -t nat -L OUTPUT 2>&1 | head -4" || true
           adb -s localhost:5555 shell "sh /sdcard/drive/ondrive_setup.sh"
 
+      - name: Stage the build's libgameserver over the bundled one (run-31 postmortem)
+        # THE RUN-31 DECODE: the harness APK BUNDLES libgameserver.so in
+        # lib/arm64-v8a/ (51166896 B, md5 074218d4... = the pre-#45 binary);
+        # the PM extracts it to /data/app/.../lib/arm64/ and the holder
+        # stages THAT - the per-run download NEVER reached the wire, so
+        # runs 24-31 all tested the SAME pre-fix binary (the 'inert insert'
+        # mystery = moot; the fixes were never wire-tested). This step
+        # fetches the CURRENT (post-wait) build asset and overwrites the
+        # staged lib BEFORE the GameServer boots. The md5 = logged into
+        # evidence-lib-stage.md5 (the harvest picks evidence-* up).
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/fetch_release_asset.py libgameserver-arm64.so /tmp/libgameserver-arm64.so
+          ls -la /tmp/libgameserver-arm64.so
+          md5sum /tmp/libgameserver-arm64.so | tee evidence-lib-stage.md5
+          adb -s localhost:5555 push /tmp/libgameserver-arm64.so /data/local/tmp/libgameserver-stage.so
+          TARGET=$(adb -s localhost:5555 shell "find /data/app -name 'libgameserver.so' 2>/dev/null | head -1" | tr -d '\r')
+          echo "staged lib path: $TARGET"
+          [ -n "$TARGET" ] || { echo "no staged libgameserver found under /data/app"; exit 1; }
+          adb -s localhost:5555 shell "cp /data/local/tmp/libgameserver-stage.so '$TARGET' && chmod 755 '$TARGET'; chown system:system '$TARGET' 2>/dev/null; restorecon '$TARGET' 2>/dev/null; md5sum '$TARGET'; ls -la '$TARGET'" | tee -a evidence-lib-stage.md5
+          adb -s localhost:5555 push evidence-lib-stage.md5 /sdcard/drive/evidence-lib-stage.md5
+
       - name: Boot the harness (holder + driveTLS + GameServer staging)
         run: |
           adb -s localhost:5555 logcat -G 4M || true
