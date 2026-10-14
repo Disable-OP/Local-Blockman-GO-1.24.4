@@ -217,11 +217,19 @@ jobs:
         #                 hunger_game_1 (the engine's expected dir name)
         #   g1008 room -> m1008_2.1625226508247.zip (the release maps pack,
         #                 the same id the on-device GameServer hosts)
-        # Direct layout ONLY (checksums.md5 + the 47 files at the map dir
-        # root): mapExistsAndValid counts the dir's files against the md5
-        # entries, so extra files (a nested copy, the zip itself) would
-        # break verification. Ownership is chowned to the pristine uid so
-        # the engine can write its logs/temp next to the map.
+        #   g1048 sky  -> m1048_1.1625218507296.zip (the Skyblock card join;
+        #                 the engine can NEVER mkdir its own trees on the
+        #                 emulated storage (run-7 quirk) so the download
+        #                 path can never self-heal — pre-place it too)
+        # NESTED LAYOUT (run-12 decode, 38487378638): mapExistsAndValid
+        # walks <mapdir>/<mapName>/<mapReal>/ — mapName = the client map
+        # dir (hunger_game_1 / m1048_1 / m1008_2), mapReal = the download
+        # zip's stem. checksums.md5 + the map files live INSIDE the nested
+        # mapReal dir, the zip sits NEXT to it (mapZipPath). The direct
+        # layout (sessions 87-11) was wrong from birth — every earlier run
+        # died before the layout check (traversal, then the missing zip)
+        # and never revealed it. Ownership is chowned to the pristine uid
+        # so the engine can write its logs/temp next to the map.
         run: |
           set -e
           PKG="$PRISTINE_PKG"
@@ -236,31 +244,32 @@ jobs:
           curl -sSL -o /tmp/maps.tar.gz \
             "https://github.com/Disable-OP/Local-Blockman-GO-1.24.4/releases/download/localapi-assets/maps.tar.gz"
           echo "e86ac824030de9503f7eb2f7b3bc3248d1abfc0f84914b0c27b8976581ba5672  /tmp/maps.tar.gz" | sha256sum -c -
-          rm -rf /tmp/bwh /tmp/m1008 && mkdir -p /tmp/bwh /tmp/m1008
+          rm -rf /tmp/bwh /tmp/m1008 /tmp/m1048 && mkdir -p /tmp/bwh /tmp/m1008 /tmp/m1048
           (cd /tmp/bwh && unzip -q /tmp/BedWarHall.zip)
           # the pack is a tar.gz (no wrapping dir): extract exactly the
-          # m1008_2 bundle zip the on-device GameServer also runs
+          # bundle zips the on-device GameServer also runs
           tar -xzf /tmp/maps.tar.gz -C /tmp/m1008 \
             "sandbox/games/maps/m1008_2.1625226508247.zip"
-          rm -rf /tmp/m1008x && mkdir -p /tmp/m1008x
+          tar -xzf /tmp/maps.tar.gz -C /tmp/m1048 \
+            "sandbox/games/maps/m1048_1.1625218507296.zip"
+          rm -rf /tmp/m1008x /tmp/m1048x && mkdir -p /tmp/m1008x /tmp/m1048x
           (cd /tmp/m1008x && unzip -q /tmp/m1008/sandbox/games/maps/m1008_2.1625226508247.zip)
+          (cd /tmp/m1048x && unzip -q /tmp/m1048/sandbox/games/maps/m1048_1.1625218507296.zip)
           for SPELL in SandboxOL SandBoxOL; do
             for SEG in "Download/$SPELL" "$SPELL"; do
               MAP="/storage/emulated/0/Android/data/$PKG/files/$SEG/BlockMan/map"
               CFG="/storage/emulated/0/Android/data/$PKG/files/$SEG/BlockMan/config"
-              adb -s localhost:5555 shell "mkdir -p '$MAP/hunger_game_1' '$MAP/m1008_2' '$CFG'"
-              adb -s localhost:5555 push /tmp/bwh/.    "$MAP/hunger_game_1/"
-              adb -s localhost:5555 push /tmp/m1008x/. "$MAP/m1008_2/"
-              # RUN-11 LESSON (38482545272): mapExistsAndValid checks the
-              # ZIP ITSELF inside the map dir (mapZipPath =
-              # <mapdir>/<mapReal>.zip — the official client keeps the zip
-              # next to the extracted files after its own downloads). With
-              # the traversal fixed the engine got as far as "map is
-              # missing: .../hunger_game_1/BedWarHall.1596795531126.zip"
-              # and fell into the (then-broken) download path. Place the
-              # zips next to the extracted files.
+              # the nested mapReal dirs + the client map dirs
+              adb -s localhost:5555 shell "mkdir -p '$MAP/hunger_game_1/BedWarHall.1596795531126' '$MAP/m1008_2/m1008_2.1625226508247' '$MAP/m1048_1/m1048_1.1625218507296' '$CFG'"
+              # hunger_game_1 (the Bedwars hall): files INSIDE the nested
+              # mapReal dir, the zip NEXT to it
+              adb -s localhost:5555 push /tmp/bwh/.        "$MAP/hunger_game_1/BedWarHall.1596795531126/"
               adb -s localhost:5555 push /tmp/BedWarHall.zip "$MAP/hunger_game_1/BedWarHall.1596795531126.zip"
+              # m1008_2 (the g1008 room) + m1048_1 (the Skyblock join)
+              adb -s localhost:5555 push /tmp/m1008x/.     "$MAP/m1008_2/m1008_2.1625226508247/"
               adb -s localhost:5555 push /tmp/m1008/sandbox/games/maps/m1008_2.1625226508247.zip "$MAP/m1008_2/m1008_2.1625226508247.zip"
+              adb -s localhost:5555 push /tmp/m1048x/.     "$MAP/m1048_1/m1048_1.1625218507296/"
+              adb -s localhost:5555 push /tmp/m1048/sandbox/games/maps/m1048_1.1625218507296.zip "$MAP/m1048_1/m1048_1.1625218507296.zip"
               adb -s localhost:5555 shell "chown -R $UP:$UP '$MAP' '$CFG'" || true
               adb -s localhost:5555 shell "chmod -R 777 '$MAP' '$CFG'" || true
             done
