@@ -6324,3 +6324,72 @@ Stage Summary:
   whole again; the stale-lib stage = impossible for gameserver pushes).
 - Run 32 = the first VALID test of the UserAttr vector<String> fix + the
   instrumented #47 binary. The wall test = the read.
+
+---
+
+## Cron session 7 addendum 2 — RUN 32 VERDICT: the 10078 protocol calibration WON (the wire = fully clean); the ~20s wall = GONE; the Skyblock death = MOVED to the g1048 appres placement gap
+
+Work Log:
+- RUN 32 (38624695619, 00cfd75 = the lib-staging): the stage = VERIFIED
+  (evidence-lib-stage.md5: /tmp/libgameserver-arm64.so = 591e426b =
+  /data/app/.../lib/arm64/libgameserver.so = build #47's exact asset).
+  The GameServer = the INSTRUMENTED binary = the first valid post-fix
+  wire test in project history.
+- THE WIRE = FULLY CLEAN (all four windows):
+  * "RUN-27 UserAttr10078 shape ENABLED, encoders=29" = PRESENT x4 (the
+    hall + Bedwars + Skyblock + the final) — encoders=29 = EXACTLY the
+    client's 29-field schema (the ctor disassembly's count). The gate =
+    fires, the insert = APPLIED — the encode path = the static list =
+    CONFIRMED (the run-29 'inert insert' = the stale-lib artifact).
+  * ZERO protocol parse errors in ANY client.log (no 'Failed to read
+    Integer/Real', no 'integer overflow', no 'reached end of stream').
+  * ZERO 'unknown packet id' lines — even the tolerated unknown-0 = GONE
+    (the coinMapping gate works; the GameInfo = clean).
+- THE GAME VERDICTS:
+  * BEDWARS: the login chain complete, the world loaded, the client =
+    ALIVE THROUGH THE WHOLE WATCH (m_isAlive heartbeats to the stash),
+    ZERO tombstones. The line = honest-green + now with the clean wire.
+  * SKYBLOCK: THE ~20s VALIDATION WALL = GONE — the login chain =
+    COMPLETE for the first time in this window (recv game info + recv
+    user attr + S2CPacketGameStatus m_status 1 + S2CPacketDBDataReady +
+    'recv S2CPacketLoginResult, login succ' + S2CPacketUserIn + the
+    spawn teleport + the 4.2 MB r.0.0.mca world load). The death = MOVED
+    to the KNOWN resource class (run-22/23 decode), at 3 s uptime, pc
+    libBlockMan.so+0x88e970 (NOT the old 0xbb37aa wall site):
+      - "sub Actor file not found [g1008_boy.actor]" = the avatar
+        template = missing in the REBORN process (the g1008 actors = in
+        the APK for the HARNESS's engine paths; the pristine's
+        app_resources = the lookup root = the placement gap);
+      - "Effect file isn't exist. [g1048_striation.effect]" = the g1048
+        appres = NEVER staged for the pristine (the holder fetched the
+        g1046 appres at boot only);
+      - "GUIWindowManager::LoadWindowFromJSON: SkyBlockMain.json not
+        exist!" = the g1048 UI json = the same gap.
+    = THE SKYBLOCK BLOCKER = NO LONGER PROTOCOL — = the g1048 appres
+    (actors + effects + UI jsons) placement into the pristine client's
+    app_resources before the Skyblock join (the same mirror logic as
+    692adcc did for the harness's appres trees).
+- NEXT SESSION'S SINGLE FIX (one change, then re-run):
+  1. In the drive's Skyblock pre-join staging: fetch/serve the g1048
+     appres zip (the holder's localapi-assets pattern:
+     appres-g1048-10078-*.zip = the same CDN shape as the g1046 one) and
+     mirror it into the PRISTINE's app_resources (both
+     /data/user/0/com.sandboxol.blockymods/app_resources/Media/ and the
+     v2 tree), including Media/Scripts/Game/g1048/res/actor/* (g1048_boy
+     if present) AND the g1008_boy.actor copy (the avatar template =
+     requested by name in the Skyblock window too).
+  2. Re-run (a workflow-only push does NOT rebuild; the lib stage =
+     re-verified by evidence-lib-stage.md5 each run).
+  3. The expected verdict: the Skyblock = the login chain + the world +
+     NO tombstone = the wall test PASSED => the 15-bot gate (§6 step 2)
+     => §6 steps 3..10b (Bedwars -> Skyblock -> the rest; NO new
+     games/maps — the mandate stands).
+
+Stage Summary:
+- THE 10078 PROTOCOL CALIBRATION = COMPLETE: the UserAttr vector<String>
+  fix + the GameInfo coinMapping gate = WIRE-VERIFIED (the shape line =
+  the proof instrument); the wire = byte-clean end to end.
+- The remaining Skyblock blocker = a RESOURCE PLACEMENT gap (the g1048
+  appres for the pristine), NOT protocol — the next fix = mechanical.
+- The drive kit = now fully self-servicing: the race-proof wait, the
+  whole evidence, the lib stage per run, the honest gates.
