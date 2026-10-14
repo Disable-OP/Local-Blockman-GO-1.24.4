@@ -119,9 +119,10 @@ final class MapAssets {
      * 10078 package (the 2.8.2 launch game).
      */
     private static final String[][] EXTRA_APP_RES = {
+        // {scriptType, cdn key, sha256, engineVersion, resVersion, md5, fileCount}
         {"g1046", "sandbox/games/app-game-engine-resources/appres-g1046-10078.1625198960711.zip",
          "a9b2dd94151f72b39e24d278889ca35d63a64c005c4841a8eac7f60ac4752677",
-         "10078", "41279503"},
+         "10078", "41279503", "0843b2ff641220feb2e231764a03e488", "1862"},
     };
 
     /** scriptType -> appres entry (the join's /v1/game-res answer). */
@@ -406,6 +407,13 @@ final class MapAssets {
      * kept on disk so a restart skips the 29 MB refetch).
      */
     private static void ensureExtraAppRes(StateStore store) {
+        // the hermetic suites override the pack URL (invalid TLD / file:) —
+        // a 29 MB CDN fetch per suite boot starved the whole run (the suite
+        // timeout); the appres is a DEVICE-join concern, not a suite one
+        if (System.getProperty("localapi.mapPackUrl") != null) {
+            L.i("maps: extra appres skipped (pack URL override present)");
+            return;
+        }
         synchronized (LOCK) {
             for (String[] row : EXTRA_APP_RES) {
                 String scriptType = row[0];
@@ -439,6 +447,9 @@ final class MapAssets {
                     entry.put("bytes", f.length());
                     entry.put("engineVersion", engineVersion);
                     entry.put("resVersion", resVersion);
+                    entry.put("md5", row.length > 5 ? row[5] : "");
+                    entry.put("fileCount", row.length > 6
+                            ? Long.parseLong(row[6]) : 0L);
                     entry.put("extra", true);
                     Map<String, JSONObject> g =
                             new HashMap<String, JSONObject>(byAppRes);

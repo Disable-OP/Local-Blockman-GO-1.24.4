@@ -1849,14 +1849,19 @@ final class Handlers {
      * the engine map root and the engine loads the map from disk.
      */
     /**
-     * GET /game/api/v1/games/app-engine/check-update — GameUpdateContentInfo
-     * {content, count} for one game's CLIENT resources (run-13 decode: the
-     * join's res gate — the caller compares count against the client's
-     * local game-res version, the APK's shipped baseline
-     * assets/resources/game_res_version.json (g1046=41279502); count must
-     * EXCEED it or the join never fetches the appres and the engine
-     * SIGSEGVs on the missing actor files). count = the appres entry's
-     * resVersion; games without an appres entry stay at 0 (no update).
+     * GET /game/api/v1/games/app-engine/check-update — the JOIN's client
+     * resource gate. RUN-14 DECODE (the exact wire contract, baksmali of
+     * the pristine 2.8.2): the answer is a LIST of
+     * AppEngineResourceUpdateResult {needUpdate:bool, resVersion:long,
+     * resourceType:String, updates:[AppEngineResourceUpdateItem {cdns,
+     * fileCount, fileSize, hash, type, url}]}. The join (e/b/c/i.smali)
+     * strips the "MAP" entries, keeps the ones with needUpdate=true and
+     * hands them to the GAME download service — the appres zip installs
+     * the engine's client scripts/actors/effects (the g1008_boy.actor the
+     * engine SIGSEGV'd on). The caller compares resVersion against the
+     * client's local game-res version (the APK's shipped baseline
+     * assets/resources/game_res_version.json, g1046=41279502) — the
+     * catalog's latestResVersions.gresVersion feeds the SAME number.
      */
     private static String appEngineCheckUpdate(Ctx ctx, StateStore store) {
         String gameType = ctx.query("gameType");
@@ -1868,17 +1873,36 @@ final class Handlers {
         }
         JSONObject appRes = MapAssets.appResEntryForGame(script,
                 ctx.query("engineVersion"));
-        JSONObject out = new JSONObject();
+        JSONArray list = new JSONArray();
         if (appRes != null) {
             int v = MapAssets.appResVersion(appRes);
-            out.put("content", "Game resources updated to build " + v + ".");
-            out.put("count", v);
-            L.i("app-engine check-update " + script + " -> v" + v);
+            JSONObject item = new JSONObject();
+            JSONArray cdns = new JSONArray();
+            JSONObject cdn = new JSONObject();
+            cdn.put("base", true);
+            cdn.put("cdnId", "local");
+            cdn.put("cdnUrl", LOCAL_BASE_URL);
+            cdn.put("ratio", 1);
+            cdn.put("url", LOCAL_BASE_URL);
+            cdns.put(cdn);
+            item.put("cdns", cdns);
+            item.put("fileCount", appRes.optLong("fileCount", 0));
+            item.put("fileSize", appRes.optLong("bytes"));
+            item.put("hash", appRes.optString("md5", ""));
+            item.put("type", "GAME");
+            item.put("url", LOCAL_BASE_URL + "/" + appRes.optString("zipKey"));
+            JSONObject res = new JSONObject();
+            res.put("needUpdate", true);
+            res.put("resVersion", v);
+            res.put("resourceType", "GAME");
+            res.put("updates", new JSONArray().put(item));
+            list.put(res);
+            L.i("app-engine check-update " + script + " -> GAME v" + v
+                    + " (" + appRes.optLong("bytes") + " B)");
         } else {
-            out.put("content", "");
-            out.put("count", 0);
+            L.i("app-engine check-update " + script + " -> no appres entry");
         }
-        return envelope("obj", out.toString());
+        return envelope("list", list.toString());
     }
 
     private static String gameResInfo(Ctx ctx, StateStore store) {
