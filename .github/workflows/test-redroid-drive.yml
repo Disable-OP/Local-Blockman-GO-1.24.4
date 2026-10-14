@@ -286,6 +286,29 @@ jobs:
           # included; || true keeps a missing segment non-fatal).
           adb -s localhost:5555 shell "chown -R $UP:$UP '/storage/emulated/0/Android/data/$PKG/files/Download' '/storage/emulated/0/Android/data/$PKG/files/SandboxOL' '/storage/emulated/0/Android/data/$PKG/files/SandBoxOL'" || true
           adb -s localhost:5555 shell "chmod -R 777 '/storage/emulated/0/Android/data/$PKG/files/Download' '/storage/emulated/0/Android/data/$PKG/files/SandboxOL' '/storage/emulated/0/Android/data/$PKG/files/SandBoxOL'" || true
+          # RUN-15 DECODE: the hall-card join NEVER calls the Java res chain
+          # (k.smali/getGameResource is the party-join path) — the engine's
+          # client resources (g1008_boy.actor et al, absent from the APK's
+          # own assets/resources/Media/Actor/) arrive via the NATIVE
+          # engine's resUrl flow (d401m01aifavw.cloudfront.net — the
+          # startParameter's resUrl), whose cache is the app's
+          # getDir("resourcesv2") = /data/user/0/<pkg>/app_resourcesv2/.
+          # Pre-place the official appres-g1046-10078 package there
+          # (Scripts/ + appres/ + checksums.md5 at the root, the same
+          # structure the native downloader would install) so the engine
+          # finds its actors without any res fetch.
+          curl -sS -o /tmp/appres-g1046.zip \
+            "https://staticgs.sandboxol.com/sandbox/games/app-game-engine-resources/appres-g1046-10078.1625198960711.zip"
+          echo "a9b2dd94151f72b39e24d278889ca35d63a64c005c4841a8eac7f60ac4752677  /tmp/appres-g1046.zip" | sha256sum -c -
+          rm -rf /tmp/appresx && mkdir -p /tmp/appresx
+          (cd /tmp/appresx && unzip -q /tmp/appres-g1046.zip)
+          RES="/data/user/0/$PKG/app_resourcesv2"
+          adb -s localhost:5555 shell "mkdir -p '$RES'"
+          adb -s localhost:5555 push /tmp/appresx/. "$RES/"
+          adb -s localhost:5555 shell "chown -R $UP:$UP '$RES'" || true
+          adb -s localhost:5555 shell "chmod -R 777 '$RES'" || true
+          echo "== placed res cache =="
+          adb -s localhost:5555 shell "ls '$RES' | head -5; ls '$RES/Scripts/Game/g1008/res/actor' 2>/dev/null | head -4"
           echo "== placed map trees =="
           adb -s localhost:5555 shell "find /storage/emulated/0/Android/data/$PKG/files/Download/SandboxOL/BlockMan -maxdepth 4 | head -20"
 
