@@ -5576,3 +5576,38 @@ Stage Summary:
   (c) bumping the client's retry window is NOT possible (the pristine is
   unmodified) — the SERVER must bind within ~10 s of the client's first
   attempt.
+
+- CRON SESSION 2 ADDENDUM (runs 18-19, commits b9e5831 + b70182e):
+  * RUN 18 (38510578098): the join never fired. DECODE: the detail's
+    enter flow ABORTS on a single failed HTTP call — "checkClothesResError:
+    Interface Error!" -> "enter_game_timeout (10002)" — the dress-res
+    check hit a dead keep-alive connection (the boot dress download still
+    occupying the TLS listener). FIX: the watch loop re-taps the start
+    control every 3 rounds while !fired.
+  * RUN 19 (38514053368): **SKYBLOCK (g1048) REACHED THE GAMESERVER** —
+    "server saw the C2S login (server.log C2SPacketLogin)" [ok] +
+    "the human entered the room (monitor g2r type=151)" [ok] + bot
+    markers ['addEntityPlayerAI','PlayerAI','robot'] [ok] — the user's
+    #2 game works end to end at the server level. The Bedwars spec
+    flaked on the join-fire (the re-tap didn't find the button — the
+    detail page had moved on). The client.log gates (initGame ONLINE/
+    emConnectSuc/login) remain the capture-timing gap (the collector's
+    client.log pull is intermittent — runs 14/16 got it, others did not).
+- THE STANDING PICTURE: every layer of the join chain has now been
+  observed WORKING in real logs — Bedwars (runs 13/15: connect+login)
+  and Skyblock (run 19: connect+login+room entry). The remaining work is
+  STABILITY (the per-run flake lottery: the harness kill protection +
+  the re-tap + the capture timing) and the client-side gate evidence
+  (client.log capture consistency), not any new mechanism.
+- NEXT SESSION (in order):
+  1. Make the collector's client.log/server.log pull RELIABLE (the
+     capture timing — run the logdir sweep BEFORE and AFTER the watch,
+     not just at the harvest).
+  2. The Bedwars re-tap: also re-enter the CARD (the detail page may
+     have closed — re-run the card->detail->press flow when !fired at
+     r>=6 instead of only re-tapping the button).
+  3. The client.log gates: consider reading the ENGINE's state from the
+     SERVER side only (the C2S login + the g2r type=151 gates already
+     prove the connect; the client.log gates could downgrade to WARN).
+  4. THEN the bots gate (the monitor-log bot markers are already
+     appearing: addEntityPlayerAI/PlayerAI/robot) + the rest of §6.
