@@ -470,4 +470,139 @@ patch(_CI, [
      "\t\t\tpacket->m_engineVersion < 10078);"),
 ])
 
+# ---------------------------------------------------------------------------
+# 8. RUN-27 DECODE (38565408998) + THE PRISTINE-LIB DISASSEMBLY: the 10078
+#    client's S2CPacketUserAttr carries ONE extra field our 1.24.4-era shape
+#    lacks - a vector<String> BETWEEN suitsId and scale.
+#
+#    STATIC-GROUND-TRUTH (libBlockMan.so 2.8.2 v7a, ctor @0x63f090): the
+#    packet's constructor registers 29 fields in wire order via addMember
+#    calls carrying the member byte offsets:
+#      0x10..0x58 19x int | 0x5c SkinColor(16B) | 0x6c int | 0x70 vector<int>
+#      0x80 vector<int> (SAME instantiation as 0x70) | 0x90 vector<String>
+#      (a DIFFERENT addMember instantiation, 0x63f614) | 0xa0 real32
+#      | 0xa4 int | 0xa8 string | 0xb8 string | 0xc8 int.
+#    Our shape = the same list MINUS the 0x90 vector<String>. The mangled
+#    __bind typeinfo of the pristine lib names exactly 4 field types for
+#    pid 68 (int, SkinColor, vector<int>, vector<LORD::String>) - matching.
+#
+#    WIRE EFFECT (run 27 Skyblock, byte-proven): the client's decoder #24
+#    reads our scale float's bytes as the vector<String> length; the whole
+#    UserAttr parse desyncs and throws "Failed to read Integer: integer
+#    overflow" -> the datagram is dropped -> the client has NO dress data
+#    -> the ~20s validation wall (MainTickThread pc 0xbb37aa). The hall's
+#    variant = the same drift surfacing as "Failed to read Real: reached
+#    end of stream" (different UserAttr content, same desync).
+#
+#    THE FIX: insert the (always-empty) vector<String> encoder into the
+#    packet's STATIC encoder list at run time, gated on the client's
+#    m_engineVersion >= 10078 - the 1.24.4-era shape stays byte-identical
+#    for pre-10078 clients. The list mutation is one-time and sticky (a
+#    local server hosts one human client engine line at a time).
+_SH = os.path.join(ROOT, 'extract/dev/logic/Src/Network/protocol/S2CPackets1.h')
+patch(_SH, [
+    ("\t_SERIALIZE_MEMBER(vector<i32>::type, suitsId)\n"
+     "\t_SERIALIZE_MEMBER(real32, scale)",
+     "\t_SERIALIZE_MEMBER(vector<i32>::type, suitsId)\n"
+     "\t// RUN-27 DECODE: the 10078 client reads a vector<String> HERE\n"
+     "\t// (ctor offsets 0x70/0x80 = vector<int> x2, 0x90 = vector<String>,\n"
+     "\t// 0xa0 = real32). Registered into the static encoder list at run\n"
+     "\t// time by enable10078Shape() so pre-10078 clients keep the old\n"
+     "\t// shape; empty vector = a single 0x00 length byte on the wire.\n"
+     "\tvector<String>::type cosmeticDress;\n"
+     "\tstatic void enable10078Shape()\n"
+     "\t{\n"
+     "\t\tstatic bool inserted = false;\n"
+     "\t\tif (inserted)\n"
+     "\t\t{\n"
+     "\t\t\treturn;\n"
+     "\t\t}\n"
+     "\t\tinserted = true;\n"
+     "\t\t// The static encoder list is built by the FIRST construction\n"
+     "\t\t// (addMember's isInitialized gate) and this gate runs BEFORE the\n"
+     "\t\t// first sendUserAttr makes one - build it here explicitly.\n"
+     "\t\tS2CPacketUserAttr probe(BLOCKMAN::void_value);\n"
+     "\t\t(void)probe;\n"
+     "\t\t// encoder index == the _SERIALIZE_MEMBER order: 19 ints\n"
+     "\t\t// (entityId..headEffectId) = 0..18, skinColor = 19, defaultIdle\n"
+     "\t\t// = 20, selectableActions = 21, suitsId = 22, scale = 23 -> the\n"
+     "\t\t// new field goes at index 23 (after suitsId, before scale).\n"
+     "\t\tencoders.insert(encoders.begin() + 23, [](RakNet::BitStream* stream, const Packet* obj)\n"
+     "\t\t{\n"
+     "\t\t\tSerializer::write(obj->cosmeticDress, stream);\n"
+     "\t\t});\n"
+     "\t}\n"
+     "\t_SERIALIZE_MEMBER(real32, scale)"),
+])
+
+_SP_H = os.path.join(ROOT, 'extract/dev/server/src/Network/ServerPacketSender.h')
+patch(_SP_H, [
+    ("\tvoid sendUserAttr(ui64 rakssid, int runtimeID, const UserAttrInfo& attr, BLOCKMAN::EntityPlayer* player);",
+     "\tvoid sendUserAttr(ui64 rakssid, int runtimeID, const UserAttrInfo& attr, BLOCKMAN::EntityPlayer* player);\n"
+     "\t// RUN-27 DECODE: enable the 10078 UserAttr shape (the extra\n"
+     "\t// vector<String> between suitsId and scale). One-time, sticky.\n"
+     "\tstatic void enable10078UserAttrShape();"),
+])
+
+_SP_C = os.path.join(ROOT, 'extract/dev/server/src/Network/ServerPacketSender1.cpp')
+patch(_SP_C, [
+    ("void ServerPacketSender::sendUserAttr(ui64 rakssid, int runtimeID, const UserAttrInfo& attr, BLOCKMAN::EntityPlayer* player)",
+     "void ServerPacketSender::enable10078UserAttrShape()\n"
+     "{\n"
+     "\t// RUN-27 DECODE: see S2CPacketUserAttr::enable10078Shape - the\n"
+     "\t// 10078 client's UserAttr has one extra vector<String> field.\n"
+     "\tS2CPacketUserAttr::enable10078Shape();\n"
+     "}\n"
+     "\n"
+     "void ServerPacketSender::sendUserAttr(ui64 rakssid, int runtimeID, const UserAttrInfo& attr, BLOCKMAN::EntityPlayer* player)"),
+])
+
+_CP_H = os.path.join(ROOT, 'extract/dev/server/src/Network/ClientPeer.h')
+patch(_CP_H, [
+    ("\tString getVersionCode() { return m_versionCode; }",
+     "\tString getVersionCode() { return m_versionCode; }\n"
+     "\t// RUN-27 DECODE: the login packet's engine line, remembered for the\n"
+     "\t// per-peer UserAttr shape gate (the rebirth re-send path).\n"
+     "\tui32 getEngineVersion() const { return m_engineVersion; }\n"
+     "\tvoid setEngineVersion(ui32 v) { m_engineVersion = v; }"),
+    ("\tString m_versionCode = \"1\";",
+     "\tString m_versionCode = \"1\";\n"
+     "\tui32 m_engineVersion = 0;"),
+])
+
+patch(_CI, [
+    ("\t\tauto sender = Server::Instance()->getNetwork()->getSender();\n"
+     "\n"
+     "\t\tVector3i adjustPos = Vector3i((int)pPlayer->position.x, (int)pPlayer->position.y, (int)pPlayer->position.z);",
+     "\t\tauto sender = Server::Instance()->getNetwork()->getSender();\n"
+     "\n"
+     "\t\t// RUN-27 DECODE: remember the client's engine line and enable the\n"
+     "\t\t// 10078 UserAttr shape (the extra vector<String> between suitsId\n"
+     "\t\t// and scale) BEFORE the first UserAttr goes out.\n"
+     "\t\tclientPeer->setEngineVersion(packet->m_engineVersion);\n"
+     "\t\tif (packet->m_engineVersion >= 10078)\n"
+     "\t\t{\n"
+     "\t\t\tServerPacketSender::enable10078UserAttrShape();\n"
+     "\t\t}\n"
+     "\n"
+     "\t\tVector3i adjustPos = Vector3i((int)pPlayer->position.x, (int)pPlayer->position.y, (int)pPlayer->position.z);"),
+])
+
+_CP_C = os.path.join(ROOT, 'extract/dev/server/src/Network/ClientPeer.cpp')
+patch(_CP_C, [
+    ("\t\tif (attrExisted) \n"
+     "\t\t{\n"
+     "\t\t\tsender->sendUserAttr(getRakssid(), pPlayer->entityId, attrInfo, pPlayer);",
+     "\t\tif (attrExisted) \n"
+     "\t\t{\n"
+     "\t\t\t// RUN-27 DECODE: the rebirth re-send must carry the 10078\n"
+     "\t\t\t// UserAttr shape too, or the client loses its dress data\n"
+     "\t\t\t// again on the second boot of the same session.\n"
+     "\t\t\tif (getEngineVersion() >= 10078)\n"
+     "\t\t\t{\n"
+     "\t\t\t\tServerPacketSender::enable10078UserAttrShape();\n"
+     "\t\t\t}\n"
+     "\t\t\tsender->sendUserAttr(getRakssid(), pPlayer->entityId, attrInfo, pPlayer);"),
+])
+
 print('all patches applied')
