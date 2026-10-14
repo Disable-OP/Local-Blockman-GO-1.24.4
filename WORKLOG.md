@@ -6077,3 +6077,87 @@ Stage Summary:
   15-bot gate (§6 step 2), then §6 steps 3..10b. The remaining drift
   points = the same ctor disassembly per pid (the +17 s unknown-0's
   source datagram = the first candidate).
+
+---
+
+## Cron session 6 addendum 2 — run 29 decode: the UserAttr fix did NOT reach the wire; the mystery = the insert vs the binary
+
+Work Log:
+- RUN 28 (38593517960): completed but UNDECODABLE — the cron PAT cannot
+  download the action artifacts ("You must have the actions scope") nor
+  the job logs ("Must have admin rights") — the fine-grained PAT gaps on
+  those endpoints. The prior sessions had a broader token; this one =
+  contents-rw + actions-read ONLY. MITIGATION SHIPPED (2ad7e5b): the
+  drive now attaches its evidence to the wip-sandbox86 RELEASE
+  (gjevidence-run-<run_id>.tar.gz, always(), the GITHUB_TOKEN writes it)
+  — the release assets = downloadable with contents:read ✓ PROVEN by
+  run 29's evidence.
+- RUN 29 (38598469392, 2ad7e5b, the SAME binary as run 28 would have
+  tested — build #45's lib, the asset updated 15:43Z, the run = 16:29Z):
+  * THE HALL (pre-Bedwars): 0 tombstones, 0 drift lines, no client.log
+    (the boot stage = before the first stash) — inconclusive.
+  * THE BEDWARS stage: ONE throw — "Failed to read Integer: integer
+    overflow" at 16:38:34 with the buffer STARTING AT 0x0f (GameInfo!):
+    [0f GameInfo][44 UserAttr][34 SyncWorldTime][50 UpdateShop]
+    [01 ServerCommonData][98 01 = pid 152?...] — A DIFFERENT throw than
+    run 27's Bedwars ("Real: reached end of stream") = THE BINARY =
+    #45 (the fix = compiled in). "recv user attr info recv , parse"
+    still logged (line 131) + the boot continued.
+  * THE SKYBLOCK (final): ONE throw at 16:49:29 with the buffer = the
+    USERATTR-onward (0x44 start) — the bytes = BYTE-IDENTICAL to run
+    27's (modulo the SyncWorldTime value 0x0c vs 0x08) = **the
+    encoder-list insert = DID NOT REACH THE WIRE**. The buffer's UserAttr
+    = entityId=zigzag(02)=1, face..shoes=1, glasses..headEffect=0 =
+    A BOT's default dress (entityId 1) = the TRACKING path = the same
+    static list = the insert = INERT IN THE RUNNING PROCESS. ONE fresh
+    tombstone (tombstone_01) = the client died in the ~20s window again.
+  * THE VERSION GATE = PROVEN TRUE: the login handler's OWN check
+    (C2SInitPacketHandles.cpp:41 `packet->m_engineVersion == curVersion`
+    = EngineVersionSetting 10078) REJECTS a mismatched login BEFORE the
+    attrExisted block — the login SUCCEEDED (the user-attr send logged)
+    => m_engineVersion == 10078 => my >= 10078 gate = TRUE => the
+    enable10078Shape() call = REACHED.
+- THE MYSTERY (next session's first job): the gate fired but the wire =
+  unchanged. Candidates, ranked:
+  (a) THE ENCODER-LIST INSERT = INERT: the encode path may not iterate
+      PacketBase::encoders for the SERVER's sends (a server-side
+      send-encode = a different serializer, or the static = a different
+      instantiation than the encode's — verify by reading the compiled
+      callEncoders vs the insert's target in the NEW lib (the same
+      disassembly method: the pid-68 vtable -> the encode slot -> the
+      static-vector reference).
+  (b) THE RUN = AN OLD LIB despite the asset timestamp: the harness's
+      download = cached/pinned/sha-gated — the drive has NO lib-md5 in
+      the evidence. FIX SHIPPED NEXT PUSH: log the staged lib's md5 +
+      enable10078Shape's own line ("UserAttr10078 shape enabled,
+      encoders=%d") into server.log = THE PROOF EITHER WAY.
+  (c) The build #45 = compiled the patch (the anchors = found — a miss
+      = SystemExit = a failed build) — unlikely.
+- NEXT SESSION'S PLAN: (1) add the two log lines (the insert's proof +
+  the staged lib's md5 to the evidence); (2) re-run (a push of
+  scripts/gameserver/** = the build + the drive = self-driving now);
+  (3) read server.log for "UserAttr10078 shape enabled" + the lib md5:
+      - if the insert fired and the wire = still old -> the encode path
+        = NOT the encoders list -> disassemble the NEW lib's
+        callEncoders/encode and find the real path;
+      - if the lib = stale -> fix the fetch (the harness's
+        GameServerManager cache/pin);
+      - if the insert did NOT fire -> the gate = wrong (log the
+        m_engineVersion too).
+  (4) THE GAMEINFO DRIFT IS REAL: the Bedwars buffer = the GameInfo
+      parse = the thrower now (0x0f start) — the client's GameInfo =
+      ours MINUS the coinMapping tail (the delta-39 interpretation
+      stands; the vector<CoinMapping> in the pid-15 bag = a
+      non-registered candidate). The NEXT packet fix = the GameInfo's
+      coinMapping = the 0x00 count byte read as the next pid — WAIT:
+      an unknown-pid = tolerated; the THROW = the GameInfo's parse
+      dying INSIDE our field list — the client's GameInfo = likely
+      SHORTER than ours by MORE than the coinMapping (the ctor
+      disassembly of pid 15 = the next calibration target).
+
+Stage Summary:
+- The evidence pipeline = FIXED (the release attachment).
+- The drive = push-triggered (the calibration loop = self-driving).
+- The UserAttr fix = in the binary but INERT on the wire — the two log
+  lines + the lib md5 = the next run's decoders. The Bedwars throw =
+  MOVED (the GameInfo = the new suspect); the ~20s wall = still standing.
