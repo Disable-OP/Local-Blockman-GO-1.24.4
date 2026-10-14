@@ -4494,3 +4494,44 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   name the next missing file (the same tolerated-class vs fatal-class
   analysis: a missing UI window = fatal; the effect/actor/font misses =
   tolerated, proven by the Bedwars).
+
+## Cron-session delta 46 (read FIRST — the Media resolver reads THE APK ASSETS ONLY; the pristine APK is now REBUILT in-CI with the SkyBlock UI + the avatar actors; run 34 = the wall test; the TSS verdict = the watch-item)
+
+- READ delta 45 first. The run-33 (38630139870) decode:
+  * The lib stage = verified again (591e426b both sides). The Skyblock =
+    STILL the 3 s SIGSEGV + STILL "SkyBlockMain.json not exist!" — the
+    app_resources/Media/GUI/UI placement (5f927e8) did NOT reach the
+    engine. DECISIVE: the g1008_boy.actor error = ALSO persisted despite
+    that file being placed in app_resources/Media/Actor/ in every run
+    (the run-23 fix) = the Media resolver reads THE APK ASSETS ONLY
+    (AAssetManager) + the map dir — the app_resources Media subtree =
+    invisible to it (the run-22 'search roots' note = now precise).
+  * THE ROOT CAUSE (file-level): the pristine 2.8.2 APK = assets grep =
+    ZERO SkyBlock* UI windows (2.8.2 predates the SkyBlock UI; the
+    g1048 appres zip = only Scripts/Sound/appres = no UI jsons), while
+    the 4151-era harness base = 23 SkyBlock*.json (case-insensitive;
+    SkyBlockMain = 125852 B) at assets/resources/Media/GUI/UI/. The
+    null main window = the crash.
+- THE FIX (a3d550d, workflow-only): a NEW drive step rebuilds the
+  pristine APK IN-CI before the install: unzip the harness base's
+  SkyBlock UI jsons + the g1046 appres's 4 g1008 avatar actors into
+  assets/resources/Media/, strip META-INF (the official sig dies),
+  zipalign + debug-sign (uber-apk-signer v1.3.0), replace pristine282.apk,
+  the md5 = evidence-pristine-build.md5 (the harvest collects it). The
+  locally-built twin = md5 bd2fb5df098d129f150b002cc0916223 (the upload
+  to the release = blocked: the sandbox gateway 404s uploads.github.com
+  = hence the in-CI rebuild).
+- RUN 34 = 38635318663 (a3d550d) = the Skyblock wall test with the
+  UI-complete pristine.
+- THE WATCH-ITEM = THE TSS: the rebuilt pristine = the debug signature
+  (the official = the market sig). The 2.8.2's tprt.so anti-tamper =
+  may react — the launch step's 20 s alive check = the verdict (a TSS
+  fire = the pristine dies within 20 s + the logcat names it). IF the
+  TSS fires: the next options = (a) the exithook bgscomp.so into the
+  pristine's lib/armeabi-v7a (the harness's neutralizer, the same
+  in-CI rebuild step), (b) revert to the official pristine + ship the
+  UI via the map dir (the ONLY other searched root — the map bundle =
+  carries Media/ trees: verify the m1048_1 map zip's contents).
+- THE EXPECTED GREEN: the Skyblock = the login chain + NO
+  'SkyBlockMain.json not exist!' + the world load + NO tombstone = the
+  wall test PASSED => the 15-bot gate (§6 step 2) => §6 steps 3..10b.
