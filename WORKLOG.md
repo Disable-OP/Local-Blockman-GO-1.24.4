@@ -5933,3 +5933,47 @@ Stage Summary:
     wall, the FIRST remaining "unknown packet id: N" line names the next
     drifted packet — fix it the same way (strip the 10078-unknown tail
     behind an m_engineVersion gate), one packet per iteration.
+
+- CRON SESSION 5 ADDENDUM 3 (the run-27 decode: the GameInfo fix VERIFIED
+  + the S2C ENUM drift discovered, head bf17254 docs):
+  * RUN 27 (38565408998, 96ec546) — THE GAMEINFO FIX FULLY VERIFIED:
+    the hall's client.log = ZERO "unknown packet id" lines (the
+    every-boot "unknown packet id: 0" is GONE); BEDWARS = the FOURTH
+    honest in-game verdict (zero tombstones + the bot markers). The
+    Skyblock login chain survived ANOTHER hard throw (the overflow +
+    the teleport + the 4 MB anvil load still completed) — the
+    per-packet flush bounding confirmed twice.
+  * THE METHOD CORRECTION: the client's "packet data=[...]" log = its
+    CONTINUOUS STREAM BUFFER at the throw (multiple app packets), NOT
+    one datagram — the dump's glue is NOT evidence against the flush
+    patch (build #43's log lines 248-252 prove RaknetSession + all
+    three coinMapping patches applied: "all patches applied").
+  * THE LOGIN-WINDOW SEND ORDER (C2SInitPacketHandles.cpp):
+    sendGameInfo(15) -> sendUserAttr(68) -> sendSyncWorldTime(52) ->
+    [the weather] -> sendAllSetSignTexts(59) -> sendUpdateShop(80) ->
+    kickOldLogin -> the Lua onPlayerLogin (the ServerInfo =
+    ServerCommonData pid 1 with name="Lua" — the Lua PacketSender.lua
+    line 37 wraps sendServerCommonData(rakssid, "Lua", key, data)).
+  * THE NEW ROOT LAYER — THE S2C ENUM DIVERGED: the client logged
+    "S2CPacketPayResult code: 57 message: nfoisChina=falseV" — the
+    message = our ServerInfo blob's TAIL consumed as a string. Our enum
+    has NO PayResult (ours: ShoppingResult=82, PlaySound=57,
+    ChangeMaxHealth=86) — the 10078 client maps some pid in our login
+    window to ITS PayResult and eats our ServerCommonData bytes. The
+    ~20 s validation wall stands (pc 0xbb37aa, the identical tombstone).
+  * THE CALIBRATION GOLDMINE: the pristine's libBlockMan.so carries the
+    client's handler log strings (~4170 "S2CPacket" mentions) — the
+    client's packet inventory + per-handler log formats, extractable
+    with strings; combined with the wire observations = the 10078 enum
+    calibratable against ours (354 entries, 25..359,
+    dev/logic/Src/Network/protocol/DataPacket.h).
+  * NEXT SESSION'S PROJECT: the 10078 S2C protocol calibration —
+    (1) extract the client's handler strings from libBlockMan.so;
+    (2) map our enum against the client's inventory; (3) each run's
+    client.log parse errors = the live calibration points; (4) fix ONE
+    packet per iteration (the m_engineVersion-gated tail strip / the
+    pid remap via patch_sources.py), run, re-read. The ~20 s wall
+    should fall when the drifted packets stop feeding the client
+    garbage. THE BEDWARS LINE IS DONE (4x honest in-game + the bot
+    markers) — the Skyblock wall is the last content blocker on the
+    user's order (Bedwars -> Skyblock -> the rest).

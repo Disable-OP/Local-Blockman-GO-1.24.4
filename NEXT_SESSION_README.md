@@ -4161,3 +4161,61 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   + the enum live in dev/logic/Src/Network/protocol/DataPacket.h.
 - GATES: suite 711/713 (the single environmental watchdog flake) +
   smoke 28/28 on 96ec546.
+
+## Cron-session delta 39 (read FIRST — RUN 27: the GameInfo fix FULLY VERIFIED (Bedwars 4x honest, ZERO drift lines); the login chain survived another hard throw; the NEW root layer = the S2C ENUM diverged (the client's PayResult ate our ServerInfo blob); the calibration goldmine found; run 28 = the protocol calibration)
+
+- READ WORKLOG's CRON SESSION 5 ADDENDUM 3. The one-line state: two
+  fixes verified in the wire (the per-packet datagrams bound the throw
+  damage; the GameInfo coinMapping strip cleaned the login window —
+  the hall's client.log has ZERO drift lines now), and the Skyblock's
+  ~20 s wall decomposed into its real root: the 10078 client's S2C
+  ENUM/protocol ≠ our 1.24.4-era one. THE PROJECT = the protocol
+  calibration, ONE packet per iteration.
+- WHAT IS PROVEN (do not re-derive): (1) the login chain survives hard
+  throws now (2 runs in a row — the flush patch bounds the damage to
+  the thrown packet's stream window); (2) the hall's boot is CLEAN
+  (no "unknown packet id" anywhere — member #1 was the ONLY drift in
+  the hall's window); (3) the client's "packet data=[...]" log = its
+  continuous stream buffer at the throw (multiple app packets), NOT
+  one datagram; (4) the client still SIGSEGVs at pc 0xbb37aa, ~20 s
+  in, during its "user data validation" phase (the hall TIMES OUT
+  through the same wall; Skyblock rebirths and dies — the server sends
+  only heartbeats there).
+- THE ENUM-DRIFT EVIDENCE: the client logged "S2CPacketPayResult code:
+  57 message: nfoisChina=falseV" — "nfo...isChina=falseV" = OUR
+  ServerCommonData blob's tail ("...ServerInfo\nisChina=false" +
+  the next packet's first byte) consumed as ITS string field. Our enum
+  has NO PayResult. The client's pid space differs from ours somewhere
+  in the login window (our sends: GameInfo 15, UserAttr 68,
+  SyncWorldTime 52, SetSignTexts 59, UpdateShop 80, then the Lua's
+  ServerCommonData 1 "Lua"/"ServerInfo").
+- THE CALIBRATION METHOD (the tools):
+  a. THE CLIENT'S HANDLER STRINGS: the pristine's libBlockMan.so
+     carries ~4170 "S2CPacket" mentions (the handler log formats —
+     "recv S2CPacketAddEntityEffect but can not find player...",
+     "=========S2CPacketOpenCraftTable========="). Extract with
+     strings; each names a client packet class + its log format.
+  b. OUR ENUM: dev/logic/Src/Network/protocol/DataPacket.h (354
+     entries, 25..359). OUR SCHEMAS: the S2CPackets*.h _SERIALIZE_MEMBER
+     lists; the wire = varint zigzag i32/i64, real32 LE, varint-len
+     strings (Serializer.h).
+  c. THE WIRE TRUTH: the run's client.log parse errors + the odd
+     handler logs = one calibration point per drifted packet; our
+     send order (C2SInitPacketHandles.cpp) + the server.log = what WE
+     sent in the window.
+  d. THE FIX PATTERN: ONE packet per iteration — either strip the
+     10078-unknown tail (the coinMapping pattern, behind the
+     m_engineVersion gate) or remap the pid (if the client's number
+     for OUR packet differs) — via patch_sources.py, build, dispatch,
+     re-read. The build = push (scripts/gameserver/** triggers
+     build-gameserver) -> the drive auto-fetches the new .so (NO
+     harness rebuild — the holder downloads libgameserver-arm64.so
+     per run).
+- THE EXPECTED END STATE: when the drifted packets in the
+  login/entity-sync window stop feeding the client garbage, the ~20 s
+  validation wall falls and the Skyblock watch reads honest-green —
+  then the 15-bot gate (§6 step 2) and §6 steps 3..10b (Bedwars ->
+  Skyblock -> the rest; no new games/maps — the mandate stands).
+  THE BEDWARS LINE IS DONE: 4x honest in-game + the bot markers.
+- GATES: suite 711/713 (the single environmental watchdog flake) +
+  smoke 28/28 on 96ec546.
