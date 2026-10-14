@@ -5693,3 +5693,63 @@ Stage Summary:
     through the Bedwars watch, the Skyblock room WITHOUT the boneCount
     crash, and — if any crash remains — the tombstone naming the exact
     file.
+
+- CRON SESSION 4 ADDENDUM (the run-21/22 decodes + the Media-root fix +
+  the re-entry relaunch, commits fb65859 + 692adcc):
+  * RUN 21 (38523406284, 022c06c) — decoded by the prior session: the
+    pre-place step died ON the merge script (FileNotFoundError
+    /tmp/appres20.zip — the merge read the LOCAL filename while the
+    workflow's g1046 download is /tmp/appres-g1046.zip); everything
+    before it PROVEN (both appres fetched+sha-verified, 1862+662 files
+    pushed). FIX: fb65859 (one line).
+  * RUN 22 (38524560805, fb65859) — the merge worked (2523 merged
+    checksum entries, 662 g1048 files placed) and the evidence cracked
+    BOTH remaining blockers:
+    * SKYBLOCK: the chain green to the avatar (map accepted 1044 ms ->
+      RakNet -> emConnectSuc -> game info -> setGameType g1048 -> user
+      attr) then 'sub Actor file not found [g1008_boy.actor]' + a fresh
+      tombstone (SIGSEGV MainTickThread, the runs-13/15 signature).
+      NO boneCount anywhere — the g1048 item-actor crash is FIXED (the
+      overlay merge did its job). THE REAL ROOT CAUSE OF THE ACTOR
+      CRASH: the engine NEVER searches app_resourcesv2 — PROOF: the
+      placed g1048_striation.effect still logged "Effect file isn't
+      exist" while reddot.effect (a MAP file) was FOUND. The search
+      roots = the APK assets + app_resources/ + the map dir; the ids
+      are 'Media/'-prefixed (the lib's literals: Media/Setting/
+      ItemGun.csv, Media/Setting/actionstate.csv...). AND the delta-32
+      claim "the APK ships the other g1008 actors but NOT
+      g1008_boy/girl" was WRONG — assets/resources/Media/Scripts/Game/
+      g1008/res/actor/ has BOTH boy and girl (721 .actor files in the
+      APK, all under resources/Media/). Run 16's "the actor is fixed"
+      was a MISREAD (its boot was ALSO a g1048 boot WITH the actor
+      error, tolerated, engine limped on). The actor error is
+      UNIVERSAL to every boot that reached the avatar stage.
+      FIX (692adcc): mirror BOTH appres trees + the merged checksums
+      under app_resources/Media/ (the rootPath's Media subtree — the
+      engine's ids then resolve from the fs exactly as from the APK).
+      The v2 placement stays (the Java updater flow).
+    * BEDWARS: the join never fired — gsproc=none every round was a
+      CONSEQUENCE, not a cause: 'start check dress res' logged once at
+      the press (06:56:59) and NEVER completed — not for any of the 6
+      presses across 10 minutes (re-taps + re-entries included); the
+      boot dress check (06:54:13) had succeeded. DECODE: the boot
+      dress download's keep-alive TLS connection went stale during the
+      ~2.5 min hall-navigation idle gap; the pristine's pool reuses
+      the dead socket with no timeout and the dress check hangs
+      forever; the enter flow never reaches game/auth. The second
+      game ALWAYS joined (runs 19/20/22) because the per-game flow
+      relaunches the process = a fresh pool. THE FIRST GAME HAS NEVER
+      SURVIVED ITS FIRST WATCH (runs 18-22).
+      FIX (692adcc): the watch's first re-entry (r6) force-relaunches
+      the pristine (g282_alive_recover after a force-stop) before the
+      card re-flow — the fresh process gets a fresh TLS pool ~10-30 s
+      before the re-press (the same short-gap pattern that makes the
+      second game work).
+  * GATES: suite 713/713 + smoke 28/28 on 692adcc.
+  * RUN 23 DISPATCHED (head 692adcc, harness sandbox91 — no Java
+    change): Bedwars + Skyblock. The decisive reads: (a) the Media
+    placement listing (== Media actors now placed ==), (b) the Bedwars
+    join firing AFTER the r6 relaunch (the dress check completing),
+    (c) the Skyblock boot WITHOUT the actor error (the avatar loads
+    from app_resources/Media), (d) NO boneCount (stays fixed), (e) if
+    anything still crashes — the tombstone names it.

@@ -3988,3 +3988,39 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   read WHICH layer flaked from the stash (the captures now survive the
   rotation) — the mechanism list stays closed; this is stability
   engineering. No new games/maps (the mandate stands).
+
+## Cron-session delta 34 (read FIRST — THE ENGINE'S RES SEARCH ROOT DECODED: app_resources/Media/, NOT app_resourcesv2; the first-join dress-check hang fixed with an r6 relaunch; run 23 tests both)
+
+- READ WORKLOG's CRON SESSION 4 ADDENDUM first. The one-line state: run
+  22 proved the g1048 overlay merge (NO boneCount anywhere) and its
+  evidence decoded the TWO remaining blockers; run 23 (head 692adcc,
+  harness sandbox91) tests both fixes in one drive.
+- ROOT CAUSE 1 (the avatar crash, EVERY boot since run 13): the engine
+  searches rootPath(app_resources/) + the APK assets + the map dir with
+  'Media/'-prefixed ids — NEVER app_resourcesv2. Proof chain: (a) the
+  placed g1048_striation.effect logged "Effect file isn't exist" while
+  reddot.effect (a map file) was found; (b) the lib's Setting literals
+  are 'Media/Setting/ItemGun.csv' etc.; (c) the APK's own actors live
+  at assets/resources/Media/Scripts/Game/g1008/res/actor/ — INCLUDING
+  g1008_boy/girl.actor (the delta-32 'not in APK' note was WRONG; run
+  16's 'the actor is fixed' was a misread — its boot was a g1048 boot
+  WITH the actor error, tolerated). The workflow now mirrors BOTH
+  appres trees + the merged checksums under app_resources/Media/.
+- ROOT CAUSE 2 (the first game never joined, runs 18-22): the boot
+  dress download's keep-alive TLS connection goes stale during the
+  hall-navigation idle gap; the pristine reuses the dead pooled socket
+  with no timeout; 'start check dress res' logs once and NEVER
+  completes; the enter flow never reaches game/auth. The second game
+  always joined because the per-game flow relaunches the process. The
+  watch's first re-entry (r6) now force-relaunches the pristine before
+  the card re-flow (fresh process = fresh TLS pool).
+- THE STANDING GATES: suite (713) + smoke 28/28 — both green on 692adcc.
+- NEXT (in order): read run 23's evidence FIRST. Expected: the Media
+  placement listing, the Bedwars join firing after the r6 relaunch, the
+  Skyblock boot WITHOUT the actor error, no boneCount. If the avatar
+  still misses: the tombstone + the client.log's next-missing-file name
+  the remaining layout delta (the candidates left: app_resources/ root
+  without Media, or the engine wants a Media.pak-style update marker).
+  If both games join: §6 step 2's 15-bot gate (the monitor-log bot
+  markers) -> the rest of §6 steps 3..10b (Bedwars -> Skyblock -> the
+  rest; no new games/maps — the mandate stands).
