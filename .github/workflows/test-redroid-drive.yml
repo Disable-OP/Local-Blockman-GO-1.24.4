@@ -189,6 +189,46 @@ jobs:
         run: |
           adb -s localhost:5555 shell "sh /sdcard/drive/ondrive_setup.sh" || true
 
+      - name: Protect the harness from the cached-process + phantom kills (run-16 root cause)
+        # RUN-16 DECODE (38503765221): the harness itself was SIGKILLed —
+        # "Process com.disabngo.blockynexus (pid 2003) has died: cch CAC" +
+        # "Process 2003 exited due to signal 9" — the moment the pristine
+        # client came foreground the harness went CACHED and Android's
+        # cached-process management killed it, taking the holder AND the
+        # GameServer (its child) down mid-join; the client's 10 s RakNet
+        # retry window then expired on a dead server. The old server ALSO
+        # died as a PhantomProcessRecord 13 ms BEFORE our own stale sweep.
+        # Two layers: (1) the Android-12 phantom-process monitor off +
+        # the phantom budget maxed; (2) a device-side oom_score_adj guard
+        # re-asserting -1000 on the harness pid every 2 s (AMS re-computes
+        # the adj on every state change, so a one-shot write would not
+        # survive; the child libgameserver inherits the parent's adj at
+        # fork, so keeping the harness protected covers the server too).
+        run: |
+          adb -s localhost:5555 shell "settings put global settings_enable_monitor_phantom_procs false" || true
+          adb -s localhost:5555 shell "device_config set_sync_disabled_for_tests persistent" || true
+          adb -s localhost:5555 shell "device_config put activity_manager max_phantom_processes 2147483647" || true
+          adb -s localhost:5555 shell "device_config get activity_manager max_phantom_processes" || true
+          cat > /tmp/oomguard.sh <<'EOF'
+          while true; do
+            P=$(pidof com.disabngo.blockynexus)
+            if [ -n "$P" ]; then
+              for pid in $P; do
+                echo -1000 > /proc/$pid/oom_score_adj 2>/dev/null
+              done
+            fi
+            sleep 2
+          done
+          EOF
+          adb -s localhost:5555 push /tmp/oomguard.sh /data/local/tmp/oomguard.sh
+          adb -s localhost:5555 shell "chmod 755 /data/local/tmp/oomguard.sh; nohup /data/local/tmp/oomguard.sh >/dev/null 2>&1 &"
+          sleep 3
+          echo "== oom_score_adj now =="
+          HP=$(adb -s localhost:5555 shell pidof com.disabngo.blockynexus | tr -d '\r')
+          for pid in $HP; do
+            adb -s localhost:5555 shell "cat /proc/$pid/oom_score_adj" || true
+          done
+
       - name: Install the PRISTINE 2.8.2 client
         run: |
           adb -s localhost:5555 install -r -t -g pristine282.apk
