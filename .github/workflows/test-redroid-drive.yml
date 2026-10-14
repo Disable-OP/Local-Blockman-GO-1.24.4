@@ -402,7 +402,7 @@ jobs:
                   h, path = line.split('*', 1)
                   out[path.strip()] = h.strip()
               return out
-          m = entries('/tmp/appres20.zip')
+          m = entries('/tmp/appres-g1046.zip')
           m.update(entries('/tmp/appres-g1048.zip'))
           with open('/tmp/checksums_merged.md5', 'w') as f:
               for path in sorted(m):
