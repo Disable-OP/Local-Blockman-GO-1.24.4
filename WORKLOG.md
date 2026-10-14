@@ -5550,3 +5550,29 @@ Stage Summary:
      may need the m1048_1 map's own resources or tolerate the shipped
      ones; the evidence will tell).
   5. The remaining games per §6 steps 3..10b.
+
+- RUN 16/17 ADDENDUM (the same session, after the docs): run 16
+  (38503765221) PROVED the res-cache pre-placement WORKS — client.log has
+  NO missing-actor error (g1008_boy.actor found from the placed
+  app_resourcesv2 tree) AND the placed nested map was accepted instantly
+  ("onDownloadMapSuccess, download map use time:865"). The run's failure
+  was TRANSIENT: the GameServer froze at world-init (server.log ends
+  after the World::tick slow warnings) so the client's 10 s RakNet retry
+  window (MaxRetryConnectTime:10000) expired -> ID_CONNECTION_ATTEMPT_
+  FAILED. Run 17 (38507347831, the same config) flaked DIFFERENTLY
+  (Echoes up FAIL for Bedwars; the Skyblock join never fired game/auth) —
+  the device is unstable under the full first-run load (the 54 MB
+  placement + the 35 MB dress download + both engines on 2 cores). ALSO
+  PROVEN: d401m01aifavw.cloudfront.net (the startParameter's resUrl) is a
+  zombie (connects, no response) — the engine's res fetches can NEVER
+  succeed; the res-cache pre-placement is the only working path.
+- NEXT SESSION'S FIRST MOVE: re-run the SAME drive config until the
+  transient race clears (the chain is ONE stable run away — runs 13/15
+  reached connect+login with the actor gap, run 16 fixed the actor and
+  hit only the freeze); consider (a) a gs readiness probe (the holder
+  waits for the RakNet 31108 bind before answering the join — the
+  respawn already exists, add the wait), (b) staggering the dress
+  download (the client's boot-time 35 MB fetch) away from the join, or
+  (c) bumping the client's retry window is NOT possible (the pristine is
+  unmodified) — the SERVER must bind within ~10 s of the client's first
+  attempt.
