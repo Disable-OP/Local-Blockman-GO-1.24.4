@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.zip.GZIPInputStream;
 
 import org.json.JSONArray;
@@ -103,6 +104,30 @@ final class MapAssets {
          "hunger_game_1"},
     };
 
+    /**
+     * THE PER-GAME CLIENT RESOURCE PACKAGES (the appres family — the
+     * engine's client-side Scripts/actors/effects for the join; run-13
+     * evidence: the engine connected to the GameServer (emConnectSuc) and
+     * then SIGSEGV'd on "sub Actor file not found [g1008_boy.actor]" —
+     * the pristine client NEVER downloaded its game resources because the
+     * join's app-engine/check-update gate compares the SERVER's
+     * gresVersion (our catalog said 1) against the APK's shipped baseline
+     * assets/resources/game_res_version.json (g1046=41279502) and found
+     * the server BEHIND). Rows: {scriptType, cdn key, sha256,
+     * engineVersion, resVersion}. resVersion MUST exceed the shipped
+     * baseline so the client fetches; the CDN only ever shipped g1046's
+     * 10078 package (the 2.8.2 launch game).
+     */
+    private static final String[][] EXTRA_APP_RES = {
+        {"g1046", "sandbox/games/app-game-engine-resources/appres-g1046-10078.1625198960711.zip",
+         "a9b2dd94151f72b39e24d278889ca35d63a64c005c4841a8eac7f60ac4752677",
+         "10078", "41279503"},
+    };
+
+    /** scriptType -> appres entry (the join's /v1/game-res answer). */
+    private static volatile Map<String, JSONObject> byAppRes =
+            new ConcurrentHashMap<String, JSONObject>();
+
     private MapAssets() {}
 
     // ------------------------------------------------------------ lifecycle
@@ -132,6 +157,49 @@ final class MapAssets {
             e = g.get("g" + scriptType);
         }
         return e;
+    }
+
+    /**
+     * The game's client-resource (appres) entry, or null. engineVersion
+     * selects the row when the game carries several (only 10078 exists).
+     * Also accepts the numeric form ("1046").
+     */
+    static JSONObject appResEntryForGame(String scriptType,
+            String engineVersion) {
+        Map<String, JSONObject> g = byAppRes;
+        if (g == null || scriptType == null) return null;
+        JSONObject e = g.get(scriptType);
+        if (e == null && scriptType.matches("[0-9]+")) {
+            e = g.get("g" + scriptType);
+        }
+        if (e == null) return null;
+        if (engineVersion != null && !engineVersion.isEmpty()
+                && !engineVersion.equals(e.optString("engineVersion"))) {
+            return null;
+        }
+        return e;
+    }
+
+    /** The int resVersion the server reports for one appres entry. */
+    static int appResVersion(JSONObject entry) {
+        return entry == null ? 0 : entry.optInt("resVersion", 0);
+    }
+
+    /**
+     * The resVersion the SERVER advertises for one game's client resources
+     * straight from the EXTRA_APP_RES table — independent of the pack
+     * thread's fetch state (the catalog gate must fire even before the zip
+     * lands). 0 when the game has no appres row.
+     */
+    static int appResReportedVersion(String scriptType) {
+        if (scriptType == null) return 0;
+        for (String[] row : EXTRA_APP_RES) {
+            if (row[0].equals(scriptType)
+                    || ("g" + scriptType).equals(row[0])) {
+                return Integer.parseInt(row[4]);
+            }
+        }
+        return 0;
     }
 
     /** The CLIENT-visible map dir name the 2.8.2 engine expects for a game
@@ -201,6 +269,12 @@ final class MapAssets {
                         ensureExtraMaps(store);
                     } catch (Throwable t) {
                         L.i("maps: extra maps unavailable: "
+                                + t.getClass().getSimpleName());
+                    }
+                    try {
+                        ensureExtraAppRes(store);
+                    } catch (Throwable t) {
+                        L.i("maps: extra appres unavailable: "
                                 + t.getClass().getSimpleName());
                     }
                 }
@@ -318,6 +392,67 @@ final class MapAssets {
                             idx.toString().getBytes("UTF-8"));
                 } catch (Throwable t) {
                     L.e("maps: extra index persist failed: " + t);
+                }
+            }
+        }
+    }
+
+    /**
+     * Fetch + index the EXTRA_APP_RES rows (the per-game client resource
+     * packages). Same pattern as ensureExtraMaps: sha256-pinned CDN fetch
+     * on the pack thread, an in-memory index (byAppRes) + the file in
+     * byKey so LocalHttpd's asset routes serve it. NOT persisted into
+     * index.json (the appres rows re-apply per boot; the zip itself is
+     * kept on disk so a restart skips the 29 MB refetch).
+     */
+    private static void ensureExtraAppRes(StateStore store) {
+        synchronized (LOCK) {
+            for (String[] row : EXTRA_APP_RES) {
+                String scriptType = row[0];
+                String key = row[1];
+                String sha = row[2];
+                String engineVersion = row[3];
+                int resVersion = Integer.parseInt(row[4]);
+                try {
+                    File dir = mapsDir(store);
+                    File f = new File(dir, key);
+                    if (!f.isFile() || f.length() == 0
+                            || !sha256(f).equalsIgnoreCase(sha)) {
+                        if (f.isFile()) f.delete();
+                        f.getParentFile().mkdirs();
+                        L.i("maps: downloading extra appres " + key);
+                        byte[] data = httpGet(CDN_BASE + key,
+                                PACK_CONNECT_TIMEOUT_MS, PACK_READ_TIMEOUT_MS);
+                        if (data == null || data.length == 0) {
+                            throw new IOException("extra appres empty");
+                        }
+                        atomicallyWrite(f, data);
+                        if (!sha256(f).equalsIgnoreCase(sha)) {
+                            f.delete();
+                            throw new IOException("extra appres sha256 mismatch");
+                        }
+                    }
+                    String zipName = key.substring(key.lastIndexOf('/') + 1);
+                    JSONObject entry = new JSONObject();
+                    entry.put("zipName", zipName);
+                    entry.put("zipKey", key);
+                    entry.put("bytes", f.length());
+                    entry.put("engineVersion", engineVersion);
+                    entry.put("resVersion", resVersion);
+                    entry.put("extra", true);
+                    Map<String, JSONObject> g =
+                            new HashMap<String, JSONObject>(byAppRes);
+                    g.put(scriptType, entry);
+                    byAppRes = g;
+                    Map<String, File> k = new HashMap<String, File>(byKey);
+                    k.put(key, f);
+                    byKey = k;
+                    indexed = true;
+                    L.i("maps: extra appres indexed " + scriptType
+                            + " @engine " + engineVersion + " v" + resVersion
+                            + " (" + zipName + ", " + f.length() + " B)");
+                } catch (Throwable t) {
+                    L.e("maps: extra appres " + key + " failed: " + t);
                 }
             }
         }

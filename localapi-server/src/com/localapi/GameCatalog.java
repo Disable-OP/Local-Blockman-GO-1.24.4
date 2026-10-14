@@ -273,6 +273,45 @@ final class GameCatalog {
             L.i("catalog: hall traits applied (isLobby + realPlayGameList)");
         }
         if (ensureRealPins(games)) dirty = true;
+        if (ensureResVersions(games)) dirty = true;
+        return dirty;
+    }
+
+    /**
+     * Bump the games' latestResVersions.gresVersion to the SERVER's client
+     * resource versions (MapAssets.EXTRA_APP_RES). Run-13 decode: the join
+     * never fetched the game resources because the client compares the
+     * SERVER's gresVersion against its APK-shipped baseline
+     * (assets/resources/game_res_version.json, g1046=41279502) and our
+     * seeded catalog said 1 — "server behind" — so the engine booted
+     * without its actors and SIGSEGV'd. The pass runs per boot (the
+     * catalog persists; only a lower value is rewritten — a client-driven
+     * higher value would mean nothing here, the versions are ours).
+     * Idempotent: skips games already at/above the reported version.
+     */
+    private static boolean ensureResVersions(JSONArray games) {
+        if (games == null) return false;
+        boolean dirty = false;
+        for (int i = 0; i < games.length(); i++) {
+            JSONObject g = games.optJSONObject(i);
+            if (g == null) continue;
+            String script = g.optString("scriptType", "");
+            int v = MapAssets.appResReportedVersion(script);
+            if (v <= 0) continue;
+            JSONObject latest = g.optJSONObject("latestResVersions");
+            if (latest == null) {
+                latest = new JSONObject();
+                g.put("latestResVersions", latest);
+                g.put("gresVersionBumped", true);
+                dirty = true;
+            }
+            if (latest.optLong("gresVersion", 0) < v) {
+                latest.put("gresVersion", v);
+                dirty = true;
+                L.i("catalog: gresVersion " + script + " -> " + v
+                        + " (the client-resource gate)");
+            }
+        }
         return dirty;
     }
 

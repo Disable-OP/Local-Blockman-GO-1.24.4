@@ -176,6 +176,7 @@ public class LocalHttpd extends NanoHTTPD {
     private static boolean isAssetUri(String uri) {
         return uri.startsWith("/sandbox/games/maps/")
                 || uri.startsWith("/sandbox/games/plugins/")
+                || uri.startsWith("/sandbox/games/app-game-engine-resources/")
                 || uri.startsWith("/sandbox/dresses/dress-resources/");
     }
 
