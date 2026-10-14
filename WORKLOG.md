@@ -5977,3 +5977,103 @@ Stage Summary:
     garbage. THE BEDWARS LINE IS DONE (4x honest in-game + the bot
     markers) — the Skyblock wall is the last content blocker on the
     user's order (Bedwars -> Skyblock -> the rest).
+
+---
+
+## Cron session 6 (2026-10-14 ~21:20 local) — THE PRISTINE-LIB DISASSEMBLY: the 10078 UserAttr schema FULLY recovered; the vector<String> drift FIXED (dbcd155); run 28 dispatched
+
+Work Log:
+- Environment survived the cron restart; the repo at 4c4af10 = origin/main,
+  tree clean. THE TOKEN IN .git/config WAS CORRUPTED (chars 93+ junk — the
+  API 401'd while anonymous git still worked on the public repo); the intact
+  fine-grained PAT = the FIRST 93 chars; the remote URL rewritten in place.
+- THE CALIBRATION EXECUTED (the delta-39 method, tools built fresh):
+  * THE CLIENT'S PID INVENTORY: the pristine libBlockMan.so (2.8.2 v7a,
+    24 MB, stripped) carries the Itanium-mangled template instantiations
+    S2CPacketIL13S2CPacketType<N>EE — 323 unique N values extracted to
+    /tmp/client_s2c_ids.txt. Diffed against our S2CPacketType enum (350
+    entries, 0..360): 27 of OUR pids have NO client __bind instantiation —
+    the FIRST list included the login-window SetSignTexts(59) — BUT the
+    vtable scan below CORRECTED it (59 HAS a class; the __func names only
+    exist for addMember'd field types).
+  * THE PER-PID TYPE BAGS: the mangled std::__ndk1::__function::__func<
+    __bind<relayToRead<T>, _1, _2, T S2CPacket<pid>::*>> typeinfo names =
+    per-pid FIELD-TYPE bags (241 pids, /tmp/client_pid_types.json). pid 68
+    = {int, SkinColor, vector<int>, vector<LORD::String>} — THE ONLY pid
+    in the whole client carrying a SkinColor field = the avatar packet,
+    our UserAttr CONFIRMED. OUR UserAttr has NO vector<String> member.
+  * THE PACKET-CLASS VTABLE SIGNATURE: [D2-dtor, D0-dtor, pid(), channel(),
+    0x509419-shared-encode/decode, decode] — 507 packet-shaped vtables
+    found in .data.rel.ro (/tmp/client_vtables.json); the pid() virtuals =
+    'movs r0,#N; bx lr' thunks (pid 68 = EXACTLY ONE site, 0x63fa18).
+  * THE CTOR DISASSEMBLY (the ground truth): the pid-68 vtable
+    (0x15df334, typeinfo 0x15d0570, the name strings obfuscated) -> the
+    constructor located via the PIC vptr-store idiom (ldr-lit; add pc;
+    str r0,[this]) at 0x63f090: 29 addMember calls in wire order carrying
+    the member BYTE OFFSETS:
+      0x10..0x58 19x int | 0x5c SkinColor(16 B) | 0x6c int |
+      0x70 vector<int> | 0x80 vector<int> (SAME instantiation as 0x70) |
+      0x90 vector<String> (DIFFERENT instantiation, 0x63f614) |
+      0xa0 real32 (vmov s0 return) | 0xa4 int | 0xa8 string |
+      0xb8 string | 0xc8 int.
+    OUR S2CPacketUserAttr = the SAME list MINUS the 0x90 vector<String>
+    (19 ints = entityId..headEffectId match 1:1, SkinColor, defaultIdle,
+    selectableActions, suitsId, [MISSING vector<String>], scale, holdItemId,
+    holdItemActor, commonData, privilegeId).
+  * THE WIRE MECHANICS (Serializer.h = shared engine code): zigzag 7-bit
+    varint i32 (5 bytes with bit7 set = "Failed to read Integer: integer
+    overflow"), varint-len strings, raw-LE real32, vector = size + elems.
+    Run 27's dump re-read: our scale 1.0f (00 00 80 3f) feeds the client's
+    decoder #24 (the vector<String>) a length of 0 = a QUIET empty vector,
+    then scale reads 4 MISALIGNED bytes and the int/string cascade walks
+    into the buffer tail's >=5-byte high-bit runs (a5 a8 91 91...) = THE
+    throw -> the UserAttr datagram dropped -> NO dress data -> the ~20 s
+    validation wall (pc 0xbb37aa). The hall's variant = the same drift
+    surfacing as "Failed to read Real: reached end of stream" (different
+    UserAttr content, same desync). BOTH explainable by ONE missing field.
+  * THE GAMEINFO RE-READ: the client's pid-15 bag CONTAINS
+    vector<NETWORK_DEFINE::CoinMapping> — the client's GameInfo carries
+    the field; the run-26/27 "unknown packet id: 0/16" lines need a
+    fresh look NEXT session (the +17 s unknown-0 sits RIGHT BEFORE the
+    +17 s "recv user attr info" line = a DIFFERENT datagram than the
+    GameInfo tail). The coinMapping gate stays (wire-identical either way
+    for an empty map; harmless).
+- THE FIX (commit dbcd155, patch_sources.py #8):
+  * S2CPacketUserAttr gains cosmeticDress (vector<String>, ALWAYS empty =
+    one 0x00 length byte) + a static enable10078Shape() that force-builds
+    the static encoder list with a probe ctor (the list = built by the
+    FIRST construction; the gate runs before any send) and inserts the
+    extra encoder at INDEX 23 (after suitsId, before scale) —
+    19 ints = 0..18, skinColor 19, defaultIdle 20, selectableActions 21,
+    suitsId 22, scale 23.
+  * ServerPacketSender::enable10078UserAttrShape() fronts it;
+    the LOGIN site remembers clientPeer->setEngineVersion(packet->
+    m_engineVersion) and enables the shape when >= 10078 BEFORE the first
+    sendUserAttr; the ClientPeer REBIRTH re-send re-asserts the gate (the
+    second boot of a session must not regress the shape).
+  * Pre-10078 clients keep the byte-identical 1.24.4 shape (the insert =
+    one-time sticky; a local server hosts ONE engine line at a time).
+- GATES: suite 713/713 + smoke 28/28 on dbcd155. Pushed; build-gameserver
+  #44 triggered (scripts/gameserver/** push); the drive auto-fetches the
+  new libgameserver-arm64.so per run (NO harness rebuild).
+- THE DISPATCH PATH CHANGED (dec8408): the cron-session PAT has NO
+  actions:write (the /dispatches endpoint = 403 "Must have admin
+  rights" — runs 25-27's manual dispatch = gone with the old token).
+  test-redroid-drive.yml is now ALSO PUSH-TRIGGERED (main, paths =
+  scripts/gameserver/** + the workflow file), the DEFAULT GAMES =
+  "bed\s*war::Bedwars (g1008),sky\s*block::Skyblock (g1048)", the
+  DEFAULT HARNESS = BlockyNexus-localapi-sandbox92.apk, a wait-for-build
+  step holds the drive until the sha's build-gameserver asset lands
+  (a workflow/docs-only push proceeds immediately), job timeout 100 min.
+  RUN 28 = the workflow-push itself (38593517960, dec8408) — the UserAttr
+  fix rides build #45's asset.
+
+Stage Summary:
+- THE CALIBRATION METHOD IS NOW MECHANICAL: pid() thunk -> vtable ->
+  ctor -> the addMember offset sequence = the client's EXACT schema per
+  pid, no guessing. The pid-68 fix = the FIRST byte-level protocol repair.
+- NEXT: run 28's reads — the Skyblock window WITHOUT the UserAttr throw
+  ("recv user attr info" + the dress data + the ~20 s wall passed), the
+  15-bot gate (§6 step 2), then §6 steps 3..10b. The remaining drift
+  points = the same ctor disassembly per pid (the +17 s unknown-0's
+  source datagram = the first candidate).

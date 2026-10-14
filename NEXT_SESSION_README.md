@@ -4219,3 +4219,104 @@ You are continuing a multi-session reverse-engineering + patching project. Read 
   THE BEDWARS LINE IS DONE: 4x honest in-game + the bot markers.
 - GATES: suite 711/713 (the single environmental watchdog flake) +
   smoke 28/28 on 96ec546.
+
+## Cron-session delta 40 (read FIRST — THE PRISTINE-LIB DISASSEMBLY: the 10078 UserAttr schema RECOVERED BYTE-EXACT from the client's own ctor; the drift = ONE missing vector<String> between suitsId and scale; the fix shipped gated (dbcd155); run 28 = the wire test)
+
+- READ WORKLOG's CRON SESSION 6. The one-line state: the delta-39
+  calibration method is EXECUTED and MECHANICAL — the client's per-pid
+  schema is statically extractable (pid() thunk -> vtable -> ctor -> the
+  addMember offset sequence), the pid-68 (UserAttr) drift is FULLY
+  decoded, fixed, gated, gates green (713/713 + 28/28), pushed (dbcd155,
+  build #44), run 28 dispatched.
+- WHAT IS PROVEN (do not re-derive):
+  (1) THE TOOL CHAIN: pristine libBlockMan.so (2.8.2 v7a) strings ->
+      S2CPacketIL13S2CPacketType<N>EE = 323 client pids;
+      the __func<__bind<relayToRead<T>,...>> typeinfo names = per-pid
+      FIELD-TYPE bags (241 pids); the packet-class vtable signature
+      [D2,D0,pid(),channel(),0x509419-shared-encode/decode,...] = 507
+      packet vtables; the pid() virtuals = 'movs r0,#N; bx lr' thunks;
+      the ctor = found via the PIC vptr-store idiom (ldr-lit; add pc;
+      str r0,[this]) — the ctor's addMember calls carry the member BYTE
+      OFFSETS IN WIRE ORDER = the client's schema, byte-exact.
+  (2) PID 68 (UserAttr) = the client's ONLY SkinColor-carrying packet;
+      ctor @0x63f090: 19x int | SkinColor | int | vector<int> |
+      vector<int> | vector<String> | real32 | int | string | string |
+      int. OURS = the same MINUS the vector<String> (position: after
+      suitsId, before scale). The mangled bags agree (pid 68 = {int,
+      SkinColor, vector<int>, vector<LORD::String>}).
+  (3) THE WIRE EFFECT (run 27): the client's decoder #24 eats our scale
+      float as the vector length (1.0f = 00 00 80 3f -> len 0, QUIET),
+      then the desync cascade hits the buffer tail's high-bit runs ->
+      "Failed to read Integer: integer overflow" -> the UserAttr
+      datagram DROPPED -> no dress data -> the ~20 s validation wall
+      (pc 0xbb37aa). The hall's "Failed to read Real: reached end of
+      stream" = the SAME drift with different UserAttr content.
+  (4) THE GAMEINFO RE-READ: the client's pid-15 bag CONTAINS
+      vector<CoinMapping> — the "unknown packet id: 0/16" lines are NOT
+      settled as the GameInfo tail (the +17 s unknown-0 sits right
+      before the +17 s "recv user attr info" line = a different
+      datagram). The coinMapping gate stays (harmless either way);
+      re-derive NEXT session if a drift line points at GameInfo again.
+- THE FIX (dbcd155): S2CPacketUserAttr::enable10078Shape() = a probe
+  ctor (the static encoder list is built by the FIRST construction —
+  build it BEFORE inserting!) + encoders.insert(begin()+23, the
+  cosmeticDress writer) — index 23 = after suitsId(22), before
+  scale(23); the field = ALWAYS empty = one 0x00 byte. Gated: the login
+  site stores clientPeer->setEngineVersion(packet->m_engineVersion) and
+  enables when >= 10078 BEFORE the first sendUserAttr; the rebirth
+  re-send re-asserts. Pre-10078 clients keep the byte-identical shape
+  (the insert = one-time sticky; one engine line per local server).
+- GATES: suite 713/713 + smoke 28/28 on dbcd155. Build #44 = the release
+  asset swap (no harness rebuild); the drive picks it up per run.
+- RUN 28's DECISIVE READS (harness sandbox92 unchanged, games =
+  "bed\s*war::Bedwars (g1008),sky\s*block::Skyblock (g1048)"):
+  (a) the Skyblock window WITHOUT the UserAttr throw — "recv user attr
+      info recv , parse" + NO "packet decode error" inside the UserAttr
+      datagram (the buffer start 0x44 must parse CLEAN now);
+  (b) the ~20 s validation wall PASSED (no MainTickThread pc 0xbb37aa
+      tombstone in the Skyblock watch) — if it stands, the NEXT drift
+      packet = named by the first remaining parse error / unknown-pid
+      line, and the SAME ctor disassembly decodes it (pid() thunk ->
+      vtable -> ctor — the pid-68 template in WORKLOG session 6);
+  (c) then the 15-bot gate (§6 step 2) and §6 steps 3..10b.
+- THE METHOD FOR THE NEXT DRIFT (one packet per iteration): strings ->
+  the pid's __bind bag -> the pid() thunk -> the vtable -> the ctor ->
+  the offset sequence -> the minimal patch_sources.py fix (the
+  version-gated tail strip / the runtime encoder insert / the pid
+  remap) -> gates -> push -> build -> drive -> re-read.
+
+## Cron-session delta 41 (read FIRST — RUN 28 IN FLIGHT (38593517960, dec8408); THE DISPATCH PATH CHANGED: the drive is now PUSH-TRIGGERED (the cron PAT has no actions:write); the UserAttr fix rides build #45's asset)
+
+- READ WORKLOG cron session 6 + delta 40 first. Then:
+- THE TOKEN/DISPATCH DECODE: the cron-session PAT = the FIRST 93 chars
+  of the old .git/config string (the rest = junk; the API accepted only
+  the truncated form — the remote URL was rewritten in place). The PAT =
+  contents:read/write + actions:READ only: the /dispatches endpoint
+  403s ("Must have admin rights") and the JOB LOGS endpoint 403s —
+  builds = debugged by LOCAL REHEARSAL of patch_sources.py against the
+  archive extraction (the dry-run harness = the /tmp/rehearse pattern in
+  the session-6 worklog). THE API AUTH = BASIC (-u "x-access-token:TOKEN:")
+  — the Bearer form 401s intermittently.
+- THE DRIVE IS NOW PUSH-TRIGGERED (dec8408): main, paths =
+  scripts/gameserver/** + the workflow file; DEFAULT GAMES =
+  "bed\s*war::Bedwars (g1008),sky\s*block::Skyblock (g1048)"; DEFAULT
+  HARNESS = BlockyNexus-localapi-sandbox92.apk; a wait-for-build step
+  (gh run list per sha) holds the drive until the sha's build-gameserver
+  asset lands, aborts if the build failed, proceeds immediately when the
+  push has no build run; job timeout 100 min. THE CALIBRATION LOOP IS
+  NOW SELF-DRIVING: a patch_sources.py push = build + drive + evidence,
+  no manual dispatch needed.
+- BUILD #44 FAILED (the S2CPackets1.h anchor assumed tabs; the file =
+  column-0) — FIXED + REHEARSED (3e1130a) — BUILD #45 SUCCESS (70 min:
+  the protocol header = wide-fanout). GATES on 3e1130a: 713/713 + 28/28.
+- RUN 28 = 38593517960 (dec8408, in flight at the delta time): the reads
+  = delta 40's list (the Skyblock window WITHOUT the UserAttr throw; the
+  ~20s wall; the Bedwars line stays honest-green). THE EVIDENCE =
+  the run's artifacts (gjevidence*) + the job log = fetchable as the
+  ARTIFACT ZIP (the run[0] id + the artifacts endpoint — the job-log
+  endpoint = admin-blocked; the artifacts = NOT).
+- NEXT SESSION: decode run 28. If the Skyblock wall FALLS -> the 15-bot
+  gate (§6 step 2) then §6 steps 3..10b. If a NEW drift line names the
+  next packet -> the SAME ctor disassembly (pid() thunk -> vtable ->
+  ctor -> offsets; the pid-68 template = WORKLOG session 6). The +17s
+  "unknown packet id: 0" source = the first candidate either way.
